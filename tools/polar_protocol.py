@@ -6,6 +6,7 @@ permissions, pairing, connection lifecycle, storage, and evidence files.
 
 from __future__ import annotations
 
+import math
 import unittest
 from dataclasses import dataclass
 
@@ -23,6 +24,14 @@ PMD_DATA_UUID = "fb005c82-02e7-f387-1cad-8acd2d8df0c8"
 STREAM_HR_RR = "stream.polar_h10.hr_rr"
 STREAM_ECG = "stream.polar_h10.ecg"
 STREAM_ACC = "stream.polar_h10.acc"
+STREAM_COHERENCE = "stream.polar_h10.coherence"
+
+COHERENCE_SAMPLE_RATE_HZ = 2.0
+COHERENCE_WINDOW_SECONDS = 64.0
+COHERENCE_FFT_LENGTH = 128
+COHERENCE_TOTAL_BAND_HZ = (0.0033, 0.4)
+COHERENCE_PEAK_SEARCH_HZ = (0.04, 0.26)
+COHERENCE_PEAK_HALF_WIDTH_HZ = 0.03
 
 PMD_OPCODE_GET_SETTINGS = 0x01
 PMD_OPCODE_START_STREAM = 0x02
@@ -75,6 +84,22 @@ class AccSample:
 class AccFrame:
     sensor_timestamp_ns: int
     samples_mg: list[AccSample]
+
+
+@dataclass(frozen=True)
+class CoherenceResult:
+    status: str
+    issue_code: str | None
+    input_rr_interval_count: int
+    uniform_sample_count: int
+    window_seconds: float
+    sample_rate_hz: float
+    peak_frequency_hz: float | None
+    peak_band_power: float | None
+    total_band_power: float | None
+    paper_ratio: float | None
+    normalized_score: float | None
+    quality: str | None
 
 
 def decode_heart_rate_measurement(payload: bytes | bytearray) -> HeartRateReading:
@@ -197,6 +222,118 @@ def decode_acc_frame(payload: bytes | bytearray) -> AccFrame:
     return AccFrame(sensor_timestamp_ns=_read_u64_le(data, 1), samples_mg=samples)
 
 
+def compute_coherence(rr_intervals_ms: list[float]) -> CoherenceResult:
+    usable_rr = [value for value in rr_intervals_ms if 300.0 <= value <= 2000.0]
+    if len(usable_rr) < 12:
+        return _coherence_failure("issue.window_underfilled", len(usable_rr), 0)
+
+    beat_times: list[float] = []
+    elapsed = 0.0
+    for rr_ms in usable_rr:
+        elapsed += rr_ms / 1000.0
+        beat_times.append(elapsed)
+
+    if elapsed < COHERENCE_WINDOW_SECONDS:
+        return _coherence_failure("issue.window_underfilled", len(usable_rr), 0)
+
+    window_start = elapsed - COHERENCE_WINDOW_SECONDS
+    if beat_times[0] > window_start:
+        return _coherence_failure("issue.window_underfilled", len(usable_rr), 0)
+
+    samples: list[float] = []
+    beat_index = 0
+    for sample_index in range(COHERENCE_FFT_LENGTH):
+        sample_time = window_start + (sample_index / COHERENCE_SAMPLE_RATE_HZ)
+        while beat_index + 1 < len(beat_times) and beat_times[beat_index + 1] < sample_time:
+            beat_index += 1
+        if beat_index + 1 >= len(beat_times):
+            break
+        left_time = beat_times[beat_index]
+        right_time = beat_times[beat_index + 1]
+        left_rr = usable_rr[beat_index]
+        right_rr = usable_rr[beat_index + 1]
+        if right_time <= left_time:
+            samples.append(left_rr)
+        else:
+            fraction = (sample_time - left_time) / (right_time - left_time)
+            samples.append(left_rr + (right_rr - left_rr) * fraction)
+
+    if len(samples) < COHERENCE_FFT_LENGTH:
+        return _coherence_failure("issue.window_underfilled", len(usable_rr), len(samples))
+
+    return compute_coherence_uniform(samples, input_rr_interval_count=len(usable_rr))
+
+
+def compute_coherence_uniform(
+    samples_ms: list[float], *, input_rr_interval_count: int | None = None
+) -> CoherenceResult:
+    if len(samples_ms) < COHERENCE_FFT_LENGTH:
+        return _coherence_failure(
+            "issue.window_underfilled",
+            len(samples_ms) if input_rr_interval_count is None else input_rr_interval_count,
+            len(samples_ms),
+        )
+    samples = samples_ms[-COHERENCE_FFT_LENGTH:]
+    mean = sum(samples) / COHERENCE_FFT_LENGTH
+    detrended = [value - mean for value in samples]
+    powers = _dft_powers(detrended)
+    total_band_power = sum(
+        power for _, frequency, power in powers if _in_band(frequency, COHERENCE_TOTAL_BAND_HZ)
+    )
+    peak_candidates = [
+        (bin_index, frequency, power)
+        for bin_index, frequency, power in powers
+        if _in_band(frequency, COHERENCE_PEAK_SEARCH_HZ)
+    ]
+    if total_band_power <= 0.0 or not peak_candidates:
+        return _coherence_failure(
+            "issue.quality_low",
+            len(samples) if input_rr_interval_count is None else input_rr_interval_count,
+            len(samples),
+        )
+
+    max_peak_power = max(power for _, _, power in peak_candidates)
+    peak_bin, peak_frequency_hz, _ = min(
+        (
+            (bin_index, frequency, power)
+            for bin_index, frequency, power in peak_candidates
+            if abs(power - max_peak_power) <= 0.000000000001
+        ),
+        key=lambda item: item[0],
+    )
+    if peak_bin <= 0:
+        return _coherence_failure("issue.quality_low", len(samples), len(samples))
+
+    peak_band_power = sum(
+        power
+        for _, frequency, power in powers
+        if _in_band(frequency, COHERENCE_TOTAL_BAND_HZ)
+        and abs(frequency - peak_frequency_hz) <= COHERENCE_PEAK_HALF_WIDTH_HZ + 0.000000000001
+    )
+    remaining_power = total_band_power - peak_band_power
+    if remaining_power <= 0.0:
+        paper_ratio = 1000000.0
+        normalized_score = 1.0
+    else:
+        paper_ratio = peak_band_power / remaining_power
+        normalized_score = paper_ratio / (paper_ratio + 1.0)
+
+    return CoherenceResult(
+        status="pass",
+        issue_code=None,
+        input_rr_interval_count=len(samples) if input_rr_interval_count is None else input_rr_interval_count,
+        uniform_sample_count=len(samples),
+        window_seconds=COHERENCE_WINDOW_SECONDS,
+        sample_rate_hz=COHERENCE_SAMPLE_RATE_HZ,
+        peak_frequency_hz=round(peak_frequency_hz, 6),
+        peak_band_power=round(peak_band_power, 6),
+        total_band_power=round(total_band_power, 6),
+        paper_ratio=round(paper_ratio, 6) if math.isfinite(paper_ratio) else paper_ratio,
+        normalized_score=round(normalized_score, 6),
+        quality="stable" if paper_ratio >= 2.0 else "distributed",
+    )
+
+
 def stream_id_for_mode(mode: str) -> str:
     if mode == "hr_rr":
         return STREAM_HR_RR
@@ -204,6 +341,8 @@ def stream_id_for_mode(mode: str) -> str:
         return STREAM_ECG
     if mode == "acc":
         return STREAM_ACC
+    if mode == "coherence":
+        return STREAM_COHERENCE
     raise ValueError(f"unknown capture mode: {mode}")
 
 
@@ -249,6 +388,45 @@ def _read_i24_le(data: bytes) -> int:
     return value | ~0xFFFFFF if value & 0x800000 else value
 
 
+def _coherence_failure(
+    issue_code: str, input_rr_interval_count: int, uniform_sample_count: int
+) -> CoherenceResult:
+    return CoherenceResult(
+        status="fail",
+        issue_code=issue_code,
+        input_rr_interval_count=input_rr_interval_count,
+        uniform_sample_count=uniform_sample_count,
+        window_seconds=COHERENCE_WINDOW_SECONDS,
+        sample_rate_hz=COHERENCE_SAMPLE_RATE_HZ,
+        peak_frequency_hz=None,
+        peak_band_power=None,
+        total_band_power=None,
+        paper_ratio=None,
+        normalized_score=None,
+        quality=None,
+    )
+
+
+def _dft_powers(samples: list[float]) -> list[tuple[int, float, float]]:
+    powers: list[tuple[int, float, float]] = []
+    sample_count = len(samples)
+    for bin_index in range(1, (sample_count // 2) + 1):
+        real = 0.0
+        imaginary = 0.0
+        for sample_index, sample in enumerate(samples):
+            angle = -2.0 * math.pi * bin_index * sample_index / sample_count
+            real += sample * math.cos(angle)
+            imaginary += sample * math.sin(angle)
+        frequency = bin_index * COHERENCE_SAMPLE_RATE_HZ / sample_count
+        power = ((real * real) + (imaginary * imaginary)) / (sample_count * sample_count)
+        powers.append((bin_index, frequency, power))
+    return powers
+
+
+def _in_band(frequency: float, band: tuple[float, float]) -> bool:
+    return band[0] <= frequency <= band[1]
+
+
 class ProtocolTests(unittest.TestCase):
     def test_decodes_heart_rate_and_rr(self) -> None:
         reading = decode_heart_rate_measurement(bytes([0x10, 60, 0x20, 0x03, 0x00, 0x04]))
@@ -276,6 +454,26 @@ class ProtocolTests(unittest.TestCase):
         frame = decode_acc_frame(bytes([0x02, 2, 0, 0, 0, 0, 0, 0, 0, 0x01, 1, 0, 0xFE, 0xFF, 0x10, 0x27]))
         self.assertEqual(frame.sensor_timestamp_ns, 2)
         self.assertEqual(frame.samples_mg, [AccSample(1, -2, 10000)])
+
+    def test_computes_coherence_uniform_golden(self) -> None:
+        samples = [
+            1000.0
+            + 50.0 * math.sin(2.0 * math.pi * 6.0 * index / 128.0)
+            + 10.0 * math.sin(2.0 * math.pi * 18.0 * index / 128.0)
+            + 5.0 * math.sin(2.0 * math.pi * 22.0 * index / 128.0)
+            for index in range(128)
+        ]
+        result = compute_coherence_uniform(samples, input_rr_interval_count=72)
+        self.assertEqual(result.status, "pass")
+        self.assertAlmostEqual(result.peak_frequency_hz or 0.0, 0.09375, places=6)
+        self.assertAlmostEqual(result.paper_ratio or 0.0, 20.0, places=6)
+        self.assertAlmostEqual(result.normalized_score or 0.0, 0.952381, places=6)
+        self.assertEqual(result.quality, "stable")
+
+    def test_rejects_underfilled_coherence_window(self) -> None:
+        result = compute_coherence([1000.0] * 20)
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.issue_code, "issue.window_underfilled")
 
 
 if __name__ == "__main__":

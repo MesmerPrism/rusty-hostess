@@ -50,6 +50,24 @@ class LiveCaptureEvidenceValidatorTests(unittest.TestCase):
 
             self.assertIn("package manifest hash does not match packages root", validate(evidence, snapshot))
 
+    def test_accepts_coherence_stream_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            evidence["streams"] = [valid_coherence_stream()]
+
+            self.assertEqual(validate(evidence, snapshot), [])
+
+    def test_rejects_underfilled_coherence_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            stream = valid_coherence_stream()
+            stream["uniform_sample_count"] = 96
+            evidence["streams"] = [stream]
+
+            self.assertIn("coherence has fewer than 128 uniform samples", validate(evidence, snapshot))
+
 
 def make_package(root: Path) -> dict[str, object]:
     package = root / "packages" / "polar-h10" / "manifests"
@@ -59,6 +77,7 @@ def make_package(root: Path) -> dict[str, object]:
     (streams / "hr-rr.json").write_text('{"stream_id":"stream.polar_h10.hr_rr"}', encoding="utf-8")
     (streams / "ecg.json").write_text('{"stream_id":"stream.polar_h10.ecg"}', encoding="utf-8")
     (streams / "acc.json").write_text('{"stream_id":"stream.polar_h10.acc"}', encoding="utf-8")
+    (streams / "coherence.json").write_text('{"stream_id":"stream.polar_h10.coherence"}', encoding="utf-8")
     return package_snapshot(root)
 
 
@@ -83,6 +102,28 @@ def valid_evidence(snapshot: dict[str, object]) -> dict[str, object]:
             }
         ],
         "errors": [],
+    }
+
+
+def valid_coherence_stream() -> dict[str, object]:
+    return {
+        "stream_id": "stream.polar_h10.coherence",
+        "status": "pass",
+        "input_stream_id": "stream.polar_h10.hr_rr",
+        "method": "spectral_ratio_v1",
+        "heart_rate_event_count": 72,
+        "input_rr_interval_count": 72,
+        "uniform_sample_count": 128,
+        "window_seconds": 64.0,
+        "sample_rate_hz": 2.0,
+        "peak_frequency_hz": 0.09375,
+        "peak_band_power": 625.0,
+        "total_band_power": 656.25,
+        "paper_ratio": 20.0,
+        "normalized_score": 0.952381,
+        "quality": "stable",
+        "issue_code": None,
+        "malformed_frame_count": 0,
     }
 
 

@@ -53,6 +53,7 @@ public final class MainActivity extends Activity {
     private static final String STREAM_HR_RR = "stream.polar_h10.hr_rr";
     private static final String STREAM_ECG = "stream.polar_h10.ecg";
     private static final String STREAM_ACC = "stream.polar_h10.acc";
+    private static final String STREAM_COHERENCE = "stream.polar_h10.coherence";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TextView statusView;
@@ -312,7 +313,7 @@ public final class MainActivity extends Activity {
             descriptorsStarted = true;
             BluetoothGattService hrService = gatt.getService(HEART_RATE_SERVICE);
             BluetoothGattService pmdService = gatt.getService(PMD_SERVICE);
-            if ("hr_rr".equals(mode)) {
+            if ("hr_rr".equals(mode) || "coherence".equals(mode)) {
                 hrCharacteristic = hrService == null ? null : hrService.getCharacteristic(HEART_RATE_MEASUREMENT);
                 if (hrCharacteristic == null) {
                     errors.add("heart_rate_characteristic_missing");
@@ -365,7 +366,7 @@ public final class MainActivity extends Activity {
         }
 
         private void beginCapture(BluetoothGatt gatt) {
-            if ("hr_rr".equals(mode)) {
+            if ("hr_rr".equals(mode) || "coherence".equals(mode)) {
                 scheduleStop();
             } else if (!getSettingsWritten && !startWritten) {
                 writePmdCommand(gatt, "get_settings", buildGetSettingsCommand());
@@ -390,7 +391,7 @@ public final class MainActivity extends Activity {
 
         private void scheduleStop() {
             handler.postDelayed(() -> {
-                if ("hr_rr".equals(mode)) {
+                if ("hr_rr".equals(mode) || "coherence".equals(mode)) {
                     complete(computePass() ? "pass" : "fail");
                 } else if (gatt != null && !stopWritten) {
                     writePmdCommand(gatt, "stop_stream", buildStopCommand());
@@ -456,6 +457,9 @@ public final class MainActivity extends Activity {
             if ("hr_rr".equals(mode)) {
                 return !heartRates.isEmpty() && !rrIntervalsMs.isEmpty();
             }
+            if ("coherence".equals(mode)) {
+                return Coherence.compute(rrIntervalsMs).pass;
+            }
             if ("ecg".equals(mode)) {
                 return decodedSampleCount(ecgFrames) > 0;
             }
@@ -495,7 +499,7 @@ public final class MainActivity extends Activity {
     }
 
     private static String normalizeMode(String mode) {
-        if ("ecg".equals(mode) || "acc".equals(mode) || "hr_rr".equals(mode)) {
+        if ("ecg".equals(mode) || "acc".equals(mode) || "hr_rr".equals(mode) || "coherence".equals(mode)) {
             return mode;
         }
         return "hr_rr";
@@ -656,6 +660,206 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private static final class CoherenceResult {
+        final boolean pass;
+        final String issueCode;
+        final int inputRrIntervalCount;
+        final int uniformSampleCount;
+        final double windowSeconds;
+        final double sampleRateHz;
+        final Double peakFrequencyHz;
+        final Double peakBandPower;
+        final Double totalBandPower;
+        final Double paperRatio;
+        final Double normalizedScore;
+        final String quality;
+
+        CoherenceResult(
+                boolean pass,
+                String issueCode,
+                int inputRrIntervalCount,
+                int uniformSampleCount,
+                double windowSeconds,
+                double sampleRateHz,
+                Double peakFrequencyHz,
+                Double peakBandPower,
+                Double totalBandPower,
+                Double paperRatio,
+                Double normalizedScore,
+                String quality) {
+            this.pass = pass;
+            this.issueCode = issueCode;
+            this.inputRrIntervalCount = inputRrIntervalCount;
+            this.uniformSampleCount = uniformSampleCount;
+            this.windowSeconds = windowSeconds;
+            this.sampleRateHz = sampleRateHz;
+            this.peakFrequencyHz = peakFrequencyHz;
+            this.peakBandPower = peakBandPower;
+            this.totalBandPower = totalBandPower;
+            this.paperRatio = paperRatio;
+            this.normalizedScore = normalizedScore;
+            this.quality = quality;
+        }
+    }
+
+    private static final class Coherence {
+        static final double SAMPLE_RATE_HZ = 2.0;
+        static final double WINDOW_SECONDS = 64.0;
+        static final int FFT_LENGTH = 128;
+        static final double TOTAL_BAND_LOW_HZ = 0.0033;
+        static final double TOTAL_BAND_HIGH_HZ = 0.4;
+        static final double PEAK_SEARCH_LOW_HZ = 0.04;
+        static final double PEAK_SEARCH_HIGH_HZ = 0.26;
+        static final double PEAK_HALF_WIDTH_HZ = 0.03;
+
+        static CoherenceResult compute(List<Float> rrIntervalsMs) {
+            List<Double> usable = new ArrayList<>();
+            for (Float value : rrIntervalsMs) {
+                if (value != null && value >= 300.0f && value <= 2000.0f) {
+                    usable.add(value.doubleValue());
+                }
+            }
+            if (usable.size() < 12) {
+                return failure("issue.window_underfilled", usable.size(), 0);
+            }
+
+            double[] beatTimes = new double[usable.size()];
+            double elapsed = 0.0;
+            for (int index = 0; index < usable.size(); index++) {
+                elapsed += usable.get(index) / 1000.0;
+                beatTimes[index] = elapsed;
+            }
+            if (elapsed < WINDOW_SECONDS) {
+                return failure("issue.window_underfilled", usable.size(), 0);
+            }
+            double windowStart = elapsed - WINDOW_SECONDS;
+            if (beatTimes[0] > windowStart) {
+                return failure("issue.window_underfilled", usable.size(), 0);
+            }
+
+            double[] samples = new double[FFT_LENGTH];
+            int beatIndex = 0;
+            int sampleCount = 0;
+            for (int sampleIndex = 0; sampleIndex < FFT_LENGTH; sampleIndex++) {
+                double sampleTime = windowStart + (sampleIndex / SAMPLE_RATE_HZ);
+                while (beatIndex + 1 < beatTimes.length && beatTimes[beatIndex + 1] < sampleTime) {
+                    beatIndex += 1;
+                }
+                if (beatIndex + 1 >= beatTimes.length) {
+                    break;
+                }
+                double leftTime = beatTimes[beatIndex];
+                double rightTime = beatTimes[beatIndex + 1];
+                double leftRr = usable.get(beatIndex);
+                double rightRr = usable.get(beatIndex + 1);
+                double sample = leftRr;
+                if (rightTime > leftTime) {
+                    double fraction = (sampleTime - leftTime) / (rightTime - leftTime);
+                    sample = leftRr + ((rightRr - leftRr) * fraction);
+                }
+                samples[sampleIndex] = sample;
+                sampleCount += 1;
+            }
+            if (sampleCount < FFT_LENGTH) {
+                return failure("issue.window_underfilled", usable.size(), sampleCount);
+            }
+            return computeUniform(samples, usable.size());
+        }
+
+        static CoherenceResult computeUniform(double[] samples, int inputRrIntervalCount) {
+            double mean = 0.0;
+            for (double sample : samples) {
+                mean += sample;
+            }
+            mean /= samples.length;
+
+            double[] detrended = new double[samples.length];
+            for (int index = 0; index < samples.length; index++) {
+                detrended[index] = samples[index] - mean;
+            }
+
+            double totalBandPower = 0.0;
+            double peakCandidatePower = -1.0;
+            int peakBin = -1;
+            double peakFrequencyHz = 0.0;
+            double[] powers = new double[(samples.length / 2) + 1];
+            double[] frequencies = new double[(samples.length / 2) + 1];
+            for (int bin = 1; bin <= samples.length / 2; bin++) {
+                double real = 0.0;
+                double imaginary = 0.0;
+                for (int sampleIndex = 0; sampleIndex < detrended.length; sampleIndex++) {
+                    double angle = -2.0 * Math.PI * bin * sampleIndex / samples.length;
+                    real += detrended[sampleIndex] * Math.cos(angle);
+                    imaginary += detrended[sampleIndex] * Math.sin(angle);
+                }
+                double frequency = bin * SAMPLE_RATE_HZ / samples.length;
+                double power = ((real * real) + (imaginary * imaginary)) / (samples.length * samples.length);
+                powers[bin] = power;
+                frequencies[bin] = frequency;
+                if (inBand(frequency, TOTAL_BAND_LOW_HZ, TOTAL_BAND_HIGH_HZ)) {
+                    totalBandPower += power;
+                }
+                if (inBand(frequency, PEAK_SEARCH_LOW_HZ, PEAK_SEARCH_HIGH_HZ)
+                        && (power > peakCandidatePower + 0.000000000001 || (Math.abs(power - peakCandidatePower) <= 0.000000000001 && bin < peakBin))) {
+                    peakCandidatePower = power;
+                    peakBin = bin;
+                    peakFrequencyHz = frequency;
+                }
+            }
+            if (totalBandPower <= 0.0 || peakBin <= 0) {
+                return failure("issue.quality_low", inputRrIntervalCount, samples.length);
+            }
+
+            double peakBandPower = 0.0;
+            for (int bin = 1; bin <= samples.length / 2; bin++) {
+                if (inBand(frequencies[bin], TOTAL_BAND_LOW_HZ, TOTAL_BAND_HIGH_HZ)
+                        && Math.abs(frequencies[bin] - peakFrequencyHz) <= PEAK_HALF_WIDTH_HZ + 0.000000000001) {
+                    peakBandPower += powers[bin];
+                }
+            }
+            double remainingPower = totalBandPower - peakBandPower;
+            double paperRatio = remainingPower <= 0.0 ? 1000000.0 : peakBandPower / remainingPower;
+            double normalizedScore = paperRatio / (paperRatio + 1.0);
+            return new CoherenceResult(
+                    true,
+                    null,
+                    inputRrIntervalCount,
+                    samples.length,
+                    WINDOW_SECONDS,
+                    SAMPLE_RATE_HZ,
+                    round6(peakFrequencyHz),
+                    round6(peakBandPower),
+                    round6(totalBandPower),
+                    round6(paperRatio),
+                    round6(normalizedScore),
+                    paperRatio >= 2.0 ? "stable" : "distributed");
+        }
+
+        static CoherenceResult failure(String issueCode, int inputRrIntervalCount, int uniformSampleCount) {
+            return new CoherenceResult(
+                    false,
+                    issueCode,
+                    inputRrIntervalCount,
+                    uniformSampleCount,
+                    WINDOW_SECONDS,
+                    SAMPLE_RATE_HZ,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null);
+        }
+
+        static boolean inBand(double frequency, double low, double high) {
+            return frequency >= low && frequency <= high;
+        }
+
+        static double round6(double value) {
+            return Math.round(value * 1000000.0) / 1000000.0;
+        }
+    }
+
     private final class EvidenceWriter {
         String write(CaptureRun run, String status, Instant endedAt) {
             PackageHashes hashes = packageHashes();
@@ -682,7 +886,8 @@ public final class MainActivity extends Activity {
             indent(builder, 2).append("\"stream_manifest_sha256\": {\n");
             field(builder, "hr-rr", hashes.hrRrStream, true, 3);
             field(builder, "ecg", hashes.ecgStream, true, 3);
-            field(builder, "acc", hashes.accStream, false, 3);
+            field(builder, "acc", hashes.accStream, true, 3);
+            field(builder, "coherence", hashes.coherenceStream, false, 3);
             indent(builder, 2).append("}\n");
             indent(builder, 1).append("},\n");
             indent(builder, 1).append("\"capture\": {\n");
@@ -738,6 +943,24 @@ public final class MainActivity extends Activity {
                 numberField(builder, "latest_bpm", run.heartRates.isEmpty() ? 0 : run.heartRates.get(run.heartRates.size() - 1), true, 3);
                 doubleField(builder, "host_notification_rate_hz", hostRate(run.hrHostTimes), true, 3);
                 numberField(builder, "malformed_frame_count", run.malformedFrameCount, false, 3);
+            } else if ("coherence".equals(run.mode)) {
+                CoherenceResult result = Coherence.compute(run.rrIntervalsMs);
+                field(builder, "input_stream_id", STREAM_HR_RR, true, 3);
+                field(builder, "method", "spectral_ratio_v1", true, 3);
+                numberField(builder, "heart_rate_event_count", run.heartRates.size(), true, 3);
+                numberField(builder, "input_rr_interval_count", result.inputRrIntervalCount, true, 3);
+                numberField(builder, "uniform_sample_count", result.uniformSampleCount, true, 3);
+                doubleField(builder, "window_seconds", result.windowSeconds, true, 3);
+                doubleField(builder, "sample_rate_hz", result.sampleRateHz, true, 3);
+                nullableDoubleField(builder, "peak_frequency_hz", result.peakFrequencyHz, true, 3);
+                nullableDoubleField(builder, "peak_band_power", result.peakBandPower, true, 3);
+                nullableDoubleField(builder, "total_band_power", result.totalBandPower, true, 3);
+                nullableDoubleField(builder, "paper_ratio", result.paperRatio, true, 3);
+                nullableDoubleField(builder, "normalized_score", result.normalizedScore, true, 3);
+                nullableStringField(builder, "quality", result.quality, true, 3);
+                nullableStringField(builder, "issue_code", result.issueCode, true, 3);
+                doubleField(builder, "host_notification_rate_hz", hostRate(run.hrHostTimes), true, 3);
+                numberField(builder, "malformed_frame_count", run.malformedFrameCount, false, 3);
             } else {
                 List<PmdFrameMetric> frames = "ecg".equals(run.mode) ? run.ecgFrames : run.accFrames;
                 numberField(builder, "frame_count", frames.size(), true, 3);
@@ -766,7 +989,8 @@ public final class MainActivity extends Activity {
                     assetSha256("manifold/packages/polar-h10/manifests/package.manifold.json"),
                     assetSha256("manifold/packages/polar-h10/manifests/streams/hr-rr.json"),
                     assetSha256("manifold/packages/polar-h10/manifests/streams/ecg.json"),
-                    assetSha256("manifold/packages/polar-h10/manifests/streams/acc.json"));
+                    assetSha256("manifold/packages/polar-h10/manifests/streams/acc.json"),
+                    assetSha256("manifold/packages/polar-h10/manifests/streams/coherence.json"));
         }
 
         private String assetSha256(String path) {
@@ -799,6 +1023,9 @@ public final class MainActivity extends Activity {
             }
             if ("acc".equals(mode)) {
                 return STREAM_ACC;
+            }
+            if ("coherence".equals(mode)) {
+                return STREAM_COHERENCE;
             }
             return STREAM_HR_RR;
         }
@@ -865,6 +1092,23 @@ public final class MainActivity extends Activity {
             return builder;
         }
 
+        private StringBuilder nullableDoubleField(StringBuilder builder, String name, Double value, boolean comma, int level) {
+            indent(builder, level).append(quote(name)).append(": ");
+            if (value == null) {
+                builder.append("null");
+            } else {
+                builder.append(String.format(Locale.US, "%.6f", value));
+            }
+            builder.append(comma ? ",\n" : "\n");
+            return builder;
+        }
+
+        private StringBuilder nullableStringField(StringBuilder builder, String name, String value, boolean comma, int level) {
+            indent(builder, level).append(quote(name)).append(": ");
+            builder.append(value == null ? "null" : quote(value)).append(comma ? ",\n" : "\n");
+            return builder;
+        }
+
         private StringBuilder jsonPair(StringBuilder builder, String name, String value) {
             return builder.append(quote(name)).append(": ").append(quote(value));
         }
@@ -909,19 +1153,22 @@ public final class MainActivity extends Activity {
         final String hrRrStream;
         final String ecgStream;
         final String accStream;
+        final String coherenceStream;
 
-        PackageHashes(String packageManifest, String hrRrStream, String ecgStream, String accStream) {
+        PackageHashes(String packageManifest, String hrRrStream, String ecgStream, String accStream, String coherenceStream) {
             this.packageManifest = packageManifest;
             this.hrRrStream = hrRrStream;
             this.ecgStream = ecgStream;
             this.accStream = accStream;
+            this.coherenceStream = coherenceStream;
         }
 
         boolean complete() {
             return !"unavailable".equals(packageManifest)
                     && !"unavailable".equals(hrRrStream)
                     && !"unavailable".equals(ecgStream)
-                    && !"unavailable".equals(accStream);
+                    && !"unavailable".equals(accStream)
+                    && !"unavailable".equals(coherenceStream);
         }
     }
 }

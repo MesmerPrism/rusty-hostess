@@ -31,7 +31,7 @@ def main() -> int:
 
     run_live = subcommands.add_parser("run-live")
     run_live.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
-    run_live.add_argument("--stream", choices=["hr_rr", "ecg", "acc"], required=True)
+    run_live.add_argument("--stream", choices=["hr_rr", "ecg", "acc", "coherence"], required=True)
     run_live.add_argument("--out", required=True)
     run_live.add_argument("--packages-root", required=True)
     run_live.add_argument("--duration-seconds", type=float, default=12.0)

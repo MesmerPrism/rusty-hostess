@@ -30,7 +30,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--packages-root", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
-    parser.add_argument("--mode", choices=["hr_rr", "ecg", "acc"], required=True)
+    parser.add_argument("--mode", choices=["hr_rr", "ecg", "acc", "coherence"], required=True)
     parser.add_argument("--device-address")
     parser.add_argument("--device-name-prefix", default="Polar H10")
     parser.add_argument("--duration-seconds", type=float, default=10.0)
@@ -94,7 +94,7 @@ async def capture(args: argparse.Namespace) -> dict[str, Any]:
             except ValueError:
                 malformed_frames += 1
 
-        if args.mode == "hr_rr":
+        if args.mode in {"hr_rr", "coherence"}:
             await client.start_notify(polar.HEART_RATE_MEASUREMENT_UUID, on_hr)
         else:
             await client.start_notify(polar.PMD_CONTROL_POINT_UUID, on_control)
@@ -111,7 +111,7 @@ async def capture(args: argparse.Namespace) -> dict[str, Any]:
 
         await asyncio.sleep(args.duration_seconds)
 
-        if args.mode == "hr_rr":
+        if args.mode in {"hr_rr", "coherence"}:
             await client.stop_notify(polar.HEART_RATE_MEASUREMENT_UUID)
         else:
             kind = "ecg" if args.mode == "ecg" else "acc"
@@ -192,6 +192,33 @@ def stream_result(
             "host_notification_rate_hz": host_rate([timestamp for timestamp, _ in hr_events]),
             "malformed_frame_count": malformed_frames,
         }
+    if mode == "coherence":
+        rr_intervals = [
+            rr_ms
+            for _, reading in hr_events
+            for rr_ms in reading.rr_intervals_ms
+        ]
+        coherence = polar.compute_coherence(rr_intervals)
+        return {
+            "stream_id": polar.STREAM_COHERENCE,
+            "status": coherence.status,
+            "input_stream_id": polar.STREAM_HR_RR,
+            "method": "spectral_ratio_v1",
+            "heart_rate_event_count": len(hr_events),
+            "input_rr_interval_count": coherence.input_rr_interval_count,
+            "uniform_sample_count": coherence.uniform_sample_count,
+            "window_seconds": coherence.window_seconds,
+            "sample_rate_hz": coherence.sample_rate_hz,
+            "peak_frequency_hz": coherence.peak_frequency_hz,
+            "peak_band_power": coherence.peak_band_power,
+            "total_band_power": coherence.total_band_power,
+            "paper_ratio": coherence.paper_ratio,
+            "normalized_score": coherence.normalized_score,
+            "quality": coherence.quality,
+            "issue_code": coherence.issue_code,
+            "host_notification_rate_hz": host_rate([timestamp for timestamp, _ in hr_events]),
+            "malformed_frame_count": malformed_frames,
+        }
     if mode == "ecg":
         sample_count = sum(len(frame.samples_microvolts) for _, frame in ecg_frames)
         return {
@@ -239,6 +266,7 @@ def package_snapshot(packages_root: Path) -> dict[str, Any]:
         package_dir / "manifests" / "streams" / "hr-rr.json",
         package_dir / "manifests" / "streams" / "ecg.json",
         package_dir / "manifests" / "streams" / "acc.json",
+        package_dir / "manifests" / "streams" / "coherence.json",
     ]
     return {
         "package_id": "package.polar_h10",

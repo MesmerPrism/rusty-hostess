@@ -16,13 +16,19 @@ small app UI surfaces, command bridging, and evidence export.
 
 The first implementation supports one live package slot:
 
-- `live-smoke`: bounded HR/RR, ECG, or ACC capture for the Polar H10 package.
+- `live-smoke`: bounded HR/RR, ECG, ACC, or coherence capture for the Polar H10
+  package.
 
 The Android app embeds selected package manifests as assets, opens the platform
 sensor route itself, and writes evidence that includes the package manifest
 hash. The desktop script follows the same evidence shape. Both desktop and
 Android captures are accepted only after the shared evidence validator compares
 the reported manifest hash against the supplied package root.
+
+Coherence is computed in the host app at runtime from a live HR/RR capture. The
+host emits `stream.polar_h10.coherence` only after resampling a 64-second RR
+window to 128 uniform samples and producing the package-defined spectral ratio
+plus the separate normalized score.
 
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.hostess.run_evidence.v1` wrapper with a scorecard so the live

@@ -17,6 +17,9 @@ Required fields:
 - `errors`: must be empty for a trusted pass
 - `streams`: stream results with counters, rates, malformed-frame counts, and
   pass/fail status
+- coherence stream metrics: 64-second window, 2 Hz sample rate, 128 uniform RR
+  samples, peak frequency, peak-band power, total-band power, paper ratio,
+  normalized score, quality label, and empty issue code on pass
 
 The current validator is:
 
@@ -26,7 +29,8 @@ python tools\check_live_capture_evidence.py --input <capture.json> --packages-ro
 
 The validator compares the package manifest hash to the supplied packages root,
 rejects missing, fake, or `unavailable` hashes, rejects non-empty evidence
-errors, rejects malformed frames, and can write a validation report with
+errors, rejects malformed frames, requires runtime coherence metrics for
+`stream.polar_h10.coherence`, and can write a validation report with
 `--report-out`.
 
 When `hostessctl run-live` succeeds it also writes a companion
