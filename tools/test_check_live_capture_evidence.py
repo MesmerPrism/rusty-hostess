@@ -68,6 +68,15 @@ class LiveCaptureEvidenceValidatorTests(unittest.TestCase):
 
             self.assertIn("coherence has fewer than 128 uniform samples", validate(evidence, snapshot))
 
+    def test_accepts_selected_module_stream_metrics(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            evidence["capture"] = {"selected_module_ids": ["module.polar_h10.hrv_window"]}
+            evidence["streams"] = [valid_hrv_window_stream()]
+
+            self.assertEqual(validate(evidence, snapshot), [])
+
 
 def make_package(root: Path) -> dict[str, object]:
     package = root / "packages" / "polar-h10" / "manifests"
@@ -78,6 +87,26 @@ def make_package(root: Path) -> dict[str, object]:
     (streams / "ecg.json").write_text('{"stream_id":"stream.polar_h10.ecg"}', encoding="utf-8")
     (streams / "acc.json").write_text('{"stream_id":"stream.polar_h10.acc"}', encoding="utf-8")
     (streams / "coherence.json").write_text('{"stream_id":"stream.polar_h10.coherence"}', encoding="utf-8")
+    (streams / "hrv-window.json").write_text('{"stream_id":"stream.polar_h10.hrv_window"}', encoding="utf-8")
+    (streams / "rmssd-gain.json").write_text('{"stream_id":"stream.polar_h10.rmssd_gain"}', encoding="utf-8")
+    (streams / "breath-volume.json").write_text('{"stream_id":"stream.polar_h10.breath_volume"}', encoding="utf-8")
+    (streams / "breath-dynamics.json").write_text('{"stream_id":"stream.polar_h10.breath_dynamics"}', encoding="utf-8")
+    (streams / "hrvb-resonance-amplitude.json").write_text(
+        '{"stream_id":"stream.polar_h10.hrvb_resonance_amplitude"}', encoding="utf-8"
+    )
+    modules = package / "modules"
+    modules.mkdir()
+    (modules / "provider.json").write_text('{"module_id":"module.polar_h10.provider"}', encoding="utf-8")
+    (modules / "coherence.json").write_text('{"module_id":"module.polar_h10.coherence"}', encoding="utf-8")
+    (modules / "hrv-window.json").write_text('{"module_id":"module.polar_h10.hrv_window"}', encoding="utf-8")
+    (modules / "rmssd-gain.json").write_text('{"module_id":"module.polar_h10.rmssd_gain"}', encoding="utf-8")
+    (modules / "breath-volume-from-acc.json").write_text(
+        '{"module_id":"module.polar_h10.breath_volume_from_acc"}', encoding="utf-8"
+    )
+    (modules / "breath-dynamics.json").write_text('{"module_id":"module.polar_h10.breath_dynamics"}', encoding="utf-8")
+    (modules / "hrvb-resonance-amplitude.json").write_text(
+        '{"module_id":"module.polar_h10.hrvb_resonance_amplitude"}', encoding="utf-8"
+    )
     return package_snapshot(root)
 
 
@@ -91,6 +120,7 @@ def valid_evidence(snapshot: dict[str, object]) -> dict[str, object]:
             "package_id": "package.polar_h10",
             "package_manifest_sha256": snapshot["package_manifest_sha256"],
             "stream_manifest_sha256": copy.deepcopy(snapshot["stream_manifest_sha256"]),
+            "module_manifest_sha256": copy.deepcopy(snapshot["module_manifest_sha256"]),
         },
         "streams": [
             {
@@ -119,8 +149,37 @@ def valid_coherence_stream() -> dict[str, object]:
         "peak_frequency_hz": 0.09375,
         "peak_band_power": 625.0,
         "total_band_power": 656.25,
+        "remaining_power": 31.25,
+        "coherence_ratio": 20.0,
+        "coherence_ratio_squared": 12500.0,
+        "normalized_peak_power": 0.952381,
         "paper_ratio": 20.0,
         "normalized_score": 0.952381,
+        "quality": "stable",
+        "issue_code": None,
+        "malformed_frame_count": 0,
+    }
+
+
+def valid_hrv_window_stream() -> dict[str, object]:
+    return {
+        "stream_id": "stream.polar_h10.hrv_window",
+        "module_id": "module.polar_h10.hrv_window",
+        "status": "pass",
+        "input_stream_id": "stream.polar_h10.hr_rr",
+        "method": "rr_window_v1",
+        "heart_rate_event_count": 12,
+        "input_rr_interval_count": 12,
+        "accepted_count": 12,
+        "rejected_count": 0,
+        "successive_difference_count": 11,
+        "mean_nn_ms": 1000.0,
+        "mean_hr_bpm": 60.0,
+        "sdnn_ms": 7.0,
+        "rmssd_ms": 13.0,
+        "ln_rmssd": 2.56,
+        "pnn50": 0.0,
+        "sd1_ms": 9.2,
         "quality": "stable",
         "issue_code": None,
         "malformed_frame_count": 0,

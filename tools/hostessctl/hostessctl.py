@@ -31,7 +31,8 @@ def main() -> int:
 
     run_live = subcommands.add_parser("run-live")
     run_live.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
-    run_live.add_argument("--stream", choices=["hr_rr", "ecg", "acc", "coherence"], required=True)
+    run_live.add_argument("--stream", choices=["hr_rr", "ecg", "acc", "coherence"])
+    run_live.add_argument("--module", action="append", default=[])
     run_live.add_argument("--out", required=True)
     run_live.add_argument("--packages-root", required=True)
     run_live.add_argument("--duration-seconds", type=float, default=12.0)
@@ -61,6 +62,10 @@ def install_android(args: argparse.Namespace) -> int:
 
 
 def run_live_capture(args: argparse.Namespace) -> int:
+    if not args.stream and not args.module:
+        raise SystemExit("run-live requires --stream or at least one --module")
+    if args.stream and args.module:
+        raise SystemExit("run-live accepts either --stream or --module selections, not both")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     if args.target == "desktop":
@@ -75,7 +80,7 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
         "--packages-root",
         args.packages_root,
         "--mode",
-        args.stream,
+        args.stream if args.stream else "module",
         "--duration-seconds",
         str(args.duration_seconds),
         "--acc-rate",
@@ -85,6 +90,8 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
     ]
     if args.device_address:
         command.extend(["--device-address", args.device_address])
+    for module_id in args.module:
+        command.extend(["--module", module_id])
     capture = run(command, allow_failure=True)
     validation = validate_evidence(args, out, "desktop")
     return validation if validation != 0 else capture.returncode
@@ -109,7 +116,7 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
         f"{ANDROID_PACKAGE}/.MainActivity",
         "--es",
         "mode",
-        args.stream,
+        args.stream if args.stream else "module",
         "--es",
         "host_profile",
         host_profile,
@@ -122,6 +129,8 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
     ]
     if args.device_address:
         command.extend(["--es", "device_address", args.device_address])
+    if args.module:
+        command.extend(["--es", "modules", ",".join(args.module)])
     run(command)
     time.sleep(args.duration_seconds + 20.0)
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
@@ -130,23 +139,22 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
 
 def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) -> int:
     report_out = out.with_name(f"{out.stem}.validation-report.json")
-    result = run(
-        [
-            sys.executable,
-            str(REPO_ROOT / "tools" / "check_live_capture_evidence.py"),
-            "--input",
-            str(out),
-            "--packages-root",
-            args.packages_root,
-            "--expect-host",
-            host_profile,
-            "--expect-stream",
-            args.stream,
-            "--report-out",
-            str(report_out),
-        ],
-        allow_failure=True,
-    )
+    command = [
+        sys.executable,
+        str(REPO_ROOT / "tools" / "check_live_capture_evidence.py"),
+        "--input",
+        str(out),
+        "--packages-root",
+        args.packages_root,
+        "--expect-host",
+        host_profile,
+    ]
+    if args.stream:
+        command.extend(["--expect-stream", args.stream])
+    for module_id in args.module:
+        command.extend(["--expect-module", module_id])
+    command.extend(["--report-out", str(report_out)])
+    result = run(command, allow_failure=True)
     if result.returncode == 0:
         write_contract_evidence(out, report_out, host_profile)
     return result.returncode
@@ -158,6 +166,8 @@ def write_contract_evidence(raw_evidence_path: Path, validation_report_path: Pat
     started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
     ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
     stream_ids = [stream.get("stream_id") for stream in raw.get("streams", []) if stream.get("stream_id")]
+    module_ids = [stream.get("module_id") for stream in raw.get("streams", []) if stream.get("module_id")]
+    run_segment = module_segment(module_ids) if module_ids else stream_segment(stream_ids)
     checks = [
         scorecard_check(
             "validation.check.live_capture_status",
@@ -178,12 +188,13 @@ def write_contract_evidence(raw_evidence_path: Path, validation_report_path: Pat
     status = "fail" if report.get("status") != "pass" or raw.get("status") != "pass" else "pass"
     contract = {
         "$schema": "rusty.manifold.hostess.run_evidence.v1",
-        "run_id": f"hostess.run.live_capture.{host_profile}.{stream_segment(stream_ids)}.{started_ms}",
+        "run_id": f"hostess.run.live_capture.{host_profile}.{run_segment}.{started_ms}",
         "bundle_id": "hostess.bundle.polar_h10.live_smoke",
         "validation_slot_id": "hostess.slot.live_smoke",
         "host_profile": f"host.{host_profile}",
         "app_id": str(raw.get("software", {}).get("host_app", host_app_for(host_profile))),
         "package_ids": [str(raw.get("package", {}).get("package_id", "package.polar_h10"))],
+        "module_ids": module_ids,
         "status": status,
         "started_at_ms": started_ms,
         "ended_at_ms": ended_ms,
@@ -195,7 +206,7 @@ def write_contract_evidence(raw_evidence_path: Path, validation_report_path: Pat
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",
             "scorecard_id": "scorecard.hostess_t.live_capture",
-            "target_id": f"hostess.run.live_capture.{host_profile}.{stream_segment(stream_ids)}.{started_ms}",
+            "target_id": f"hostess.run.live_capture.{host_profile}.{run_segment}.{started_ms}",
             "target_revision": 1,
             "status": status,
             "checks": checks,
@@ -228,6 +239,14 @@ def stream_segment(stream_ids: list[str]) -> str:
     if not stream_ids:
         return "unknown"
     return stream_ids[0].split(".")[-1].replace("-", "_")
+
+
+def module_segment(module_ids: list[str]) -> str:
+    if not module_ids:
+        return "unknown"
+    pieces = [module_id.split(".")[-1].replace("-", "_") for module_id in module_ids]
+    joined = "_".join(pieces)
+    return joined[:80]
 
 
 def host_app_for(host_profile: str) -> str:

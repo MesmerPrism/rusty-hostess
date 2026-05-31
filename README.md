@@ -16,7 +16,7 @@ JSON that includes package manifest hashes.
 ## Current Apps
 
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
-  coherence computation using a local Python dependency.
+  Polar stream and selected-module validation using a local Python dependency.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles.
 
@@ -27,7 +27,7 @@ python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.p
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence
 ```
 
-Live evidence, including runtime coherence metrics, is validated with:
+Live evidence, including runtime processor-module metrics, is validated with:
 
 ```powershell
 python tools\check_live_capture_evidence.py --input <capture.json> --packages-root <packages-root>
@@ -37,3 +37,10 @@ python tools\check_live_capture_evidence.py --input <capture.json> --packages-ro
 validator and writes a companion `rusty.manifold.hostess.run_evidence.v1`
 contract artifact beside the raw capture JSON. Runtime artifacts should be
 written outside this repository.
+
+Direct stream slots use `--stream hr_rr|ecg|acc|coherence`. Processor modules
+are opt-in with repeated `--module` selections, for example:
+
+```powershell
+python tools\hostessctl\hostessctl.py run-live --target desktop --module hrv_window --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
+```
