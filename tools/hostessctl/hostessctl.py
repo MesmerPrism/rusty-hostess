@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -82,7 +85,9 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
     ]
     if args.device_address:
         command.extend(["--device-address", args.device_address])
-    return run(command).returncode
+    capture = run(command, allow_failure=True)
+    validation = validate_evidence(args, out, "desktop")
+    return validation if validation != 0 else capture.returncode
 
 
 def run_android_capture(args: argparse.Namespace, out: Path) -> int:
@@ -120,20 +125,124 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
     run(command)
     time.sleep(args.duration_seconds + 20.0)
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
-    validator_stream = args.stream
-    validator_host = "headset" if args.target == "quest" else "mobile"
-    return run(
+    return validate_evidence(args, out, "headset" if args.target == "quest" else "mobile")
+
+
+def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) -> int:
+    report_out = out.with_name(f"{out.stem}.validation-report.json")
+    result = run(
         [
             sys.executable,
             str(REPO_ROOT / "tools" / "check_live_capture_evidence.py"),
             "--input",
             str(out),
+            "--packages-root",
+            args.packages_root,
             "--expect-host",
-            validator_host,
+            host_profile,
             "--expect-stream",
-            validator_stream,
-        ]
-    ).returncode
+            args.stream,
+            "--report-out",
+            str(report_out),
+        ],
+        allow_failure=True,
+    )
+    if result.returncode == 0:
+        write_contract_evidence(out, report_out, host_profile)
+    return result.returncode
+
+
+def write_contract_evidence(raw_evidence_path: Path, validation_report_path: Path, host_profile: str) -> None:
+    raw = json.loads(raw_evidence_path.read_text(encoding="utf-8"))
+    report = json.loads(validation_report_path.read_text(encoding="utf-8"))
+    started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
+    ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
+    stream_ids = [stream.get("stream_id") for stream in raw.get("streams", []) if stream.get("stream_id")]
+    checks = [
+        scorecard_check(
+            "validation.check.live_capture_status",
+            report.get("status") == "pass" and raw.get("status") == "pass",
+            "live capture evidence and validation report passed",
+        ),
+        scorecard_check(
+            "validation.check.package_manifest_hash",
+            bool(raw.get("package", {}).get("package_manifest_sha256")),
+            "package manifest hash matched the supplied package root",
+        ),
+        scorecard_check(
+            "validation.check.stream_samples",
+            any(stream.get("status") == "pass" for stream in raw.get("streams", [])),
+            "expected stream produced decoded samples or HR/RR events",
+        ),
+    ]
+    status = "fail" if report.get("status") != "pass" or raw.get("status") != "pass" else "pass"
+    contract = {
+        "$schema": "rusty.manifold.hostess.run_evidence.v1",
+        "run_id": f"hostess.run.live_capture.{host_profile}.{stream_segment(stream_ids)}.{started_ms}",
+        "bundle_id": "hostess.bundle.polar_h10.live_smoke",
+        "validation_slot_id": "hostess.slot.live_smoke",
+        "host_profile": f"host.{host_profile}",
+        "app_id": str(raw.get("software", {}).get("host_app", host_app_for(host_profile))),
+        "package_ids": [str(raw.get("package", {}).get("package_id", "package.polar_h10"))],
+        "status": status,
+        "started_at_ms": started_ms,
+        "ended_at_ms": ended_ms,
+        "evidence_artifacts": [
+            "artifact.live_capture_evidence",
+            "artifact.live_capture_validation_report",
+            "artifact.hostess_run_evidence",
+        ],
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.hostess_t.live_capture",
+            "target_id": f"hostess.run.live_capture.{host_profile}.{stream_segment(stream_ids)}.{started_ms}",
+            "target_revision": 1,
+            "status": status,
+            "checks": checks,
+            "issues": [
+                {
+                    "code": "validation.live_capture_failed",
+                    "severity": "error",
+                    "message": "; ".join(report.get("errors", [])),
+                    "related_id": f"host.{host_profile}",
+                }
+            ]
+            if report.get("errors")
+            else [],
+        },
+    }
+    contract_path = raw_evidence_path.with_name(f"{raw_evidence_path.stem}.hostess-run-evidence.json")
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def scorecard_check(check_id: str, passed: bool, evidence: str) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "status": "pass" if passed else "fail",
+        "evidence": evidence,
+        "issue_codes": [] if passed else ["validation.live_capture_failed"],
+    }
+
+
+def stream_segment(stream_ids: list[str]) -> str:
+    if not stream_ids:
+        return "unknown"
+    return stream_ids[0].split(".")[-1].replace("-", "_")
+
+
+def host_app_for(host_profile: str) -> str:
+    if host_profile == "desktop":
+        return "app.rusty_hostess_t.desktop"
+    if host_profile == "headset":
+        return "app.rusty_hostess_t.quest"
+    return "app.rusty_hostess_t.android"
+
+
+def iso_to_epoch_ms(value: str | None) -> int:
+    if not value:
+        return 0
+    normalized = value.replace("Z", "+00:00")
+    return int(datetime.fromisoformat(normalized).timestamp() * 1000)
 
 
 def run(command: list[str], *, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:

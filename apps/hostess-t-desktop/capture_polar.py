@@ -21,7 +21,9 @@ from tools import polar_protocol as polar  # noqa: E402
 try:
     from bleak import BleakClient, BleakScanner
 except ImportError as error:  # pragma: no cover - exercised by operator preflight
-    raise SystemExit("Install windows requirements first: python -m pip install -r windows/requirements.txt") from error
+    raise SystemExit(
+        "Install desktop requirements first: python -m pip install -r apps/hostess-t-desktop/requirements.txt"
+    ) from error
 
 
 def main() -> int:

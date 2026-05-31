@@ -26,7 +26,7 @@ Run the narrow checks before committing:
 
 ```powershell
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py apps\hostess-t-desktop\capture_polar.py
-python -m unittest tools.polar_protocol
+python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence
 ```
 
 For live captures, write raw run artifacts outside the repo and commit only

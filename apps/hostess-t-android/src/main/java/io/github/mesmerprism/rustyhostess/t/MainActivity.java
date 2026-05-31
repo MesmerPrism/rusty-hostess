@@ -658,10 +658,16 @@ public final class MainActivity extends Activity {
 
     private final class EvidenceWriter {
         String write(CaptureRun run, String status, Instant endedAt) {
+            PackageHashes hashes = packageHashes();
+            List<String> evidenceErrors = new ArrayList<>(run.errors);
+            if (!hashes.complete()) {
+                evidenceErrors.add("package_manifest_hash_unavailable");
+            }
+            String finalStatus = evidenceErrors.isEmpty() ? status : "fail";
             StringBuilder builder = new StringBuilder();
             builder.append("{\n");
             field(builder, "$schema", "rusty.manifold.live_capture_evidence.v1", true, 1);
-            field(builder, "status", status, true, 1);
+            field(builder, "status", finalStatus, true, 1);
             field(builder, "host_profile", run.hostProfile, true, 1);
             field(builder, "started_at_utc", run.startedAt.toString(), true, 1);
             field(builder, "ended_at_utc", endedAt.toString(), true, 1);
@@ -672,7 +678,12 @@ public final class MainActivity extends Activity {
             indent(builder, 1).append("},\n");
             indent(builder, 1).append("\"package\": {\n");
             field(builder, "package_id", PACKAGE_ID, true, 2);
-            field(builder, "package_manifest_sha256", assetSha256("manifold/packages/polar-h10/manifests/package.manifold.json"), false, 2);
+            field(builder, "package_manifest_sha256", hashes.packageManifest, true, 2);
+            indent(builder, 2).append("\"stream_manifest_sha256\": {\n");
+            field(builder, "hr-rr", hashes.hrRrStream, true, 3);
+            field(builder, "ecg", hashes.ecgStream, true, 3);
+            field(builder, "acc", hashes.accStream, false, 3);
+            indent(builder, 2).append("}\n");
             indent(builder, 1).append("},\n");
             indent(builder, 1).append("\"capture\": {\n");
             field(builder, "mode", run.mode, true, 2);
@@ -682,7 +693,7 @@ public final class MainActivity extends Activity {
             appendCommands(builder, run);
             appendControl(builder, run);
             appendStreams(builder, run);
-            appendErrors(builder, run);
+            appendErrors(builder, evidenceErrors);
             builder.append("}\n");
             return builder.toString();
         }
@@ -739,15 +750,23 @@ public final class MainActivity extends Activity {
             indent(builder, 1).append("],\n");
         }
 
-        private void appendErrors(StringBuilder builder, CaptureRun run) {
+        private void appendErrors(StringBuilder builder, List<String> errors) {
             indent(builder, 1).append("\"errors\": [");
-            for (int index = 0; index < run.errors.size(); index++) {
-                builder.append(quote(run.errors.get(index)));
-                if (index + 1 < run.errors.size()) {
+            for (int index = 0; index < errors.size(); index++) {
+                builder.append(quote(errors.get(index)));
+                if (index + 1 < errors.size()) {
                     builder.append(", ");
                 }
             }
             builder.append("]\n");
+        }
+
+        private PackageHashes packageHashes() {
+            return new PackageHashes(
+                    assetSha256("manifold/packages/polar-h10/manifests/package.manifold.json"),
+                    assetSha256("manifold/packages/polar-h10/manifests/streams/hr-rr.json"),
+                    assetSha256("manifold/packages/polar-h10/manifests/streams/ecg.json"),
+                    assetSha256("manifold/packages/polar-h10/manifests/streams/acc.json"));
         }
 
         private String assetSha256(String path) {
@@ -882,6 +901,27 @@ public final class MainActivity extends Activity {
                 builder.append(String.format(Locale.US, "%02x", value & 0xff));
             }
             return builder.toString();
+        }
+    }
+
+    private static final class PackageHashes {
+        final String packageManifest;
+        final String hrRrStream;
+        final String ecgStream;
+        final String accStream;
+
+        PackageHashes(String packageManifest, String hrRrStream, String ecgStream, String accStream) {
+            this.packageManifest = packageManifest;
+            this.hrRrStream = hrRrStream;
+            this.ecgStream = ecgStream;
+            this.accStream = accStream;
+        }
+
+        boolean complete() {
+            return !"unavailable".equals(packageManifest)
+                    && !"unavailable".equals(hrRrStream)
+                    && !"unavailable".equals(ecgStream)
+                    && !"unavailable".equals(accStream);
         }
     }
 }

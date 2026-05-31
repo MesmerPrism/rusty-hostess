@@ -20,7 +20,13 @@ The first implementation supports one live package slot:
 
 The Android app embeds selected package manifests as assets, opens the platform
 sensor route itself, and writes evidence that includes the package manifest
-hash. The desktop script follows the same evidence shape.
+hash. The desktop script follows the same evidence shape. Both desktop and
+Android captures are accepted only after the shared evidence validator compares
+the reported manifest hash against the supplied package root.
+
+After a raw capture validates, `hostessctl` writes a
+`rusty.manifold.hostess.run_evidence.v1` wrapper with a scorecard so the live
+run is tied back to the Manifold Hostess contract spine.
 
 ## Non-Scope
 

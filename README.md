@@ -24,13 +24,16 @@ JSON that includes package manifest hashes.
 
 ```powershell
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py apps\hostess-t-desktop\capture_polar.py
-python -m unittest tools.polar_protocol
+python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence
 ```
 
 Live evidence is validated with:
 
 ```powershell
-python tools\check_live_capture_evidence.py --input <capture.json>
+python tools\check_live_capture_evidence.py --input <capture.json> --packages-root <packages-root>
 ```
 
-Runtime artifacts should be written outside this repository.
+`hostessctl run-live` validates desktop and Android evidence through the same
+validator and writes a companion `rusty.manifold.hostess.run_evidence.v1`
+contract artifact beside the raw capture JSON. Runtime artifacts should be
+written outside this repository.
