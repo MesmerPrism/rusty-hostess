@@ -28,6 +28,10 @@ import android.os.Handler;
 import android.os.Looper;
 import android.view.View;
 
+import org.json.JSONArray;
+import org.json.JSONException;
+import org.json.JSONObject;
+
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -46,6 +50,7 @@ import java.util.UUID;
 
 public final class MainActivity extends Activity {
     private static final String ACTION_RUN = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE";
+    private static final String ACTION_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String SOFTWARE_ORIGIN = "rusty-hostess";
@@ -73,6 +78,7 @@ public final class MainActivity extends Activity {
     private static final String MODULE_BREATH_VOLUME_FROM_ACC = "module.polar_h10.breath_volume_from_acc";
     private static final String MODULE_BREATH_DYNAMICS = "module.polar_h10.breath_dynamics";
     private static final String MODULE_HRVB_RESONANCE_AMPLITUDE = "module.polar_h10.hrvb_resonance_amplitude";
+    private static final long RUNTIME_PREVIEW_INTERVAL_MS = 15000L;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private TelemetryView telemetryView;
@@ -97,6 +103,10 @@ public final class MainActivity extends Activity {
             writeTelemetryRender(intent);
             return;
         }
+        if (ACTION_REPLAY.equals(intent.getAction())) {
+            writeSyntheticReplay(intent);
+            return;
+        }
         if (!ACTION_RUN.equals(intent.getAction())) {
             telemetryView.setRunState("ready", "idle", new ArrayList<>());
             return;
@@ -111,8 +121,46 @@ public final class MainActivity extends Activity {
         }
         run = new CaptureRun(this, intent);
         telemetryView.resetForRun(run.mode, run.selectedModules);
+        telemetryView.setPage(run.telemetryPage);
         telemetryView.setRunState("running", run.mode, run.selectedModules);
         run.start();
+    }
+
+    private void writeSyntheticReplay(Intent intent) {
+        Instant startedAt = Instant.now();
+        List<String> selectedModules = normalizeModules(intent.getStringExtra("modules"));
+        if (selectedModules.isEmpty()) {
+            selectedModules = defaultProcessorModules();
+        }
+        String hostProfile = normalizeHostProfile(intent.getStringExtra("host_profile"));
+        telemetryView.resetForRun("replay", selectedModules);
+        telemetryView.setRunState("running", "replay", selectedModules);
+        try {
+            JSONObject runtimeInput = PolarRuntime.syntheticRuntimeInput(this);
+            JSONObject graphReport = PolarRuntime.runGraph(this, runtimeInput, selectedModules);
+            telemetryView.addGraphReport(graphReport);
+            Instant endedAt = Instant.now();
+            List<String> errors = graphErrors(graphReport);
+            String status = errors.isEmpty() && "pass".equals(graphReport.optString("status")) ? "pass" : "fail";
+            File root = new File(getExternalFilesDir(null), "hostess-t/evidence/live-capture");
+            if (!root.exists() && !root.mkdirs()) {
+                throw new IOException("could not create output folder");
+            }
+            writeText(new File(root, "latest.runtime-input.json"), runtimeInput.toString(2));
+            writeText(new File(root, "latest.graph-execution-report.json"), graphReport.toString(2));
+            String json = new EvidenceWriter().writeReplay(
+                    hostProfile,
+                    selectedModules,
+                    startedAt,
+                    endedAt,
+                    status,
+                    graphReport,
+                    errors);
+            writeText(new File(root, "latest.json"), json);
+            telemetryView.setRunState(status, "replay", selectedModules);
+        } catch (IOException | JSONException ex) {
+            telemetryView.setRunState("fail", "replay", selectedModules);
+        }
     }
 
     private String[] missingPermissions() {
@@ -143,6 +191,7 @@ public final class MainActivity extends Activity {
         if (!fileName.endsWith(".png")) {
             fileName = fileName + ".png";
         }
+        telemetryView.setPage(normalizeTelemetryPage(intent.getStringExtra("render_page")));
         final String safeName = sanitizeFileName(fileName);
         telemetryView.post(() -> renderTelemetryToFile(safeName, 0));
     }
@@ -159,7 +208,7 @@ public final class MainActivity extends Activity {
             }
             File out = new File(root, safeName);
             telemetryView.writePng(out);
-            telemetryView.setRenderStatus("rendered " + safeName);
+            telemetryView.setRenderStatus("rendered");
         } catch (IOException ex) {
             telemetryView.setRenderStatus("render_failed");
         }
@@ -174,7 +223,10 @@ public final class MainActivity extends Activity {
         final String deviceNamePrefix;
         final long durationMs;
         final int accRateHz;
+        final RmssdBaselineConfig rmssdBaseline;
+        final String telemetryPage;
         final Instant startedAt = Instant.now();
+        final Object captureLock = new Object();
         final List<String> errors = new ArrayList<>();
         final List<CommandRecord> commands = new ArrayList<>();
         final List<ControlRecord> controlRecords = new ArrayList<>();
@@ -183,7 +235,13 @@ public final class MainActivity extends Activity {
         final List<Float> rrIntervalsMs = new ArrayList<>();
         final List<PmdFrameMetric> ecgFrames = new ArrayList<>();
         final List<PmdFrameMetric> accFrames = new ArrayList<>();
+        JSONObject graphReport;
+        JSONObject runtimeInput;
+        String runtimeInputArtifact;
+        String graphReportArtifact;
         int malformedFrameCount = 0;
+        int stopWriteAttempts = 0;
+        boolean finished = false;
 
         BluetoothLeScanner scanner;
         BluetoothGatt gatt;
@@ -210,6 +268,8 @@ public final class MainActivity extends Activity {
                     : intent.getStringExtra("device_name_prefix");
             this.durationMs = Math.max(1000L, intent.getLongExtra("duration_ms", 10000L));
             this.accRateHz = Math.max(25, intent.getIntExtra("acc_rate_hz", 200));
+            this.rmssdBaseline = RmssdBaselineConfig.fromIntent(intent);
+            this.telemetryPage = normalizeTelemetryPage(intent.getStringExtra("telemetry_page"));
         }
 
         void start() {
@@ -242,6 +302,7 @@ public final class MainActivity extends Activity {
                 return;
             }
             scanner.startScan(scanCallback);
+            scheduleRuntimePreview();
             handler.postDelayed(() -> {
                 if (!scanFinished) {
                     stopScan();
@@ -252,11 +313,36 @@ public final class MainActivity extends Activity {
         }
 
         void close() {
+            finished = true;
+            handler.removeCallbacks(runtimePreviewRunnable);
             stopScan();
             if (gatt != null) {
                 gatt.disconnect();
                 gatt.close();
                 gatt = null;
+            }
+        }
+
+        final Runnable runtimePreviewRunnable = new Runnable() {
+            @Override
+            public void run() {
+                if (finished || !usesRustRuntime()) {
+                    return;
+                }
+                try {
+                    JSONObject report = runGraph("preview", false);
+                    handler.post(() -> telemetryView.addGraphReport(report));
+                } catch (IOException | JSONException | RuntimeException ignored) {
+                }
+                if (!finished) {
+                    handler.postDelayed(this, RUNTIME_PREVIEW_INTERVAL_MS);
+                }
+            }
+        };
+
+        private void scheduleRuntimePreview() {
+            if (usesRustRuntime()) {
+                handler.postDelayed(runtimePreviewRunnable, RUNTIME_PREVIEW_INTERVAL_MS);
             }
         }
 
@@ -484,9 +570,31 @@ public final class MainActivity extends Activity {
                 if (!needsEcg() && !needsAcc()) {
                     complete(computePass() ? "pass" : "fail");
                 } else if (gatt != null && !stopWritten) {
-                    writePmdCommand(gatt, "stop_stream", buildStopCommand());
+                    writeStopCommand(gatt);
                 }
             }, durationMs);
+        }
+
+        private void writeStopCommand(BluetoothGatt gatt) {
+            if (pmdControlCharacteristic == null) {
+                errors.add("pmd_control_missing");
+                complete("fail");
+                return;
+            }
+            pendingCommand = "stop_stream";
+            pmdControlCharacteristic.setValue(buildStopCommand());
+            commandInFlight = true;
+            if (!gatt.writeCharacteristic(pmdControlCharacteristic)) {
+                commandInFlight = false;
+                stopWriteAttempts += 1;
+                if (!finished && stopWriteAttempts < 4) {
+                    handler.postDelayed(() -> writeStopCommand(gatt), 250L);
+                    return;
+                }
+                commands.add(new CommandRecord("stop_stream", "rejected", 1, System.nanoTime()));
+                errors.add("command_write_not_started:stop_stream");
+                complete("fail");
+            }
         }
 
         private void handleCharacteristic(BluetoothGattCharacteristic characteristic, byte[] value) {
@@ -498,21 +606,29 @@ public final class MainActivity extends Activity {
             try {
                 if (HEART_RATE_MEASUREMENT.equals(uuid)) {
                     HeartRateReading reading = PolarProtocol.decodeHeartRateMeasurement(value);
-                    hrHostTimes.add(System.nanoTime());
-                    heartRates.add(reading.bpm);
-                    rrIntervalsMs.addAll(reading.rrIntervalsMs);
+                    synchronized (captureLock) {
+                        hrHostTimes.add(System.nanoTime());
+                        heartRates.add(reading.bpm);
+                        rrIntervalsMs.addAll(reading.rrIntervalsMs);
+                    }
                     handler.post(() -> telemetryView.addHeartRate(reading.bpm, reading.rrIntervalsMs, malformedFrameCount));
                 } else if (PMD_CONTROL_POINT.equals(uuid)) {
                     ControlRecord record = PolarProtocol.parseControl(value);
-                    controlRecords.add(record);
+                    synchronized (captureLock) {
+                        controlRecords.add(record);
+                    }
                 } else if (PMD_DATA.equals(uuid)) {
                     if ("ecg".equals(mode)) {
                         PmdFrameMetric frame = PolarProtocol.decodeEcg(value);
-                        ecgFrames.add(frame);
+                        synchronized (captureLock) {
+                            ecgFrames.add(frame);
+                        }
                         handler.post(() -> telemetryView.addEcgFrame(frame, malformedFrameCount));
                     } else if (needsAcc()) {
                         PmdFrameMetric frame = PolarProtocol.decodeAcc(value);
-                        accFrames.add(frame);
+                        synchronized (captureLock) {
+                            accFrames.add(frame);
+                        }
                         handler.post(() -> telemetryView.addAccFrame(frame, malformedFrameCount));
                     }
                 }
@@ -550,24 +666,28 @@ public final class MainActivity extends Activity {
             if (!errors.isEmpty()) {
                 return false;
             }
+            List<Integer> heartRateSnapshot = heartRateSnapshot();
+            List<Float> rrSnapshot = rrSnapshot();
+            List<PmdFrameMetric> ecgSnapshot = ecgFrameSnapshot();
+            List<PmdFrameMetric> accSnapshot = accFrameSnapshot();
             if ("hr_rr".equals(mode)) {
-                return !heartRates.isEmpty() && !rrIntervalsMs.isEmpty();
+                return !heartRateSnapshot.isEmpty() && !rrSnapshot.isEmpty();
             }
             if ("coherence".equals(mode)) {
-                return Coherence.compute(rrIntervalsMs).pass;
+                return Coherence.compute(rrSnapshot).pass;
             }
             if ("ecg".equals(mode)) {
-                return decodedSampleCount(ecgFrames) > 0;
+                return decodedSampleCount(ecgSnapshot) > 0;
             }
             if ("acc".equals(mode)) {
-                return decodedSampleCount(accFrames) > 0;
+                return decodedSampleCount(accSnapshot) > 0;
             }
-            for (String moduleId : selectedModules) {
-                if (!modulePass(moduleId)) {
-                    return false;
-                }
+            if ("module".equals(mode)) {
+                boolean hrReady = !needsHr() || (!heartRateSnapshot.isEmpty() && !rrSnapshot.isEmpty());
+                boolean accReady = !needsAcc() || decodedSampleCount(accSnapshot) > 0;
+                return !selectedModules.isEmpty() && hrReady && accReady;
             }
-            return !selectedModules.isEmpty();
+            return false;
         }
 
         private boolean modulePass(String moduleId) {
@@ -600,7 +720,120 @@ public final class MainActivity extends Activity {
             return count;
         }
 
+        private List<Integer> heartRateSnapshot() {
+            synchronized (captureLock) {
+                return new ArrayList<>(heartRates);
+            }
+        }
+
+        private List<Float> rrSnapshot() {
+            synchronized (captureLock) {
+                return new ArrayList<>(rrIntervalsMs);
+            }
+        }
+
+        private List<PmdFrameMetric> ecgFrameSnapshot() {
+            synchronized (captureLock) {
+                return new ArrayList<>(ecgFrames);
+            }
+        }
+
+        private List<PmdFrameMetric> accFrameSnapshot() {
+            synchronized (captureLock) {
+                return new ArrayList<>(accFrames);
+            }
+        }
+
+        private boolean usesRustRuntime() {
+            return "module".equals(mode) || "coherence".equals(mode);
+        }
+
+        private List<String> runtimeSelectedModules() {
+            if ("coherence".equals(mode) && selectedModules.isEmpty()) {
+                List<String> modules = new ArrayList<>();
+                modules.add(MODULE_COHERENCE);
+                return modules;
+            }
+            return selectedModules;
+        }
+
+        private JSONObject runGraph(String inputIdSuffix, boolean persist) throws JSONException, IOException {
+            List<String> modules = runtimeSelectedModules();
+            JSONObject input = runtimeInput("input.polar_h10.live." + inputIdSuffix);
+            JSONObject report = PolarRuntime.runGraph(context, input, modules);
+            if (persist) {
+                runtimeInput = input;
+                graphReport = report;
+                runtimeInputArtifact = "latest.runtime-input.json";
+                graphReportArtifact = "latest.graph-execution-report.json";
+            }
+            return report;
+        }
+
+        private JSONObject runtimeInput(String inputId) throws JSONException {
+            List<Integer> heartRateSnapshot = heartRateSnapshot();
+            List<Float> rrSnapshot = rrSnapshot();
+            List<PmdFrameMetric> accSnapshot = accFrameSnapshot();
+            JSONObject input = new JSONObject();
+            input.put("$schema", "rusty.manifold.polar_h10.processor_runtime_input.v1");
+            input.put("input_id", inputId);
+            JSONObject hrRr = new JSONObject();
+            hrRr.put("heart_rate_event_count", heartRateSnapshot.size());
+            JSONArray rrValues = new JSONArray();
+            for (Float rr : rrSnapshot) {
+                if (rr != null) {
+                    rrValues.put(rr.doubleValue());
+                }
+            }
+            hrRr.put("rr_intervals_ms", rrValues);
+            input.put("hr_rr", hrRr);
+            if (!accSnapshot.isEmpty()) {
+                JSONObject rawAcc = new JSONObject();
+                rawAcc.put("sample_rate_hz", (double) accRateHz);
+                JSONArray frames = new JSONArray();
+                for (PmdFrameMetric frame : accSnapshot) {
+                    JSONObject frameJson = new JSONObject();
+                    frameJson.put("sensor_timestamp_ns", frame.sensorTimestampNs);
+                    JSONArray samples = new JSONArray();
+                    for (AccSample sample : frame.accSamples) {
+                        JSONObject sampleJson = new JSONObject();
+                        sampleJson.put("x_mg", sample.xMg);
+                        sampleJson.put("y_mg", sample.yMg);
+                        sampleJson.put("z_mg", sample.zMg);
+                        samples.put(sampleJson);
+                    }
+                    frameJson.put("samples_mg", samples);
+                    frames.put(frameJson);
+                }
+                rawAcc.put("frames", frames);
+                input.put("raw_acc", rawAcc);
+            }
+            if (rmssdBaseline != null) {
+                input.put("rmssd_gain_baseline", rmssdBaseline.toJson());
+            }
+            return input;
+        }
+
         private void complete(String status) {
+            JSONObject finalGraphReport = null;
+            if (usesRustRuntime()) {
+                try {
+                    finalGraphReport = runGraph("final", true);
+                    commands.add(new CommandRecord(
+                            "run_graph_live_capture",
+                            "pass".equals(finalGraphReport.optString("status")) ? "acknowledged" : "rejected",
+                            "pass".equals(finalGraphReport.optString("status")) ? 0 : 1,
+                            System.nanoTime()));
+                    if (!"pass".equals(finalGraphReport.optString("status"))) {
+                        errors.addAll(graphErrors(finalGraphReport));
+                        status = "fail";
+                    }
+                } catch (IOException | JSONException | RuntimeException ex) {
+                    errors.add("runtime_bridge_failed:" + ex.getClass().getSimpleName());
+                    commands.add(new CommandRecord("run_graph_live_capture", "rejected", 1, System.nanoTime()));
+                    status = "fail";
+                }
+            }
             close();
             Instant endedAt = Instant.now();
             String json = new EvidenceWriter().write(this, status, endedAt);
@@ -609,10 +842,19 @@ public final class MainActivity extends Activity {
                 if (!root.exists() && !root.mkdirs()) {
                     throw new IOException("could not create output folder");
                 }
+                if (runtimeInput != null) {
+                    writeText(new File(root, "latest.runtime-input.json"), runtimeInput.toString(2));
+                }
+                if (graphReport != null) {
+                    writeText(new File(root, "latest.graph-execution-report.json"), graphReport.toString(2));
+                }
                 writeText(new File(root, "latest.json"), json);
                 writeText(new File(root, sanitizeFileName(hostProfile + "-" + mode + "-" + endedAt.toString()) + ".json"), json);
+                if (finalGraphReport != null) {
+                    telemetryView.addGraphReport(finalGraphReport);
+                }
                 telemetryView.setRunState(status, mode, selectedModules);
-            } catch (IOException ex) {
+            } catch (IOException | JSONException ex) {
                 telemetryView.setRunState("write_failed", mode, selectedModules);
             }
         }
@@ -630,6 +872,8 @@ public final class MainActivity extends Activity {
         private static final int RR = Color.rgb(15, 118, 110);
         private static final int ACC = Color.rgb(79, 76, 71);
         private static final int ECG = Color.rgb(159, 18, 57);
+        private static final int HRV = Color.rgb(37, 99, 235);
+        private static final int MODULE = Color.rgb(126, 34, 206);
 
         private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -641,10 +885,18 @@ public final class MainActivity extends Activity {
         private final ArrayDeque<Float> rrIntervals = new ArrayDeque<>();
         private final ArrayDeque<Float> accMagnitude = new ArrayDeque<>();
         private final ArrayDeque<Float> ecgSamples = new ArrayDeque<>();
+        private final ArrayDeque<Float> hrvLnRmssd = new ArrayDeque<>();
+        private final ArrayDeque<Float> rmssdGain = new ArrayDeque<>();
+        private final ArrayDeque<Float> coherenceScore = new ArrayDeque<>();
+        private final ArrayDeque<Float> breathVolume = new ArrayDeque<>();
+        private final ArrayDeque<Float> breathingRate = new ArrayDeque<>();
+        private final ArrayDeque<Float> hrvbAmplitude = new ArrayDeque<>();
 
         private String status = "ready";
         private String mode = "idle";
+        private String page = "raw";
         private String renderStatus = "";
+        private String graphStatus = "waiting";
         private int selectedModuleCount = 0;
         private int hrEventCount = 0;
         private int rrCount = 0;
@@ -672,6 +924,12 @@ public final class MainActivity extends Activity {
             rrIntervals.clear();
             accMagnitude.clear();
             ecgSamples.clear();
+            hrvLnRmssd.clear();
+            rmssdGain.clear();
+            coherenceScore.clear();
+            breathVolume.clear();
+            breathingRate.clear();
+            hrvbAmplitude.clear();
             hrEventCount = 0;
             rrCount = 0;
             accFrameCount = 0;
@@ -680,6 +938,12 @@ public final class MainActivity extends Activity {
             ecgSampleCount = 0;
             malformedFrameCount = 0;
             renderStatus = "";
+            graphStatus = modules.isEmpty() ? "direct" : "waiting";
+            invalidate();
+        }
+
+        void setPage(String page) {
+            this.page = page == null ? "raw" : page;
             invalidate();
         }
 
@@ -687,6 +951,39 @@ public final class MainActivity extends Activity {
             this.status = status;
             this.mode = mode;
             selectedModuleCount = modules.size();
+            if (modules.isEmpty()) {
+                graphStatus = "direct";
+            }
+            invalidate();
+        }
+
+        void addGraphReport(JSONObject report) {
+            graphStatus = report.optString("status", "unknown");
+            JSONArray streams = report.optJSONArray("streams");
+            if (streams == null) {
+                invalidate();
+                return;
+            }
+            for (int index = 0; index < streams.length(); index++) {
+                JSONObject stream = streams.optJSONObject(index);
+                if (stream == null || !"pass".equals(stream.optString("status"))) {
+                    continue;
+                }
+                String streamId = stream.optString("stream_id");
+                if (STREAM_HRV_WINDOW.equals(streamId)) {
+                    append(hrvLnRmssd, (float) stream.optDouble("ln_rmssd", 0.0));
+                } else if (STREAM_RMSSD_GAIN.equals(streamId)) {
+                    append(rmssdGain, (float) stream.optDouble("ln_rmssd_gain", 0.0));
+                } else if (STREAM_COHERENCE.equals(streamId)) {
+                    append(coherenceScore, (float) stream.optDouble("normalized_score", 0.0));
+                } else if (STREAM_BREATH_VOLUME.equals(streamId)) {
+                    append(breathVolume, (float) stream.optDouble("breath_volume_01", 0.0));
+                } else if (STREAM_BREATH_DYNAMICS.equals(streamId)) {
+                    append(breathingRate, (float) stream.optDouble("breathing_rate_bpm", 0.0));
+                } else if (STREAM_HRVB_RESONANCE_AMPLITUDE.equals(streamId)) {
+                    append(hrvbAmplitude, (float) stream.optDouble("amplitude_bpm", 0.0));
+                }
+            }
             invalidate();
         }
 
@@ -765,15 +1062,31 @@ public final class MainActivity extends Activity {
             drawHeader(canvas, margin, margin, width - margin * 2, headerHeight);
             float top = margin + headerHeight + dp(10);
             float gap = dp(8);
-            float available = Math.max(dp(224), height - top - margin - gap * 3);
-            float rowHeight = Math.max(dp(56), available / 4.0f);
-            drawPlot(canvas, "HR", latestText(heartRates, "bpm"), hrEventCount + " events", heartRates, HR, margin, top, width - margin * 2, rowHeight);
-            top += rowHeight + gap;
-            drawPlot(canvas, "RR", latestText(rrIntervals, "ms"), rrCount + " intervals", rrIntervals, RR, margin, top, width - margin * 2, rowHeight);
-            top += rowHeight + gap;
-            drawPlot(canvas, "ACC", latestText(accMagnitude, "mg"), accFrameCount + " frames / " + accSampleCount + " samples", accMagnitude, ACC, margin, top, width - margin * 2, rowHeight);
-            top += rowHeight + gap;
-            drawPlot(canvas, "ECG", latestText(ecgSamples, "uV"), ecgFrameCount + " frames / " + ecgSampleCount + " samples", ecgSamples, ECG, margin, top, width - margin * 2, rowHeight);
+            if ("modules".equals(page)) {
+                float available = Math.max(dp(336), height - top - margin - gap * 5);
+                float rowHeight = Math.max(dp(46), available / 6.0f);
+                drawPlot(canvas, "HRV", latestText(hrvLnRmssd, "lnRMSSD"), hrvLnRmssd.size() + " reports", hrvLnRmssd, HRV, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "GAIN", latestText(rmssdGain, "ln"), rmssdGain.size() + " reports", rmssdGain, MODULE, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "COH", latestText(coherenceScore, "score"), coherenceScore.size() + " reports", coherenceScore, RR, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "VOL", latestText(breathVolume, "01"), breathVolume.size() + " reports", breathVolume, ACC, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "BR", latestText(breathingRate, "bpm"), breathingRate.size() + " reports", breathingRate, HR, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "HRVB", latestText(hrvbAmplitude, "bpm"), hrvbAmplitude.size() + " reports", hrvbAmplitude, ECG, margin, top, width - margin * 2, rowHeight);
+            } else {
+                float available = Math.max(dp(224), height - top - margin - gap * 3);
+                float rowHeight = Math.max(dp(56), available / 4.0f);
+                drawPlot(canvas, "HR", latestText(heartRates, "bpm"), hrEventCount + " events", heartRates, HR, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "RR", latestText(rrIntervals, "ms"), rrCount + " intervals", rrIntervals, RR, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "ACC", latestText(accMagnitude, "mg"), accFrameCount + " frames / " + accSampleCount + " samples", accMagnitude, ACC, margin, top, width - margin * 2, rowHeight);
+                top += rowHeight + gap;
+                drawPlot(canvas, "ECG", latestText(ecgSamples, "uV"), ecgFrameCount + " frames / " + ecgSampleCount + " samples", ecgSamples, ECG, margin, top, width - margin * 2, rowHeight);
+            }
         }
 
         private void drawHeader(Canvas canvas, float left, float top, float width, float height) {
@@ -787,7 +1100,7 @@ public final class MainActivity extends Activity {
             textPaint.setColor(MUTED);
             canvas.drawText(status + " / " + mode, left + dp(14), top + dp(52), textPaint);
             String selection = selectedModuleCount > 0 ? selectedModuleCount + " modules" : "direct stream";
-            String detail = selection + " / malformed " + malformedFrameCount;
+            String detail = page + " / " + selection + " / " + graphStatus + " / bad " + malformedFrameCount;
             if (!renderStatus.isEmpty()) {
                 detail += " / " + renderStatus;
             }
@@ -825,10 +1138,15 @@ public final class MainActivity extends Activity {
         }
 
         private void drawSeries(Canvas canvas, ArrayDeque<Float> series, int color, float left, float top, float width, float height) {
-            if (series.size() < 2) {
+            if (series.isEmpty()) {
                 textPaint.setTextSize(sp(13));
                 textPaint.setColor(MUTED);
                 canvas.drawText("waiting", left + dp(6), top + height / 2.0f, textPaint);
+                return;
+            }
+            if (series.size() == 1) {
+                plotPaint.setColor(color);
+                canvas.drawCircle(left + width / 2.0f, top + height / 2.0f, dp(4), plotPaint);
                 return;
             }
             float min = Float.MAX_VALUE;
@@ -918,6 +1236,32 @@ public final class MainActivity extends Activity {
         return modules;
     }
 
+    private static List<String> defaultProcessorModules() {
+        List<String> modules = new ArrayList<>();
+        modules.add(MODULE_HRV_WINDOW);
+        modules.add(MODULE_RMSSD_GAIN);
+        modules.add(MODULE_COHERENCE);
+        modules.add(MODULE_BREATH_VOLUME_FROM_ACC);
+        modules.add(MODULE_BREATH_DYNAMICS);
+        modules.add(MODULE_HRVB_RESONANCE_AMPLITUDE);
+        return modules;
+    }
+
+    private static List<String> graphErrors(JSONObject graphReport) {
+        List<String> errors = new ArrayList<>();
+        JSONArray issues = graphReport.optJSONArray("issues");
+        if (issues == null) {
+            return errors;
+        }
+        for (int index = 0; index < issues.length(); index++) {
+            JSONObject issue = issues.optJSONObject(index);
+            if (issue != null) {
+                errors.add(issue.optString("message", issue.optString("issue_code", "graph_issue")));
+            }
+        }
+        return errors;
+    }
+
     private static String normalizeModule(String value) {
         if (MODULE_HRV_WINDOW.equals(value) || "hrv_window".equals(value)) {
             return MODULE_HRV_WINDOW;
@@ -945,6 +1289,13 @@ public final class MainActivity extends Activity {
             return hostProfile;
         }
         return "mobile";
+    }
+
+    private static String normalizeTelemetryPage(String page) {
+        if ("modules".equals(page) || "raw".equals(page)) {
+            return page;
+        }
+        return "raw";
     }
 
     private static String emptyToNull(String value) {
@@ -1022,6 +1373,73 @@ public final class MainActivity extends Activity {
             this.status = status;
             this.nativeStatus = nativeStatus;
             this.hostTimeNs = hostTimeNs;
+        }
+    }
+
+    private static final class RmssdBaselineConfig {
+        final double baselineLnRmssd;
+        final double baselineMeanLnRmssd;
+        final double baselineSdLnRmssd;
+        final int baselineWindowCount;
+        final String baselineSource;
+
+        RmssdBaselineConfig(
+                double baselineLnRmssd,
+                double baselineMeanLnRmssd,
+                double baselineSdLnRmssd,
+                int baselineWindowCount,
+                String baselineSource) {
+            this.baselineLnRmssd = baselineLnRmssd;
+            this.baselineMeanLnRmssd = baselineMeanLnRmssd;
+            this.baselineSdLnRmssd = baselineSdLnRmssd;
+            this.baselineWindowCount = baselineWindowCount;
+            this.baselineSource = baselineSource;
+        }
+
+        static RmssdBaselineConfig fromIntent(Intent intent) {
+            if (!intent.hasExtra("rmssd_baseline_ln_rmssd")
+                    || !intent.hasExtra("rmssd_baseline_mean_ln_rmssd")
+                    || !intent.hasExtra("rmssd_baseline_sd_ln_rmssd")
+                    || !intent.hasExtra("rmssd_baseline_window_count")) {
+                return null;
+            }
+            return new RmssdBaselineConfig(
+                    doubleExtra(intent, "rmssd_baseline_ln_rmssd"),
+                    doubleExtra(intent, "rmssd_baseline_mean_ln_rmssd"),
+                    doubleExtra(intent, "rmssd_baseline_sd_ln_rmssd"),
+                    (int) doubleExtra(intent, "rmssd_baseline_window_count"),
+                    intent.getStringExtra("rmssd_baseline_source") == null
+                            ? "run_config_baseline"
+                            : intent.getStringExtra("rmssd_baseline_source"));
+        }
+
+        private static double doubleExtra(Intent intent, String name) {
+            Bundle extras = intent.getExtras();
+            if (extras == null || !extras.containsKey(name)) {
+                return 0.0;
+            }
+            Object value = extras.get(name);
+            if (value instanceof Number) {
+                return ((Number) value).doubleValue();
+            }
+            if (value instanceof String) {
+                try {
+                    return Double.parseDouble((String) value);
+                } catch (NumberFormatException ignored) {
+                    return 0.0;
+                }
+            }
+            return 0.0;
+        }
+
+        JSONObject toJson() throws JSONException {
+            JSONObject json = new JSONObject();
+            json.put("baseline_ln_rmssd", baselineLnRmssd);
+            json.put("baseline_mean_ln_rmssd", baselineMeanLnRmssd);
+            json.put("baseline_sd_ln_rmssd", baselineSdLnRmssd);
+            json.put("baseline_window_count", baselineWindowCount);
+            json.put("baseline_source", baselineSource);
+            return json;
         }
     }
 
@@ -2002,12 +2420,72 @@ public final class MainActivity extends Activity {
             field(builder, "mode", run.mode, true, 2);
             stringArrayField(builder, "selected_module_ids", run.selectedModules, true, 2);
             stringArrayField(builder, "dependency_stream_ids", dependencyStreams(run), true, 2);
+            if (run.graphReport != null) {
+                field(builder, "runtime_path", run.graphReport.optString("runtime_path", PolarRuntime.RUNTIME_PATH), true, 2);
+                field(builder, "graph_id", run.graphReport.optString("graph_id", "graph.polar_h10_processing"), true, 2);
+                numberField(builder, "graph_revision", run.graphReport.optLong("graph_revision", 0), true, 2);
+                field(builder, "runtime_input", run.runtimeInputArtifact == null ? "latest.runtime-input.json" : run.runtimeInputArtifact, true, 2);
+                field(builder, "graph_execution_report", run.graphReportArtifact == null ? "latest.graph-execution-report.json" : run.graphReportArtifact, true, 2);
+            }
             numberField(builder, "duration_ms", run.durationMs, true, 2);
             boolField(builder, "address_supplied", run.deviceAddress != null, false, 2);
             indent(builder, 1).append("},\n");
             appendCommands(builder, run);
             appendControl(builder, run);
             appendStreams(builder, run);
+            appendErrors(builder, evidenceErrors);
+            builder.append("}\n");
+            return builder.toString();
+        }
+
+        String writeReplay(
+                String hostProfile,
+                List<String> selectedModules,
+                Instant startedAt,
+                Instant endedAt,
+                String status,
+                JSONObject graphReport,
+                List<String> graphErrors) {
+            PackageHashes hashes = packageHashes();
+            List<String> evidenceErrors = new ArrayList<>(graphErrors);
+            if (!hashes.complete()) {
+                evidenceErrors.add("package_manifest_hash_unavailable");
+            }
+            String finalStatus = evidenceErrors.isEmpty() && "pass".equals(status) ? "pass" : "fail";
+            StringBuilder builder = new StringBuilder();
+            builder.append("{\n");
+            field(builder, "$schema", "rusty.manifold.live_capture_evidence.v1", true, 1);
+            field(builder, "status", finalStatus, true, 1);
+            field(builder, "host_profile", hostProfile, true, 1);
+            field(builder, "started_at_utc", startedAt.toString(), true, 1);
+            field(builder, "ended_at_utc", endedAt.toString(), true, 1);
+            indent(builder, 1).append("\"software\": {\n");
+            field(builder, "origin", SOFTWARE_ORIGIN, true, 2);
+            field(builder, "host_app", hostAppId(hostProfile), true, 2);
+            field(builder, "host_app_version", "0.1.0", false, 2);
+            indent(builder, 1).append("},\n");
+            appendPackage(builder, hashes);
+            indent(builder, 1).append("\"capture\": {\n");
+            field(builder, "mode", "module", true, 2);
+            stringArrayField(builder, "selected_module_ids", selectedModules, true, 2);
+            graphStringArrayField(builder, "dependency_stream_ids", graphReport.optJSONArray("output_stream_ids"), true, 2);
+            field(builder, "runtime_path", graphReport.optString("runtime_path", PolarRuntime.RUNTIME_PATH), true, 2);
+            field(builder, "graph_id", graphReport.optString("graph_id", "graph.polar_h10_processing"), true, 2);
+            numberField(builder, "graph_revision", graphReport.optLong("graph_revision", 0), true, 2);
+            field(builder, "runtime_input", "latest.runtime-input.json", true, 2);
+            field(builder, "graph_execution_report", "latest.graph-execution-report.json", true, 2);
+            numberField(builder, "duration_ms", Math.max(0L, endedAt.toEpochMilli() - startedAt.toEpochMilli()), true, 2);
+            boolField(builder, "address_supplied", false, false, 2);
+            indent(builder, 1).append("},\n");
+            indent(builder, 1).append("\"commands\": [\n");
+            indent(builder, 2).append("{");
+            jsonPair(builder, "command", "run_graph_replay").append(", ");
+            jsonPair(builder, "status", "pass".equals(graphReport.optString("status")) ? "acknowledged" : "rejected").append(", ");
+            jsonPair(builder, "runtime_path", graphReport.optString("runtime_path", PolarRuntime.RUNTIME_PATH));
+            builder.append("}\n");
+            indent(builder, 1).append("],\n");
+            indent(builder, 1).append("\"control_responses\": [],\n");
+            appendGraphStreams(builder, graphReport, false);
             appendErrors(builder, evidenceErrors);
             builder.append("}\n");
             return builder.toString();
@@ -2027,6 +2505,33 @@ public final class MainActivity extends Activity {
             indent(builder, 1).append("],\n");
         }
 
+        private void appendPackage(StringBuilder builder, PackageHashes hashes) {
+            indent(builder, 1).append("\"package\": {\n");
+            field(builder, "package_id", PACKAGE_ID, true, 2);
+            field(builder, "package_manifest_sha256", hashes.packageManifest, true, 2);
+            indent(builder, 2).append("\"stream_manifest_sha256\": {\n");
+            field(builder, "hr-rr", hashes.hrRrStream, true, 3);
+            field(builder, "ecg", hashes.ecgStream, true, 3);
+            field(builder, "acc", hashes.accStream, true, 3);
+            field(builder, "coherence", hashes.coherenceStream, true, 3);
+            field(builder, "hrv-window", hashes.hrvWindowStream, true, 3);
+            field(builder, "rmssd-gain", hashes.rmssdGainStream, true, 3);
+            field(builder, "breath-volume", hashes.breathVolumeStream, true, 3);
+            field(builder, "breath-dynamics", hashes.breathDynamicsStream, true, 3);
+            field(builder, "hrvb-resonance-amplitude", hashes.hrvbResonanceAmplitudeStream, false, 3);
+            indent(builder, 2).append("},\n");
+            indent(builder, 2).append("\"module_manifest_sha256\": {\n");
+            field(builder, "provider", hashes.providerModule, true, 3);
+            field(builder, "coherence", hashes.coherenceModule, true, 3);
+            field(builder, "hrv-window", hashes.hrvWindowModule, true, 3);
+            field(builder, "rmssd-gain", hashes.rmssdGainModule, true, 3);
+            field(builder, "breath-volume-from-acc", hashes.breathVolumeModule, true, 3);
+            field(builder, "breath-dynamics", hashes.breathDynamicsModule, true, 3);
+            field(builder, "hrvb-resonance-amplitude", hashes.hrvbResonanceAmplitudeModule, false, 3);
+            indent(builder, 2).append("}\n");
+            indent(builder, 1).append("},\n");
+        }
+
         private void appendControl(StringBuilder builder, CaptureRun run) {
             indent(builder, 1).append("\"control_responses\": [\n");
             for (int index = 0; index < run.controlRecords.size(); index++) {
@@ -2041,7 +2546,79 @@ public final class MainActivity extends Activity {
             indent(builder, 1).append("],\n");
         }
 
+        private void appendGraphStreams(StringBuilder builder, JSONObject graphReport, boolean skipInputs) {
+            indent(builder, 1).append("\"streams\": [\n");
+            JSONArray streams = graphReport.optJSONArray("streams");
+            int emitted = 0;
+            if (streams != null) {
+                for (int index = 0; index < streams.length(); index++) {
+                    JSONObject stream = streams.optJSONObject(index);
+                    if (stream == null) {
+                        continue;
+                    }
+                    String streamId = stream.optString("stream_id");
+                    if (skipInputs && (STREAM_HR_RR.equals(streamId) || STREAM_ACC.equals(streamId))) {
+                        continue;
+                    }
+                    if (!stream.has("malformed_frame_count")) {
+                        try {
+                            stream = new JSONObject(stream.toString());
+                            stream.put("malformed_frame_count", 0);
+                        } catch (JSONException ignored) {
+                        }
+                    }
+                    if (emitted > 0) {
+                        builder.append(",\n");
+                    }
+                    builder.append(indentJson(stream.toString(), 2));
+                    emitted += 1;
+                }
+            }
+            builder.append("\n");
+            indent(builder, 1).append("],\n");
+        }
+
         private void appendStreams(StringBuilder builder, CaptureRun run) {
+            if (run.graphReport != null) {
+                indent(builder, 1).append("\"streams\": [\n");
+                List<String> streamJson = new ArrayList<>();
+                if ("hr_rr".equals(run.mode) || "coherence".equals(run.mode) || run.needsHr()) {
+                    streamJson.add(directHrStream(run, "module".equals(run.mode)));
+                }
+                if ("ecg".equals(run.mode)) {
+                    streamJson.add(pmdStream(run, STREAM_ECG, run.ecgFrames, false));
+                }
+                if ("acc".equals(run.mode) || run.needsAcc()) {
+                    streamJson.add(pmdStream(run, STREAM_ACC, run.accFrames, "module".equals(run.mode)));
+                }
+                JSONArray graphStreams = run.graphReport.optJSONArray("streams");
+                if (graphStreams != null) {
+                    for (int index = 0; index < graphStreams.length(); index++) {
+                        JSONObject stream = graphStreams.optJSONObject(index);
+                        if (stream == null) {
+                            continue;
+                        }
+                        String streamId = stream.optString("stream_id");
+                        if (STREAM_HR_RR.equals(streamId) || STREAM_ACC.equals(streamId)) {
+                            continue;
+                        }
+                        if (!stream.has("malformed_frame_count")) {
+                            try {
+                                stream = new JSONObject(stream.toString());
+                                stream.put("malformed_frame_count", run.malformedFrameCount);
+                            } catch (JSONException ignored) {
+                            }
+                        }
+                        streamJson.add(indentJson(stream.toString(), 2));
+                    }
+                }
+                for (int index = 0; index < streamJson.size(); index++) {
+                    builder.append(streamJson.get(index));
+                    builder.append(index + 1 == streamJson.size() ? "\n" : ",\n");
+                }
+                indent(builder, 1).append("],\n");
+                return;
+            }
             indent(builder, 1).append("\"streams\": [\n");
             List<String> streamJson = new ArrayList<>();
             if ("hr_rr".equals(run.mode) || "coherence".equals(run.mode) || run.needsHr()) {
@@ -2415,6 +2992,20 @@ public final class MainActivity extends Activity {
             return builder;
         }
 
+        private StringBuilder graphStringArrayField(StringBuilder builder, String name, JSONArray values, boolean comma, int level) {
+            indent(builder, level).append(quote(name)).append(": [");
+            if (values != null) {
+                for (int index = 0; index < values.length(); index++) {
+                    builder.append(quote(values.optString(index)));
+                    if (index + 1 < values.length()) {
+                        builder.append(", ");
+                    }
+                }
+            }
+            builder.append("]").append(comma ? ",\n" : "\n");
+            return builder;
+        }
+
         private StringBuilder doubleField(StringBuilder builder, String name, double value, boolean comma, int level) {
             indent(builder, level).append(quote(name)).append(": ");
             builder.append(String.format(Locale.US, "%.3f", value)).append(comma ? ",\n" : "\n");
@@ -2440,6 +3031,14 @@ public final class MainActivity extends Activity {
 
         private StringBuilder jsonPair(StringBuilder builder, String name, String value) {
             return builder.append(quote(name)).append(": ").append(quote(value));
+        }
+
+        private String indentJson(String json, int level) {
+            String prefix = "";
+            for (int index = 0; index < level; index++) {
+                prefix += "  ";
+            }
+            return prefix + json.replace("\n", "\n" + prefix);
         }
 
         private StringBuilder indent(StringBuilder builder, int level) {

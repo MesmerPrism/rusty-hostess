@@ -1,9 +1,9 @@
 # On-Device Runtime Bridge
 
-This document defines the intended Hostess T bridge from Android-class app
-shells to the package Rust runtime. It is a design contract for the next
-implementation slice; desktop parity must stay green before on-device live
-claims are expanded.
+This document defines the Hostess T bridge from Android-class app shells to the
+package Rust runtime. The first bridge is implemented as a JSON JNI ABI for the
+Polar package runtime, with desktop parity, synthetic on-device replay, and live
+phone/headset evidence.
 
 ## Authority Boundary
 
@@ -18,21 +18,18 @@ headset dependencies to Manifold core contracts.
 
 ## JNI Shape
 
-The native library should expose a small static ABI around JSON documents:
+The native library exposes a small static ABI around JSON documents:
 
-- `polar_h10_validate_goldens() -> json`
 - `polar_h10_run_graph(graph_json, input_json, selected_modules_json) -> json`
-- `polar_h10_free(ptr, len)`
 
-The Java/Kotlin layer should wrap this ABI as:
+The Java layer wraps this ABI as:
 
-- `PolarRuntime.validateGoldens(): JSONObject`
 - `PolarRuntime.runGraph(input: JSONObject, selectedModules: List<String>): JSONObject`
 
-The first implementation should pass decoded HR/RR and ACC buffers into Rust
-using the same runtime input shape that desktop live capture writes. Protocol
-decode can remain in the app shell at first. Moving decode into Rust is a later
-optimization only if parity tests justify it.
+Decoded HR/RR and ACC buffers are passed into Rust using the same runtime input
+shape that desktop live capture writes. Protocol decode remains in the app shell
+for this slice. Moving decode into Rust is a later optimization only if parity
+tests justify it.
 
 ## On-Device Modules
 
@@ -40,7 +37,7 @@ The app shell should keep four narrow modules:
 
 - acquisition: BLE permissions, scan/connect, notifications, PMD control
 - buffer bridge: converts decoded HR/RR and ACC frames into runtime input JSON
-- runtime bridge: calls the native Rust graph runner
+- runtime bridge: calls the native Rust graph runner through `PolarRuntime`
 - evidence writer: merges direct acquisition streams, graph report streams, and
   validation metadata into Hostess evidence
 
@@ -64,14 +61,15 @@ On-device evidence should match the desktop live shape:
 1. Rust unit tests and package goldens pass on desktop.
 2. Desktop live capture writes runtime input and passes graph-resolved evidence
    validation.
-3. Replaying the captured runtime input through `hostessctl run-replay` produces
-   identical selected module streams.
-4. The Android-class native library builds for target ABIs and exposes the JNI
-   wrapper.
+3. Replaying captured runtime input through `hostessctl run-replay` produces
+   graph-resolved selected module streams.
+4. The Android-class native library builds for the app ABI and is packaged in
+   the install APK.
 5. A synthetic on-device replay intent runs the Rust graph with packaged fixture
    input and writes validated evidence.
 6. Phone live capture uses the same bridge.
 7. Headset live capture uses the same bridge.
 
-No on-device module should be treated as formula-authoritative until steps 1-5
-are green.
+Steps 1-7 have passing evidence for the first Polar selected-module set. Direct
+ECG capture remains acquisition evidence rather than graph evidence because no
+current processor module consumes ECG.

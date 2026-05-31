@@ -19,9 +19,12 @@ JSON that includes package manifest hashes.
   Polar stream validation using a local Python dependency.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles, and
-  shows rolling HR, RR, ACC, and ECG telemetry while a capture is running.
+  shows rolling raw telemetry plus graph-resolved module telemetry while a
+  capture is running. The APK packages the Polar Rust core as a native library
+  and calls it through the Hostess JNI bridge.
 - `tools/hostessctl/hostessctl.py render-telemetry`: Android-class app-rendered
-  PNG export for phone and headset telemetry evidence.
+  PNG export for phone and headset telemetry evidence, plus desktop PNG
+  rendering from completed evidence artifacts.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
@@ -29,8 +32,8 @@ JSON that includes package manifest hashes.
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py apps\hostess-t-desktop\capture_polar.py
-python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 ```
 
@@ -57,4 +60,10 @@ path over compositor screenshots:
 
 ```powershell
 python tools\hostessctl\hostessctl.py render-telemetry --target quest --adb <adb> --serial <serial> --out <telemetry.png>
+```
+
+For desktop evidence rendering:
+
+```powershell
+python tools\hostessctl\hostessctl.py render-telemetry --target desktop --page modules --input <capture.json> --out <telemetry.png>
 ```

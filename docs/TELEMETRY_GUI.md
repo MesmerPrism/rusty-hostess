@@ -1,8 +1,9 @@
 # Telemetry GUI
 
-Hostess T includes a lightweight on-device telemetry panel for phone and
-headset profiles. It is an operator-visible monitor for package validation
-runs, not a processor authority.
+Hostess T includes lightweight telemetry pages for package validation runs. The
+Android-class app renders the pages on device; the desktop CLI can render the
+same evidence family into PNG artifacts. These pages are operator-visible
+monitors, not processor authorities.
 
 ## Boundary
 
@@ -10,18 +11,27 @@ The GUI displays acquisition buffers and capture state from the same Android
 activity path that `hostessctl run-live` starts. It does not select formulas,
 own module state, write package manifests, or replace the package Rust runtime.
 
-Canonical selected-module evidence still comes from the Rust package runtime
-path where that bridge is available. Until the on-device JNI runtime bridge is
-implemented, Java/Kotlin processor rows are smoke evidence only.
+Canonical selected-module evidence comes from the Rust package runtime path.
+The Android-class telemetry page displays module values from graph execution
+reports produced through the JNI bridge.
 
-## Current Panel
+## Pages
 
-The panel renders four rolling time-series lanes:
+The raw page renders rolling direct-stream lanes:
 
 - HR: heart-rate notification values
 - RR: RR intervals from heart-rate notifications
 - ACC: magnitude from decoded ACC samples
 - ECG: decoded ECG microvolt samples
+
+The modules page renders opt-in package module outputs:
+
+- HRV lnRMSSD
+- RMSSD gain
+- coherence normalized score
+- breath volume proxy
+- breathing rate from breath dynamics
+- HRVB resonance amplitude
 
 The header shows run status, mode, selected-module count, and malformed-frame
 count. Raw evidence and validation reports are still written as JSON artifacts
@@ -35,7 +45,13 @@ because it captures the Hostess view itself and does not depend on which system
 surface is currently focused.
 
 ```powershell
-python tools\hostessctl\hostessctl.py render-telemetry --target quest --adb <adb> --serial <serial> --out <telemetry.png>
+python tools\hostessctl\hostessctl.py render-telemetry --target quest --page modules --adb <adb> --serial <serial> --out <telemetry.png>
+```
+
+Desktop evidence can be rendered from a completed evidence file:
+
+```powershell
+python tools\hostessctl\hostessctl.py render-telemetry --target desktop --page raw --input <evidence.json> --out <telemetry.png>
 ```
 
 ## Command Route
@@ -48,10 +64,3 @@ python tools\hostessctl\hostessctl.py run-live --target phone --stream hr_rr --p
 ```
 
 The same route is used for headset profile runs by setting `--target quest`.
-
-## Next Bridge
-
-The next implementation step is to add the JNI runtime bridge described in
-`docs/ON_DEVICE_RUNTIME_BRIDGE.md`, then have the telemetry panel display direct
-acquisition streams plus graph-resolved selected-module outputs from the Rust
-runtime report.

@@ -19,9 +19,16 @@ from tools.check_live_capture_evidence import package_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
+ANDROID_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY"
 ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
 ANDROID_REMOTE_EVIDENCE = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.json"
+)
+ANDROID_REMOTE_RUNTIME_INPUT = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.runtime-input.json"
+)
+ANDROID_REMOTE_GRAPH_REPORT = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.graph-execution-report.json"
 )
 ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
 
@@ -52,20 +59,25 @@ def main() -> int:
     run_live.add_argument("--rmssd-baseline-sd-ln-rmssd", type=float)
     run_live.add_argument("--rmssd-baseline-window-count", type=int)
     run_live.add_argument("--rmssd-baseline-source", default="explicit_baseline")
+    run_live.add_argument("--telemetry-page", choices=["raw", "modules"], default="raw")
 
     run_replay = subcommands.add_parser("run-replay")
-    run_replay.add_argument("--target", choices=["desktop"], default="desktop")
+    run_replay.add_argument("--target", choices=["desktop", "phone", "quest"], default="desktop")
     run_replay.add_argument("--module", action="append", required=True)
     run_replay.add_argument("--out", required=True)
     run_replay.add_argument("--packages-root", required=True)
     run_replay.add_argument("--input")
+    run_replay.add_argument("--adb")
+    run_replay.add_argument("--serial")
 
     render = subcommands.add_parser("render-telemetry")
-    render.add_argument("--target", choices=["phone", "quest"], required=True)
-    render.add_argument("--adb", required=True)
-    render.add_argument("--serial", required=True)
+    render.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
+    render.add_argument("--adb")
+    render.add_argument("--serial")
     render.add_argument("--out", required=True)
+    render.add_argument("--input")
     render.add_argument("--name")
+    render.add_argument("--page", choices=["raw", "modules"], default="raw")
 
     args = parser.parse_args()
     if args.command == "install-android":
@@ -141,6 +153,8 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
 
 
 def run_replay_capture(args: argparse.Namespace) -> int:
+    if args.target in {"phone", "quest"}:
+        return run_android_replay(args)
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     packages_root = Path(args.packages_root)
@@ -218,7 +232,7 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
         raise SystemExit("--adb and --serial are required for phone and quest targets")
     host_profile = "headset" if args.target == "quest" else "mobile"
     run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    run([args.adb, "-s", args.serial, "shell", "rm", "-f", ANDROID_REMOTE_EVIDENCE], allow_failure=True)
+    clear_android_live_artifacts(args)
     command = [
         args.adb,
         "-s",
@@ -242,18 +256,61 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
         "--ei",
         "acc_rate_hz",
         str(args.acc_rate),
+        "--es",
+        "telemetry_page",
+        args.telemetry_page,
     ]
     if args.device_address:
         command.extend(["--es", "device_address", args.device_address])
     if args.module:
         command.extend(["--es", "modules", ",".join(args.module)])
+    append_rmssd_baseline_extras(command, args)
     run(command)
-    time.sleep(args.duration_seconds + 20.0)
+    wait_for_android_evidence(args, args.duration_seconds + 90.0)
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
+    pull_android_runtime_artifacts(args, out)
     return validate_evidence(args, out, "headset" if args.target == "quest" else "mobile")
 
 
+def run_android_replay(args: argparse.Namespace) -> int:
+    if not args.adb or not args.serial:
+        raise SystemExit("--adb and --serial are required for phone and quest replay targets")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    host_profile = "headset" if args.target == "quest" else "mobile"
+    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
+    clear_android_live_artifacts(args)
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            ANDROID_REPLAY_ACTION,
+            "-n",
+            f"{ANDROID_PACKAGE}/.MainActivity",
+            "--es",
+            "host_profile",
+            host_profile,
+            "--es",
+            "modules",
+            ",".join(args.module),
+        ]
+    )
+    wait_for_android_evidence(args, 15.0)
+    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
+    pull_android_runtime_artifacts(args, out)
+    return validate_evidence(args, out, host_profile)
+
+
 def render_telemetry(args: argparse.Namespace) -> int:
+    if args.target == "desktop":
+        return render_desktop_telemetry(args)
+    if not args.adb or not args.serial:
+        raise SystemExit("--adb and --serial are required for phone and quest render targets")
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     name = sanitize_remote_name(args.name or out.name or "latest-render.png")
@@ -276,6 +333,9 @@ def render_telemetry(args: argparse.Namespace) -> int:
             "--es",
             "render_name",
             name,
+            "--es",
+            "render_page",
+            args.page,
         ]
     )
     time.sleep(1.0)
@@ -283,8 +343,238 @@ def render_telemetry(args: argparse.Namespace) -> int:
     return 0
 
 
+def render_desktop_telemetry(args: argparse.Namespace) -> int:
+    if not args.input:
+        raise SystemExit("--input is required for desktop telemetry rendering")
+    try:
+        from PIL import Image, ImageDraw, ImageFont
+    except ImportError as exc:
+        raise SystemExit("desktop telemetry rendering requires Pillow") from exc
+
+    evidence_path = Path(args.input)
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    capture = evidence.get("capture", {})
+    runtime_path = evidence_path.with_name(capture.get("runtime_input", ""))
+    graph_path = evidence_path.with_name(capture.get("graph_execution_report", ""))
+    runtime_input = json.loads(runtime_path.read_text(encoding="utf-8")) if runtime_path.exists() else {}
+    graph_report = json.loads(graph_path.read_text(encoding="utf-8")) if graph_path.exists() else {}
+
+    image = Image.new("RGB", (1080, 760), (248, 248, 246))
+    draw = ImageDraw.Draw(image)
+    font = ImageFont.load_default()
+    draw_header(draw, font, evidence, graph_report, args.page)
+    if args.page == "raw":
+        draw_desktop_raw_page(draw, font, runtime_input, evidence)
+    else:
+        draw_desktop_module_page(draw, font, graph_report)
+    image.save(out)
+    return 0
+
+
+def draw_header(draw: Any, font: Any, evidence: dict[str, Any], graph_report: dict[str, Any], page: str) -> None:
+    draw_panel(draw, 24, 18, 1032, 92)
+    selected = evidence.get("capture", {}).get("selected_module_ids", [])
+    status = evidence.get("status", "unknown")
+    graph_status = graph_report.get("status", "waiting")
+    draw.text((42, 36), "Rusty Hostess T", fill=(29, 29, 27), font=font)
+    draw.text((42, 58), f"{status} / {evidence.get('host_profile', 'desktop')}", fill=(92, 88, 82), font=font)
+    draw.text(
+        (42, 80),
+        f"{page} / {len(selected)} modules / graph {graph_status} / streams {len(evidence.get('streams', []))}",
+        fill=(92, 88, 82),
+        font=font,
+    )
+
+
+def draw_desktop_raw_page(draw: Any, font: Any, runtime_input: dict[str, Any], evidence: dict[str, Any]) -> None:
+    rr_values = [float(value) for value in runtime_input.get("hr_rr", {}).get("rr_intervals_ms", []) if value is not None]
+    acc_values: list[float] = []
+    for frame in runtime_input.get("raw_acc", {}).get("frames", []):
+        for sample in frame.get("samples_mg", frame.get("samples", [])):
+            if isinstance(sample, dict):
+                acc_values.append(float(sample.get("z_mg", 0.0)))
+    draw_plot(draw, font, "RR", f"{len(rr_values)} intervals", rr_values, (15, 118, 110), 24, 132, 1032, 260)
+    acc_rate = runtime_input.get("raw_acc", {}).get("sample_rate_hz", "n/a")
+    draw_plot(draw, font, "ACC Z", f"{len(acc_values)} samples / {acc_rate} Hz", acc_values, (79, 76, 71), 24, 418, 1032, 260)
+    draw.text((42, 706), f"evidence streams: {', '.join(stream.get('stream_id', '') for stream in evidence.get('streams', [])[:4])}", fill=(92, 88, 82), font=font)
+
+
+def draw_desktop_module_page(draw: Any, font: Any, graph_report: dict[str, Any]) -> None:
+    metrics = [
+        ("HRV lnRMSSD", "stream.polar_h10.hrv_window", "ln_rmssd", 5.0, (37, 99, 235)),
+        ("RMSSD gain", "stream.polar_h10.rmssd_gain", "ln_rmssd_gain", 2.0, (126, 34, 206)),
+        ("Coherence", "stream.polar_h10.coherence", "normalized_score", 1.0, (15, 118, 110)),
+        ("Breath vol", "stream.polar_h10.breath_volume", "breath_volume_01", 1.0, (185, 60, 20)),
+        ("Breath rate", "stream.polar_h10.breath_dynamics", "breathing_rate_bpm", 30.0, (79, 76, 71)),
+        ("HRVB amp", "stream.polar_h10.hrvb_resonance_amplitude", "amplitude_bpm", 10.0, (159, 18, 57)),
+    ]
+    for index, (label, stream_id, field, scale, color) in enumerate(metrics):
+        col = index % 2
+        row = index // 2
+        left = 24 + col * 522
+        top = 132 + row * 170
+        stream = find_stream(graph_report, stream_id)
+        value = float_value(stream.get(field)) if stream else 0.0
+        status = stream.get("status", "missing") if stream else "missing"
+        draw_metric_panel(draw, font, label, f"{value:.3f} / {status}", value / scale if scale else 0.0, color, left, top, 510, 142)
+
+
+def draw_panel(draw: Any, left: int, top: int, width: int, height: int) -> None:
+    draw.rounded_rectangle(
+        (left, top, left + width, top + height),
+        radius=8,
+        fill=(255, 255, 255),
+        outline=(214, 211, 205),
+        width=1,
+    )
+
+
+def draw_plot(
+    draw: Any,
+    font: Any,
+    label: str,
+    count: str,
+    values: list[float],
+    color: tuple[int, int, int],
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+) -> None:
+    draw_panel(draw, left, top, width, height)
+    draw.text((left + 16, top + 16), label, fill=(29, 29, 27), font=font)
+    draw.text((left + 16, top + 38), count, fill=(92, 88, 82), font=font)
+    plot_left = left + 110
+    plot_top = top + 24
+    plot_width = width - 140
+    plot_height = height - 54
+    draw.line((plot_left, plot_top + plot_height // 2, plot_left + plot_width, plot_top + plot_height // 2), fill=(231, 229, 224), width=1)
+    if not values:
+        draw.text((plot_left + 8, plot_top + plot_height // 2), "waiting", fill=(92, 88, 82), font=font)
+        return
+    sampled = downsample(values, 800)
+    low = min(sampled)
+    high = max(sampled)
+    if abs(high - low) < 0.0001:
+        high += 1.0
+        low -= 1.0
+    points = []
+    for index, value in enumerate(sampled):
+        x = plot_left + (index * plot_width / max(len(sampled) - 1, 1))
+        y = plot_top + plot_height - ((value - low) / (high - low) * plot_height)
+        points.append((x, y))
+    if len(points) == 1:
+        x, y = points[0]
+        draw.ellipse((x - 4, y - 4, x + 4, y + 4), fill=color)
+    else:
+        draw.line(points, fill=color, width=2)
+
+
+def draw_metric_panel(
+    draw: Any,
+    font: Any,
+    label: str,
+    value: str,
+    fraction: float,
+    color: tuple[int, int, int],
+    left: int,
+    top: int,
+    width: int,
+    height: int,
+) -> None:
+    draw_panel(draw, left, top, width, height)
+    draw.text((left + 16, top + 18), label, fill=(29, 29, 27), font=font)
+    draw.text((left + 16, top + 42), value, fill=(92, 88, 82), font=font)
+    bar_left = left + 16
+    bar_top = top + 88
+    bar_width = width - 32
+    draw.rounded_rectangle((bar_left, bar_top, bar_left + bar_width, bar_top + 18), radius=4, fill=(231, 229, 224))
+    filled = max(0.0, min(1.0, fraction)) * bar_width
+    draw.rounded_rectangle((bar_left, bar_top, bar_left + filled, bar_top + 18), radius=4, fill=color)
+
+
+def downsample(values: list[float], max_points: int) -> list[float]:
+    if len(values) <= max_points:
+        return values
+    step = len(values) / max_points
+    return [values[int(index * step)] for index in range(max_points)]
+
+
+def find_stream(graph_report: dict[str, Any], stream_id: str) -> dict[str, Any] | None:
+    for stream in graph_report.get("streams", []):
+        if stream.get("stream_id") == stream_id:
+            return stream
+    return None
+
+
+def float_value(value: Any) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def sanitize_remote_name(value: str) -> str:
     return "".join(character if character.isalnum() or character in "._-" else "_" for character in value)
+
+
+def append_rmssd_baseline_extras(command: list[str], args: argparse.Namespace) -> None:
+    for source_arg, extra_name in [
+        ("rmssd_baseline_ln_rmssd", "rmssd_baseline_ln_rmssd"),
+        ("rmssd_baseline_mean_ln_rmssd", "rmssd_baseline_mean_ln_rmssd"),
+        ("rmssd_baseline_sd_ln_rmssd", "rmssd_baseline_sd_ln_rmssd"),
+        ("rmssd_baseline_window_count", "rmssd_baseline_window_count"),
+    ]:
+        value = getattr(args, source_arg, None)
+        if value is not None:
+            command.extend(["--es", extra_name, str(value)])
+    if getattr(args, "rmssd_baseline_source", None):
+        command.extend(["--es", "rmssd_baseline_source", args.rmssd_baseline_source])
+
+
+def clear_android_live_artifacts(args: argparse.Namespace) -> None:
+    for remote in [ANDROID_REMOTE_EVIDENCE, ANDROID_REMOTE_RUNTIME_INPUT, ANDROID_REMOTE_GRAPH_REPORT]:
+        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+
+
+def wait_for_android_evidence(args: argparse.Namespace, timeout_seconds: float) -> None:
+    deadline = time.monotonic() + max(timeout_seconds, 1.0)
+    while time.monotonic() < deadline:
+        result = run(
+            [args.adb, "-s", args.serial, "shell", "test", "-f", ANDROID_REMOTE_EVIDENCE],
+            allow_failure=True,
+        )
+        if result.returncode == 0:
+            return
+        time.sleep(1.0)
+    raise SystemExit(f"timed out waiting for Android evidence: {ANDROID_REMOTE_EVIDENCE}")
+
+
+def pull_android_runtime_artifacts(args: argparse.Namespace, out: Path) -> None:
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "pull",
+            ANDROID_REMOTE_RUNTIME_INPUT,
+            str(out.with_name(f"{out.stem}.runtime-input.json")),
+        ],
+        allow_failure=True,
+    )
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "pull",
+            ANDROID_REMOTE_GRAPH_REPORT,
+            str(out.with_name(f"{out.stem}.graph-execution-report.json")),
+        ],
+        allow_failure=True,
+    )
 
 
 def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) -> int:

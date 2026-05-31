@@ -25,10 +25,12 @@ hash. The desktop script follows the same evidence shape. Both desktop and
 Android captures are accepted only after the shared evidence validator compares
 the reported manifest hash against the supplied package root.
 
-The Android-class app shell includes a compact telemetry GUI for phone and
-headset profiles. It displays rolling direct-stream buffers and run status from
-the same activity path that the CLI starts. It does not own processor formulas,
-package state, or module authority.
+The Android-class app shell includes compact raw and module telemetry pages for
+phone and headset profiles. It displays rolling direct-stream buffers,
+graph-resolved module outputs, and run status from the same activity path that
+the CLI starts. It does not own processor formulas, package state, or module
+authority. The desktop CLI can render equivalent evidence pages from completed
+run artifacts.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
@@ -43,11 +45,10 @@ computed at runtime from a live HR/RR capture by resampling a 64-second RR
 window to 128 uniform samples and producing the package-defined spectral ratio
 plus normalized score fields.
 
-The next mobile/headset step is a native bridge from the app shell to the same
-package runtime ABI. The bridge design is recorded in
-`docs/ON_DEVICE_RUNTIME_BRIDGE.md`. Until that bridge exists, Java/Kotlin
-processor formulas remain smoke-only and are not accepted as canonical package
-module evidence.
+The phone/headset path uses a JNI bridge from the app shell to the same package
+runtime ABI. The bridge is recorded in `docs/ON_DEVICE_RUNTIME_BRIDGE.md`.
+Java/Kotlin owns acquisition and display only; selected processor outputs come
+from the Rust graph report.
 
 The telemetry panel boundary is recorded in `docs/TELEMETRY_GUI.md`.
 
