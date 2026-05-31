@@ -975,7 +975,7 @@ public final class MainActivity extends Activity {
             }
             double remainingPower = totalBandPower - peakBandPower;
             double paperRatio = remainingPower <= 0.0 ? 1000000.0 : peakBandPower / remainingPower;
-            double coherenceRatioSquared = remainingPower <= 0.0 ? 1000000.0 : (peakBandPower * peakBandPower) / remainingPower;
+            double coherenceRatioSquared = paperRatio * paperRatio;
             double normalizedPeakPower = totalBandPower <= 0.0 ? 0.0 : peakBandPower / totalBandPower;
             double normalizedScore = paperRatio / (paperRatio + 1.0);
             return new CoherenceResult(
@@ -1811,8 +1811,9 @@ public final class MainActivity extends Activity {
             RmssdGainResult result = RmssdGain.compute(run.rrIntervalsMs);
             StringBuilder builder = moduleStreamHeader(STREAM_RMSSD_GAIN, MODULE_RMSSD_GAIN, result.pass);
             field(builder, "input_stream_id", STREAM_HRV_WINDOW, true, 3);
-            field(builder, "method", "log_rmssd_gain_v1", true, 3);
+            field(builder, "method", "log_rmssd_gain_smoke_v1", true, 3);
             field(builder, "baseline_source", "same_run_initial_segment", true, 3);
+            field(builder, "contract_status", "smoke_only", true, 3);
             numberField(builder, "baseline_window_count", result.baselineCount, true, 3);
             numberField(builder, "current_window_count", result.currentCount, true, 3);
             nullableDoubleField(builder, "baseline_rmssd_ms", result.baselineRmssdMs, true, 3);

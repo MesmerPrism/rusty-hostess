@@ -16,15 +16,19 @@ JSON that includes package manifest hashes.
 ## Current Apps
 
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
-  Polar stream and selected-module validation using a local Python dependency.
+  Polar stream validation using a local Python dependency.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles.
+- `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
+  replay that calls the package Rust processor core and validates the resulting
+  graph-resolved evidence.
 
 ## Validation
 
 ```powershell
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence
+python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 ```
 
 Live evidence, including runtime processor-module metrics, is validated with:
@@ -33,8 +37,8 @@ Live evidence, including runtime processor-module metrics, is validated with:
 python tools\check_live_capture_evidence.py --input <capture.json> --packages-root <packages-root>
 ```
 
-`hostessctl run-live` validates desktop and Android evidence through the same
-validator and writes a companion `rusty.manifold.hostess.run_evidence.v1`
+`hostessctl run-live` and `hostessctl run-replay` validate evidence through the
+same validator and write a companion `rusty.manifold.hostess.run_evidence.v1`
 contract artifact beside the raw capture JSON. Runtime artifacts should be
 written outside this repository.
 

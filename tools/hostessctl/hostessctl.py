@@ -7,12 +7,16 @@ import json
 import subprocess
 import sys
 import time
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
+
+from tools.check_live_capture_evidence import package_snapshot  # noqa: E402
+
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
 ANDROID_REMOTE_EVIDENCE = (
@@ -41,11 +45,20 @@ def main() -> int:
     run_live.add_argument("--serial")
     run_live.add_argument("--acc-rate", type=int, default=200)
 
+    run_replay = subcommands.add_parser("run-replay")
+    run_replay.add_argument("--target", choices=["desktop"], default="desktop")
+    run_replay.add_argument("--module", action="append", required=True)
+    run_replay.add_argument("--out", required=True)
+    run_replay.add_argument("--packages-root", required=True)
+    run_replay.add_argument("--input")
+
     args = parser.parse_args()
     if args.command == "install-android":
         return install_android(args)
     if args.command == "run-live":
         return run_live_capture(args)
+    if args.command == "run-replay":
+        return run_replay_capture(args)
     return 2
 
 
@@ -95,6 +108,79 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
     capture = run(command, allow_failure=True)
     validation = validate_evidence(args, out, "desktop")
     return validation if validation != 0 else capture.returncode
+
+
+def run_replay_capture(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    packages_root = Path(args.packages_root)
+    package_root = polar_package_root(packages_root)
+    graph_path = package_root / "fixtures" / "valid" / "graph.json"
+    input_path = (
+        Path(args.input)
+        if args.input
+        else package_root / "fixtures" / "valid" / "processor-runtime-input-synthetic.json"
+    )
+    graph_report_path = out.with_name(f"{out.stem}.graph-execution-report.json")
+    started_utc = datetime.now(UTC)
+    command = [
+        "cargo",
+        "run",
+        "-p",
+        "polar-h10-core",
+        "--",
+        "run-fixture",
+        "--graph",
+        str(graph_path),
+        "--input",
+        str(input_path),
+        "--select",
+        ",".join(args.module),
+        "--out",
+        str(graph_report_path),
+    ]
+    graph_run = run(command, allow_failure=True, cwd=packages_root)
+    ended_utc = datetime.now(UTC)
+    if not graph_report_path.exists():
+        return graph_run.returncode if graph_run.returncode != 0 else 2
+    graph_report = json.loads(graph_report_path.read_text(encoding="utf-8"))
+    streams = graph_report_streams(graph_report)
+    package = package_snapshot(packages_root)
+    package["package_id"] = "package.polar_h10"
+    evidence = {
+        "$schema": "rusty.manifold.live_capture_evidence.v1",
+        "status": graph_report.get("status", "fail"),
+        "host_profile": "desktop",
+        "started_at_utc": started_utc.isoformat(),
+        "ended_at_utc": ended_utc.isoformat(),
+        "software": {
+            "origin": "rusty-hostess",
+            "host_app": "app.rusty_hostess_t.desktop",
+            "host_app_version": "0.1.0",
+        },
+        "package": package,
+        "capture": {
+            "mode": "module",
+            "selected_module_ids": graph_report.get("selected_module_ids", []),
+            "dependency_stream_ids": graph_report.get("output_stream_ids", []),
+            "runtime_path": graph_report.get("runtime_path"),
+            "graph_id": graph_report.get("graph_id"),
+            "graph_revision": graph_report.get("graph_revision"),
+            "graph_execution_report": graph_report_path.name,
+        },
+        "commands": [
+            {
+                "command": "run_graph_fixture",
+                "status": "acknowledged" if graph_run.returncode == 0 else "rejected",
+                "runtime_path": graph_report.get("runtime_path"),
+            }
+        ],
+        "streams": streams,
+        "errors": [issue.get("message") for issue in graph_report.get("issues", [])],
+    }
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    validation = validate_evidence(args, out, "desktop")
+    return validation if validation != 0 else graph_run.returncode
 
 
 def run_android_capture(args: argparse.Namespace, out: Path) -> int:
@@ -149,7 +235,7 @@ def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) ->
         "--expect-host",
         host_profile,
     ]
-    if args.stream:
+    if getattr(args, "stream", None):
         command.extend(["--expect-stream", args.stream])
     for module_id in args.module:
         command.extend(["--expect-module", module_id])
@@ -158,6 +244,22 @@ def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) ->
     if result.returncode == 0:
         write_contract_evidence(out, report_out, host_profile)
     return result.returncode
+
+
+def graph_report_streams(graph_report: dict[str, Any]) -> list[dict[str, Any]]:
+    streams: list[dict[str, Any]] = []
+    for raw_stream in graph_report.get("streams", []):
+        if not isinstance(raw_stream, dict):
+            continue
+        stream = dict(raw_stream)
+        stream.setdefault("malformed_frame_count", 0)
+        streams.append(stream)
+    return streams
+
+
+def polar_package_root(packages_root: Path) -> Path:
+    package_root = packages_root / "packages" / "polar-h10"
+    return package_root if package_root.exists() else packages_root
 
 
 def write_contract_evidence(raw_evidence_path: Path, validation_report_path: Path, host_profile: str) -> None:
@@ -264,8 +366,10 @@ def iso_to_epoch_ms(value: str | None) -> int:
     return int(datetime.fromisoformat(normalized).timestamp() * 1000)
 
 
-def run(command: list[str], *, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, text=True)
+def run(
+    command: list[str], *, allow_failure: bool = False, cwd: Path | None = None
+) -> subprocess.CompletedProcess[str]:
+    result = subprocess.run(command, text=True, cwd=cwd)
     if result.returncode != 0 and not allow_failure:
         raise SystemExit(result.returncode)
     return result

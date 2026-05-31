@@ -700,9 +700,7 @@ def compute_coherence_uniform(
     else:
         paper_ratio = peak_band_power / remaining_power
         normalized_score = paper_ratio / (paper_ratio + 1.0)
-    coherence_ratio_squared = (
-        1000000.0 if remaining_power <= 0.0 else (peak_band_power * peak_band_power) / remaining_power
-    )
+    coherence_ratio_squared = paper_ratio * paper_ratio
     normalized_peak_power = peak_band_power / total_band_power if total_band_power > 0.0 else 0.0
 
     return CoherenceResult(

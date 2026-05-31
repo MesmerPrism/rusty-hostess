@@ -58,6 +58,19 @@ class LiveCaptureEvidenceValidatorTests(unittest.TestCase):
 
             self.assertEqual(validate(evidence, snapshot), [])
 
+    def test_rejects_old_coherence_squared_formula(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            stream = valid_coherence_stream()
+            stream["coherence_ratio_squared"] = 12500.0
+            evidence["streams"] = [stream]
+
+            self.assertIn(
+                "coherence squared ratio does not match coherence_ratio * coherence_ratio",
+                validate(evidence, snapshot),
+            )
+
     def test_rejects_underfilled_coherence_stream(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             snapshot = make_package(Path(temp))
@@ -76,6 +89,28 @@ class LiveCaptureEvidenceValidatorTests(unittest.TestCase):
             evidence["streams"] = [valid_hrv_window_stream()]
 
             self.assertEqual(validate(evidence, snapshot), [])
+
+    def test_accepts_explicit_rmssd_gain_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            evidence["capture"] = {"selected_module_ids": ["module.polar_h10.rmssd_gain"]}
+            evidence["streams"] = [valid_rmssd_gain_stream()]
+
+            self.assertEqual(validate(evidence, snapshot), [])
+
+    def test_rejects_same_run_rmssd_gain_baseline(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            snapshot = make_package(Path(temp))
+            evidence = valid_evidence(snapshot)
+            stream = valid_rmssd_gain_stream()
+            stream["baseline_source"] = "same_run_initial_segment"
+            evidence["streams"] = [stream]
+
+            self.assertIn(
+                "RMSSD gain baseline source must be an explicit package/runtime baseline",
+                validate(evidence, snapshot),
+            )
 
 
 def make_package(root: Path) -> dict[str, object]:
@@ -151,7 +186,7 @@ def valid_coherence_stream() -> dict[str, object]:
         "total_band_power": 656.25,
         "remaining_power": 31.25,
         "coherence_ratio": 20.0,
-        "coherence_ratio_squared": 12500.0,
+        "coherence_ratio_squared": 400.0,
         "normalized_peak_power": 0.952381,
         "paper_ratio": 20.0,
         "normalized_score": 0.952381,
@@ -180,6 +215,26 @@ def valid_hrv_window_stream() -> dict[str, object]:
         "ln_rmssd": 2.56,
         "pnn50": 0.0,
         "sd1_ms": 9.2,
+        "quality": "stable",
+        "issue_code": None,
+        "malformed_frame_count": 0,
+    }
+
+
+def valid_rmssd_gain_stream() -> dict[str, object]:
+    return {
+        "stream_id": "stream.polar_h10.rmssd_gain",
+        "module_id": "module.polar_h10.rmssd_gain",
+        "status": "pass",
+        "input_stream_id": "stream.polar_h10.hrv_window",
+        "method": "log_rmssd_gain_v1",
+        "baseline_source": "explicit_baseline",
+        "baseline_window_count": 6,
+        "current_window_count": 6,
+        "baseline_rmssd_ms": 10.0,
+        "current_rmssd_ms": 13.0,
+        "rmssd_ratio": 1.3,
+        "ln_rmssd_gain": 0.262364,
         "quality": "stable",
         "issue_code": None,
         "malformed_frame_count": 0,

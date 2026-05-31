@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -254,6 +255,18 @@ def validate_coherence_stream(stream: dict[str, Any], errors: list[str]) -> None
         errors.append("coherence ratio is negative")
     if coherence_ratio_squared < 0.0:
         errors.append("coherence squared ratio is negative")
+    if not approx_equal(remaining_power, total_band_power - peak_band_power):
+        errors.append("coherence remaining power does not match total - peak power")
+    if remaining_power > 0.0 and not approx_equal(coherence_ratio, peak_band_power / remaining_power):
+        errors.append("coherence ratio does not match peak / remaining power")
+    if not approx_equal(paper_ratio, coherence_ratio):
+        errors.append("coherence paper ratio does not match coherence ratio")
+    if not approx_equal(coherence_ratio_squared, coherence_ratio * coherence_ratio):
+        errors.append("coherence squared ratio does not match coherence_ratio * coherence_ratio")
+    if total_band_power > 0.0 and not approx_equal(normalized_peak_power, peak_band_power / total_band_power):
+        errors.append("coherence normalized peak power does not match peak / total power")
+    if paper_ratio >= 0.0 and not approx_equal(normalized_score, paper_ratio / (paper_ratio + 1.0)):
+        errors.append("coherence normalized score does not match ratio / (ratio + 1)")
     if not 0.0 <= normalized_peak_power <= 1.0:
         errors.append("coherence normalized peak power is outside 0..1")
     if not 0.0 <= normalized_score <= 1.0:
@@ -293,6 +306,8 @@ def validate_rmssd_gain_stream(stream: dict[str, Any], errors: list[str]) -> Non
         errors.append("RMSSD gain input stream must be HRV window")
     if stream.get("method") != "log_rmssd_gain_v1":
         errors.append("RMSSD gain method must be log_rmssd_gain_v1")
+    if stream.get("baseline_source") not in {"explicit_baseline", "run_config_baseline", "manifest_baseline"}:
+        errors.append("RMSSD gain baseline source must be an explicit package/runtime baseline")
     if int_value(stream.get("baseline_window_count", 0)) < 2:
         errors.append("RMSSD gain baseline window is underfilled")
     if int_value(stream.get("current_window_count", 0)) < 2:
@@ -415,6 +430,10 @@ def float_value(value: Any) -> float:
         return float(value)
     except (TypeError, ValueError):
         return -1.0
+
+
+def approx_equal(left: float, right: float, *, relative: float = 0.000001, absolute: float = 0.000001) -> bool:
+    return math.isclose(left, right, rel_tol=relative, abs_tol=absolute)
 
 
 if __name__ == "__main__":
