@@ -17,10 +17,15 @@ import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
+import android.graphics.Path;
+import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.widget.TextView;
+import android.view.View;
 
 import java.io.ByteArrayOutputStream;
 import java.io.File;
@@ -68,15 +73,14 @@ public final class MainActivity extends Activity {
     private static final String MODULE_HRVB_RESONANCE_AMPLITUDE = "module.polar_h10.hrvb_resonance_amplitude";
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TextView statusView;
+    private TelemetryView telemetryView;
     private CaptureRun run;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        statusView = new TextView(this);
-        statusView.setText("Manifold capture test");
-        setContentView(statusView);
+        telemetryView = new TelemetryView(this);
+        setContentView(telemetryView);
         startCapture(getIntent());
     }
 
@@ -88,7 +92,7 @@ public final class MainActivity extends Activity {
 
     private void startCapture(Intent intent) {
         if (!ACTION_RUN.equals(intent.getAction())) {
-            writeImmediateFailure("unknown_intent", "Start with " + ACTION_RUN);
+            telemetryView.setRunState("ready", "idle", new ArrayList<>());
             return;
         }
         String[] missing = missingPermissions();
@@ -100,7 +104,8 @@ public final class MainActivity extends Activity {
             run.close();
         }
         run = new CaptureRun(this, intent);
-        statusView.setText("Capture running: " + run.mode);
+        telemetryView.resetForRun(run.mode, run.selectedModules);
+        telemetryView.setRunState("running", run.mode, run.selectedModules);
         run.start();
     }
 
@@ -120,6 +125,7 @@ public final class MainActivity extends Activity {
     }
 
     private void writeImmediateFailure(String code, String message) {
+        telemetryView.setRunState("fail", "hr_rr", new ArrayList<>());
         CaptureRun failure = new CaptureRun(this, new Intent(ACTION_RUN).putExtra("mode", "hr_rr"));
         failure.errors.add(code + ": " + message);
         failure.complete("fail");
@@ -461,18 +467,24 @@ public final class MainActivity extends Activity {
                     hrHostTimes.add(System.nanoTime());
                     heartRates.add(reading.bpm);
                     rrIntervalsMs.addAll(reading.rrIntervalsMs);
+                    handler.post(() -> telemetryView.addHeartRate(reading.bpm, reading.rrIntervalsMs, malformedFrameCount));
                 } else if (PMD_CONTROL_POINT.equals(uuid)) {
                     ControlRecord record = PolarProtocol.parseControl(value);
                     controlRecords.add(record);
                 } else if (PMD_DATA.equals(uuid)) {
                     if ("ecg".equals(mode)) {
-                        ecgFrames.add(PolarProtocol.decodeEcg(value));
+                        PmdFrameMetric frame = PolarProtocol.decodeEcg(value);
+                        ecgFrames.add(frame);
+                        handler.post(() -> telemetryView.addEcgFrame(frame, malformedFrameCount));
                     } else if (needsAcc()) {
-                        accFrames.add(PolarProtocol.decodeAcc(value));
+                        PmdFrameMetric frame = PolarProtocol.decodeAcc(value);
+                        accFrames.add(frame);
+                        handler.post(() -> telemetryView.addAccFrame(frame, malformedFrameCount));
                     }
                 }
             } catch (RuntimeException ex) {
                 malformedFrameCount += 1;
+                handler.post(() -> telemetryView.setMalformedFrameCount(malformedFrameCount));
             }
         }
 
@@ -565,10 +577,254 @@ public final class MainActivity extends Activity {
                 }
                 writeText(new File(root, "latest.json"), json);
                 writeText(new File(root, sanitizeFileName(hostProfile + "-" + mode + "-" + endedAt.toString()) + ".json"), json);
-                statusView.setText("Capture " + status + ": " + mode);
+                telemetryView.setRunState(status, mode, selectedModules);
             } catch (IOException ex) {
-                statusView.setText("Capture finished but write failed: " + ex.getMessage());
+                telemetryView.setRunState("write_failed", mode, selectedModules);
             }
+        }
+    }
+
+    private static final class TelemetryView extends View {
+        private static final int MAX_POINTS = 240;
+        private static final int BACKGROUND = Color.rgb(248, 248, 246);
+        private static final int SURFACE = Color.WHITE;
+        private static final int BORDER = Color.rgb(214, 211, 205);
+        private static final int GRID = Color.rgb(231, 229, 224);
+        private static final int TEXT = Color.rgb(29, 29, 27);
+        private static final int MUTED = Color.rgb(92, 88, 82);
+        private static final int HR = Color.rgb(185, 60, 20);
+        private static final int RR = Color.rgb(15, 118, 110);
+        private static final int ACC = Color.rgb(79, 76, 71);
+        private static final int ECG = Color.rgb(159, 18, 57);
+
+        private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Paint plotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+        private final Path path = new Path();
+        private final RectF rect = new RectF();
+        private final ArrayDeque<Float> heartRates = new ArrayDeque<>();
+        private final ArrayDeque<Float> rrIntervals = new ArrayDeque<>();
+        private final ArrayDeque<Float> accMagnitude = new ArrayDeque<>();
+        private final ArrayDeque<Float> ecgSamples = new ArrayDeque<>();
+
+        private String status = "ready";
+        private String mode = "idle";
+        private int selectedModuleCount = 0;
+        private int hrEventCount = 0;
+        private int rrCount = 0;
+        private int accFrameCount = 0;
+        private int accSampleCount = 0;
+        private int ecgFrameCount = 0;
+        private int ecgSampleCount = 0;
+        private int malformedFrameCount = 0;
+
+        TelemetryView(Context context) {
+            super(context);
+            setBackgroundColor(BACKGROUND);
+            plotPaint.setStyle(Paint.Style.STROKE);
+            plotPaint.setStrokeCap(Paint.Cap.ROUND);
+            plotPaint.setStrokeJoin(Paint.Join.ROUND);
+            plotPaint.setStrokeWidth(dp(2));
+            strokePaint.setStyle(Paint.Style.STROKE);
+            strokePaint.setStrokeWidth(dp(1));
+        }
+
+        void resetForRun(String mode, List<String> modules) {
+            this.mode = mode;
+            selectedModuleCount = modules.size();
+            heartRates.clear();
+            rrIntervals.clear();
+            accMagnitude.clear();
+            ecgSamples.clear();
+            hrEventCount = 0;
+            rrCount = 0;
+            accFrameCount = 0;
+            accSampleCount = 0;
+            ecgFrameCount = 0;
+            ecgSampleCount = 0;
+            malformedFrameCount = 0;
+            invalidate();
+        }
+
+        void setRunState(String status, String mode, List<String> modules) {
+            this.status = status;
+            this.mode = mode;
+            selectedModuleCount = modules.size();
+            invalidate();
+        }
+
+        void addHeartRate(int bpm, List<Float> rrIntervalsMs, int malformed) {
+            hrEventCount += 1;
+            append(heartRates, bpm);
+            for (Float rr : rrIntervalsMs) {
+                if (rr != null) {
+                    rrCount += 1;
+                    append(rrIntervals, rr);
+                }
+            }
+            malformedFrameCount = malformed;
+            invalidate();
+        }
+
+        void addAccFrame(PmdFrameMetric frame, int malformed) {
+            accFrameCount += 1;
+            accSampleCount += frame.sampleCount;
+            for (AccSample sample : frame.accSamples) {
+                double magnitude = Math.sqrt(
+                        (sample.xMg * sample.xMg)
+                                + (sample.yMg * sample.yMg)
+                                + (sample.zMg * sample.zMg));
+                append(accMagnitude, (float) magnitude);
+            }
+            malformedFrameCount = malformed;
+            invalidate();
+        }
+
+        void addEcgFrame(PmdFrameMetric frame, int malformed) {
+            ecgFrameCount += 1;
+            ecgSampleCount += frame.sampleCount;
+            for (Integer sample : frame.ecgSamplesMicrovolts) {
+                append(ecgSamples, sample.floatValue());
+            }
+            malformedFrameCount = malformed;
+            invalidate();
+        }
+
+        void setMalformedFrameCount(int count) {
+            malformedFrameCount = count;
+            invalidate();
+        }
+
+        @Override
+        protected void onDraw(Canvas canvas) {
+            super.onDraw(canvas);
+            canvas.drawColor(BACKGROUND);
+            float width = getWidth();
+            float height = getHeight();
+            float margin = dp(14);
+            float headerHeight = dp(82);
+            drawHeader(canvas, margin, margin, width - margin * 2, headerHeight);
+            float top = margin + headerHeight + dp(10);
+            float gap = dp(8);
+            float available = Math.max(dp(224), height - top - margin - gap * 3);
+            float rowHeight = Math.max(dp(56), available / 4.0f);
+            drawPlot(canvas, "HR", latestText(heartRates, "bpm"), hrEventCount + " events", heartRates, HR, margin, top, width - margin * 2, rowHeight);
+            top += rowHeight + gap;
+            drawPlot(canvas, "RR", latestText(rrIntervals, "ms"), rrCount + " intervals", rrIntervals, RR, margin, top, width - margin * 2, rowHeight);
+            top += rowHeight + gap;
+            drawPlot(canvas, "ACC", latestText(accMagnitude, "mg"), accFrameCount + " frames / " + accSampleCount + " samples", accMagnitude, ACC, margin, top, width - margin * 2, rowHeight);
+            top += rowHeight + gap;
+            drawPlot(canvas, "ECG", latestText(ecgSamples, "uV"), ecgFrameCount + " frames / " + ecgSampleCount + " samples", ecgSamples, ECG, margin, top, width - margin * 2, rowHeight);
+        }
+
+        private void drawHeader(Canvas canvas, float left, float top, float width, float height) {
+            drawPanel(canvas, left, top, width, height);
+            textPaint.setColor(TEXT);
+            textPaint.setTextSize(sp(20));
+            textPaint.setFakeBoldText(true);
+            canvas.drawText("Rusty Hostess T", left + dp(14), top + dp(28), textPaint);
+            textPaint.setFakeBoldText(false);
+            textPaint.setTextSize(sp(14));
+            textPaint.setColor(MUTED);
+            canvas.drawText(status + " / " + mode, left + dp(14), top + dp(52), textPaint);
+            String selection = selectedModuleCount > 0 ? selectedModuleCount + " modules" : "direct stream";
+            canvas.drawText(selection + " / malformed " + malformedFrameCount, left + dp(14), top + dp(72), textPaint);
+        }
+
+        private void drawPlot(
+                Canvas canvas,
+                String label,
+                String value,
+                String count,
+                ArrayDeque<Float> series,
+                int color,
+                float left,
+                float top,
+                float width,
+                float height) {
+            drawPanel(canvas, left, top, width, height);
+            float labelLeft = left + dp(12);
+            textPaint.setTextSize(sp(14));
+            textPaint.setFakeBoldText(true);
+            textPaint.setColor(TEXT);
+            canvas.drawText(label, labelLeft, top + dp(22), textPaint);
+            textPaint.setFakeBoldText(false);
+            textPaint.setColor(MUTED);
+            canvas.drawText(value, labelLeft, top + dp(42), textPaint);
+            float plotLeft = left + dp(92);
+            float plotTop = top + dp(14);
+            float plotWidth = Math.max(dp(80), width - dp(106));
+            float plotHeight = Math.max(dp(40), height - dp(26));
+            canvas.drawText(count, plotLeft, top + height - dp(12), textPaint);
+            strokePaint.setColor(GRID);
+            canvas.drawLine(plotLeft, plotTop + plotHeight / 2.0f, plotLeft + plotWidth, plotTop + plotHeight / 2.0f, strokePaint);
+            drawSeries(canvas, series, color, plotLeft, plotTop, plotWidth, plotHeight);
+        }
+
+        private void drawSeries(Canvas canvas, ArrayDeque<Float> series, int color, float left, float top, float width, float height) {
+            if (series.size() < 2) {
+                textPaint.setTextSize(sp(13));
+                textPaint.setColor(MUTED);
+                canvas.drawText("waiting", left + dp(6), top + height / 2.0f, textPaint);
+                return;
+            }
+            float min = Float.MAX_VALUE;
+            float max = -Float.MAX_VALUE;
+            for (float value : series) {
+                min = Math.min(min, value);
+                max = Math.max(max, value);
+            }
+            if (Math.abs(max - min) < 0.0001f) {
+                max += 1.0f;
+                min -= 1.0f;
+            }
+            path.reset();
+            int index = 0;
+            int size = series.size();
+            for (float value : series) {
+                float x = left + (size == 1 ? 0.0f : (index * width / (size - 1)));
+                float y = top + height - ((value - min) / (max - min) * height);
+                if (index == 0) {
+                    path.moveTo(x, y);
+                } else {
+                    path.lineTo(x, y);
+                }
+                index += 1;
+            }
+            plotPaint.setColor(color);
+            canvas.drawPath(path, plotPaint);
+        }
+
+        private void drawPanel(Canvas canvas, float left, float top, float width, float height) {
+            rect.set(left, top, left + width, top + height);
+            fillPaint.setStyle(Paint.Style.FILL);
+            fillPaint.setColor(SURFACE);
+            canvas.drawRoundRect(rect, dp(8), dp(8), fillPaint);
+            strokePaint.setColor(BORDER);
+            canvas.drawRoundRect(rect, dp(8), dp(8), strokePaint);
+        }
+
+        private void append(ArrayDeque<Float> buffer, float value) {
+            buffer.addLast(value);
+            while (buffer.size() > MAX_POINTS) {
+                buffer.removeFirst();
+            }
+        }
+
+        private String latestText(ArrayDeque<Float> series, String unit) {
+            if (series.isEmpty()) {
+                return "-- " + unit;
+            }
+            return String.format(Locale.US, "%.1f %s", series.peekLast(), unit);
+        }
+
+        private float dp(float value) {
+            return value * getResources().getDisplayMetrics().density;
+        }
+
+        private float sp(float value) {
+            return value * getResources().getDisplayMetrics().scaledDensity;
         }
     }
 
@@ -662,16 +918,22 @@ public final class MainActivity extends Activity {
         final long sensorTimestampNs;
         final int sampleCount;
         final List<AccSample> accSamples;
+        final List<Integer> ecgSamplesMicrovolts;
 
         PmdFrameMetric(long hostTimeNs, long sensorTimestampNs, int sampleCount) {
-            this(hostTimeNs, sensorTimestampNs, sampleCount, new ArrayList<>());
+            this(hostTimeNs, sensorTimestampNs, sampleCount, new ArrayList<>(), new ArrayList<>());
         }
 
         PmdFrameMetric(long hostTimeNs, long sensorTimestampNs, int sampleCount, List<AccSample> accSamples) {
+            this(hostTimeNs, sensorTimestampNs, sampleCount, accSamples, new ArrayList<>());
+        }
+
+        PmdFrameMetric(long hostTimeNs, long sensorTimestampNs, int sampleCount, List<AccSample> accSamples, List<Integer> ecgSamplesMicrovolts) {
             this.hostTimeNs = hostTimeNs;
             this.sensorTimestampNs = sensorTimestampNs;
             this.sampleCount = sampleCount;
             this.accSamples = accSamples;
+            this.ecgSamplesMicrovolts = ecgSamplesMicrovolts;
         }
     }
 
@@ -754,7 +1016,11 @@ public final class MainActivity extends Activity {
             if (body <= 0 || body % 3 != 0) {
                 throw new IllegalArgumentException("bad ECG length");
             }
-            return new PmdFrameMetric(System.nanoTime(), readUInt64(data, 1), body / 3);
+            List<Integer> samples = new ArrayList<>();
+            for (int offset = 10; offset < data.length; offset += 3) {
+                samples.add(readInt24(data, offset));
+            }
+            return new PmdFrameMetric(System.nanoTime(), readUInt64(data, 1), body / 3, new ArrayList<>(), samples);
         }
 
         static PmdFrameMetric decodeAcc(byte[] data) {
@@ -786,6 +1052,14 @@ public final class MainActivity extends Activity {
         static int readInt16(byte[] data, int offset) {
             int value = readUInt16(data, offset);
             return (value & 0x8000) != 0 ? value - 0x10000 : value;
+        }
+
+        static int readInt24(byte[] data, int offset) {
+            if (offset + 2 >= data.length) {
+                throw new IllegalArgumentException("short i24");
+            }
+            int value = unsigned(data[offset]) | (unsigned(data[offset + 1]) << 8) | (unsigned(data[offset + 2]) << 16);
+            return (value & 0x800000) != 0 ? value - 0x1000000 : value;
         }
 
         static long readUInt64(byte[] data, int offset) {

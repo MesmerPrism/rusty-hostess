@@ -25,6 +25,11 @@ hash. The desktop script follows the same evidence shape. Both desktop and
 Android captures are accepted only after the shared evidence validator compares
 the reported manifest hash against the supplied package root.
 
+The Android-class app shell includes a compact telemetry GUI for phone and
+headset profiles. It displays rolling direct-stream buffers and run status from
+the same activity path that the CLI starts. It does not own processor formulas,
+package state, or module authority.
+
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
 processor core, then validates the graph-resolved evidence. Desktop live module
@@ -43,6 +48,8 @@ package runtime ABI. The bridge design is recorded in
 `docs/ON_DEVICE_RUNTIME_BRIDGE.md`. Until that bridge exists, Java/Kotlin
 processor formulas remain smoke-only and are not accepted as canonical package
 module evidence.
+
+The telemetry panel boundary is recorded in `docs/TELEMETRY_GUI.md`.
 
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.hostess.run_evidence.v1` wrapper with a scorecard so the live

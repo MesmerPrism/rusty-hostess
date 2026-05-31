@@ -18,7 +18,8 @@ JSON that includes package manifest hashes.
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
   Polar stream validation using a local Python dependency.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
-  command-line tools. The same APK can run mobile and headset profiles.
+  command-line tools. The same APK can run mobile and headset profiles, and
+  shows rolling HR, RR, ACC, and ECG telemetry while a capture is running.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
