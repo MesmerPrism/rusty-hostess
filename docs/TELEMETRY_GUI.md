@@ -27,6 +27,17 @@ The header shows run status, mode, selected-module count, and malformed-frame
 count. Raw evidence and validation reports are still written as JSON artifacts
 and pulled by `hostessctl`.
 
+## Render Evidence
+
+The Android-class app can render the telemetry view directly into a PNG under
+the app evidence folder. This is the preferred headset visual evidence route
+because it captures the Hostess view itself and does not depend on which system
+surface is currently focused.
+
+```powershell
+python tools\hostessctl\hostessctl.py render-telemetry --target quest --adb <adb> --serial <serial> --out <telemetry.png>
+```
+
 ## Command Route
 
 The GUI has no independent state-changing controls in this slice. Captures are

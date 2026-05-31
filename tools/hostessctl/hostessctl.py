@@ -19,9 +19,11 @@ from tools.check_live_capture_evidence import package_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
+ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
 ANDROID_REMOTE_EVIDENCE = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.json"
 )
+ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
 
 
 def main() -> int:
@@ -58,6 +60,13 @@ def main() -> int:
     run_replay.add_argument("--packages-root", required=True)
     run_replay.add_argument("--input")
 
+    render = subcommands.add_parser("render-telemetry")
+    render.add_argument("--target", choices=["phone", "quest"], required=True)
+    render.add_argument("--adb", required=True)
+    render.add_argument("--serial", required=True)
+    render.add_argument("--out", required=True)
+    render.add_argument("--name")
+
     args = parser.parse_args()
     if args.command == "install-android":
         return install_android(args)
@@ -65,6 +74,8 @@ def main() -> int:
         return run_live_capture(args)
     if args.command == "run-replay":
         return run_replay_capture(args)
+    if args.command == "render-telemetry":
+        return render_telemetry(args)
     return 2
 
 
@@ -240,6 +251,40 @@ def run_android_capture(args: argparse.Namespace, out: Path) -> int:
     time.sleep(args.duration_seconds + 20.0)
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
     return validate_evidence(args, out, "headset" if args.target == "quest" else "mobile")
+
+
+def render_telemetry(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    name = sanitize_remote_name(args.name or out.name or "latest-render.png")
+    if not name.endswith(".png"):
+        name = f"{name}.png"
+    remote = f"{ANDROID_REMOTE_RENDER_ROOT}/{name}"
+    run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            ANDROID_RENDER_ACTION,
+            "-n",
+            f"{ANDROID_PACKAGE}/.MainActivity",
+            "--es",
+            "render_name",
+            name,
+        ]
+    )
+    time.sleep(1.0)
+    run([args.adb, "-s", args.serial, "pull", remote, str(out)])
+    return 0
+
+
+def sanitize_remote_name(value: str) -> str:
+    return "".join(character if character.isalnum() or character in "._-" else "_" for character in value)
 
 
 def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) -> int:

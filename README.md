@@ -20,6 +20,8 @@ JSON that includes package manifest hashes.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles, and
   shows rolling HR, RR, ACC, and ECG telemetry while a capture is running.
+- `tools/hostessctl/hostessctl.py render-telemetry`: Android-class app-rendered
+  PNG export for phone and headset telemetry evidence.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
@@ -48,4 +50,11 @@ are opt-in with repeated `--module` selections, for example:
 
 ```powershell
 python tools\hostessctl\hostessctl.py run-live --target desktop --module hrv_window --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
+```
+
+For visual telemetry evidence on Android-class targets, prefer the app-rendered
+path over compositor screenshots:
+
+```powershell
+python tools\hostessctl\hostessctl.py render-telemetry --target quest --adb <adb> --serial <serial> --out <telemetry.png>
 ```

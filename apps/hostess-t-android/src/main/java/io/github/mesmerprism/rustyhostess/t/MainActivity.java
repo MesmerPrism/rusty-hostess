@@ -17,6 +17,7 @@ import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
@@ -45,6 +46,7 @@ import java.util.UUID;
 
 public final class MainActivity extends Activity {
     private static final String ACTION_RUN = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE";
+    private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String SOFTWARE_ORIGIN = "rusty-hostess";
 
@@ -91,6 +93,10 @@ public final class MainActivity extends Activity {
     }
 
     private void startCapture(Intent intent) {
+        if (ACTION_RENDER.equals(intent.getAction())) {
+            writeTelemetryRender(intent);
+            return;
+        }
         if (!ACTION_RUN.equals(intent.getAction())) {
             telemetryView.setRunState("ready", "idle", new ArrayList<>());
             return;
@@ -129,6 +135,34 @@ public final class MainActivity extends Activity {
         CaptureRun failure = new CaptureRun(this, new Intent(ACTION_RUN).putExtra("mode", "hr_rr"));
         failure.errors.add(code + ": " + message);
         failure.complete("fail");
+    }
+
+    private void writeTelemetryRender(Intent intent) {
+        String requested = emptyToNull(intent.getStringExtra("render_name"));
+        String fileName = requested == null ? "latest-render.png" : requested;
+        if (!fileName.endsWith(".png")) {
+            fileName = fileName + ".png";
+        }
+        final String safeName = sanitizeFileName(fileName);
+        telemetryView.post(() -> renderTelemetryToFile(safeName, 0));
+    }
+
+    private void renderTelemetryToFile(String safeName, int attempt) {
+        if ((telemetryView.getWidth() <= 0 || telemetryView.getHeight() <= 0) && attempt < 4) {
+            telemetryView.postDelayed(() -> renderTelemetryToFile(safeName, attempt + 1), 250L);
+            return;
+        }
+        try {
+            File root = new File(getExternalFilesDir(null), "hostess-t/evidence/render");
+            if (!root.exists() && !root.mkdirs()) {
+                throw new IOException("could not create render folder");
+            }
+            File out = new File(root, safeName);
+            telemetryView.writePng(out);
+            telemetryView.setRenderStatus("rendered " + safeName);
+        } catch (IOException ex) {
+            telemetryView.setRenderStatus("render_failed");
+        }
     }
 
     private final class CaptureRun {
@@ -610,6 +644,7 @@ public final class MainActivity extends Activity {
 
         private String status = "ready";
         private String mode = "idle";
+        private String renderStatus = "";
         private int selectedModuleCount = 0;
         private int hrEventCount = 0;
         private int rrCount = 0;
@@ -644,6 +679,7 @@ public final class MainActivity extends Activity {
             ecgFrameCount = 0;
             ecgSampleCount = 0;
             malformedFrameCount = 0;
+            renderStatus = "";
             invalidate();
         }
 
@@ -696,6 +732,28 @@ public final class MainActivity extends Activity {
             invalidate();
         }
 
+        void setRenderStatus(String status) {
+            renderStatus = status == null ? "" : status;
+            invalidate();
+        }
+
+        void writePng(File out) throws IOException {
+            int width = Math.max(getWidth(), 1);
+            int height = Math.max(getHeight(), 1);
+            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
+            try {
+                Canvas canvas = new Canvas(bitmap);
+                draw(canvas);
+                try (FileOutputStream stream = new FileOutputStream(out)) {
+                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
+                        throw new IOException("could not encode telemetry render");
+                    }
+                }
+            } finally {
+                bitmap.recycle();
+            }
+        }
+
         @Override
         protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
@@ -729,7 +787,11 @@ public final class MainActivity extends Activity {
             textPaint.setColor(MUTED);
             canvas.drawText(status + " / " + mode, left + dp(14), top + dp(52), textPaint);
             String selection = selectedModuleCount > 0 ? selectedModuleCount + " modules" : "direct stream";
-            canvas.drawText(selection + " / malformed " + malformedFrameCount, left + dp(14), top + dp(72), textPaint);
+            String detail = selection + " / malformed " + malformedFrameCount;
+            if (!renderStatus.isEmpty()) {
+                detail += " / " + renderStatus;
+            }
+            canvas.drawText(detail, left + dp(14), top + dp(72), textPaint);
         }
 
         private void drawPlot(
