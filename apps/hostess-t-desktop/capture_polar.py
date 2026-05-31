@@ -16,6 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from tools import polar_protocol as polar  # noqa: E402
+from tools import polar_runtime_bridge as runtime_bridge  # noqa: E402
 
 
 try:
@@ -36,6 +37,12 @@ def main() -> int:
     parser.add_argument("--device-name-prefix", default="Polar H10")
     parser.add_argument("--duration-seconds", type=float, default=10.0)
     parser.add_argument("--acc-rate", type=int, default=200)
+    parser.add_argument("--runtime-core", choices=["rust", "python-smoke"], default="rust")
+    parser.add_argument("--rmssd-baseline-ln-rmssd", type=float)
+    parser.add_argument("--rmssd-baseline-mean-ln-rmssd", type=float)
+    parser.add_argument("--rmssd-baseline-sd-ln-rmssd", type=float)
+    parser.add_argument("--rmssd-baseline-window-count", type=int)
+    parser.add_argument("--rmssd-baseline-source", default="explicit_baseline")
     args = parser.parse_args()
 
     evidence = asyncio.run(capture(args))
@@ -134,6 +141,21 @@ async def capture(args: argparse.Namespace) -> dict[str, Any]:
             await client.stop_notify(polar.HEART_RATE_MEASUREMENT_UUID)
 
     ended_utc = datetime.now(UTC)
+    runtime_report: dict[str, Any] | None = None
+    runtime_artifacts: dict[str, Any] = {}
+    runtime_selected_modules = selected_modules
+    if args.mode == "coherence" and not runtime_selected_modules:
+        runtime_selected_modules = [polar.MODULE_COHERENCE]
+    if runtime_selected_modules and args.runtime_core == "rust":
+        runtime_report, runtime_artifacts, runtime_errors, runtime_command = run_rust_runtime(
+            args,
+            runtime_selected_modules,
+            hr_events,
+            acc_frames,
+        )
+        command_status.append(runtime_command)
+        errors.extend(runtime_errors)
+
     streams = stream_results(
         args.mode,
         selected_modules,
@@ -143,6 +165,8 @@ async def capture(args: argparse.Namespace) -> dict[str, Any]:
         acc_frames,
         malformed_frames,
         args.acc_rate,
+        runtime_report,
+        args.runtime_core,
     )
     status = "pass" if streams and all(stream["status"] == "pass" for stream in streams) and not errors else "fail"
     return {
@@ -163,11 +187,85 @@ async def capture(args: argparse.Namespace) -> dict[str, Any]:
             "dependency_stream_ids": sorted(dependency_streams),
             "duration_seconds": args.duration_seconds,
             "device_selector": sanitize_selector(args.device_address, args.device_name_prefix),
+            **runtime_artifacts,
         },
         "commands": command_status,
         "control_responses": control_responses,
         "streams": streams,
         "errors": errors,
+    }
+
+
+def run_rust_runtime(
+    args: argparse.Namespace,
+    selected_modules: list[str],
+    hr_events: list[tuple[int, polar.HeartRateReading]],
+    acc_frames: list[tuple[int, polar.AccFrame]],
+) -> tuple[dict[str, Any] | None, dict[str, Any], list[str], dict[str, Any]]:
+    runtime_input_path = args.out.with_name(f"{args.out.stem}.runtime-input.json")
+    graph_report_path = args.out.with_name(f"{args.out.stem}.graph-execution-report.json")
+    try:
+        baseline = rmssd_baseline_from_args(args)
+    except ValueError as error:
+        return None, {}, [str(error)], {
+            "command": "run_graph_live_capture",
+            "status": "rejected",
+            "runtime_path": "rust.polar_h10_core.v1",
+            "reason": str(error),
+        }
+    runtime_input = runtime_bridge.runtime_input_from_capture(
+        input_id=f"input.polar_h10.live_capture.desktop.{time.time_ns()}",
+        hr_events=hr_events,
+        acc_frames=acc_frames,
+        acc_rate_hz=args.acc_rate,
+        rmssd_gain_baseline=baseline,
+    )
+    runtime_bridge.write_runtime_input(runtime_input_path, runtime_input)
+    result = runtime_bridge.run_graph_fixture(
+        packages_root=args.packages_root,
+        input_path=runtime_input_path,
+        selected_modules=selected_modules,
+        out_path=graph_report_path,
+    )
+    command = {
+        "command": "run_graph_live_capture",
+        "status": "acknowledged" if result.returncode == 0 else "rejected",
+        "runtime_path": "rust.polar_h10_core.v1",
+        "runtime_input": runtime_input_path.name,
+        "graph_execution_report": graph_report_path.name,
+        "selected_module_ids": selected_modules,
+    }
+    artifacts = {
+        "runtime_path": "rust.polar_h10_core.v1",
+        "runtime_input": runtime_input_path.name,
+        "graph_execution_report": graph_report_path.name,
+    }
+    if not graph_report_path.exists():
+        return None, artifacts, ["Rust graph runtime did not write a graph report"], command
+    graph_report = json.loads(graph_report_path.read_text(encoding="utf-8"))
+    errors = [issue.get("message") for issue in graph_report.get("issues", []) if issue.get("message")]
+    if graph_report.get("status") != "pass" and not errors:
+        errors.append("Rust graph runtime status was not pass")
+    return graph_report, artifacts, errors, command
+
+
+def rmssd_baseline_from_args(args: argparse.Namespace) -> dict[str, Any] | None:
+    values = [
+        args.rmssd_baseline_ln_rmssd,
+        args.rmssd_baseline_mean_ln_rmssd,
+        args.rmssd_baseline_sd_ln_rmssd,
+        args.rmssd_baseline_window_count,
+    ]
+    if all(value is None for value in values):
+        return None
+    if any(value is None for value in values):
+        raise ValueError("RMSSD gain baseline requires ln_rmssd, mean_ln_rmssd, sd_ln_rmssd, and window_count")
+    return {
+        "baseline_ln_rmssd": args.rmssd_baseline_ln_rmssd,
+        "baseline_mean_ln_rmssd": args.rmssd_baseline_mean_ln_rmssd,
+        "baseline_sd_ln_rmssd": args.rmssd_baseline_sd_ln_rmssd,
+        "baseline_window_count": args.rmssd_baseline_window_count,
+        "baseline_source": args.rmssd_baseline_source,
     }
 
 
@@ -206,6 +304,8 @@ def stream_results(
     acc_frames: list[tuple[int, polar.AccFrame]],
     malformed_frames: int,
     acc_rate_hz: int,
+    graph_report: dict[str, Any] | None = None,
+    runtime_core: str = "rust",
 ) -> list[dict[str, Any]]:
     results: list[dict[str, Any]] = []
     if mode in {"hr_rr", "coherence"} or polar.STREAM_HR_RR in dependency_streams:
@@ -220,8 +320,13 @@ def stream_results(
         if mode == "module":
             result["role"] = "module_input"
         results.append(result)
+    if graph_report is not None:
+        results.extend(runtime_bridge.graph_report_streams(graph_report))
+        return results
     if mode == "coherence" and not selected_modules:
         results.append(module_stream_result(polar.MODULE_COHERENCE, hr_events, acc_frames, malformed_frames, acc_rate_hz))
+    if runtime_core == "rust":
+        return results
     for module_id in selected_modules:
         results.append(module_stream_result(module_id, hr_events, acc_frames, malformed_frames, acc_rate_hz))
     return results

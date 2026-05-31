@@ -27,9 +27,10 @@ the reported manifest hash against the supplied package root.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
-processor core, then validates the graph-resolved evidence. Live desktop and
-mobile/headset paths still keep acquisition in Hostess; formula authority is
-moving behind the same package runtime path instead of being owned by the shell.
+processor core, then validates the graph-resolved evidence. Desktop live module
+capture now keeps acquisition in Hostess, writes captured HR/RR and ACC buffers
+into the package runtime input shape, and delegates selected module outputs to
+the same Rust graph runner.
 
 The current selected modules cover HRV window, RMSSD gain, coherence, breath
 volume from ACC, breath dynamics, and HRVB resonance amplitude. Coherence is
@@ -38,9 +39,10 @@ window to 128 uniform samples and producing the package-defined spectral ratio
 plus normalized score fields.
 
 The next mobile/headset step is a native bridge from the app shell to the same
-package runtime ABI after desktop replay parity remains green. Until that bridge
-exists, same-run RMSSD gain from live app shells is marked as smoke-only and is
-not accepted as canonical package RMSSD gain evidence.
+package runtime ABI. The bridge design is recorded in
+`docs/ON_DEVICE_RUNTIME_BRIDGE.md`. Until that bridge exists, Java/Kotlin
+processor formulas remain smoke-only and are not accepted as canonical package
+module evidence.
 
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.hostess.run_evidence.v1` wrapper with a scorecard so the live

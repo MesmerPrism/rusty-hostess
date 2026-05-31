@@ -22,6 +22,9 @@ Required fields:
 - selected processor-module streams include `module_id`, input stream id,
   method id, module-specific metrics, quality label, and empty issue code on
   pass
+- desktop live selected-module evidence includes `capture.runtime_path`,
+  `capture.runtime_input`, and `capture.graph_execution_report` when processor
+  outputs came from the Rust graph runner
 - coherence stream metrics include a 64-second window, 2 Hz sample rate, 128
   uniform RR samples, peak frequency, peak-band power, total-band power,
   remaining power, ratio variants, normalized score, quality label, and empty
@@ -43,5 +46,9 @@ declared module ids, requires runtime coherence metrics for
 When `hostessctl run-live` succeeds it also writes a companion
 `rusty.manifold.hostess.run_evidence.v1` contract artifact beside the raw
 capture JSON.
+
+Live/replay parity is checked by replaying the captured runtime-input artifact
+through `hostessctl run-replay` and comparing selected module streams from the
+live and replay evidence.
 
 Raw run artifacts should stay outside this repository.

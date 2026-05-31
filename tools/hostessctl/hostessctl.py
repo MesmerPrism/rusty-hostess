@@ -44,6 +44,12 @@ def main() -> int:
     run_live.add_argument("--adb")
     run_live.add_argument("--serial")
     run_live.add_argument("--acc-rate", type=int, default=200)
+    run_live.add_argument("--runtime-core", choices=["rust", "python-smoke"], default="rust")
+    run_live.add_argument("--rmssd-baseline-ln-rmssd", type=float)
+    run_live.add_argument("--rmssd-baseline-mean-ln-rmssd", type=float)
+    run_live.add_argument("--rmssd-baseline-sd-ln-rmssd", type=float)
+    run_live.add_argument("--rmssd-baseline-window-count", type=int)
+    run_live.add_argument("--rmssd-baseline-source", default="explicit_baseline")
 
     run_replay = subcommands.add_parser("run-replay")
     run_replay.add_argument("--target", choices=["desktop"], default="desktop")
@@ -98,6 +104,8 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
         str(args.duration_seconds),
         "--acc-rate",
         str(args.acc_rate),
+        "--runtime-core",
+        args.runtime_core,
         "--out",
         str(out),
     ]
@@ -105,6 +113,17 @@ def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
         command.extend(["--device-address", args.device_address])
     for module_id in args.module:
         command.extend(["--module", module_id])
+    for source_arg, cli_arg in [
+        ("rmssd_baseline_ln_rmssd", "--rmssd-baseline-ln-rmssd"),
+        ("rmssd_baseline_mean_ln_rmssd", "--rmssd-baseline-mean-ln-rmssd"),
+        ("rmssd_baseline_sd_ln_rmssd", "--rmssd-baseline-sd-ln-rmssd"),
+        ("rmssd_baseline_window_count", "--rmssd-baseline-window-count"),
+    ]:
+        value = getattr(args, source_arg)
+        if value is not None:
+            command.extend([cli_arg, str(value)])
+    if args.rmssd_baseline_source:
+        command.extend(["--rmssd-baseline-source", args.rmssd_baseline_source])
     capture = run(command, allow_failure=True)
     validation = validate_evidence(args, out, "desktop")
     return validation if validation != 0 else capture.returncode
