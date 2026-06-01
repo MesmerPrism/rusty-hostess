@@ -1530,6 +1530,295 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_operator_start_preflight_action_drift",
         )
 
+    def test_builds_platform_smoke_execution_report_without_studio_or_schema_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        ) = ready_platform_smoke_operator_start_preflight_chain()
+
+        report = adapter.build_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        )
+
+        self.assertEqual(report["$schema"], adapter.PLATFORM_SMOKE_EXECUTION_REPORT_SCHEMA)
+        self.assertEqual(report["status"], adapter.COMPLETED_STATUS)
+        self.assertIsNone(report["issue_code"])
+        self.assertEqual(
+            report["execution_policy"],
+            adapter.PLATFORM_SMOKE_EXECUTION_REPORT_POLICY,
+        )
+        self.assertEqual(report["report_owner"], "rusty.hostess")
+        self.assertEqual(report["operator_start_owner"], "rusty.hostess")
+        self.assertEqual(report["host_shell_owner"], "rusty.hostess")
+        self.assertEqual(report["command_session_authority"], "rusty.manifold")
+        self.assertEqual(report["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertTrue(report["operator_start_preflight_approved"])
+        self.assertTrue(report["operator_started_outside_studio"])
+        self.assertTrue(report["operator_start_acknowledged"])
+        self.assertTrue(report["host_shell_started_outside_studio"])
+        self.assertTrue(report["host_shell_reported"])
+        self.assertTrue(report["requires_external_evidence"])
+        self.assertFalse(report["device_required"])
+        self.assertFalse(report["schema_path_execution_allowed"])
+        self.assertFalse(report["platform_execution_allowed"])
+        self.assertFalse(report["studio_execution_allowed"])
+        self.assertFalse(report["real_platform_execution_evidence_attached"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(report[flag], flag)
+        self.assertFalse(report["runtime_execution_performed"])
+        self.assertFalse(report["platform_execution_performed"])
+        self.assertEqual(
+            report["action_report_count"],
+            len(preflight["operator_start_action_decision_receipts"]),
+        )
+        self.assertEqual(
+            report["completed_action_report_count"],
+            len(preflight["operator_start_action_decision_receipts"]),
+        )
+        self.assertEqual(report["rejected_action_report_count"], 0)
+        self.assertEqual(
+            report["readiness_result_count"],
+            len(preflight["readiness_inputs"]),
+        )
+        self.assertEqual(
+            report["completed_readiness_result_count"],
+            len(preflight["readiness_inputs"]),
+        )
+        self.assertEqual(
+            report["evidence_placeholder_count"],
+            len(report["action_reports"]),
+        )
+        self.assertTrue(
+            all(
+                action["reported_status"] == adapter.COMPLETED_STATUS
+                and action["operator_started_outside_studio"] is True
+                and action["host_shell_reported"] is True
+                and action["requires_external_evidence"] is True
+                and action["studio_execution_allowed"] is False
+                and action["schema_path_execution_allowed"] is False
+                and action["execution_started"] is False
+                and action["runtime_execution_performed"] is False
+                and action["platform_execution_performed"] is False
+                and action["real_platform_execution_evidence_attached"] is False
+                for action in report["action_reports"]
+            )
+        )
+        self.assertTrue(
+            all(
+                item["result_status"] == adapter.COMPLETED_STATUS
+                and item["operator_supplied"] is True
+                and item["validated_for_report"] is True
+                and item["validated_for_execution"] is False
+                and item["schema_path_execution_allowed"] is False
+                and item["execution_started"] is False
+                for item in report["readiness_results"]
+            )
+        )
+        self.assertTrue(
+            all(
+                placeholder["evidence_status"] == adapter.PENDING_STATUS
+                and placeholder["collected"] is False
+                and placeholder["attached"] is False
+                and placeholder["collection_started"] is False
+                and placeholder["requires_external_attachment"] is True
+                and placeholder["schema_path_execution_allowed"] is False
+                and placeholder["runtime_execution_performed"] is False
+                and placeholder["platform_execution_performed"] is False
+                for placeholder in report["evidence_placeholders"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            report,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+        self.assertFalse(validation["real_platform_execution_evidence_attached"])
+
+    def test_platform_smoke_execution_report_rejection_without_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        ) = ready_platform_smoke_operator_start_preflight_chain()
+
+        report = adapter.build_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            outcome=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_platform_smoke_execution_report",
+        )
+
+        self.assertEqual(report["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            report["issue_code"],
+            "hostess.issue.operator_declined_platform_smoke_execution_report",
+        )
+        self.assertFalse(report["operator_start_preflight_approved"])
+        self.assertFalse(report["operator_started_outside_studio"])
+        self.assertFalse(report["operator_start_acknowledged"])
+        self.assertFalse(report["host_shell_started_outside_studio"])
+        self.assertFalse(report["host_shell_reported"])
+        self.assertFalse(report["execution_performed"])
+        self.assertFalse(report["runtime_execution_performed"])
+        self.assertFalse(report["platform_execution_performed"])
+        self.assertFalse(report["real_platform_execution_evidence_attached"])
+        self.assertEqual(report["completed_action_report_count"], 0)
+        self.assertEqual(
+            report["rejected_action_report_count"],
+            len(preflight["operator_start_action_decision_receipts"]),
+        )
+        self.assertEqual(report["completed_readiness_result_count"], 0)
+        self.assertEqual(
+            report["rejected_readiness_result_count"],
+            len(preflight["readiness_inputs"]),
+        )
+        self.assertTrue(
+            all(
+                action["reported_status"] == adapter.REJECTED_STATUS
+                and action["issue_code"]
+                == "hostess.issue.operator_declined_platform_smoke_execution_report"
+                and action["operator_started_outside_studio"] is False
+                and action["execution_started"] is False
+                for action in report["action_reports"]
+            )
+        )
+        self.assertTrue(
+            all(
+                placeholder["evidence_status"] == adapter.PENDING_STATUS
+                and placeholder["collected"] is False
+                and placeholder["attached"] is False
+                for placeholder in report["evidence_placeholders"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_execution_report(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+                preflight,
+                report,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_execution_report_validation_rejects_execution_or_contract_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        ) = ready_platform_smoke_operator_start_preflight_chain()
+        report = adapter.build_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        )
+
+        started = copy.deepcopy(report)
+        started["schema_path_execution_allowed"] = True
+        started_report = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_report_execution_started",
+        )
+
+        action_drift = copy.deepcopy(report)
+        action_drift["action_reports"][0]["owner"] = "rusty.studio"
+        action_drift["action_reports"][0]["route_kind"] = "studio.platform_smoke.launch"
+        action_drift["action_reports"][0]["expected_input_kind"] = "studio_owned_input"
+        action_report = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            action_drift,
+        )
+        self.assertEqual(action_report["status"], "fail")
+        self.assertEqual(
+            action_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_report_action_drift",
+        )
+
+        readiness_drift = copy.deepcopy(report)
+        readiness_drift["readiness_results"][0]["owner"] = "rusty.studio"
+        readiness_drift["readiness_results"][0]["input_kind"] = "studio_owned_input"
+        readiness_report = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            readiness_drift,
+        )
+        self.assertEqual(readiness_report["status"], "fail")
+        self.assertEqual(
+            readiness_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_report_readiness_drift",
+        )
+
+        evidence_drift = copy.deepcopy(report)
+        evidence_drift["evidence_placeholders"][0]["collected"] = True
+        evidence_drift["evidence_placeholders"][0]["required_evidence_kind"] = (
+            "studio_collected_evidence"
+        )
+        evidence_report = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            evidence_drift,
+        )
+        self.assertEqual(evidence_report["status"], "fail")
+        self.assertEqual(
+            evidence_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_report_evidence_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -1554,6 +1843,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             )
             operator_start_preflight_rejection_path = (
                 root / "platform-smoke-operator-start-preflight-rejection.json"
+            )
+            execution_report_path = root / "platform-smoke-execution-report.json"
+            execution_report_rejection_path = (
+                root / "platform-smoke-execution-report-rejection.json"
             )
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
@@ -1620,6 +1913,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(operator_start_preflight_rejection_path),
                     "--validate-platform-smoke-operator-start-preflight",
                     str(operator_start_preflight_path),
+                    "--platform-smoke-execution-report-out",
+                    str(execution_report_path),
+                    "--platform-smoke-execution-report-rejection-out",
+                    str(execution_report_rejection_path),
+                    "--validate-platform-smoke-execution-report",
+                    str(execution_report_path),
                     "--host-shell-kind",
                     "hostess.t.quest_host_shell.schema_gate",
                 ],
@@ -1690,6 +1989,17 @@ class StudioStagingRequestTests(unittest.TestCase):
             operator_start_preflight_report = json.loads(
                 operator_start_preflight_path.with_suffix(
                     operator_start_preflight_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            platform_execution_report = json.loads(
+                execution_report_path.read_text(encoding="utf-8")
+            )
+            platform_execution_report_rejection = json.loads(
+                execution_report_rejection_path.read_text(encoding="utf-8")
+            )
+            platform_execution_report_validation = json.loads(
+                execution_report_path.with_suffix(
+                    execution_report_path.suffix + ".validation.json"
                 ).read_text(encoding="utf-8")
             )
             self.assertEqual(report["status"], "accepted")
@@ -1803,6 +2113,34 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertEqual(
                 operator_start_preflight_rejection["rejected_readiness_input_count"],
                 len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+            )
+            self.assertEqual(platform_execution_report["status"], "completed")
+            self.assertTrue(platform_execution_report["operator_started_outside_studio"])
+            self.assertTrue(platform_execution_report["host_shell_started_outside_studio"])
+            self.assertFalse(platform_execution_report["execution_performed"])
+            self.assertFalse(platform_execution_report["schema_path_execution_allowed"])
+            self.assertFalse(platform_execution_report["platform_execution_performed"])
+            self.assertFalse(platform_execution_report["real_platform_execution_evidence_attached"])
+            self.assertEqual(
+                platform_execution_report["completed_action_report_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(
+                platform_execution_report["pending_evidence_placeholder_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(platform_execution_report_validation["status"], "pass")
+            self.assertEqual(platform_execution_report_rejection["status"], "rejected")
+            self.assertFalse(
+                platform_execution_report_rejection["operator_started_outside_studio"]
+            )
+            self.assertFalse(
+                platform_execution_report_rejection["host_shell_started_outside_studio"]
+            )
+            self.assertFalse(platform_execution_report_rejection["platform_execution_performed"])
+            self.assertEqual(
+                platform_execution_report_rejection["rejected_action_report_count"],
+                len(plan["planned_actions"]),
             )
 
 
@@ -1997,6 +2335,27 @@ def ready_platform_smoke_operator_start_chain() -> tuple[
         execution_receipt,
     )
     return plan, approval, execution_request, execution_receipt, gate
+
+
+def ready_platform_smoke_operator_start_preflight_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan, approval, execution_request, execution_receipt, gate = (
+        ready_platform_smoke_operator_start_chain()
+    )
+    preflight = adapter.build_platform_smoke_operator_start_preflight_receipt(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+    )
+    return plan, approval, execution_request, execution_receipt, gate, preflight
 
 
 if __name__ == "__main__":

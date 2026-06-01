@@ -48,7 +48,9 @@ python tools\studio_staging_request.py `
   --platform-smoke-execution-receipt-out <hostess-platform-smoke-execution-receipt.json> `
   --platform-smoke-operator-start-gate-out <hostess-platform-smoke-operator-start-gate.json> `
   --platform-smoke-operator-start-preflight-out <hostess-platform-smoke-operator-start-preflight.json> `
-  --platform-smoke-operator-start-preflight-rejection-out <hostess-platform-smoke-operator-start-preflight-rejection.json>
+  --platform-smoke-operator-start-preflight-rejection-out <hostess-platform-smoke-operator-start-preflight-rejection.json> `
+  --platform-smoke-execution-report-out <hostess-platform-smoke-execution-report.json> `
+  --platform-smoke-execution-report-rejection-out <hostess-platform-smoke-execution-report-rejection.json>
 ```
 
 The intake report uses
@@ -170,3 +172,17 @@ but this receipt still records `operator_started = false`,
 false`. It is a preflight approval/rejection contract only; the actual first
 build smoke test remains Hostess-owned, operator-started outside Studio, and
 separately evidenced.
+
+The platform smoke execution report uses
+`rusty.hostess.studio_staging_platform_smoke_execution_report.v1`. It consumes
+an approved operator-start preflight and records an operator-started external
+Hostess shell report, per-action completed/rejected report rows, readiness
+results, and pending evidence placeholders. It does not attach collected
+evidence and still records `device_required = false`,
+`schema_path_execution_allowed = false`, `platform_execution_allowed = false`,
+`studio_execution_allowed = false`, `execution_performed = false`,
+`runtime_execution_performed = false`, `platform_execution_performed = false`,
+and `real_platform_execution_evidence_attached = false`. The report is the
+next Hostess-owned handoff shape toward build readiness; real Quest/APK copy,
+stage, install, launch, and evidence collection remain outside Studio and must
+be evidenced by a later Hostess-owned shell or Quest host.
