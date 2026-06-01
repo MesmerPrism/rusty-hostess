@@ -29,6 +29,10 @@ SMOKE_REVIEW_BUNDLE_SCHEMA = "rusty.hostess.studio_staging_smoke_review_bundle.v
 SMOKE_REVIEW_BUNDLE_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_smoke_review_bundle_validation.v1"
 )
+PLATFORM_SMOKE_PLAN_SCHEMA = "rusty.hostess.studio_staging_platform_smoke_plan.v1"
+PLATFORM_SMOKE_PLAN_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_plan_validation.v1"
+)
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
@@ -37,6 +41,7 @@ REJECTED_STATUS = "rejected"
 PENDING_STATUS = "pending"
 COMPLETED_STATUS = "completed"
 REVIEWED_STATUS = "reviewed"
+PLANNED_STATUS = "planned"
 PASS_STATUS = "pass"
 FAIL_STATUS = "fail"
 
@@ -47,6 +52,7 @@ STUDIO_ROLE = "authoring.export_planning"
 REQUEST_POLICY = "not_executed.hostess_request_only"
 HOST_SHELL_EXECUTION_POLICY = "hostess.no_device_host_shell_schema_execution_only"
 SMOKE_REVIEW_BUNDLE_POLICY = "hostess.no_device_review_bundle_only"
+PLATFORM_SMOKE_PLAN_POLICY = "hostess.operator_controlled_platform_smoke_plan_only"
 
 REQUIRED_PROHIBITED_ACTIONS = [
     "stage_generated_shells",
@@ -207,6 +213,63 @@ SMOKE_PREFLIGHT_CAPABILITY_CONTRACTS = [
         "owner": HOSTESS_OWNER,
         "route_kind": "hostess.preflight.no_device_runtime_guard",
         "evidence_kind": "hostess_smoke_execution_preflight",
+    },
+]
+
+PLATFORM_SMOKE_PLAN_ACTION_CONTRACTS = [
+    {
+        "plan_action_id": "hostess.platform_smoke.review_bundle_gate",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.platform_smoke.review_bundle_gate",
+        "action_kind": "hostess_operator_review_gate",
+        "approval_kind": "operator.reviewed_bundle_acceptance",
+        "expected_input_kind": "hostess_smoke_review_bundle",
+        "expected_output_kind": "hostess_platform_smoke_plan_gate",
+    },
+    {
+        "plan_action_id": "hostess.platform_smoke.copy_stage_files",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.platform_smoke.copy_stage_files",
+        "action_kind": "hostess_copy_stage_plan",
+        "approval_kind": "operator.copy_stage_approval",
+        "expected_input_kind": "hostess_smoke_review_bundle",
+        "expected_output_kind": "hostess_copy_stage_receipt",
+    },
+    {
+        "plan_action_id": "hostess.platform_smoke.install_package",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.platform_smoke.install_package",
+        "action_kind": "hostess_install_plan",
+        "approval_kind": "operator.install_approval",
+        "expected_input_kind": "hostess_copy_stage_receipt",
+        "expected_output_kind": "hostess_install_receipt",
+    },
+    {
+        "plan_action_id": "hostess.platform_smoke.launch_package",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.platform_smoke.launch_package",
+        "action_kind": "hostess_launch_plan",
+        "approval_kind": "operator.launch_approval",
+        "expected_input_kind": "hostess_install_receipt",
+        "expected_output_kind": "hostess_launch_receipt",
+    },
+    {
+        "plan_action_id": "hostess.platform_smoke.collect_install_launch_evidence",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.platform_smoke.collect_install_launch_evidence",
+        "action_kind": "hostess_evidence_plan",
+        "approval_kind": "operator.evidence_collection_approval",
+        "expected_input_kind": "hostess_launch_receipt",
+        "expected_output_kind": "hostess_install_launch_evidence_bundle",
+    },
+    {
+        "plan_action_id": "manifold.platform_smoke.review_command_session_contract",
+        "owner": MANIFOLD_OWNER,
+        "route_kind": "manifold.review.command_session_contract",
+        "action_kind": "manifold_command_session_contract_review_plan",
+        "approval_kind": "operator.command_session_review_approval",
+        "expected_input_kind": "hostess_smoke_review_bundle",
+        "expected_output_kind": "manifold_command_session_contract_review",
     },
 ]
 
@@ -2015,6 +2078,425 @@ def first_bundle_record_issue_code(records: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def build_platform_smoke_plan(
+    bundle: dict[str, Any],
+    target_platform: str = "hostess.platform_smoke.operator_controlled",
+) -> dict[str, Any]:
+    bundle_validation = validate_smoke_review_bundle(bundle)
+    bundle_records = smoke_review_bundle_record_dicts(bundle)
+    actions = platform_smoke_plan_actions(bundle, bundle_validation, bundle_records)
+    approvals = platform_smoke_plan_approvals(actions)
+    checks = platform_smoke_plan_checks(bundle, bundle_validation, bundle_records, actions)
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    bundle_id = bundle.get("bundle_id")
+    plan_id = (
+        f"hostess.platform_smoke_plan.{bundle_id}"
+        if isinstance(bundle_id, str) and bundle_id
+        else "hostess.platform_smoke_plan.unknown"
+    )
+    planned_actions = [action for action in actions if action.get("status") == PLANNED_STATUS]
+    blocked_actions = [action for action in actions if action.get("status") == BLOCKED_STATUS]
+
+    return {
+        "$schema": PLATFORM_SMOKE_PLAN_SCHEMA,
+        "plan_id": plan_id,
+        "source_bundle_id": bundle_id,
+        "source_execution_id": bundle.get("source_execution_id"),
+        "preflight_id": bundle.get("preflight_id"),
+        "dry_run_request_id": bundle.get("dry_run_request_id"),
+        "dry_run_receipt_id": bundle.get("dry_run_receipt_id"),
+        "smoke_handoff_id": bundle.get("smoke_handoff_id"),
+        "source_request_id": bundle.get("source_request_id"),
+        "target_profile": bundle.get("target_profile"),
+        "target_platform": target_platform,
+        "status": PLANNED_STATUS if not failed else BLOCKED_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_policy": PLATFORM_SMOKE_PLAN_POLICY,
+        "plan_owner": HOSTESS_OWNER,
+        "platform_owner": HOSTESS_OWNER,
+        "bundle_owner": bundle.get("bundle_owner"),
+        "reviewer_owner": bundle.get("reviewer_owner"),
+        "requester_role": bundle.get("requester_role"),
+        "command_session_authority": bundle.get("command_session_authority"),
+        "install_launch_evidence_authority": bundle.get("install_launch_evidence_authority"),
+        "studio_role": bundle.get("studio_role"),
+        "host_shell_owner": bundle.get("host_shell_owner"),
+        "device_required": False,
+        "target_device_required_for_future_execution": True,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "operator_approval_required_before_execution": True,
+        "operator_approved": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_bundle_status": bundle.get("status"),
+        "source_bundle_validation_status": bundle_validation.get("status"),
+        "source_bundle_issue_code": bundle.get("issue_code") or bundle_validation.get("issue_code"),
+        "source_bundle_record_count": len(bundle_records),
+        "planned_action_count": len(actions),
+        "ready_planned_action_count": len(planned_actions),
+        "blocked_planned_action_count": len(blocked_actions),
+        "required_approval_count": len(approvals),
+        "operator_approved_count": 0,
+        "source_bundle_records": bundle_records,
+        "required_approvals": approvals,
+        "planned_actions": actions,
+        "checks": checks,
+        "next_required_action": (
+            "operator_approve_platform_smoke_plan_outside_studio"
+            if not failed
+            else "repair_hostess_smoke_review_bundle"
+        ),
+    }
+
+
+def validate_platform_smoke_plan(plan: dict[str, Any]) -> dict[str, Any]:
+    actions = platform_smoke_plan_action_dicts(plan)
+    approvals = plan.get("required_approvals", [])
+    if not isinstance(approvals, list):
+        approvals = []
+    approval_dicts = [approval for approval in approvals if isinstance(approval, dict)]
+    source_records = plan.get("source_bundle_records", [])
+    if not isinstance(source_records, list):
+        source_records = []
+    source_record_dicts = [record for record in source_records if isinstance(record, dict)]
+    embedded_checks = plan.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    planned_actions = [action for action in actions if action.get("status") == PLANNED_STATUS]
+    blocked_actions = [action for action in actions if action.get("status") == BLOCKED_STATUS]
+    approved = [approval for approval in approval_dicts if approval.get("operator_approved") is True]
+    checks = [
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.schema",
+            plan.get("$schema") == PLATFORM_SMOKE_PLAN_SCHEMA,
+            "platform smoke plan schema is supported",
+            "platform smoke plan schema is unsupported",
+            "hostess.issue.platform_smoke_plan_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.status",
+            plan.get("status") in {PLANNED_STATUS, BLOCKED_STATUS},
+            "platform smoke plan status is supported",
+            "platform smoke plan status is unsupported",
+            "hostess.issue.platform_smoke_plan_status",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.execution_policy",
+            plan.get("execution_policy") == PLATFORM_SMOKE_PLAN_POLICY,
+            "platform smoke plan is operator-controlled and plan-only",
+            "platform smoke plan execution policy drifted",
+            "hostess.issue.platform_smoke_plan_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.no_execution_started",
+            all(plan.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and plan.get("runtime_execution_performed") is False
+            and plan.get("platform_execution_performed") is False,
+            "platform smoke plan has not started runtime or platform work",
+            "platform smoke plan indicates runtime or platform work started",
+            "hostess.issue.platform_smoke_plan_execution_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.no_schema_path_execution",
+            plan.get("device_required") is False
+            and plan.get("schema_path_execution_allowed") is False
+            and plan.get("platform_execution_allowed") is False
+            and plan.get("studio_execution_allowed") is False,
+            "platform smoke plan keeps schema path and Studio execution disabled",
+            "platform smoke plan allows schema path, platform, or Studio execution",
+            "hostess.issue.platform_smoke_plan_execution_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.authority",
+            plan.get("plan_owner") == HOSTESS_OWNER
+            and plan.get("platform_owner") == HOSTESS_OWNER
+            and plan.get("bundle_owner") == HOSTESS_OWNER
+            and plan.get("reviewer_owner") == HOSTESS_OWNER
+            and plan.get("requester_role") == STUDIO_REQUESTER
+            and plan.get("command_session_authority") == MANIFOLD_OWNER
+            and plan.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and plan.get("studio_role") == STUDIO_ROLE
+            and plan.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.source_bundle",
+            plan.get("status") != PLANNED_STATUS
+            or (
+                plan.get("source_bundle_status") == REVIEWED_STATUS
+                and plan.get("source_bundle_validation_status") == PASS_STATUS
+            ),
+            "planned source review bundle is reviewed and validates",
+            "source review bundle is blocked or invalid",
+            plan.get("source_bundle_issue_code") or "hostess.issue.smoke_review_bundle_not_reviewed",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.action_contracts",
+            platform_smoke_plan_actions_match_contracts(actions),
+            "platform smoke plan actions match Hostess and Manifold contracts",
+            "platform smoke plan actions drifted",
+            "hostess.issue.platform_smoke_plan_action_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.action_execution",
+            all(platform_smoke_action_unstarted(action) for action in actions),
+            "platform smoke plan actions have not started execution",
+            "platform smoke plan action indicates execution started",
+            "hostess.issue.platform_smoke_plan_action_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.approvals",
+            platform_smoke_plan_approvals_match_actions(actions, approval_dicts),
+            "platform smoke plan approvals match planned actions and are not approved yet",
+            "platform smoke plan approvals drifted or were pre-approved",
+            "hostess.issue.platform_smoke_plan_approval_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.counts",
+            plan.get("source_bundle_record_count") == len(source_record_dicts)
+            and plan.get("planned_action_count") == len(actions)
+            and plan.get("ready_planned_action_count") == len(planned_actions)
+            and plan.get("blocked_planned_action_count") == len(blocked_actions)
+            and plan.get("required_approval_count") == len(approval_dicts)
+            and plan.get("operator_approved_count") == len(approved),
+            "platform smoke plan counts match actions and approvals",
+            "platform smoke plan counts drifted",
+            "hostess.issue.platform_smoke_plan_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.planned_consistency",
+            plan.get("status") != PLANNED_STATUS
+            or (
+                all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(action.get("status") == PLANNED_STATUS for action in actions)
+                and all(approval.get("operator_approved") is False for approval in approval_dicts)
+            ),
+            "planned platform smoke plan has passing checks, planned actions, and pending approvals",
+            "planned platform smoke plan has failed checks, blocked actions, or approved actions",
+            "hostess.issue.platform_smoke_plan_planned_inconsistent",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": PLATFORM_SMOKE_PLAN_VALIDATION_SCHEMA,
+        "plan_id": plan.get("plan_id"),
+        "source_bundle_id": plan.get("source_bundle_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def platform_smoke_plan_actions(
+    bundle: dict[str, Any],
+    bundle_validation: dict[str, Any],
+    bundle_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    bundle_ready = (
+        bundle.get("status") == REVIEWED_STATUS
+        and bundle_validation.get("status") == PASS_STATUS
+        and all(record.get("review_status") == REVIEWED_STATUS for record in bundle_records)
+    )
+    actions = []
+    for contract in PLATFORM_SMOKE_PLAN_ACTION_CONTRACTS:
+        issue_code = None
+        if not bundle_ready:
+            issue_code = (
+                bundle.get("issue_code")
+                or bundle_validation.get("issue_code")
+                or first_bundle_record_issue_code(bundle_records)
+                or "hostess.issue.smoke_review_bundle_not_reviewed"
+            )
+        actions.append(
+            {
+                "plan_action_id": contract["plan_action_id"],
+                "owner": contract["owner"],
+                "status": PLANNED_STATUS if issue_code is None else BLOCKED_STATUS,
+                "issue_code": issue_code,
+                "route_kind": contract["route_kind"],
+                "action_kind": contract["action_kind"],
+                "approval_kind": contract["approval_kind"],
+                "expected_input_kind": contract["expected_input_kind"],
+                "expected_output_kind": contract["expected_output_kind"],
+                "approval_required": True,
+                "operator_approved": False,
+                "execution_started": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "studio_execution_allowed": False,
+                "command_session_started": False,
+            }
+        )
+    return actions
+
+
+def platform_smoke_plan_checks(
+    bundle: dict[str, Any],
+    bundle_validation: dict[str, Any],
+    bundle_records: list[dict[str, Any]],
+    actions: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.source_bundle",
+            bundle.get("$schema") == SMOKE_REVIEW_BUNDLE_SCHEMA
+            and bundle.get("status") == REVIEWED_STATUS
+            and bundle_validation.get("status") == PASS_STATUS,
+            "smoke review bundle is reviewed and validates",
+            "smoke review bundle is blocked or invalid",
+            bundle.get("issue_code")
+            or bundle_validation.get("issue_code")
+            or "hostess.issue.smoke_review_bundle_not_reviewed",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.authority",
+            bundle.get("bundle_owner") == HOSTESS_OWNER
+            and bundle.get("reviewer_owner") == HOSTESS_OWNER
+            and bundle.get("requester_role") == STUDIO_REQUESTER
+            and bundle.get("command_session_authority") == MANIFOLD_OWNER
+            and bundle.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and bundle.get("studio_role") == STUDIO_ROLE
+            and bundle.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.no_runtime_started",
+            all(bundle.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and bundle.get("runtime_execution_performed") is False
+            and bundle.get("platform_execution_performed") is False,
+            "smoke review bundle did not start runtime or platform work",
+            "smoke review bundle indicates runtime or platform work started",
+            "hostess.issue.platform_smoke_plan_execution_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.bundle_records",
+            all(record.get("review_status") == REVIEWED_STATUS for record in bundle_records),
+            "source bundle records are reviewed",
+            "source bundle records are blocked",
+            first_bundle_record_issue_code(bundle_records)
+            or "hostess.issue.smoke_review_bundle_records_blocked",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.action_contracts",
+            platform_smoke_plan_actions_match_contracts(actions),
+            "platform smoke plan actions match Hostess and Manifold contracts",
+            "platform smoke plan actions drifted",
+            "hostess.issue.platform_smoke_plan_action_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_plan.no_action_execution",
+            all(platform_smoke_action_unstarted(action) for action in actions),
+            "platform smoke plan actions have not started execution",
+            "platform smoke plan action indicates execution started",
+            "hostess.issue.platform_smoke_plan_action_started",
+        ),
+    ]
+
+
+def platform_smoke_plan_action_dicts(plan: dict[str, Any]) -> list[dict[str, Any]]:
+    actions = plan.get("planned_actions", [])
+    if not isinstance(actions, list):
+        return []
+    return [action for action in actions if isinstance(action, dict)]
+
+
+def platform_smoke_plan_actions_match_contracts(actions: list[dict[str, Any]]) -> bool:
+    by_id = {action.get("plan_action_id"): action for action in actions}
+    if len(actions) != len(PLATFORM_SMOKE_PLAN_ACTION_CONTRACTS):
+        return False
+    for contract in PLATFORM_SMOKE_PLAN_ACTION_CONTRACTS:
+        action = by_id.get(contract["plan_action_id"])
+        if not isinstance(action, dict):
+            return False
+        for key in (
+            "owner",
+            "route_kind",
+            "action_kind",
+            "approval_kind",
+            "expected_input_kind",
+            "expected_output_kind",
+        ):
+            if action.get(key) != contract[key]:
+                return False
+        if action.get("approval_required") is not True:
+            return False
+    return True
+
+
+def platform_smoke_action_unstarted(action: dict[str, Any]) -> bool:
+    return (
+        action.get("execution_started") is False
+        and action.get("runtime_execution_performed") is False
+        and action.get("platform_execution_performed") is False
+        and action.get("studio_execution_allowed") is False
+        and action.get("command_session_started") is False
+    )
+
+
+def platform_smoke_plan_approvals(actions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    approvals = []
+    for action in actions:
+        action_id = action.get("plan_action_id")
+        approvals.append(
+            {
+                "approval_id": (
+                    f"hostess.platform_smoke_approval.{action_id}"
+                    if isinstance(action_id, str) and action_id
+                    else "hostess.platform_smoke_approval.unknown"
+                ),
+                "source_plan_action_id": action_id,
+                "owner": HOSTESS_OWNER,
+                "approval_kind": action.get("approval_kind"),
+                "approval_required": True,
+                "operator_approved": False,
+                "execution_allowed_after_approval": True,
+                "execution_started": False,
+            }
+        )
+    return approvals
+
+
+def platform_smoke_plan_approvals_match_actions(
+    actions: list[dict[str, Any]],
+    approvals: list[dict[str, Any]],
+) -> bool:
+    by_id = {approval.get("source_plan_action_id"): approval for approval in approvals}
+    if len(approvals) != len(actions):
+        return False
+    for action in actions:
+        approval = by_id.get(action.get("plan_action_id"))
+        if not isinstance(approval, dict):
+            return False
+        if approval.get("owner") != HOSTESS_OWNER:
+            return False
+        if approval.get("approval_kind") != action.get("approval_kind"):
+            return False
+        if approval.get("approval_required") is not True:
+            return False
+        if approval.get("operator_approved") is not False:
+            return False
+        if approval.get("execution_started") is not False:
+            return False
+    return True
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -2324,8 +2806,11 @@ def main() -> int:
     parser.add_argument("--smoke-preflight-out", type=Path)
     parser.add_argument("--smoke-host-shell-execution-in", type=Path)
     parser.add_argument("--smoke-host-shell-execution-out", type=Path)
+    parser.add_argument("--smoke-review-bundle-in", type=Path)
     parser.add_argument("--smoke-review-bundle-out", type=Path)
+    parser.add_argument("--platform-smoke-plan-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
+    parser.add_argument("--target-platform", default="hostess.platform_smoke.operator_controlled")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
     parser.add_argument("--validate-smoke-handoff", type=Path)
@@ -2334,6 +2819,7 @@ def main() -> int:
     parser.add_argument("--validate-smoke-preflight", type=Path)
     parser.add_argument("--validate-smoke-host-shell-execution", type=Path)
     parser.add_argument("--validate-smoke-review-bundle", type=Path)
+    parser.add_argument("--validate-platform-smoke-plan", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -2346,6 +2832,7 @@ def main() -> int:
     host_shell_execution = (
         load_json(args.smoke_host_shell_execution_in) if args.smoke_host_shell_execution_in else None
     )
+    smoke_review_bundle = load_json(args.smoke_review_bundle_in) if args.smoke_review_bundle_in else None
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -2373,6 +2860,7 @@ def main() -> int:
         or args.smoke_preflight_out
         or args.smoke_host_shell_execution_out
         or args.smoke_review_bundle_out
+        or args.platform_smoke_plan_out
     ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -2431,9 +2919,31 @@ def main() -> int:
                 )
             if host_shell_execution is None:
                 host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            if smoke_review_bundle is None:
+                smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
             write_json(
                 args.smoke_review_bundle_out,
-                build_smoke_review_bundle(host_shell_execution),
+                smoke_review_bundle,
+            )
+        if args.platform_smoke_plan_out:
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            if smoke_review_bundle is None:
+                smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
+            write_json(
+                args.platform_smoke_plan_out,
+                build_platform_smoke_plan(
+                    smoke_review_bundle,
+                    target_platform=args.target_platform,
+                ),
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -2507,6 +3017,14 @@ def main() -> int:
                 args.validate_smoke_review_bundle.suffix + ".validation.json"
             ),
             bundle_report,
+        )
+    if args.validate_platform_smoke_plan:
+        plan_report = validate_platform_smoke_plan(load_json(args.validate_platform_smoke_plan))
+        write_json(
+            args.validate_platform_smoke_plan.with_suffix(
+                args.validate_platform_smoke_plan.suffix + ".validation.json"
+            ),
+            plan_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 

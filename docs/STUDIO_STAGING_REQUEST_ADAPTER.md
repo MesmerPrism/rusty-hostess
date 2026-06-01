@@ -40,7 +40,8 @@ python tools\studio_staging_request.py `
   --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json> `
   --smoke-preflight-out <hostess-smoke-preflight.json> `
   --smoke-host-shell-execution-out <hostess-smoke-host-shell-execution.json> `
-  --smoke-review-bundle-out <hostess-smoke-review-bundle.json>
+  --smoke-review-bundle-out <hostess-smoke-review-bundle.json> `
+  --platform-smoke-plan-out <hostess-platform-smoke-plan.json>
 ```
 
 The intake report uses
@@ -90,3 +91,12 @@ records `review_bundle_written = true` and
 `operator_review_required_before_platform_smoke = true`, while device,
 platform, Studio, build, copy, stage, install, launch, evidence collection, and
 command-session execution remain disabled.
+
+The operator-controlled platform smoke plan uses
+`rusty.hostess.studio_staging_platform_smoke_plan.v1`. It consumes the reviewed
+bundle and names future Hostess/Manifold copy, stage, install, launch,
+evidence, and command-session review actions plus required operator approvals.
+The plan records `operator_approved = false`, `schema_path_execution_allowed =
+false`, `platform_execution_allowed = false`, and
+`studio_execution_allowed = false`; it is a plan and approval surface, not an
+execution command.

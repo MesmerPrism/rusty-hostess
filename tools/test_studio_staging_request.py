@@ -634,6 +634,128 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.smoke_review_bundle_reviewed_inconsistent",
         )
 
+    def test_builds_operator_controlled_platform_smoke_plan_without_execution(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+            target_profile="hostess.t.desktop.schema_smoke",
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+        bundle = adapter.build_smoke_review_bundle(execution)
+
+        plan = adapter.build_platform_smoke_plan(
+            bundle,
+            target_platform="hostess.quest.operator_controlled_smoke_plan",
+        )
+
+        self.assertEqual(plan["$schema"], adapter.PLATFORM_SMOKE_PLAN_SCHEMA)
+        self.assertEqual(plan["status"], "planned")
+        self.assertIsNone(plan["issue_code"])
+        self.assertEqual(plan["execution_policy"], adapter.PLATFORM_SMOKE_PLAN_POLICY)
+        self.assertEqual(plan["plan_owner"], "rusty.hostess")
+        self.assertEqual(plan["platform_owner"], "rusty.hostess")
+        self.assertEqual(plan["command_session_authority"], "rusty.manifold")
+        self.assertEqual(plan["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertFalse(plan["device_required"])
+        self.assertTrue(plan["target_device_required_for_future_execution"])
+        self.assertFalse(plan["schema_path_execution_allowed"])
+        self.assertFalse(plan["platform_execution_allowed"])
+        self.assertFalse(plan["studio_execution_allowed"])
+        self.assertTrue(plan["operator_approval_required_before_execution"])
+        self.assertFalse(plan["operator_approved"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(plan[flag], flag)
+        self.assertEqual(
+            [action["plan_action_id"] for action in plan["planned_actions"]],
+            [
+                contract["plan_action_id"]
+                for contract in adapter.PLATFORM_SMOKE_PLAN_ACTION_CONTRACTS
+            ],
+        )
+        self.assertEqual(plan["planned_action_count"], len(plan["planned_actions"]))
+        self.assertEqual(plan["ready_planned_action_count"], len(plan["planned_actions"]))
+        self.assertEqual(plan["blocked_planned_action_count"], 0)
+        self.assertEqual(plan["required_approval_count"], len(plan["planned_actions"]))
+        self.assertEqual(plan["operator_approved_count"], 0)
+        self.assertTrue(
+            all(
+                action["status"] == "planned"
+                and action["approval_required"] is True
+                and action["operator_approved"] is False
+                and action["execution_started"] is False
+                and action["platform_execution_performed"] is False
+                and action["studio_execution_allowed"] is False
+                for action in plan["planned_actions"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_plan(plan)
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_platform_smoke_plan_blocks_invalid_review_bundle(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+        bundle = adapter.build_smoke_review_bundle(execution)
+        bundle["status"] = "blocked"
+        bundle["issue_code"] = "hostess.issue.operator_rejected_smoke_bundle"
+
+        plan = adapter.build_platform_smoke_plan(bundle)
+
+        self.assertEqual(plan["status"], "blocked")
+        self.assertEqual(
+            plan["issue_code"],
+            "hostess.issue.operator_rejected_smoke_bundle",
+        )
+        self.assertGreater(plan["blocked_planned_action_count"], 0)
+        self.assertEqual(adapter.validate_platform_smoke_plan(plan)["status"], "pass")
+
+    def test_platform_smoke_plan_validation_rejects_execution_or_approval_drift(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+        bundle = adapter.build_smoke_review_bundle(execution)
+        plan = adapter.build_platform_smoke_plan(bundle)
+
+        started = copy.deepcopy(plan)
+        started["planned_actions"][0]["execution_started"] = True
+        started_report = adapter.validate_platform_smoke_plan(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_plan_action_started",
+        )
+
+        approved = copy.deepcopy(plan)
+        approved["required_approvals"][0]["operator_approved"] = True
+        approved_report = adapter.validate_platform_smoke_plan(approved)
+        self.assertEqual(approved_report["status"], "fail")
+        self.assertEqual(
+            approved_report["issue_code"],
+            "hostess.issue.platform_smoke_plan_approval_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -647,6 +769,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             preflight_path = root / "smoke-preflight.json"
             execution_path = root / "smoke-host-shell-execution.json"
             bundle_path = root / "smoke-review-bundle.json"
+            plan_path = root / "platform-smoke-plan.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -682,6 +805,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(bundle_path),
                     "--validate-smoke-review-bundle",
                     str(bundle_path),
+                    "--platform-smoke-plan-out",
+                    str(plan_path),
+                    "--target-platform",
+                    "hostess.quest.operator_controlled_smoke_plan",
+                    "--validate-platform-smoke-plan",
+                    str(plan_path),
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -707,6 +836,12 @@ class StudioStagingRequestTests(unittest.TestCase):
             bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
             bundle_report = json.loads(
                 bundle_path.with_suffix(bundle_path.suffix + ".validation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
+            plan_report = json.loads(
+                plan_path.with_suffix(plan_path.suffix + ".validation.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -738,6 +873,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertFalse(bundle["platform_execution_performed"])
             self.assertTrue(bundle["review_bundle_written"])
             self.assertEqual(bundle_report["status"], "pass")
+            self.assertEqual(plan["status"], "planned")
+            self.assertFalse(plan["platform_execution_performed"])
+            self.assertFalse(plan["operator_approved"])
+            self.assertEqual(plan_report["status"], "pass")
 
 
 def valid_request() -> dict[str, object]:
