@@ -2404,6 +2404,73 @@ class StudioStagingRequestTests(unittest.TestCase):
             "pass",
         )
 
+    def test_projected_motion_breath_validation_handoff_accepts_source_adapter_selection(
+        self,
+    ) -> None:
+        source_selection = ready_pmb_source_adapter_selection_review()
+
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            ready_pmb_authoring_review(),
+            ready_pmb_package_evidence_intake(),
+            Path("fixtures/projected-motion-breath/authoring-review.json"),
+            Path("fixtures/projected-motion-breath/package-evidence-intake.json"),
+            source_selection,
+            Path("fixtures/projected-motion-breath/source-adapter-selection.json"),
+        )
+
+        self.assertEqual(handoff["status"], "ready")
+        self.assertTrue(handoff["source_adapter_selection_present"])
+        self.assertEqual(
+            handoff["source_adapter_selection_schema"],
+            adapter.STUDIO_PMB_SOURCE_ADAPTER_SELECTION_REVIEW_SCHEMA,
+        )
+        self.assertEqual(
+            handoff["selected_adapter_id"],
+            "adapter.projected_motion_breath.external_patch_stream_bridge_shape",
+        )
+        self.assertEqual(handoff["selected_input_kind"], "vector3")
+        self.assertEqual(handoff["selected_output_stream_id"], "stream.motion.vector3")
+        self.assertEqual(
+            handoff["validation_slot_count"],
+            len(adapter.PMB_VALIDATION_SLOT_CONTRACTS) + 1,
+        )
+        self.assertIn(
+            "hostess.pmb.review_source_adapter_selection",
+            {slot["slot_id"] for slot in handoff["validation_slots"]},
+        )
+        self.assertTrue(
+            all(slot["execution_started"] is False for slot in handoff["validation_slots"])
+        )
+
+        validation = adapter.validate_projected_motion_breath_validation_handoff(handoff)
+        self.assertEqual(validation["status"], "pass")
+
+    def test_projected_motion_breath_validation_handoff_blocks_bad_source_adapter_selection(
+        self,
+    ) -> None:
+        source_selection = ready_pmb_source_adapter_selection_review()
+        source_selection["selected_output_stream_id"] = "stream.motion.object_pose"
+
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            ready_pmb_authoring_review(),
+            ready_pmb_package_evidence_intake(),
+            source_adapter_selection_review=source_selection,
+        )
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertEqual(
+            handoff["issue_code"],
+            "hostess.issue.projected_motion_breath_source_adapter_selection_stream",
+        )
+        self.assertEqual(
+            handoff["blocked_validation_slot_count"],
+            len(adapter.PMB_VALIDATION_SLOT_CONTRACTS) + 1,
+        )
+        self.assertEqual(
+            adapter.validate_projected_motion_breath_validation_handoff(handoff)["status"],
+            "pass",
+        )
+
     def test_projected_motion_breath_validation_handoff_validation_rejects_execution_or_slot_drift(
         self,
     ) -> None:
@@ -2780,6 +2847,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             report_path = root / "report.json"
             package_evidence_path = root / "pmb-package-evidence-intake.json"
             authoring_review_path = root / "pmb-authoring-review.json"
+            source_adapter_selection_path = root / "pmb-source-adapter-selection.json"
             handoff_path = root / "pmb-validation-handoff.json"
             replay_receipt_path = root / "pmb-replay-validation-receipt.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
@@ -2789,6 +2857,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             )
             authoring_review_path.write_text(
                 json.dumps(ready_pmb_authoring_review()),
+                encoding="utf-8",
+            )
+            source_adapter_selection_path.write_text(
+                json.dumps(ready_pmb_source_adapter_selection_review()),
                 encoding="utf-8",
             )
 
@@ -2805,6 +2877,8 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(authoring_review_path),
                     "--pmb-package-evidence-intake-in",
                     str(package_evidence_path),
+                    "--pmb-source-adapter-selection-in",
+                    str(source_adapter_selection_path),
                     "--pmb-validation-handoff-out",
                     str(handoff_path),
                     "--validate-pmb-validation-handoff",
@@ -2831,6 +2905,9 @@ class StudioStagingRequestTests(unittest.TestCase):
             )
             self.assertEqual(handoff["status"], "ready")
             self.assertEqual(handoff["handoff_owner"], "rusty.hostess")
+            self.assertTrue(handoff["source_adapter_selection_present"])
+            self.assertEqual(handoff["selected_input_kind"], "vector3")
+            self.assertEqual(handoff["validation_slot_count"], 5)
             self.assertFalse(handoff["platform_execution_performed"])
             self.assertEqual(validation["status"], "pass")
             self.assertEqual(replay_receipt["status"], "validated")
@@ -3462,6 +3539,52 @@ def ready_pmb_authoring_review() -> dict[str, object]:
         "proposed_command_id": adapter.PMB_PROPOSED_COMMAND_ID,
         "proposed_profile_operation": "propose_profile_for_runtime_owner_review",
         "required_package_checks": copy.copy(adapter.PMB_REQUIRED_PACKAGE_CHECKS),
+        "prohibited_actions": [
+            "build",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "start_runtime_package",
+        ],
+        "checks": [],
+    }
+
+
+def ready_pmb_source_adapter_selection_review() -> dict[str, object]:
+    return {
+        "$schema": adapter.STUDIO_PMB_SOURCE_ADAPTER_SELECTION_REVIEW_SCHEMA,
+        "source_authoring_review_schema": adapter.STUDIO_PMB_AUTHORING_REVIEW_SCHEMA,
+        "source_authoring_review_path": (
+            "fixtures/projected-motion-breath/pmb-authoring-review.json"
+        ),
+        "source_descriptor_schema": (
+            "rusty.manifold.projected_motion_breath.source_adapter_descriptors.v1"
+        ),
+        "source_descriptor_path": (
+            "fixtures/projected-motion-breath/source-adapter-descriptors.json"
+        ),
+        "target_package_id": adapter.PMB_TARGET_PACKAGE_ID,
+        "target_module_id": adapter.PMB_TARGET_MODULE_ID,
+        "profile_id": "profile.projected_motion_breath.synthetic_default",
+        "selected_adapter_id": (
+            "adapter.projected_motion_breath.external_patch_stream_bridge_shape"
+        ),
+        "selected_source_kind": "external_patch_stream_bridge",
+        "selected_input_kind": "vector3",
+        "selected_output_stream_id": "stream.motion.vector3",
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.proposal_only",
+        "runtime_authority": "rusty.manifold",
+        "authoring_authority": "rusty.studio",
+        "platform_validation_authority": "rusty.hostess",
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "source_authoring_review_status": "ready",
+        "source_descriptor_count": 5,
+        "matching_descriptor_count": 1,
+        "proposal_kind": "propose_source_adapter_for_runtime_owner_review",
         "prohibited_actions": [
             "build",
             "install",
