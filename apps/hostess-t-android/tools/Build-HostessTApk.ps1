@@ -46,6 +46,8 @@ foreach ($tool in @($platformJar, $aapt2, $d8, $zipalign, $apksigner, $javac, $j
 $classesDir = Join-Path $OutDir "classes"
 $dexDir = Join-Path $OutDir "dex"
 $assetsDir = Join-Path $OutDir "assets"
+$adapterBuildRoot = Join-Path $OutDir "native-adapter"
+$pmbAdapterBuildRoot = Join-Path $OutDir "native-pmb-adapter"
 $nativeTargetDir = Join-Path $OutDir "native-target"
 $nativeLibRoot = Join-Path $OutDir "native-libs"
 $classesJar = Join-Path $OutDir "classes.jar"
@@ -68,6 +70,26 @@ if (-not (Test-Path (Join-Path $packageSource "manifests\package.manifold.json")
     throw "Could not find polar-h10 package manifests under $PackagesRoot"
 }
 
+$pmbPackageSource = Join-Path $PackagesRoot "packages\projected-motion-breath"
+if (-not (Test-Path $pmbPackageSource) -and (Split-Path -Leaf $PackagesRoot) -eq "projected-motion-breath") {
+    $pmbPackageSource = $PackagesRoot
+}
+if (-not (Test-Path (Join-Path $pmbPackageSource "manifests\package.manifold.json"))) {
+    throw "Could not find projected-motion-breath package manifests under $PackagesRoot"
+}
+
+$adapterSourceRoot = Join-Path $projectRoot "native\polar-runtime-jni"
+$adapterLibPath = Join-Path $adapterSourceRoot "src\lib.rs"
+if (-not (Test-Path $adapterLibPath)) {
+    throw "Could not find Hostess JNI adapter source: $adapterLibPath"
+}
+
+$pmbAdapterSourceRoot = Join-Path $projectRoot "native\pmb-runtime-jni"
+$pmbAdapterLibPath = Join-Path $pmbAdapterSourceRoot "src\lib.rs"
+if (-not (Test-Path $pmbAdapterLibPath)) {
+    throw "Could not find Hostess PMB JNI adapter source: $pmbAdapterLibPath"
+}
+
 $assetPackageRoot = Join-Path $assetsDir "manifold\packages\polar-h10"
 New-Item -ItemType Directory -Force -Path $assetPackageRoot | Out-Null
 Copy-Item -Recurse -Force (Join-Path $packageSource "manifests") $assetPackageRoot
@@ -75,6 +97,16 @@ $assetFixtureRoot = Join-Path $assetPackageRoot "fixtures\valid"
 New-Item -ItemType Directory -Force -Path $assetFixtureRoot | Out-Null
 Copy-Item -Force (Join-Path $packageSource "fixtures\valid\graph.json") $assetFixtureRoot
 Copy-Item -Force (Join-Path $packageSource "fixtures\valid\processor-runtime-input-synthetic.json") $assetFixtureRoot
+
+$assetPmbPackageRoot = Join-Path $assetsDir "manifold\packages\projected-motion-breath"
+New-Item -ItemType Directory -Force -Path $assetPmbPackageRoot | Out-Null
+Copy-Item -Recurse -Force (Join-Path $pmbPackageSource "manifests") $assetPmbPackageRoot
+Copy-Item -Recurse -Force (Join-Path $pmbPackageSource "fixtures") $assetPmbPackageRoot
+$assetPmbPackageRootResolved = (Resolve-Path $assetPmbPackageRoot).Path.TrimEnd("\")
+$pmbAssetFiles = Get-ChildItem -Path $assetPmbPackageRoot -Recurse -File | ForEach-Object {
+    $_.FullName.Substring($assetPmbPackageRootResolved.Length + 1).Replace("\", "/")
+}
+$pmbAssetFiles | Set-Content -Encoding ASCII -Path (Join-Path $assetPmbPackageRoot "package-files.txt")
 
 $llvmBin = Join-Path $NdkRoot "toolchains\llvm\prebuilt\windows-x86_64\bin"
 $androidLinker = Join-Path $llvmBin "aarch64-linux-android29-clang.cmd"
@@ -86,19 +118,69 @@ $oldLinker = $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER
 try {
     $env:CARGO_TARGET_DIR = $nativeTargetDir
     $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $androidLinker
-    & cargo build --manifest-path (Join-Path $packageSource "crates\polar-h10-core\Cargo.toml") --target aarch64-linux-android --release
+    New-Item -ItemType Directory -Force -Path $adapterBuildRoot | Out-Null
+    $adapterManifest = Join-Path $adapterBuildRoot "Cargo.toml"
+    $adapterLibPathForCargo = $adapterLibPath -replace "\\", "/"
+    $polarCorePathForCargo = (Join-Path $packageSource "crates\polar-h10-core") -replace "\\", "/"
+    @"
+[package]
+name = "hostess-polar-runtime-jni"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "hostess_polar_runtime_jni"
+path = "$adapterLibPathForCargo"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21"
+polar-h10-core = { path = "$polarCorePathForCargo" }
+serde_json = "1"
+"@ | Set-Content -Encoding ASCII -Path $adapterManifest
+    & cargo build --manifest-path $adapterManifest --target aarch64-linux-android --release
     if ($LASTEXITCODE -ne 0) { throw "cargo Android native build failed with exit code $LASTEXITCODE" }
+
+    New-Item -ItemType Directory -Force -Path $pmbAdapterBuildRoot | Out-Null
+    $pmbAdapterManifest = Join-Path $pmbAdapterBuildRoot "Cargo.toml"
+    $pmbAdapterLibPathForCargo = $pmbAdapterLibPath -replace "\\", "/"
+    $pmbCorePathForCargo = (Join-Path $pmbPackageSource "crates\projected-motion-breath-core") -replace "\\", "/"
+    @"
+[package]
+name = "hostess-pmb-runtime-jni"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[lib]
+name = "hostess_pmb_runtime_jni"
+path = "$pmbAdapterLibPathForCargo"
+crate-type = ["cdylib"]
+
+[dependencies]
+jni = "0.21"
+projected-motion-breath-core = { path = "$pmbCorePathForCargo" }
+serde_json = "1"
+"@ | Set-Content -Encoding ASCII -Path $pmbAdapterManifest
+    & cargo build --manifest-path $pmbAdapterManifest --target aarch64-linux-android --release
+    if ($LASTEXITCODE -ne 0) { throw "cargo PMB Android native build failed with exit code $LASTEXITCODE" }
 } finally {
     $env:CARGO_TARGET_DIR = $oldTargetDir
     $env:CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER = $oldLinker
 }
-$nativeSo = Join-Path $nativeTargetDir "aarch64-linux-android\release\libpolar_h10_core.so"
+$nativeSo = Join-Path $nativeTargetDir "aarch64-linux-android\release\libhostess_polar_runtime_jni.so"
 if (-not (Test-Path $nativeSo)) {
     throw "Native Rust library not found after build: $nativeSo"
 }
 $nativeAbiDir = Join-Path $nativeLibRoot "lib\arm64-v8a"
 New-Item -ItemType Directory -Force -Path $nativeAbiDir | Out-Null
-Copy-Item -Force $nativeSo (Join-Path $nativeAbiDir "libpolar_h10_core.so")
+Copy-Item -Force $nativeSo (Join-Path $nativeAbiDir "libhostess_polar_runtime_jni.so")
+$pmbNativeSo = Join-Path $nativeTargetDir "aarch64-linux-android\release\libhostess_pmb_runtime_jni.so"
+if (-not (Test-Path $pmbNativeSo)) {
+    throw "Native PMB Rust library not found after build: $pmbNativeSo"
+}
+Copy-Item -Force $pmbNativeSo (Join-Path $nativeAbiDir "libhostess_pmb_runtime_jni.so")
 
 $sourceFiles = Get-ChildItem -Path (Join-Path $projectRoot "src\main\java") -Recurse -Filter *.java | ForEach-Object { $_.FullName }
 $sourceList = Join-Path $OutDir "sources.rsp"

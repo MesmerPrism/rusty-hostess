@@ -43,6 +43,7 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
@@ -51,8 +52,12 @@ import java.util.UUID;
 public final class MainActivity extends Activity {
     private static final String ACTION_RUN = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE";
     private static final String ACTION_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY";
+    private static final String ACTION_PMB_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY";
+    private static final String ACTION_PMB_CONTROLLER_PREFLIGHT = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
+    private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
+    private static final String PMB_ASSET_ROOT = "manifold/packages/projected-motion-breath";
     private static final String SOFTWARE_ORIGIN = "rusty-hostess";
 
     private static final UUID HEART_RATE_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
@@ -79,15 +84,18 @@ public final class MainActivity extends Activity {
     private static final String MODULE_BREATH_DYNAMICS = "module.polar_h10.breath_dynamics";
     private static final String MODULE_HRVB_RESONANCE_AMPLITUDE = "module.polar_h10.hrvb_resonance_amplitude";
     private static final long RUNTIME_PREVIEW_INTERVAL_MS = 15000L;
+    private static final int MIN_RENDER_WIDTH = 320;
+    private static final int MIN_RENDER_HEIGHT = 240;
+    private static final int MIN_RENDER_CONTENT_PIXELS = 64;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
-    private TelemetryView telemetryView;
+    private PlatformDebugTelemetryView telemetryView;
     private CaptureRun run;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        telemetryView = new TelemetryView(this);
+        telemetryView = new PlatformDebugTelemetryView(this);
         setContentView(telemetryView);
         startCapture(getIntent());
     }
@@ -105,6 +113,14 @@ public final class MainActivity extends Activity {
         }
         if (ACTION_REPLAY.equals(intent.getAction())) {
             writeSyntheticReplay(intent);
+            return;
+        }
+        if (ACTION_PMB_REPLAY.equals(intent.getAction())) {
+            writeProjectedMotionReplay(intent);
+            return;
+        }
+        if (ACTION_PMB_CONTROLLER_PREFLIGHT.equals(intent.getAction())) {
+            writeProjectedMotionControllerPreflight(intent);
             return;
         }
         if (!ACTION_RUN.equals(intent.getAction())) {
@@ -163,6 +179,92 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void writeProjectedMotionReplay(Intent intent) {
+        Instant startedAt = Instant.now();
+        String hostProfile = normalizeHostProfile(intent.getStringExtra("host_profile"));
+        List<String> modules = new ArrayList<>();
+        modules.add("module.breath.projected_motion");
+        modules.add("module.breath.dynamics");
+        telemetryView.resetForRun("pmb_replay", modules);
+        telemetryView.setRunState("running", "pmb_replay", modules);
+        File evidenceRoot = new File(getExternalFilesDir(null), "hostess-t/evidence/pmb-replay");
+        File packageRoot = new File(getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
+        try {
+            resetDirectory(packageRoot);
+            copyPmbPackageAssets(packageRoot);
+            JSONObject coreReport = PMBRuntime.validatePackage(packageRoot.getAbsolutePath());
+            Instant endedAt = Instant.now();
+            List<String> errors = pmbCoreErrors(coreReport);
+            String status = errors.isEmpty() && "pass".equals(coreReport.optString("status")) ? "pass" : "fail";
+            if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
+                throw new IOException("could not create PMB evidence folder");
+            }
+            writeText(new File(evidenceRoot, "latest.core-validation-report.json"), coreReport.toString(2));
+            JSONObject evidence = pmbReplayEvidence(hostProfile, startedAt, endedAt, status, coreReport, errors, null);
+            writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+            telemetryView.setRunState(status, "pmb_replay", modules);
+        } catch (IOException | JSONException | RuntimeException ex) {
+            Instant endedAt = Instant.now();
+            try {
+                if (!evidenceRoot.exists()) {
+                    evidenceRoot.mkdirs();
+                }
+                JSONObject coreReport = pmbFailureCoreReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                writeText(new File(evidenceRoot, "latest.core-validation-report.json"), coreReport.toString(2));
+                List<String> errors = new ArrayList<>();
+                errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                JSONObject evidence = pmbReplayEvidence(hostProfile, startedAt, endedAt, "fail", coreReport, errors, ex.toString());
+                writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+            } catch (IOException | JSONException ignored) {
+                // The UI state is the fallback signal when app-private evidence cannot be written.
+            }
+            telemetryView.setRunState("fail", "pmb_replay", modules);
+        }
+    }
+
+    private void writeProjectedMotionControllerPreflight(Intent intent) {
+        Instant startedAt = Instant.now();
+        String hostProfile = normalizeHostProfile(intent.getStringExtra("host_profile"));
+        List<String> modules = new ArrayList<>();
+        modules.add("module.breath.projected_motion");
+        modules.add("module.breath.dynamics");
+        telemetryView.resetForRun("pmb_controller_preflight", modules);
+        telemetryView.setRunState("running", "pmb_controller_preflight", modules);
+        File evidenceRoot = new File(getExternalFilesDir(null), "hostess-t/evidence/pmb-controller-preflight");
+        File packageRoot = new File(getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
+        try {
+            resetDirectory(packageRoot);
+            copyPmbPackageAssets(packageRoot);
+            JSONObject preflightReport = PMBRuntime.runControllerPreflight(packageRoot.getAbsolutePath());
+            Instant endedAt = Instant.now();
+            List<String> errors = pmbCoreErrors(preflightReport);
+            String status = errors.isEmpty() && "pass".equals(preflightReport.optString("status")) ? "pass" : "fail";
+            if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
+                throw new IOException("could not create PMB controller preflight evidence folder");
+            }
+            writeText(new File(evidenceRoot, "latest.controller-preflight-report.json"), preflightReport.toString(2));
+            JSONObject evidence = pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, status, preflightReport, errors, null);
+            writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+            telemetryView.setRunState(status, "pmb_controller_preflight", modules);
+        } catch (IOException | JSONException | RuntimeException ex) {
+            Instant endedAt = Instant.now();
+            try {
+                if (!evidenceRoot.exists()) {
+                    evidenceRoot.mkdirs();
+                }
+                JSONObject preflightReport = pmbFailureControllerPreflightReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                writeText(new File(evidenceRoot, "latest.controller-preflight-report.json"), preflightReport.toString(2));
+                List<String> errors = new ArrayList<>();
+                errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                JSONObject evidence = pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, "fail", preflightReport, errors, ex.toString());
+                writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+            } catch (IOException | JSONException ignored) {
+                // The UI state is the fallback signal when app-private evidence cannot be written.
+            }
+            telemetryView.setRunState("fail", "pmb_controller_preflight", modules);
+        }
+    }
+
     private String[] missingPermissions() {
         List<String> missing = new ArrayList<>();
         if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -192,13 +294,14 @@ public final class MainActivity extends Activity {
             fileName = fileName + ".png";
         }
         telemetryView.setPage(normalizeTelemetryPage(intent.getStringExtra("render_page")));
+        final String target = normalizeRenderTarget(intent.getStringExtra("render_target"));
         final String safeName = sanitizeFileName(fileName);
-        telemetryView.post(() -> renderTelemetryToFile(safeName, 0));
+        telemetryView.post(() -> renderTelemetryToFile(safeName, target, 0));
     }
 
-    private void renderTelemetryToFile(String safeName, int attempt) {
+    private void renderTelemetryToFile(String safeName, String target, int attempt) {
         if ((telemetryView.getWidth() <= 0 || telemetryView.getHeight() <= 0) && attempt < 4) {
-            telemetryView.postDelayed(() -> renderTelemetryToFile(safeName, attempt + 1), 250L);
+            telemetryView.postDelayed(() -> renderTelemetryToFile(safeName, target, attempt + 1), 250L);
             return;
         }
         try {
@@ -207,9 +310,19 @@ public final class MainActivity extends Activity {
                 throw new IOException("could not create render folder");
             }
             File out = new File(root, safeName);
-            telemetryView.writePng(out);
+            RenderMetadata metadata = telemetryView.writePng(out);
+            writeText(new File(root, safeName + ".json"), renderMetadataJson("pass", target, safeName, metadata, null));
             telemetryView.setRenderStatus("rendered");
         } catch (IOException ex) {
+            File root = new File(getExternalFilesDir(null), "hostess-t/evidence/render");
+            try {
+                if (!root.exists()) {
+                    root.mkdirs();
+                }
+                writeText(new File(root, safeName + ".json"), renderMetadataJson("fail", target, safeName, null, ex.getMessage()));
+            } catch (IOException ignored) {
+                // Keep the UI state as the fallback signal if the sidecar cannot be written.
+            }
             telemetryView.setRenderStatus("render_failed");
         }
     }
@@ -860,7 +973,69 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final class TelemetryView extends View {
+    private static String renderMetadataJson(String status, String target, String imageName, RenderMetadata metadata, String error) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("{\n");
+        builder.append("  \"").append("$schema").append("\": \"rusty.hostess.telemetry.render_evidence.v1\",\n");
+        builder.append("  \"status\": ").append(jsonQuote(status)).append(",\n");
+        builder.append("  \"rendered_at_utc\": ").append(jsonQuote(Instant.now().toString())).append(",\n");
+        builder.append("  \"target\": ").append(jsonQuote(target)).append(",\n");
+        builder.append("  \"render_page\": ").append(jsonQuote(metadata == null ? "unknown" : metadata.page)).append(",\n");
+        builder.append("  \"image_path\": ").append(jsonQuote(imageName)).append(",\n");
+        builder.append("  \"source_evidence_path\": \"hostess-t/evidence/live-capture/latest.json\",\n");
+        builder.append("  \"width\": ").append(metadata == null ? 0 : metadata.width).append(",\n");
+        builder.append("  \"height\": ").append(metadata == null ? 0 : metadata.height).append(",\n");
+        builder.append("  \"content_pixel_count\": ").append(metadata == null ? 0 : metadata.contentPixelCount).append(",\n");
+        builder.append("  \"validation\": {\n");
+        builder.append("    \"min_width\": ").append(MIN_RENDER_WIDTH).append(",\n");
+        builder.append("    \"min_height\": ").append(MIN_RENDER_HEIGHT).append(",\n");
+        builder.append("    \"min_content_pixels\": ").append(MIN_RENDER_CONTENT_PIXELS).append("\n");
+        builder.append("  }");
+        if (error != null) {
+            builder.append(",\n  \"error\": ").append(jsonQuote(error)).append("\n");
+        } else {
+            builder.append("\n");
+        }
+        builder.append("}\n");
+        return builder.toString();
+    }
+
+    private static String jsonQuote(String value) {
+        StringBuilder builder = new StringBuilder("\"");
+        String safe = value == null ? "" : value;
+        for (int index = 0; index < safe.length(); index++) {
+            char ch = safe.charAt(index);
+            if (ch == '\\' || ch == '"') {
+                builder.append('\\').append(ch);
+            } else if (ch == '\n') {
+                builder.append("\\n");
+            } else if (ch == '\r') {
+                builder.append("\\r");
+            } else if (ch == '\t') {
+                builder.append("\\t");
+            } else {
+                builder.append(ch);
+            }
+        }
+        return builder.append('"').toString();
+    }
+
+    private static final class RenderMetadata {
+        final int width;
+        final int height;
+        final int contentPixelCount;
+        final String page;
+
+        RenderMetadata(int width, int height, int contentPixelCount, String page) {
+            this.width = width;
+            this.height = height;
+            this.contentPixelCount = contentPixelCount;
+            this.page = page;
+        }
+    }
+
+    // Fallback/debug-only platform renderer. Makepad is the intended Hostess GUI surface.
+    private static final class PlatformDebugTelemetryView extends View {
         private static final int MAX_POINTS = 240;
         private static final int BACKGROUND = Color.rgb(248, 248, 246);
         private static final int SURFACE = Color.WHITE;
@@ -906,7 +1081,7 @@ public final class MainActivity extends Activity {
         private int ecgSampleCount = 0;
         private int malformedFrameCount = 0;
 
-        TelemetryView(Context context) {
+        PlatformDebugTelemetryView(Context context) {
             super(context);
             setBackgroundColor(BACKGROUND);
             plotPaint.setStyle(Paint.Style.STROKE);
@@ -1034,18 +1209,34 @@ public final class MainActivity extends Activity {
             invalidate();
         }
 
-        void writePng(File out) throws IOException {
+        RenderMetadata writePng(File out) throws IOException {
             int width = Math.max(getWidth(), 1);
             int height = Math.max(getHeight(), 1);
+            if (width < MIN_RENDER_WIDTH || height < MIN_RENDER_HEIGHT) {
+                throw new IOException("telemetry render too small: " + width + "x" + height);
+            }
             Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
             try {
                 Canvas canvas = new Canvas(bitmap);
                 draw(canvas);
+                int firstPixel = bitmap.getPixel(0, 0);
+                int contentPixels = 0;
+                for (int y = 0; y < height; y++) {
+                    for (int x = 0; x < width; x++) {
+                        if (bitmap.getPixel(x, y) != firstPixel) {
+                            contentPixels += 1;
+                        }
+                    }
+                }
+                if (contentPixels < MIN_RENDER_CONTENT_PIXELS) {
+                    throw new IOException("telemetry render appears blank: " + contentPixels + " content pixels");
+                }
                 try (FileOutputStream stream = new FileOutputStream(out)) {
                     if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
                         throw new IOException("could not encode telemetry render");
                     }
                 }
+                return new RenderMetadata(width, height, contentPixels, page);
             } finally {
                 bitmap.recycle();
             }
@@ -1214,6 +1405,564 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void resetDirectory(File root) throws IOException {
+        deleteRecursively(root);
+        if (!root.exists() && !root.mkdirs()) {
+            throw new IOException("could not create folder: " + root.getAbsolutePath());
+        }
+    }
+
+    private void deleteRecursively(File path) throws IOException {
+        if (!path.exists()) {
+            return;
+        }
+        File[] children = path.listFiles();
+        if (children != null) {
+            for (File child : children) {
+                deleteRecursively(child);
+            }
+        }
+        if (!path.delete()) {
+            throw new IOException("could not delete: " + path.getAbsolutePath());
+        }
+    }
+
+    private void copyAssetTree(String assetPath, File target) throws IOException {
+        String[] children = listAssets(assetPath);
+        if (children != null && children.length > 0) {
+            Arrays.sort(children);
+            if (!target.exists() && !target.mkdirs()) {
+                throw new IOException("could not create folder: " + target.getAbsolutePath());
+            }
+            for (String child : children) {
+                copyAssetTree(assetPath + "/" + child, new File(target, child));
+            }
+            return;
+        }
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("could not create folder: " + parent.getAbsolutePath());
+        }
+        try (InputStream input = openAsset(assetPath); FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, read);
+            }
+        }
+    }
+
+    private void copyPmbPackageAssets(File targetRoot) throws IOException {
+        for (String relative : pmbPackageAssetFiles()) {
+            copyAssetFile(PMB_ASSET_ROOT + "/" + relative, new File(targetRoot, relative.replace('/', File.separatorChar)));
+        }
+    }
+
+    private List<String> pmbPackageAssetFiles() throws IOException {
+        List<String> files = new ArrayList<>();
+        String manifest = readAssetText(PMB_ASSET_ROOT + "/package-files.txt");
+        for (String rawFile : manifest.split("\\r?\\n")) {
+            String relative = rawFile.trim();
+            if (!relative.isEmpty() && !relative.contains("..")) {
+                files.add(relative);
+            }
+        }
+        return files;
+    }
+
+    private void copyAssetFile(String assetPath, File target) throws IOException {
+        File parent = target.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("could not create folder: " + parent.getAbsolutePath());
+        }
+        try (InputStream input = openAsset(assetPath); FileOutputStream output = new FileOutputStream(target)) {
+            byte[] buffer = new byte[8192];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, read);
+            }
+        }
+    }
+
+    private String readAssetText(String assetPath) throws IOException {
+        try (InputStream input = openAsset(assetPath)) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] bytes = new byte[8192];
+            int read;
+            while ((read = input.read(bytes)) >= 0) {
+                buffer.write(bytes, 0, read);
+            }
+            return buffer.toString(StandardCharsets.UTF_8.name());
+        }
+    }
+
+    private JSONObject pmbReplayEvidence(
+            String hostProfile,
+            Instant startedAt,
+            Instant endedAt,
+            String status,
+            JSONObject coreReport,
+            List<String> errors,
+            String failureMessage) throws JSONException {
+        boolean quest = "headset".equals(hostProfile);
+        boolean coreExecuted = failureMessage == null;
+        JSONObject evidence = new JSONObject();
+        evidence.put("$schema", "rusty.hostess.projected_motion_breath.android_replay_execution_evidence.v1");
+        evidence.put("status", errors.isEmpty() && "pass".equals(status) ? "pass" : "fail");
+        evidence.put("target", quest ? "quest" : "phone");
+        evidence.put("host_profile", hostProfile);
+        evidence.put("started_at_utc", startedAt.toString());
+        evidence.put("ended_at_utc", endedAt.toString());
+        evidence.put("duration_ms", Math.max(0L, endedAt.toEpochMilli() - startedAt.toEpochMilli()));
+        evidence.put("software", new JSONObject()
+                .put("origin", SOFTWARE_ORIGIN)
+                .put("host_app", quest ? "app.rusty_hostess_t.quest" : "app.rusty_hostess_t.android")
+                .put("host_app_version", "0.1.0"));
+        evidence.put("package", pmbPackageSnapshot());
+        evidence.put("execution", new JSONObject()
+                .put("mode", "projected_motion_breath_android_synthetic_replay")
+                .put("runtime_path", PMBRuntime.RUNTIME_PATH)
+                .put("core_report_artifact", "latest.core-validation-report.json")
+                .put("processor_core_executed", coreExecuted)
+                .put("execution_performed", true)
+                .put("runtime_execution_performed", coreExecuted)
+                .put("desktop_execution_performed", false)
+                .put("platform_execution_performed", true)
+                .put("android_execution_performed", true)
+                .put("quest_execution_performed", quest)
+                .put("device_required", true)
+                .put("apk_build_performed", false)
+                .put("openxr_runtime_used", false)
+                .put("live_sensor_used", false)
+                .put("controller_input_used", false)
+                .put("synthetic_replay", true)
+                .put("app_private_evidence", true));
+        evidence.put("core_report_summary", pmbCoreReportSummary(coreReport));
+        evidence.put("commands", new JSONArray()
+                .put(new JSONObject()
+                        .put("command", "run_projected_motion_breath_core_validate_goldens_android")
+                        .put("status", "pass".equals(coreReport.optString("status")) ? "acknowledged" : "rejected")
+                        .put("runtime_path", PMBRuntime.RUNTIME_PATH)));
+        evidence.put("scorecard", pmbReplayScorecard(evidence, coreReport, errors, failureMessage));
+        return evidence;
+    }
+
+    private JSONObject pmbControllerPreflightEvidence(
+            String hostProfile,
+            Instant startedAt,
+            Instant endedAt,
+            String status,
+            JSONObject preflightReport,
+            List<String> errors,
+            String failureMessage) throws JSONException {
+        boolean quest = "headset".equals(hostProfile);
+        boolean coreExecuted = failureMessage == null && preflightReport.optBoolean("processor_core_executed", false);
+        boolean routeReady = "pass".equals(preflightReport.optString("status"))
+                && preflightReport.optBoolean("controller_provider_route_ready", false);
+        boolean controllerShapeUsed = preflightReport.optBoolean("headset_controller_shape_used", false);
+        boolean physicalControllerInputUsed = preflightReport.optBoolean("physical_controller_input_used", false);
+        boolean controllerInputUsed = preflightReport.optBoolean("controller_input_used", false);
+        boolean manualTrialRequired = preflightReport.optBoolean("manual_controller_trial_required", true);
+        JSONObject evidence = new JSONObject();
+        evidence.put("$schema", "rusty.hostess.projected_motion_breath.android_controller_preflight_evidence.v1");
+        evidence.put("status", errors.isEmpty() && "pass".equals(status) && routeReady ? "pass" : "fail");
+        evidence.put("target", quest ? "quest" : "phone");
+        evidence.put("host_profile", hostProfile);
+        evidence.put("started_at_utc", startedAt.toString());
+        evidence.put("ended_at_utc", endedAt.toString());
+        evidence.put("duration_ms", Math.max(0L, endedAt.toEpochMilli() - startedAt.toEpochMilli()));
+        evidence.put("software", new JSONObject()
+                .put("origin", SOFTWARE_ORIGIN)
+                .put("host_app", quest ? "app.rusty_hostess_t.quest" : "app.rusty_hostess_t.android")
+                .put("host_app_version", "0.1.0"));
+        evidence.put("package", pmbPackageSnapshot());
+        evidence.put("execution", new JSONObject()
+                .put("mode", "projected_motion_breath_android_controller_preflight")
+                .put("runtime_path", PMBRuntime.RUNTIME_PATH)
+                .put("controller_preflight_report_artifact", "latest.controller-preflight-report.json")
+                .put("pmb_controller_path_preflight_passed", routeReady)
+                .put("processor_core_executed", coreExecuted)
+                .put("controller_provider_route_ready", routeReady)
+                .put("provider_boundary_exercised", preflightReport.optBoolean("provider_boundary_exercised", false))
+                .put("controller_shape_used", controllerShapeUsed)
+                .put("quest_controller_shape_used", quest && controllerShapeUsed)
+                .put("execution_performed", true)
+                .put("runtime_execution_performed", preflightReport.optBoolean("runtime_execution_performed", false) && failureMessage == null)
+                .put("desktop_execution_performed", false)
+                .put("platform_execution_performed", true)
+                .put("android_execution_performed", true)
+                .put("quest_execution_performed", quest)
+                .put("device_required", true)
+                .put("apk_build_performed", false)
+                .put("openxr_runtime_used", false)
+                .put("live_sensor_used", false)
+                .put("physical_controller_input_used", physicalControllerInputUsed)
+                .put("controller_input_used", controllerInputUsed)
+                .put("human_controller_trial_performed", false)
+                .put("manual_controller_trial_required", manualTrialRequired)
+                .put("synthetic_replay", true)
+                .put("preflight_fixture_packaged", true)
+                .put("app_private_evidence", true));
+        evidence.put("controller_preflight_report_summary", pmbControllerPreflightReportSummary(preflightReport));
+        evidence.put("commands", new JSONArray()
+                .put(new JSONObject()
+                        .put("command", "run_projected_motion_breath_controller_preflight_android")
+                        .put("status", routeReady ? "acknowledged" : "rejected")
+                        .put("runtime_path", PMBRuntime.RUNTIME_PATH)));
+        evidence.put("scorecard", pmbControllerPreflightScorecard(evidence, preflightReport, errors, failureMessage));
+        return evidence;
+    }
+
+    private JSONObject pmbPackageSnapshot() throws JSONException {
+        return new JSONObject()
+                .put("package_id", PMB_PACKAGE_ID)
+                .put("package_manifest_sha256", assetSha256(PMB_ASSET_ROOT + "/manifests/package.manifold.json"))
+                .put("stream_manifest_sha256", pmbManifestHashes("streams"))
+                .put("module_manifest_sha256", pmbManifestHashes("modules"))
+                .put("command_manifest_sha256", pmbManifestHashes("commands"));
+    }
+
+    private JSONObject pmbManifestHashes(String manifestFolder) throws JSONException {
+        JSONObject hashes = new JSONObject();
+        String folder = PMB_ASSET_ROOT + "/manifests/" + manifestFolder;
+        try {
+            String prefix = "manifests/" + manifestFolder + "/";
+            for (String relative : pmbPackageAssetFiles()) {
+                if (relative.startsWith(prefix) && relative.endsWith(".json")) {
+                    String file = relative.substring(prefix.length());
+                    hashes.put(file.substring(0, file.length() - 5), assetSha256(PMB_ASSET_ROOT + "/" + relative));
+                }
+            }
+            if (hashes.length() > 0) {
+                return hashes;
+            }
+            String[] files = listAssets(folder);
+            if (files == null) {
+                return hashes;
+            }
+            Arrays.sort(files);
+            for (String file : files) {
+                if (file.endsWith(".json")) {
+                    hashes.put(file.substring(0, file.length() - 5), assetSha256(folder + "/" + file));
+                }
+            }
+        } catch (IOException ignored) {
+        }
+        return hashes;
+    }
+
+    private String[] listAssets(String path) throws IOException {
+        String[] children = getAssets().list(path);
+        if (children != null && children.length > 0) {
+            return children;
+        }
+        String fallback = path.replace('/', '\\');
+        if (!fallback.equals(path)) {
+            String[] fallbackChildren = getAssets().list(fallback);
+            if (fallbackChildren != null && fallbackChildren.length > 0) {
+                return fallbackChildren;
+            }
+        }
+        return children;
+    }
+
+    private JSONObject pmbReplayScorecard(
+            JSONObject evidence,
+            JSONObject coreReport,
+            List<String> errors,
+            String failureMessage) throws JSONException {
+        JSONObject execution = evidence.optJSONObject("execution");
+        JSONObject summary = evidence.optJSONObject("core_report_summary");
+        JSONArray checks = new JSONArray();
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_android_core_loaded",
+                PMBRuntime.isAvailable(),
+                PMBRuntime.isAvailable() ? "PMB JNI runtime loaded" : PMBRuntime.loadError()));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_android_core_report_status",
+                "pass".equals(coreReport.optString("status")),
+                "projected-motion-breath core report status was " + coreReport.optString("status", "missing")));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_android_core_goldens_executed",
+                summary.optInt("checked_cases", 0) >= 2 && summary.optInt("checked_damaged_cases", 0) >= 2,
+                "projected-motion breath pose/vector golden and damaged cases executed on Android"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_android_adapter_normalization_executed",
+                summary.optInt("checked_adapter_normalization_cases", 0) >= 3
+                        && summary.optInt("checked_damaged_adapter_normalization_cases", 0) >= 2,
+                "projected-motion breath adapter-normalization valid and damaged cases executed on Android"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_android_synthetic_only",
+                execution != null
+                        && execution.optBoolean("synthetic_replay")
+                        && !execution.optBoolean("openxr_runtime_used")
+                        && !execution.optBoolean("live_sensor_used")
+                        && !execution.optBoolean("controller_input_used"),
+                "PMB Android replay used synthetic packaged fixtures, not OpenXR, live sensors, or controller input"));
+        JSONArray issueObjects = new JSONArray();
+        for (String error : errors) {
+            issueObjects.put(new JSONObject()
+                    .put("code", "hostess.issue.pmb_android_replay_failed")
+                    .put("severity", "error")
+                    .put("message", error));
+        }
+        if (failureMessage != null) {
+            issueObjects.put(new JSONObject()
+                    .put("code", "hostess.issue.pmb_android_runtime_exception")
+                    .put("severity", "error")
+                    .put("message", failureMessage));
+        }
+        String scoreStatus = "pass";
+        for (int index = 0; index < checks.length(); index++) {
+            if (!"pass".equals(checks.getJSONObject(index).optString("status"))) {
+                scoreStatus = "fail";
+            }
+        }
+        return new JSONObject()
+                .put("$schema", "rusty.manifold.validation.scorecard.v1")
+                .put("scorecard_id", "scorecard.hostess.projected_motion_breath.android_replay")
+                .put("target_id", "hostess.projected_motion_breath.android_replay")
+                .put("target_revision", 1)
+                .put("status", scoreStatus)
+                .put("checks", checks)
+                .put("issues", issueObjects);
+    }
+
+    private JSONObject pmbControllerPreflightScorecard(
+            JSONObject evidence,
+            JSONObject preflightReport,
+            List<String> errors,
+            String failureMessage) throws JSONException {
+        JSONObject execution = evidence.optJSONObject("execution");
+        JSONObject summary = evidence.optJSONObject("controller_preflight_report_summary");
+        JSONArray checks = new JSONArray();
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_controller_preflight_core_loaded",
+                PMBRuntime.isAvailable(),
+                PMBRuntime.isAvailable() ? "PMB JNI runtime loaded" : PMBRuntime.loadError(),
+                "validation.pmb_controller_preflight_failed"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_controller_preflight_report_status",
+                "pass".equals(preflightReport.optString("status")),
+                "projected-motion-breath controller preflight report status was " + preflightReport.optString("status", "missing"),
+                "validation.pmb_controller_preflight_failed"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_controller_provider_boundary",
+                summary != null
+                        && summary.optBoolean("provider_boundary_exercised")
+                        && summary.optBoolean("controller_provider_route_ready")
+                        && "stream.motion.object_pose".equals(summary.optString("output_stream_id")),
+                "controller-shaped provider emitted stream.motion.object_pose into PMB",
+                "validation.pmb_controller_preflight_failed"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_controller_preflight_on_device_flags",
+                execution != null
+                        && execution.optBoolean("android_execution_performed")
+                        && execution.optBoolean("platform_execution_performed")
+                        && execution.optBoolean("processor_core_executed"),
+                "PMB controller preflight executed through the Android app and PMB core",
+                "validation.pmb_controller_preflight_failed"));
+        checks.put(pmbScorecardCheck(
+                "validation.check.pmb_controller_preflight_non_human_gate",
+                execution != null
+                        && execution.optBoolean("synthetic_replay")
+                        && execution.optBoolean("preflight_fixture_packaged")
+                        && !execution.optBoolean("openxr_runtime_used")
+                        && !execution.optBoolean("live_sensor_used")
+                        && !execution.optBoolean("physical_controller_input_used")
+                        && !execution.optBoolean("controller_input_used")
+                        && !execution.optBoolean("human_controller_trial_performed")
+                        && execution.optBoolean("manual_controller_trial_required"),
+                "PMB controller preflight used packaged samples and left the human controller trial pending",
+                "validation.pmb_controller_preflight_failed"));
+        JSONArray issueObjects = new JSONArray();
+        for (String error : errors) {
+            issueObjects.put(new JSONObject()
+                    .put("code", "hostess.issue.pmb_controller_preflight_failed")
+                    .put("severity", "error")
+                    .put("message", error));
+        }
+        if (failureMessage != null) {
+            issueObjects.put(new JSONObject()
+                    .put("code", "hostess.issue.pmb_controller_preflight_runtime_exception")
+                    .put("severity", "error")
+                    .put("message", failureMessage));
+        }
+        String scoreStatus = "pass";
+        for (int index = 0; index < checks.length(); index++) {
+            if (!"pass".equals(checks.getJSONObject(index).optString("status"))) {
+                scoreStatus = "fail";
+            }
+        }
+        return new JSONObject()
+                .put("$schema", "rusty.manifold.validation.scorecard.v1")
+                .put("scorecard_id", "scorecard.hostess.projected_motion_breath.controller_preflight")
+                .put("target_id", "hostess.projected_motion_breath.controller_preflight")
+                .put("target_revision", 1)
+                .put("status", scoreStatus)
+                .put("checks", checks)
+                .put("issues", issueObjects);
+    }
+
+    private static JSONObject pmbCoreReportSummary(JSONObject coreReport) throws JSONException {
+        JSONObject summary = new JSONObject();
+        summary.put("schema", coreReport.has("schema") ? coreReport.optString("schema") : JSONObject.NULL);
+        summary.put("status", coreReport.optString("status", "missing"));
+        for (String field : new String[] {
+                "checked_profiles",
+                "checked_command_payloads",
+                "checked_damaged_command_payloads",
+                "checked_source_bindings",
+                "checked_damaged_source_bindings",
+                "checked_adapter_normalization_cases",
+                "checked_damaged_adapter_normalization_cases",
+                "checked_cases",
+                "checked_damaged_cases" }) {
+            summary.put(field, coreReport.optInt(field, 0));
+        }
+        return summary;
+    }
+
+    private static JSONObject pmbControllerPreflightReportSummary(JSONObject report) throws JSONException {
+        JSONObject summary = new JSONObject();
+        summary.put("schema", report.has("schema") ? report.optString("schema") : JSONObject.NULL);
+        summary.put("status", report.optString("status", "missing"));
+        summary.put("preflight_id", report.optString("preflight_id", ""));
+        summary.put("provider_id", report.optString("provider_id", ""));
+        summary.put("provider_kind", report.optString("provider_kind", ""));
+        summary.put("binding_id", report.optString("binding_id", ""));
+        summary.put("selected_adapter_id", report.optString("selected_adapter_id", ""));
+        summary.put("selected_source_kind", report.optString("selected_source_kind", ""));
+        summary.put("source_payload_kind", report.optString("source_payload_kind", ""));
+        summary.put("input_stream_id", report.optString("input_stream_id", ""));
+        summary.put("output_stream_id", report.optString("output_stream_id", ""));
+        summary.put("source_id", report.optString("source_id", ""));
+        summary.put("frame_id", report.optString("frame_id", ""));
+        summary.put("sample_count", report.optInt("sample_count", 0));
+        summary.put("normalized_sample_count", report.optInt("normalized_sample_count", 0));
+        summary.put("estimate_count", report.optInt("estimate_count", 0));
+        summary.put("processor_core_executed", report.optBoolean("processor_core_executed", false));
+        summary.put("runtime_execution_performed", report.optBoolean("runtime_execution_performed", false));
+        summary.put("provider_boundary_exercised", report.optBoolean("provider_boundary_exercised", false));
+        summary.put("controller_provider_route_ready", report.optBoolean("controller_provider_route_ready", false));
+        summary.put("headset_controller_shape_used", report.optBoolean("headset_controller_shape_used", false));
+        summary.put("physical_controller_input_used", report.optBoolean("physical_controller_input_used", false));
+        summary.put("controller_input_used", report.optBoolean("controller_input_used", false));
+        summary.put("manual_controller_trial_required", report.optBoolean("manual_controller_trial_required", true));
+        summary.put("estimates", report.optJSONArray("estimates") == null ? new JSONArray() : report.optJSONArray("estimates"));
+        return summary;
+    }
+
+    private static List<String> pmbCoreErrors(JSONObject coreReport) {
+        List<String> errors = new ArrayList<>();
+        JSONArray issues = coreReport.optJSONArray("issues");
+        if (issues == null) {
+            return errors;
+        }
+        for (int index = 0; index < issues.length(); index++) {
+            Object item = issues.opt(index);
+            if (item instanceof JSONObject) {
+                JSONObject issue = (JSONObject) item;
+                errors.add(issue.optString("message", issue.toString()));
+            } else if (item != null) {
+                errors.add(item.toString());
+            }
+        }
+        return errors;
+    }
+
+    private static JSONObject pmbFailureCoreReport(String packageRoot, String message) throws JSONException {
+        return new JSONObject()
+                .put("schema", "rusty.manifold.projected_motion_breath.core_validation_report.v1")
+                .put("package_root", packageRoot)
+                .put("status", "fail")
+                .put("checked_profiles", 0)
+                .put("checked_command_payloads", 0)
+                .put("checked_damaged_command_payloads", 0)
+                .put("checked_source_bindings", 0)
+                .put("checked_damaged_source_bindings", 0)
+                .put("checked_adapter_normalization_cases", 0)
+                .put("checked_damaged_adapter_normalization_cases", 0)
+                .put("checked_cases", 0)
+                .put("checked_damaged_cases", 0)
+                .put("issues", new JSONArray().put(message == null ? "issue.android_replay_failed" : message));
+    }
+
+    private static JSONObject pmbFailureControllerPreflightReport(String packageRoot, String message) throws JSONException {
+        return new JSONObject()
+                .put("schema", "rusty.manifold.projected_motion_breath.controller_preflight_report.v1")
+                .put("package_root", packageRoot)
+                .put("status", "fail")
+                .put("preflight_id", "")
+                .put("provider_id", "")
+                .put("provider_kind", "")
+                .put("binding_id", "")
+                .put("selected_adapter_id", "")
+                .put("selected_source_kind", "")
+                .put("source_payload_kind", "")
+                .put("input_stream_id", "")
+                .put("output_stream_id", "")
+                .put("source_id", "")
+                .put("frame_id", "")
+                .put("sample_count", 0)
+                .put("normalized_sample_count", 0)
+                .put("estimate_count", 0)
+                .put("processor_core_executed", false)
+                .put("runtime_execution_performed", false)
+                .put("provider_boundary_exercised", false)
+                .put("controller_provider_route_ready", false)
+                .put("headset_controller_shape_used", false)
+                .put("physical_controller_input_used", false)
+                .put("controller_input_used", false)
+                .put("manual_controller_trial_required", true)
+                .put("estimates", new JSONArray())
+                .put("issues", new JSONArray().put(message == null ? "issue.android_controller_preflight_failed" : message));
+    }
+
+    private static JSONObject pmbScorecardCheck(String checkId, boolean passed, String evidence) throws JSONException {
+        return pmbScorecardCheck(checkId, passed, evidence, "validation.pmb_android_replay_failed");
+    }
+
+    private static JSONObject pmbScorecardCheck(String checkId, boolean passed, String evidence, String issueCode) throws JSONException {
+        return new JSONObject()
+                .put("check_id", checkId)
+                .put("status", passed ? "pass" : "fail")
+                .put("evidence", evidence)
+                .put("issue_codes", passed ? new JSONArray() : new JSONArray().put(issueCode));
+    }
+
+    private String assetSha256(String path) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (InputStream stream = openAsset(path)) {
+                byte[] buffer = new byte[8192];
+                int read;
+                while ((read = stream.read(buffer)) >= 0) {
+                    digest.update(buffer, 0, read);
+                }
+            }
+            return hex(digest.digest());
+        } catch (IOException | NoSuchAlgorithmException ex) {
+            return "unavailable";
+        }
+    }
+
+    private InputStream openAsset(String path) throws IOException {
+        try {
+            return getAssets().open(path);
+        } catch (IOException first) {
+            return getAssets().open(path.replace('/', '\\'));
+        }
+    }
+
+    private static String hex(byte[] bytes) {
+        StringBuilder builder = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            builder.append(String.format(Locale.US, "%02x", value & 0xff));
+        }
+        return builder.toString();
+    }
+
     private static String normalizeMode(String mode) {
         if ("ecg".equals(mode) || "acc".equals(mode) || "hr_rr".equals(mode) || "coherence".equals(mode) || "module".equals(mode)) {
             return mode;
@@ -1296,6 +2045,13 @@ public final class MainActivity extends Activity {
             return page;
         }
         return "raw";
+    }
+
+    private static String normalizeRenderTarget(String target) {
+        if ("quest".equals(target) || "phone".equals(target)) {
+            return target;
+        }
+        return "android-class";
     }
 
     private static String emptyToNull(String value) {

@@ -8,13 +8,17 @@ phone/headset evidence.
 ## Authority Boundary
 
 Hostess owns installation, launch, permissions, BLE acquisition, evidence file
-storage, and command routing.
+storage, command routing, and bounded telemetry snapshot production.
 
 The package Rust core owns processor formulas, graph dependency resolution,
 runtime input parsing, graph execution reports, and module stream outputs.
 
 Manifold remains platform-neutral. The on-device bridge must not add Android or
 headset dependencies to Manifold core contracts.
+
+The Android native UI layer is not the intended Hostess GUI architecture. It is
+allowed only as a fallback/debug renderer and evidence export surface while the
+Makepad GUI consumes the same bounded snapshot model.
 
 ## JNI Shape
 
@@ -40,6 +44,7 @@ The app shell should keep four narrow modules:
 - runtime bridge: calls the native Rust graph runner through `PolarRuntime`
 - evidence writer: merges direct acquisition streams, graph report streams, and
   validation metadata into Hostess evidence
+- telemetry snapshot adapter: emits bounded UI-safe summaries for Makepad
 
 Processor modules are not Java/Kotlin modules. They are selected package modules
 executed by the Rust graph runner.
