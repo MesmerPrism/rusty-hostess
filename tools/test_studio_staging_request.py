@@ -2066,6 +2066,559 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_evidence_attachment_readiness_drift",
         )
 
+    def test_builds_platform_smoke_evidence_review_scorecard_without_collection_or_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_platform_smoke_evidence_attachment_chain()
+
+        review = adapter.build_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        )
+
+        self.assertEqual(review["$schema"], adapter.PLATFORM_SMOKE_EVIDENCE_REVIEW_SCHEMA)
+        self.assertEqual(review["status"], adapter.REVIEWED_STATUS)
+        self.assertEqual(review["scorecard_status"], "pass")
+        self.assertTrue(review["operator_review_ready"])
+        self.assertIsNone(review["issue_code"])
+        self.assertEqual(review["execution_policy"], adapter.PLATFORM_SMOKE_EVIDENCE_REVIEW_POLICY)
+        self.assertEqual(review["review_owner"], "rusty.hostess")
+        self.assertEqual(review["command_session_authority"], "rusty.manifold")
+        self.assertEqual(review["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertFalse(review["device_required"])
+        self.assertFalse(review["evidence_payloads_copied"])
+        self.assertFalse(review["real_platform_execution_evidence_attached"])
+        self.assertFalse(review["schema_path_execution_allowed"])
+        self.assertFalse(review["platform_execution_allowed"])
+        self.assertFalse(review["studio_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(review[flag], flag)
+        self.assertFalse(review["runtime_execution_performed"])
+        self.assertFalse(review["platform_execution_performed"])
+        self.assertEqual(review["missing_attachment_count"], 0)
+        self.assertEqual(review["rejected_attachment_count"], 0)
+        self.assertEqual(
+            review["reviewed_evidence_attachment_count"],
+            len(attachment["evidence_attachments"]),
+        )
+        self.assertEqual(
+            review["reviewed_readiness_evidence_attachment_count"],
+            len(attachment["readiness_evidence_attachments"]),
+        )
+        self.assertTrue(
+            all(
+                row["review_status"] == adapter.REVIEWED_STATUS
+                and row["evidence_payload_copied"] is False
+                and row["collection_started"] is False
+                and row["platform_execution_performed"] is False
+                for row in review["evidence_review_rows"]
+            )
+        )
+        self.assertTrue(
+            all(
+                row["review_status"] == adapter.REVIEWED_STATUS
+                and row["execution_started"] is False
+                and row["validated_for_execution"] is False
+                and row["platform_execution_performed"] is False
+                for row in review["readiness_review_rows"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            review,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+        self.assertFalse(validation["real_platform_execution_evidence_attached"])
+
+    def test_platform_smoke_evidence_review_rejection_without_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_platform_smoke_evidence_attachment_chain()
+
+        review = adapter.build_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            decision=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_platform_smoke_evidence_review",
+        )
+
+        self.assertEqual(review["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(review["scorecard_status"], "fail")
+        self.assertFalse(review["operator_review_ready"])
+        self.assertEqual(
+            review["issue_code"],
+            "hostess.issue.operator_declined_platform_smoke_evidence_review",
+        )
+        self.assertFalse(review["evidence_payloads_copied"])
+        self.assertFalse(review["evidence_collection_started"])
+        self.assertFalse(review["platform_execution_performed"])
+        self.assertEqual(
+            review["rejected_attachment_count"],
+            len(attachment["evidence_attachments"])
+            + len(attachment["readiness_evidence_attachments"]),
+        )
+        self.assertEqual(review["missing_attachment_count"], 0)
+        self.assertTrue(
+            all(
+                row["review_status"] == adapter.REJECTED_STATUS
+                and row["issue_code"]
+                == "hostess.issue.operator_declined_platform_smoke_evidence_review"
+                and row["collection_started"] is False
+                for row in review["evidence_review_rows"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_evidence_review(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+                preflight,
+                execution_report,
+                attachment,
+                review,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_evidence_review_validation_rejects_attachment_or_scorecard_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_platform_smoke_evidence_attachment_chain()
+        review = adapter.build_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        )
+
+        started = copy.deepcopy(review)
+        started["evidence_collection_started"] = True
+        started_report = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_review_execution_started",
+        )
+
+        attachment_drift = copy.deepcopy(review)
+        attachment_drift["evidence_review_rows"][0]["owner"] = "rusty.studio"
+        attachment_drift["evidence_review_rows"][0]["required_evidence_kind"] = (
+            "studio_reviewed_evidence"
+        )
+        attachment_report = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            attachment_drift,
+        )
+        self.assertEqual(attachment_report["status"], "fail")
+        self.assertEqual(
+            attachment_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_review_attachment_drift",
+        )
+
+        readiness_drift = copy.deepcopy(review)
+        readiness_drift["readiness_review_rows"][0]["owner"] = "rusty.studio"
+        readiness_drift["readiness_review_rows"][0]["input_kind"] = (
+            "studio_reviewed_readiness"
+        )
+        readiness_report = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            readiness_drift,
+        )
+        self.assertEqual(readiness_report["status"], "fail")
+        self.assertEqual(
+            readiness_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_review_readiness_drift",
+        )
+
+        scorecard_drift = copy.deepcopy(review)
+        scorecard_drift["scorecard_status"] = "fail"
+        scorecard_report = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            scorecard_drift,
+        )
+        self.assertEqual(scorecard_report["status"], "fail")
+        self.assertEqual(
+            scorecard_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_review_scorecard_drift",
+        )
+
+    def test_builds_projected_motion_breath_validation_handoff_without_execution(self) -> None:
+        package_evidence = ready_pmb_package_evidence_intake()
+        authoring_review = ready_pmb_authoring_review()
+
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            authoring_review,
+            package_evidence,
+            Path("fixtures/projected-motion-breath/authoring-review.json"),
+            Path("fixtures/projected-motion-breath/package-evidence-intake.json"),
+        )
+
+        self.assertEqual(handoff["$schema"], adapter.PMB_VALIDATION_HANDOFF_SCHEMA)
+        self.assertEqual(handoff["status"], "ready")
+        self.assertIsNone(handoff["issue_code"])
+        self.assertEqual(handoff["handoff_owner"], "rusty.hostess")
+        self.assertEqual(handoff["authoring_owner"], "rusty.studio")
+        self.assertEqual(handoff["runtime_authority"], "rusty.manifold")
+        self.assertEqual(handoff["platform_validation_authority"], "rusty.hostess")
+        self.assertEqual(handoff["target_package_id"], adapter.PMB_TARGET_PACKAGE_ID)
+        self.assertEqual(handoff["target_module_id"], adapter.PMB_TARGET_MODULE_ID)
+        self.assertEqual(handoff["proposed_command_id"], adapter.PMB_PROPOSED_COMMAND_ID)
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(handoff[flag], flag)
+        self.assertFalse(handoff["schema_path_execution_allowed"])
+        self.assertFalse(handoff["platform_execution_allowed"])
+        self.assertFalse(handoff["studio_execution_allowed"])
+        self.assertFalse(handoff["runtime_execution_performed"])
+        self.assertFalse(handoff["platform_execution_performed"])
+        self.assertEqual(handoff["package_ready_required_check_count"], 3)
+        self.assertEqual(handoff["package_blocked_required_check_count"], 0)
+        self.assertEqual(
+            set(handoff["required_package_checks"]),
+            set(adapter.PMB_REQUIRED_PACKAGE_CHECKS),
+        )
+        self.assertEqual(
+            [slot["slot_id"] for slot in handoff["validation_slots"]],
+            [contract["slot_id"] for contract in adapter.PMB_VALIDATION_SLOT_CONTRACTS],
+        )
+        self.assertTrue(
+            all(slot["status"] == "ready" for slot in handoff["validation_slots"])
+        )
+        self.assertTrue(
+            all(slot["execution_started"] is False for slot in handoff["validation_slots"])
+        )
+
+        validation = adapter.validate_projected_motion_breath_validation_handoff(handoff)
+        self.assertEqual(validation["$schema"], adapter.PMB_VALIDATION_HANDOFF_VALIDATION_SCHEMA)
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_projected_motion_breath_validation_handoff_blocks_unready_authoring(self) -> None:
+        package_evidence = ready_pmb_package_evidence_intake()
+        authoring_review = ready_pmb_authoring_review()
+        authoring_review["status"] = "blocked"
+        authoring_review["issue_code"] = "studio.issue.package_evidence_required_check_missing"
+        authoring_review["package_ready_required_check_count"] = 2
+        authoring_review["package_blocked_required_check_count"] = 1
+
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            authoring_review,
+            package_evidence,
+        )
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertEqual(
+            handoff["issue_code"],
+            "studio.issue.package_evidence_required_check_missing",
+        )
+        self.assertEqual(handoff["ready_validation_slot_count"], 0)
+        self.assertEqual(
+            handoff["blocked_validation_slot_count"],
+            len(adapter.PMB_VALIDATION_SLOT_CONTRACTS),
+        )
+        self.assertTrue(
+            all(slot["status"] == "blocked" for slot in handoff["validation_slots"])
+        )
+        self.assertEqual(
+            adapter.validate_projected_motion_breath_validation_handoff(handoff)["status"],
+            "pass",
+        )
+
+    def test_projected_motion_breath_validation_handoff_validation_rejects_execution_or_slot_drift(
+        self,
+    ) -> None:
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            ready_pmb_authoring_review(),
+            ready_pmb_package_evidence_intake(),
+        )
+
+        started = copy.deepcopy(handoff)
+        started["launch_started"] = True
+        started_report = adapter.validate_projected_motion_breath_validation_handoff(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.projected_motion_breath_validation_handoff_execution_started",
+        )
+
+        slot_drift = copy.deepcopy(handoff)
+        slot_drift["validation_slots"][0]["route_kind"] = "hostess.pmb.drifted_route"
+        slot_report = adapter.validate_projected_motion_breath_validation_handoff(slot_drift)
+        self.assertEqual(slot_report["status"], "fail")
+        self.assertEqual(
+            slot_report["issue_code"],
+            "hostess.issue.projected_motion_breath_validation_handoff_slot_drift",
+        )
+
+    def test_builds_projected_motion_breath_replay_validation_receipt_without_execution(
+        self,
+    ) -> None:
+        receipt = adapter.build_projected_motion_breath_replay_validation_receipt(
+            ready_pmb_validation_handoff()
+        )
+
+        self.assertEqual(receipt["$schema"], adapter.PMB_REPLAY_VALIDATION_RECEIPT_SCHEMA)
+        self.assertEqual(receipt["status"], "validated")
+        self.assertIsNone(receipt["issue_code"])
+        self.assertEqual(receipt["receipt_owner"], "rusty.hostess")
+        self.assertEqual(receipt["runtime_authority"], "rusty.manifold")
+        self.assertEqual(receipt["platform_validation_authority"], "rusty.hostess")
+        self.assertEqual(receipt["target_package_id"], adapter.PMB_TARGET_PACKAGE_ID)
+        self.assertEqual(receipt["target_module_id"], adapter.PMB_TARGET_MODULE_ID)
+        self.assertEqual(receipt["proposed_command_id"], adapter.PMB_PROPOSED_COMMAND_ID)
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(receipt[flag], flag)
+        self.assertFalse(receipt["replay_execution_started"])
+        self.assertFalse(receipt["fixture_payloads_copied"])
+        self.assertFalse(receipt["processor_runtime_started"])
+        self.assertEqual(
+            receipt["replay_descriptor_count"],
+            len(adapter.PMB_REPLAY_DESCRIPTOR_CONTRACTS),
+        )
+        self.assertEqual(
+            receipt["validated_replay_descriptor_count"],
+            len(adapter.PMB_REPLAY_DESCRIPTOR_CONTRACTS),
+        )
+        self.assertEqual(receipt["rejected_replay_descriptor_count"], 0)
+        self.assertTrue(
+            all(
+                descriptor["descriptor_status"] == "validated"
+                for descriptor in receipt["replay_descriptors"]
+            )
+        )
+        self.assertTrue(
+            all(
+                descriptor["fixture_payload_copied"] is False
+                for descriptor in receipt["replay_descriptors"]
+            )
+        )
+
+        validation = adapter.validate_projected_motion_breath_replay_validation_receipt(
+            receipt
+        )
+        self.assertEqual(
+            validation["$schema"],
+            adapter.PMB_REPLAY_VALIDATION_RECEIPT_VALIDATION_SCHEMA,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_projected_motion_breath_replay_validation_receipt_rejects_blocked_handoff(
+        self,
+    ) -> None:
+        authoring_review = ready_pmb_authoring_review()
+        authoring_review["status"] = "blocked"
+        authoring_review["issue_code"] = "studio.issue.package_evidence_required_check_missing"
+        authoring_review["package_ready_required_check_count"] = 2
+        authoring_review["package_blocked_required_check_count"] = 1
+        handoff = adapter.build_projected_motion_breath_validation_handoff(
+            authoring_review,
+            ready_pmb_package_evidence_intake(),
+        )
+
+        receipt = adapter.build_projected_motion_breath_replay_validation_receipt(handoff)
+
+        self.assertEqual(receipt["status"], "rejected")
+        self.assertEqual(
+            receipt["issue_code"],
+            "studio.issue.package_evidence_required_check_missing",
+        )
+        self.assertEqual(receipt["validated_replay_descriptor_count"], 0)
+        self.assertEqual(
+            receipt["rejected_replay_descriptor_count"],
+            len(adapter.PMB_REPLAY_DESCRIPTOR_CONTRACTS),
+        )
+        self.assertTrue(
+            all(
+                descriptor["descriptor_status"] == "rejected"
+                for descriptor in receipt["replay_descriptors"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_projected_motion_breath_replay_validation_receipt(receipt)[
+                "status"
+            ],
+            "pass",
+        )
+
+    def test_projected_motion_breath_replay_validation_receipt_validation_rejects_execution_or_descriptor_drift(
+        self,
+    ) -> None:
+        receipt = adapter.build_projected_motion_breath_replay_validation_receipt(
+            ready_pmb_validation_handoff()
+        )
+
+        started = copy.deepcopy(receipt)
+        started["replay_execution_started"] = True
+        started_report = adapter.validate_projected_motion_breath_replay_validation_receipt(
+            started
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_execution_started",
+        )
+
+        descriptor_drift = copy.deepcopy(receipt)
+        descriptor_drift["replay_descriptors"][0]["case_id"] = "case.projected_motion_breath.drift"
+        descriptor_report = (
+            adapter.validate_projected_motion_breath_replay_validation_receipt(
+                descriptor_drift
+            )
+        )
+        self.assertEqual(descriptor_report["status"], "fail")
+        self.assertEqual(
+            descriptor_report["issue_code"],
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_descriptor_drift",
+        )
+
+    def test_cli_writes_projected_motion_breath_validation_handoff(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            package_evidence_path = root / "pmb-package-evidence-intake.json"
+            authoring_review_path = root / "pmb-authoring-review.json"
+            handoff_path = root / "pmb-validation-handoff.json"
+            replay_receipt_path = root / "pmb-replay-validation-receipt.json"
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            package_evidence_path.write_text(
+                json.dumps(ready_pmb_package_evidence_intake()),
+                encoding="utf-8",
+            )
+            authoring_review_path.write_text(
+                json.dumps(ready_pmb_authoring_review()),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--pmb-authoring-review-in",
+                    str(authoring_review_path),
+                    "--pmb-package-evidence-intake-in",
+                    str(package_evidence_path),
+                    "--pmb-validation-handoff-out",
+                    str(handoff_path),
+                    "--validate-pmb-validation-handoff",
+                    str(handoff_path),
+                    "--pmb-replay-validation-receipt-out",
+                    str(replay_receipt_path),
+                    "--validate-pmb-replay-validation-receipt",
+                    str(replay_receipt_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                handoff_path.with_suffix(handoff_path.suffix + ".validation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            replay_receipt = json.loads(replay_receipt_path.read_text(encoding="utf-8"))
+            replay_validation = json.loads(
+                replay_receipt_path.with_suffix(
+                    replay_receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(handoff["status"], "ready")
+            self.assertEqual(handoff["handoff_owner"], "rusty.hostess")
+            self.assertFalse(handoff["platform_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(replay_receipt["status"], "validated")
+            self.assertEqual(replay_receipt["scorecard_status"], "pass")
+            self.assertFalse(replay_receipt["replay_execution_started"])
+            self.assertFalse(replay_receipt["fixture_payloads_copied"])
+            self.assertEqual(replay_validation["status"], "pass")
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -2098,6 +2651,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             evidence_attachment_path = root / "platform-smoke-evidence-attachment.json"
             evidence_attachment_rejection_path = (
                 root / "platform-smoke-evidence-attachment-rejection.json"
+            )
+            evidence_review_path = root / "platform-smoke-evidence-review.json"
+            evidence_review_rejection_path = (
+                root / "platform-smoke-evidence-review-rejection.json"
             )
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
@@ -2176,6 +2733,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(evidence_attachment_rejection_path),
                     "--validate-platform-smoke-evidence-attachment",
                     str(evidence_attachment_path),
+                    "--platform-smoke-evidence-review-out",
+                    str(evidence_review_path),
+                    "--platform-smoke-evidence-review-rejection-out",
+                    str(evidence_review_rejection_path),
+                    "--validate-platform-smoke-evidence-review",
+                    str(evidence_review_path),
                     "--host-shell-kind",
                     "hostess.t.quest_host_shell.schema_gate",
                 ],
@@ -2268,6 +2831,15 @@ class StudioStagingRequestTests(unittest.TestCase):
             evidence_attachment_validation = json.loads(
                 evidence_attachment_path.with_suffix(
                     evidence_attachment_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            evidence_review = json.loads(evidence_review_path.read_text(encoding="utf-8"))
+            evidence_review_rejection = json.loads(
+                evidence_review_rejection_path.read_text(encoding="utf-8")
+            )
+            evidence_review_validation = json.loads(
+                evidence_review_path.with_suffix(
+                    evidence_review_path.suffix + ".validation.json"
                 ).read_text(encoding="utf-8")
             )
             self.assertEqual(report["status"], "accepted")
@@ -2431,6 +3003,29 @@ class StudioStagingRequestTests(unittest.TestCase):
                 evidence_attachment_rejection["rejected_evidence_attachment_count"],
                 len(plan["planned_actions"]),
             )
+            self.assertEqual(evidence_review["status"], "reviewed")
+            self.assertEqual(evidence_review["scorecard_status"], "pass")
+            self.assertTrue(evidence_review["operator_review_ready"])
+            self.assertFalse(evidence_review["evidence_payloads_copied"])
+            self.assertFalse(evidence_review["evidence_collection_started"])
+            self.assertFalse(evidence_review["platform_execution_performed"])
+            self.assertFalse(evidence_review["real_platform_execution_evidence_attached"])
+            self.assertEqual(evidence_review["missing_attachment_count"], 0)
+            self.assertEqual(evidence_review["rejected_attachment_count"], 0)
+            self.assertEqual(
+                evidence_review["reviewed_evidence_attachment_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(evidence_review_validation["status"], "pass")
+            self.assertEqual(evidence_review_rejection["status"], "rejected")
+            self.assertEqual(evidence_review_rejection["scorecard_status"], "fail")
+            self.assertFalse(evidence_review_rejection["operator_review_ready"])
+            self.assertFalse(evidence_review_rejection["evidence_payloads_copied"])
+            self.assertEqual(
+                evidence_review_rejection["rejected_attachment_count"],
+                len(evidence_review_rejection["evidence_review_rows"])
+                + len(evidence_review_rejection["readiness_review_rows"]),
+            )
 
 
 def valid_request() -> dict[str, object]:
@@ -2573,6 +3168,99 @@ def expected_action_ids() -> list[str]:
     return [entry["action_id"] for entry in valid_request()["actions"]]  # type: ignore[index]
 
 
+def ready_pmb_package_evidence_intake() -> dict[str, object]:
+    entries = [
+        {
+            "check_id": check_id,
+            "source_status": "pass",
+            "evidence": "synthetic projected-motion breath package evidence passed",
+            "required_for_studio": True,
+            "decision": "ready",
+            "next_required_action": "review_package_in_studio",
+            "issue_code": None,
+        }
+        for check_id in adapter.PMB_REQUIRED_PACKAGE_CHECKS
+    ]
+    return {
+        "$schema": adapter.STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA,
+        "source_report_schema": "rusty.manifold.package.validation_report.v1",
+        "source_report_path": "fixtures/projected-motion-breath/package-validation.json",
+        "target_package_id": adapter.PMB_TARGET_PACKAGE_ID,
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.review_only",
+        "runtime_authority": "rusty.manifold",
+        "authoring_authority": "rusty.studio",
+        "platform_validation_authority": "rusty.hostess",
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "source_report_status": "pass",
+        "source_check_count": len(entries),
+        "target_package_check_count": len(entries),
+        "required_check_count": len(entries),
+        "ready_required_check_count": len(entries),
+        "blocked_required_check_count": 0,
+        "observed_check_count": 0,
+        "entries": entries,
+        "prohibited_actions": [
+            "build",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "start_runtime_package",
+        ],
+        "checks": [],
+    }
+
+
+def ready_pmb_authoring_review() -> dict[str, object]:
+    return {
+        "$schema": adapter.STUDIO_PMB_AUTHORING_REVIEW_SCHEMA,
+        "source_intake_schema": adapter.STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA,
+        "source_intake_path": "fixtures/projected-motion-breath/package-evidence-intake.json",
+        "source_profile_schema": "rusty.motion_breath_profile.v1",
+        "source_profile_path": "fixtures/projected-motion-breath/profile-synthetic.json",
+        "target_package_id": adapter.PMB_TARGET_PACKAGE_ID,
+        "target_module_id": adapter.PMB_TARGET_MODULE_ID,
+        "profile_id": "profile.projected_motion_breath.synthetic_default",
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.proposal_only",
+        "runtime_authority": "rusty.manifold",
+        "authoring_authority": "rusty.studio",
+        "platform_validation_authority": "rusty.hostess",
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "package_evidence_status": "ready",
+        "package_required_check_count": len(adapter.PMB_REQUIRED_PACKAGE_CHECKS),
+        "package_ready_required_check_count": len(adapter.PMB_REQUIRED_PACKAGE_CHECKS),
+        "package_blocked_required_check_count": 0,
+        "input_kinds": ["pose", "vector3"],
+        "projection_mode": "controller_relative_axis",
+        "fallback_projection_mode": "polar_acc_axis",
+        "proposed_command_id": adapter.PMB_PROPOSED_COMMAND_ID,
+        "proposed_profile_operation": "propose_profile_for_runtime_owner_review",
+        "required_package_checks": copy.copy(adapter.PMB_REQUIRED_PACKAGE_CHECKS),
+        "prohibited_actions": [
+            "build",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "start_runtime_package",
+        ],
+        "checks": [],
+    }
+
+
+def ready_pmb_validation_handoff() -> dict[str, object]:
+    return adapter.build_projected_motion_breath_validation_handoff(
+        ready_pmb_authoring_review(),
+        ready_pmb_package_evidence_intake(),
+    )
+
+
 def ready_platform_smoke_plan() -> dict[str, object]:
     request = valid_request()
     handoff = adapter.build_smoke_handoff_checklist(
@@ -2668,6 +3356,40 @@ def ready_platform_smoke_execution_report_chain() -> tuple[
         preflight,
     )
     return plan, approval, execution_request, execution_receipt, gate, preflight, report
+
+
+def ready_platform_smoke_evidence_attachment_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan, approval, execution_request, execution_receipt, gate, preflight, report = (
+        ready_platform_smoke_execution_report_chain()
+    )
+    attachment = adapter.build_platform_smoke_evidence_attachment_receipt(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+    )
+    return (
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    )
 
 
 if __name__ == "__main__":

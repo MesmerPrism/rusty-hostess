@@ -52,7 +52,9 @@ python tools\studio_staging_request.py `
   --platform-smoke-execution-report-out <hostess-platform-smoke-execution-report.json> `
   --platform-smoke-execution-report-rejection-out <hostess-platform-smoke-execution-report-rejection.json> `
   --platform-smoke-evidence-attachment-out <hostess-platform-smoke-evidence-attachment.json> `
-  --platform-smoke-evidence-attachment-rejection-out <hostess-platform-smoke-evidence-attachment-rejection.json>
+  --platform-smoke-evidence-attachment-rejection-out <hostess-platform-smoke-evidence-attachment-rejection.json> `
+  --platform-smoke-evidence-review-out <hostess-platform-smoke-evidence-review.json> `
+  --platform-smoke-evidence-review-rejection-out <hostess-platform-smoke-evidence-review-rejection.json>
 ```
 
 The intake report uses
@@ -203,3 +205,55 @@ records `device_required = false`, `evidence_payloads_copied = false`,
 `evidence_collection_started = false`, and
 `real_platform_execution_evidence_attached = false`. Actual evidence
 collection and artifact storage remain Hostess-owned work outside Studio.
+
+The platform smoke evidence review uses
+`rusty.hostess.studio_staging_platform_smoke_evidence_review.v1`. It consumes
+the evidence attachment receipt and emits a Hostess-owned scorecard over the
+validated, missing, or rejected evidence descriptors. It records
+`operator_review_ready = true` only when the attachment receipt and all
+descriptor rows are validated. It is still scorecard-only and records
+`device_required = false`, `evidence_payloads_copied = false`,
+`schema_path_execution_allowed = false`, `platform_execution_allowed = false`,
+`studio_execution_allowed = false`, `execution_performed = false`,
+`runtime_execution_performed = false`, `platform_execution_performed = false`,
+`evidence_collection_started = false`, and
+`real_platform_execution_evidence_attached = false`. It does not collect
+evidence, copy payloads, start a host shell, install, launch, run ADB, or run a
+Quest/APK build.
+
+Projected-motion breath validation handoff:
+
+```powershell
+python tools\studio_staging_request.py `
+  --request <studio-execution-request.json> `
+  --pmb-authoring-review-in <studio-pmb-authoring-review.json> `
+  --pmb-package-evidence-intake-in <studio-pmb-package-evidence-intake.json> `
+  --pmb-validation-handoff-out <hostess-pmb-validation-handoff.json> `
+  --validate-pmb-validation-handoff <hostess-pmb-validation-handoff.json> `
+  --pmb-replay-validation-receipt-out <hostess-pmb-replay-validation-receipt.json> `
+  --validate-pmb-replay-validation-receipt <hostess-pmb-replay-validation-receipt.json>
+```
+
+The projected-motion breath validation handoff uses
+`rusty.hostess.projected_motion_breath_validation_handoff.v1`. It consumes the
+Studio projected-motion breath authoring review and package-evidence intake,
+checks the expected package, module, proposed Manifold command, required
+package evidence checks, authority fields, and non-execution flags, then emits
+Hostess/Manifold validation slots for authoring-profile review,
+package-evidence review, Manifold command-contract review, and replay-plan
+preparation. It is review-only and does not start builds, install, launch,
+open command sessions, run processors, copy fixture payloads, collect evidence,
+use sockets, use ADB, or touch Quest/OpenXR runtime paths.
+
+The projected-motion breath replay validation receipt uses
+`rusty.hostess.projected_motion_breath_replay_validation_receipt.v1`. It
+consumes the projected-motion breath validation handoff and optional replay
+descriptor rows, then checks the pure-processor replay descriptor contract for
+golden and damaged cases. The receipt is a descriptor scorecard only. It
+records `device_required = false`, `schema_path_execution_allowed = false`,
+`platform_execution_allowed = false`, `studio_execution_allowed = false`,
+`runtime_execution_performed = false`, `platform_execution_performed = false`,
+`execution_performed = false`, `replay_execution_started = false`,
+`fixture_payloads_copied = false`, and `processor_runtime_started = false`.
+Actual replay execution and any later platform smoke test remain Hostess-owned
+work outside Studio and outside this schema path.

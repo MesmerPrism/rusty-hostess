@@ -75,6 +75,26 @@ PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_SCHEMA = (
 PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_platform_smoke_evidence_attachment_receipt_validation.v1"
 )
+PLATFORM_SMOKE_EVIDENCE_REVIEW_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_evidence_review.v1"
+)
+PLATFORM_SMOKE_EVIDENCE_REVIEW_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_evidence_review_validation.v1"
+)
+STUDIO_PMB_AUTHORING_REVIEW_SCHEMA = (
+    "rusty.studio.projected_motion_breath_authoring_review.v1"
+)
+STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA = "rusty.studio.package_evidence_intake_report.v1"
+PMB_VALIDATION_HANDOFF_SCHEMA = "rusty.hostess.projected_motion_breath_validation_handoff.v1"
+PMB_VALIDATION_HANDOFF_VALIDATION_SCHEMA = (
+    "rusty.hostess.projected_motion_breath_validation_handoff_validation.v1"
+)
+PMB_REPLAY_VALIDATION_RECEIPT_SCHEMA = (
+    "rusty.hostess.projected_motion_breath_replay_validation_receipt.v1"
+)
+PMB_REPLAY_VALIDATION_RECEIPT_VALIDATION_SCHEMA = (
+    "rusty.hostess.projected_motion_breath_replay_validation_receipt_validation.v1"
+)
 OPERATOR_START_REQUEST_TEMPLATE_SCHEMA = (
     "rusty.hostess.platform_smoke_operator_start_request_template.v1"
 )
@@ -130,6 +150,85 @@ PLATFORM_SMOKE_EXECUTION_REPORT_POLICY = (
 PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_POLICY = (
     "hostess.external_platform_smoke_evidence_attachment_receipt_only"
 )
+PLATFORM_SMOKE_EVIDENCE_REVIEW_POLICY = (
+    "hostess.platform_smoke_evidence_review_scorecard_only"
+)
+PMB_VALIDATION_HANDOFF_POLICY = "hostess.projected_motion_breath_validation_handoff_review_only"
+PMB_REPLAY_VALIDATION_RECEIPT_POLICY = (
+    "hostess.projected_motion_breath_replay_validation_receipt_review_only"
+)
+PMB_TARGET_PACKAGE_ID = "package.projected_motion_breath"
+PMB_TARGET_MODULE_ID = "module.breath.projected_motion"
+PMB_PROPOSED_COMMAND_ID = "command.breath.set_profile"
+PMB_REQUIRED_PACKAGE_CHECKS = [
+    "validation.package.package.projected_motion_breath.projected_motion_contract",
+    "validation.package.package.projected_motion_breath.projected_motion_profile_commands",
+    "validation.package.package.projected_motion_breath.projected_motion_goldens",
+]
+PMB_VALIDATION_SLOT_CONTRACTS = [
+    {
+        "slot_id": "hostess.pmb.review_authoring_profile_intent",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.pmb.review_authoring_profile_intent",
+        "expected_input_kind": STUDIO_PMB_AUTHORING_REVIEW_SCHEMA,
+        "validation_kind": "schema_only_authoring_intent_review",
+    },
+    {
+        "slot_id": "hostess.pmb.review_package_evidence",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.pmb.review_package_evidence",
+        "expected_input_kind": STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA,
+        "validation_kind": "schema_only_package_evidence_review",
+    },
+    {
+        "slot_id": "manifold.pmb.review_set_profile_command_contract",
+        "owner": MANIFOLD_OWNER,
+        "route_kind": "manifold.review.command.breath.set_profile",
+        "expected_input_kind": PMB_PROPOSED_COMMAND_ID,
+        "validation_kind": "schema_only_manifold_command_contract_review",
+    },
+    {
+        "slot_id": "hostess.pmb.prepare_replay_validation_plan",
+        "owner": HOSTESS_OWNER,
+        "route_kind": "hostess.pmb.prepare_replay_validation_plan",
+        "expected_input_kind": "synthetic_or_replay_fixture",
+        "validation_kind": "schema_only_synthetic_replay_plan",
+    },
+]
+PMB_REPLAY_DESCRIPTOR_CONTRACTS = [
+    {
+        "descriptor_id": "pmb.replay.golden.pose_projection",
+        "owner": HOSTESS_OWNER,
+        "fixture_kind": "projected_motion_breath_golden_case",
+        "case_id": "case.projected_motion_breath.pose_projection",
+        "expected_processor_status": PASS_STATUS,
+        "validation_kind": "pure_processor_golden_replay",
+    },
+    {
+        "descriptor_id": "pmb.replay.golden.vector_projection",
+        "owner": HOSTESS_OWNER,
+        "fixture_kind": "projected_motion_breath_golden_case",
+        "case_id": "case.projected_motion_breath.vector_projection",
+        "expected_processor_status": PASS_STATUS,
+        "validation_kind": "pure_processor_golden_replay",
+    },
+    {
+        "descriptor_id": "pmb.replay.damaged.flat_calibration",
+        "owner": HOSTESS_OWNER,
+        "fixture_kind": "projected_motion_breath_damaged_case",
+        "case_id": "case.projected_motion_breath.flat_calibration_rejected",
+        "expected_processor_status": FAIL_STATUS,
+        "validation_kind": "pure_processor_damaged_replay",
+    },
+    {
+        "descriptor_id": "pmb.replay.damaged.stale_source",
+        "owner": HOSTESS_OWNER,
+        "fixture_kind": "projected_motion_breath_damaged_case",
+        "case_id": "case.projected_motion_breath.stale_source_rejected",
+        "expected_processor_status": FAIL_STATUS,
+        "validation_kind": "pure_processor_damaged_replay",
+    },
+]
 
 REQUIRED_PROHIBITED_ACTIONS = [
     "stage_generated_shells",
@@ -6972,6 +7071,1740 @@ def platform_smoke_readiness_evidence_attachment_unstarted(
     )
 
 
+def build_platform_smoke_evidence_review(
+    plan: dict[str, Any],
+    approval_receipt: dict[str, Any],
+    execution_request: dict[str, Any],
+    execution_receipt: dict[str, Any],
+    operator_start_gate: dict[str, Any],
+    operator_start_preflight: dict[str, Any],
+    execution_report: dict[str, Any],
+    attachment_receipt: dict[str, Any],
+    decision: str = ACCEPTED_STATUS,
+    reason_code: str | None = None,
+) -> dict[str, Any]:
+    attachment_validation = validate_platform_smoke_evidence_attachment_receipt(
+        plan,
+        approval_receipt,
+        execution_request,
+        execution_receipt,
+        operator_start_gate,
+        operator_start_preflight,
+        execution_report,
+        attachment_receipt,
+    )
+    evidence_attachments = platform_smoke_evidence_attachment_dicts(attachment_receipt)
+    readiness_attachments = platform_smoke_readiness_evidence_attachment_dicts(
+        attachment_receipt
+    )
+    decision_supported = decision in {ACCEPTED_STATUS, REJECTED_STATUS}
+    source_validated = (
+        attachment_receipt.get("status") == VALIDATED_STATUS
+        and attachment_validation.get("status") == PASS_STATUS
+        and attachment_receipt.get("external_evidence_descriptors_attached") is True
+        and attachment_receipt.get("all_placeholders_bound") is True
+        and all(
+            attachment.get("attachment_status") == VALIDATED_STATUS
+            and attachment.get("evidence_descriptor_attached") is True
+            and platform_smoke_evidence_attachment_unstarted(attachment)
+            for attachment in evidence_attachments
+        )
+        and all(
+            attachment.get("attachment_status") == VALIDATED_STATUS
+            and attachment.get("readiness_descriptor_attached") is True
+            and platform_smoke_readiness_evidence_attachment_unstarted(attachment)
+            for attachment in readiness_attachments
+        )
+    )
+    status = (
+        REVIEWED_STATUS
+        if decision == ACCEPTED_STATUS and decision_supported and source_validated
+        else REJECTED_STATUS
+    )
+    issue_code = None
+    if status == REJECTED_STATUS:
+        issue_code = (
+            reason_code
+            or attachment_receipt.get("issue_code")
+            or attachment_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_evidence_review_rejected"
+        )
+    evidence_review_rows = platform_smoke_evidence_review_attachment_rows(
+        attachment_receipt,
+        evidence_attachments,
+        status,
+        issue_code,
+    )
+    readiness_review_rows = platform_smoke_evidence_review_readiness_rows(
+        attachment_receipt,
+        readiness_attachments,
+        status,
+        issue_code,
+    )
+    reviewed_evidence_rows = [
+        row for row in evidence_review_rows if row.get("review_status") == REVIEWED_STATUS
+    ]
+    rejected_evidence_rows = [
+        row for row in evidence_review_rows if row.get("review_status") == REJECTED_STATUS
+    ]
+    reviewed_readiness_rows = [
+        row for row in readiness_review_rows if row.get("review_status") == REVIEWED_STATUS
+    ]
+    rejected_readiness_rows = [
+        row for row in readiness_review_rows if row.get("review_status") == REJECTED_STATUS
+    ]
+    missing_attachment_count = sum(
+        1 for row in evidence_review_rows if row.get("missing_attachment") is True
+    ) + sum(1 for row in readiness_review_rows if row.get("missing_attachment") is True)
+    rejected_attachment_count = len(rejected_evidence_rows) + len(rejected_readiness_rows)
+    checks = platform_smoke_evidence_review_checks(
+        attachment_receipt,
+        attachment_validation,
+        evidence_attachments,
+        readiness_attachments,
+        evidence_review_rows,
+        readiness_review_rows,
+        status,
+        decision_supported,
+    )
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    if failed and status == REVIEWED_STATUS:
+        status = REJECTED_STATUS
+        issue_code = failed[0]["issue_code"]
+        evidence_review_rows = platform_smoke_evidence_review_attachment_rows(
+            attachment_receipt,
+            evidence_attachments,
+            status,
+            issue_code,
+        )
+        readiness_review_rows = platform_smoke_evidence_review_readiness_rows(
+            attachment_receipt,
+            readiness_attachments,
+            status,
+            issue_code,
+        )
+        reviewed_evidence_rows = []
+        rejected_evidence_rows = evidence_review_rows
+        reviewed_readiness_rows = []
+        rejected_readiness_rows = readiness_review_rows
+        missing_attachment_count = sum(
+            1 for row in evidence_review_rows if row.get("missing_attachment") is True
+        ) + sum(1 for row in readiness_review_rows if row.get("missing_attachment") is True)
+        rejected_attachment_count = len(rejected_evidence_rows) + len(
+            rejected_readiness_rows
+        )
+
+    attachment_receipt_id = attachment_receipt.get("evidence_attachment_receipt_id")
+    review_id = (
+        f"hostess.platform_smoke_evidence_review.{attachment_receipt_id}"
+        if isinstance(attachment_receipt_id, str) and attachment_receipt_id
+        else "hostess.platform_smoke_evidence_review.unknown"
+    )
+    return {
+        "$schema": PLATFORM_SMOKE_EVIDENCE_REVIEW_SCHEMA,
+        "evidence_review_id": review_id,
+        "source_evidence_attachment_receipt_id": attachment_receipt_id,
+        "source_execution_report_id": attachment_receipt.get("source_execution_report_id"),
+        "source_operator_start_preflight_receipt_id": attachment_receipt.get(
+            "source_operator_start_preflight_receipt_id"
+        ),
+        "source_operator_start_gate_id": attachment_receipt.get("source_operator_start_gate_id"),
+        "source_execution_receipt_id": attachment_receipt.get("source_execution_receipt_id"),
+        "source_execution_request_id": attachment_receipt.get("source_execution_request_id"),
+        "source_approval_receipt_id": attachment_receipt.get("source_approval_receipt_id"),
+        "source_plan_id": attachment_receipt.get("source_plan_id"),
+        "source_bundle_id": attachment_receipt.get("source_bundle_id"),
+        "target_profile": attachment_receipt.get("target_profile"),
+        "target_platform": attachment_receipt.get("target_platform"),
+        "host_shell_kind": attachment_receipt.get("host_shell_kind"),
+        "status": status,
+        "review_decision": decision if decision_supported else REJECTED_STATUS,
+        "issue_code": issue_code,
+        "execution_policy": PLATFORM_SMOKE_EVIDENCE_REVIEW_POLICY,
+        "review_owner": HOSTESS_OWNER,
+        "evidence_owner": HOSTESS_OWNER,
+        "operator_start_owner": HOSTESS_OWNER,
+        "host_shell_owner": attachment_receipt.get("host_shell_owner"),
+        "platform_owner": attachment_receipt.get("platform_owner"),
+        "requester_role": attachment_receipt.get("requester_role"),
+        "command_session_authority": attachment_receipt.get("command_session_authority"),
+        "install_launch_evidence_authority": attachment_receipt.get(
+            "install_launch_evidence_authority"
+        ),
+        "studio_role": attachment_receipt.get("studio_role"),
+        "device_required": False,
+        "operator_review_ready": status == REVIEWED_STATUS,
+        "scorecard_status": PASS_STATUS if status == REVIEWED_STATUS else FAIL_STATUS,
+        "external_evidence_required": True,
+        "external_evidence_descriptors_attached": attachment_receipt.get(
+            "external_evidence_descriptors_attached"
+        )
+        is True,
+        "all_placeholders_bound": attachment_receipt.get("all_placeholders_bound") is True,
+        "real_platform_execution_evidence_attached": False,
+        "evidence_payloads_copied": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_evidence_attachment_receipt_status": attachment_receipt.get("status"),
+        "source_evidence_attachment_validation_status": attachment_validation.get("status"),
+        "source_evidence_attachment_issue_code": (
+            attachment_receipt.get("issue_code") or attachment_validation.get("issue_code")
+        ),
+        "source_evidence_attachment_count": len(evidence_attachments),
+        "source_readiness_evidence_attachment_count": len(readiness_attachments),
+        "evidence_review_row_count": len(evidence_review_rows),
+        "reviewed_evidence_attachment_count": len(reviewed_evidence_rows),
+        "rejected_evidence_attachment_count": len(rejected_evidence_rows),
+        "readiness_review_row_count": len(readiness_review_rows),
+        "reviewed_readiness_evidence_attachment_count": len(reviewed_readiness_rows),
+        "rejected_readiness_evidence_attachment_count": len(rejected_readiness_rows),
+        "missing_attachment_count": missing_attachment_count,
+        "rejected_attachment_count": rejected_attachment_count,
+        "source_evidence_attachments": evidence_attachments,
+        "source_readiness_evidence_attachments": readiness_attachments,
+        "evidence_review_rows": evidence_review_rows,
+        "readiness_review_rows": readiness_review_rows,
+        "checks": checks,
+        "next_required_action": (
+            "hostess_prepare_operator_release_bundle_outside_studio"
+            if status == REVIEWED_STATUS
+            else "repair_or_decline_platform_smoke_evidence_review"
+        ),
+    }
+
+
+def validate_platform_smoke_evidence_review(
+    plan: dict[str, Any],
+    approval_receipt: dict[str, Any],
+    execution_request: dict[str, Any],
+    execution_receipt: dict[str, Any],
+    operator_start_gate: dict[str, Any],
+    operator_start_preflight: dict[str, Any],
+    execution_report: dict[str, Any],
+    attachment_receipt: dict[str, Any],
+    evidence_review: dict[str, Any],
+) -> dict[str, Any]:
+    attachment_validation = validate_platform_smoke_evidence_attachment_receipt(
+        plan,
+        approval_receipt,
+        execution_request,
+        execution_receipt,
+        operator_start_gate,
+        operator_start_preflight,
+        execution_report,
+        attachment_receipt,
+    )
+    evidence_attachments = platform_smoke_evidence_attachment_dicts(attachment_receipt)
+    readiness_attachments = platform_smoke_readiness_evidence_attachment_dicts(
+        attachment_receipt
+    )
+    evidence_review_rows = platform_smoke_evidence_review_row_dicts(evidence_review)
+    readiness_review_rows = platform_smoke_evidence_review_readiness_row_dicts(
+        evidence_review
+    )
+    reviewed_evidence_rows = [
+        row for row in evidence_review_rows if row.get("review_status") == REVIEWED_STATUS
+    ]
+    rejected_evidence_rows = [
+        row for row in evidence_review_rows if row.get("review_status") == REJECTED_STATUS
+    ]
+    reviewed_readiness_rows = [
+        row for row in readiness_review_rows if row.get("review_status") == REVIEWED_STATUS
+    ]
+    rejected_readiness_rows = [
+        row for row in readiness_review_rows if row.get("review_status") == REJECTED_STATUS
+    ]
+    missing_attachment_count = sum(
+        1 for row in evidence_review_rows if row.get("missing_attachment") is True
+    ) + sum(1 for row in readiness_review_rows if row.get("missing_attachment") is True)
+    rejected_attachment_count = len(rejected_evidence_rows) + len(rejected_readiness_rows)
+    embedded_checks = evidence_review.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    checks = [
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.schema",
+            evidence_review.get("$schema") == PLATFORM_SMOKE_EVIDENCE_REVIEW_SCHEMA,
+            "platform smoke evidence review schema is supported",
+            "platform smoke evidence review schema is unsupported",
+            "hostess.issue.platform_smoke_evidence_review_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.attachment_receipt_id",
+            evidence_review.get("source_evidence_attachment_receipt_id")
+            == attachment_receipt.get("evidence_attachment_receipt_id"),
+            "platform smoke evidence review source attachment receipt id matches",
+            "platform smoke evidence review source attachment receipt id differs",
+            "hostess.issue.platform_smoke_evidence_review_attachment_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.status",
+            evidence_review.get("status") in {REVIEWED_STATUS, REJECTED_STATUS},
+            "platform smoke evidence review status is supported",
+            "platform smoke evidence review status is unsupported",
+            "hostess.issue.platform_smoke_evidence_review_status",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.execution_policy",
+            evidence_review.get("execution_policy") == PLATFORM_SMOKE_EVIDENCE_REVIEW_POLICY,
+            "platform smoke evidence review is scorecard-only",
+            "platform smoke evidence review execution policy drifted",
+            "hostess.issue.platform_smoke_evidence_review_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.no_execution_started",
+            all(evidence_review.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and evidence_review.get("runtime_execution_performed") is False
+            and evidence_review.get("platform_execution_performed") is False
+            and evidence_review.get("schema_path_execution_allowed") is False
+            and evidence_review.get("platform_execution_allowed") is False
+            and evidence_review.get("studio_execution_allowed") is False
+            and evidence_review.get("device_required") is False
+            and evidence_review.get("evidence_payloads_copied") is False
+            and evidence_review.get("real_platform_execution_evidence_attached") is False,
+            "platform smoke evidence review has not started Studio, schema path, runtime, platform, collection, or payload work",
+            "platform smoke evidence review indicates execution, collection, or payload copying",
+            "hostess.issue.platform_smoke_evidence_review_execution_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.authority",
+            evidence_review.get("review_owner") == HOSTESS_OWNER
+            and evidence_review.get("evidence_owner") == HOSTESS_OWNER
+            and evidence_review.get("operator_start_owner") == HOSTESS_OWNER
+            and evidence_review.get("host_shell_owner") == HOSTESS_OWNER
+            and evidence_review.get("platform_owner") == HOSTESS_OWNER
+            and evidence_review.get("requester_role") == STUDIO_REQUESTER
+            and evidence_review.get("command_session_authority") == MANIFOLD_OWNER
+            and evidence_review.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and evidence_review.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.source_attachment",
+            evidence_review.get("status") != REVIEWED_STATUS
+            or (
+                attachment_receipt.get("status") == VALIDATED_STATUS
+                and attachment_validation.get("status") == PASS_STATUS
+                and attachment_receipt.get("external_evidence_descriptors_attached") is True
+                and attachment_receipt.get("all_placeholders_bound") is True
+            ),
+            "source platform smoke evidence attachment is validated",
+            "source platform smoke evidence attachment is rejected, invalid, or incomplete",
+            attachment_receipt.get("issue_code")
+            or attachment_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_evidence_review_source_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.attachments",
+            platform_smoke_evidence_review_rows_match_attachments(
+                evidence_attachments,
+                evidence_review_rows,
+                evidence_review.get("status"),
+            ),
+            "platform smoke evidence review rows match source evidence attachments",
+            "platform smoke evidence review rows drifted from source evidence attachments",
+            "hostess.issue.platform_smoke_evidence_review_attachment_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.readiness",
+            platform_smoke_evidence_review_readiness_rows_match_attachments(
+                readiness_attachments,
+                readiness_review_rows,
+                evidence_review.get("status"),
+            ),
+            "platform smoke readiness review rows match source readiness attachments",
+            "platform smoke readiness review rows drifted from source readiness attachments",
+            "hostess.issue.platform_smoke_evidence_review_readiness_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.counts",
+            evidence_review.get("source_evidence_attachment_count") == len(evidence_attachments)
+            and evidence_review.get("source_readiness_evidence_attachment_count")
+            == len(readiness_attachments)
+            and evidence_review.get("evidence_review_row_count") == len(evidence_review_rows)
+            and evidence_review.get("reviewed_evidence_attachment_count")
+            == len(reviewed_evidence_rows)
+            and evidence_review.get("rejected_evidence_attachment_count")
+            == len(rejected_evidence_rows)
+            and evidence_review.get("readiness_review_row_count") == len(readiness_review_rows)
+            and evidence_review.get("reviewed_readiness_evidence_attachment_count")
+            == len(reviewed_readiness_rows)
+            and evidence_review.get("rejected_readiness_evidence_attachment_count")
+            == len(rejected_readiness_rows)
+            and evidence_review.get("missing_attachment_count") == missing_attachment_count
+            and evidence_review.get("rejected_attachment_count") == rejected_attachment_count,
+            "platform smoke evidence review counts match nested records",
+            "platform smoke evidence review counts drifted",
+            "hostess.issue.platform_smoke_evidence_review_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.scorecard",
+            (
+                evidence_review.get("status") == REVIEWED_STATUS
+                and evidence_review.get("scorecard_status") == PASS_STATUS
+                and evidence_review.get("operator_review_ready") is True
+                and evidence_review.get("missing_attachment_count") == 0
+                and evidence_review.get("rejected_attachment_count") == 0
+            )
+            or (
+                evidence_review.get("status") == REJECTED_STATUS
+                and evidence_review.get("scorecard_status") == FAIL_STATUS
+                and evidence_review.get("operator_review_ready") is False
+            ),
+            "platform smoke evidence review scorecard matches review status",
+            "platform smoke evidence review scorecard drifted",
+            "hostess.issue.platform_smoke_evidence_review_scorecard_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.embedded_checks",
+            all(check.get("status") == PASS_STATUS for check in embedded_check_dicts),
+            "embedded platform smoke evidence review checks passed",
+            "embedded platform smoke evidence review checks contain failures",
+            "hostess.issue.platform_smoke_evidence_review_embedded_check_failed",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.rejection_reason",
+            evidence_review.get("status") != REJECTED_STATUS
+            or isinstance(evidence_review.get("issue_code"), str),
+            "rejected platform smoke evidence review carries a reason code",
+            "rejected platform smoke evidence review is missing a reason code",
+            "hostess.issue.platform_smoke_evidence_review_rejection_reason",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": PLATFORM_SMOKE_EVIDENCE_REVIEW_VALIDATION_SCHEMA,
+        "evidence_review_id": evidence_review.get("evidence_review_id"),
+        "source_evidence_attachment_receipt_id": evidence_review.get(
+            "source_evidence_attachment_receipt_id"
+        ),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "real_platform_execution_evidence_attached": False,
+        "checks": checks,
+    }
+
+
+def platform_smoke_evidence_review_checks(
+    attachment_receipt: dict[str, Any],
+    attachment_validation: dict[str, Any],
+    evidence_attachments: list[dict[str, Any]],
+    readiness_attachments: list[dict[str, Any]],
+    evidence_review_rows: list[dict[str, Any]],
+    readiness_review_rows: list[dict[str, Any]],
+    status: str,
+    decision_supported: bool,
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.source_attachment",
+            attachment_receipt.get("$schema") == PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_SCHEMA
+            and attachment_receipt.get("status") == VALIDATED_STATUS
+            and attachment_validation.get("status") == PASS_STATUS,
+            "platform smoke evidence attachment receipt is validated",
+            "platform smoke evidence attachment receipt is rejected or invalid",
+            attachment_receipt.get("issue_code")
+            or attachment_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_evidence_review_source_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.decision",
+            decision_supported,
+            "platform smoke evidence review decision is supported",
+            "platform smoke evidence review decision is unsupported",
+            "hostess.issue.platform_smoke_evidence_review_decision",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.source_descriptors",
+            attachment_receipt.get("external_evidence_descriptors_attached") is True
+            and attachment_receipt.get("all_placeholders_bound") is True
+            and all(
+                attachment.get("attachment_status") == VALIDATED_STATUS
+                and attachment.get("evidence_descriptor_attached") is True
+                and platform_smoke_evidence_attachment_unstarted(attachment)
+                for attachment in evidence_attachments
+            )
+            and all(
+                attachment.get("attachment_status") == VALIDATED_STATUS
+                and attachment.get("readiness_descriptor_attached") is True
+                and platform_smoke_readiness_evidence_attachment_unstarted(attachment)
+                for attachment in readiness_attachments
+            ),
+            "platform smoke evidence descriptors are attached and unexecuted",
+            "platform smoke evidence descriptors are missing, rejected, or started",
+            "hostess.issue.platform_smoke_evidence_review_descriptor_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.attachments",
+            platform_smoke_evidence_review_rows_match_attachments(
+                evidence_attachments,
+                evidence_review_rows,
+                status,
+            ),
+            "platform smoke evidence review rows match source evidence attachments",
+            "platform smoke evidence review rows drifted",
+            "hostess.issue.platform_smoke_evidence_review_attachment_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_evidence_review.readiness",
+            platform_smoke_evidence_review_readiness_rows_match_attachments(
+                readiness_attachments,
+                readiness_review_rows,
+                status,
+            ),
+            "platform smoke readiness review rows match source readiness attachments",
+            "platform smoke readiness review rows drifted",
+            "hostess.issue.platform_smoke_evidence_review_readiness_drift",
+        ),
+    ]
+
+
+def platform_smoke_evidence_review_attachment_rows(
+    attachment_receipt: dict[str, Any],
+    evidence_attachments: list[dict[str, Any]],
+    status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    review_status = REVIEWED_STATUS if status == REVIEWED_STATUS else REJECTED_STATUS
+    rows = []
+    for attachment in evidence_attachments:
+        source_attachment_id = attachment.get("evidence_attachment_id")
+        descriptor_attached = attachment.get("evidence_descriptor_attached") is True
+        rows.append(
+            {
+                "evidence_review_row_id": (
+                    f"hostess.platform_smoke_evidence_review_row.{source_attachment_id}"
+                    if isinstance(source_attachment_id, str) and source_attachment_id
+                    else "hostess.platform_smoke_evidence_review_row.unknown"
+                ),
+                "source_evidence_attachment_receipt_id": attachment_receipt.get(
+                    "evidence_attachment_receipt_id"
+                ),
+                "source_evidence_attachment_id": source_attachment_id,
+                "source_evidence_placeholder_id": attachment.get(
+                    "source_evidence_placeholder_id"
+                ),
+                "source_action_report_id": attachment.get("source_action_report_id"),
+                "source_plan_id": attachment.get("source_plan_id"),
+                "source_plan_action_id": attachment.get("source_plan_action_id"),
+                "owner": attachment.get("owner"),
+                "route_kind": attachment.get("route_kind"),
+                "required_evidence_kind": attachment.get("required_evidence_kind"),
+                "external_evidence_kind": attachment.get("external_evidence_kind"),
+                "external_evidence_descriptor_id": attachment.get(
+                    "external_evidence_descriptor_id"
+                ),
+                "source_attachment_status": attachment.get("attachment_status"),
+                "review_status": review_status,
+                "issue_code": None if review_status == REVIEWED_STATUS else issue_code,
+                "external_evidence_descriptor_supplied": attachment.get(
+                    "external_evidence_descriptor_supplied"
+                ),
+                "evidence_descriptor_attached": descriptor_attached,
+                "missing_attachment": not descriptor_attached,
+                "rejected_attachment": review_status == REJECTED_STATUS,
+                "evidence_payload_copied": False,
+                "collection_started": False,
+                "studio_execution_allowed": False,
+                "schema_path_execution_allowed": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "real_platform_execution_evidence_attached": False,
+                "command_session_started": False,
+            }
+        )
+    return rows
+
+
+def platform_smoke_evidence_review_readiness_rows(
+    attachment_receipt: dict[str, Any],
+    readiness_attachments: list[dict[str, Any]],
+    status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    review_status = REVIEWED_STATUS if status == REVIEWED_STATUS else REJECTED_STATUS
+    rows = []
+    for attachment in readiness_attachments:
+        source_attachment_id = attachment.get("readiness_evidence_attachment_id")
+        descriptor_attached = attachment.get("readiness_descriptor_attached") is True
+        rows.append(
+            {
+                "readiness_review_row_id": (
+                    f"hostess.platform_smoke_readiness_review_row.{source_attachment_id}"
+                    if isinstance(source_attachment_id, str) and source_attachment_id
+                    else "hostess.platform_smoke_readiness_review_row.unknown"
+                ),
+                "source_evidence_attachment_receipt_id": attachment_receipt.get(
+                    "evidence_attachment_receipt_id"
+                ),
+                "source_readiness_evidence_attachment_id": source_attachment_id,
+                "source_readiness_result_id": attachment.get("source_readiness_result_id"),
+                "source_readiness_input_id": attachment.get("source_readiness_input_id"),
+                "owner": attachment.get("owner"),
+                "input_kind": attachment.get("input_kind"),
+                "expected_source_kind": attachment.get("expected_source_kind"),
+                "validation_kind": attachment.get("validation_kind"),
+                "external_readiness_descriptor_id": attachment.get(
+                    "external_readiness_descriptor_id"
+                ),
+                "source_attachment_status": attachment.get("attachment_status"),
+                "review_status": review_status,
+                "issue_code": None if review_status == REVIEWED_STATUS else issue_code,
+                "external_readiness_descriptor_supplied": attachment.get(
+                    "external_readiness_descriptor_supplied"
+                ),
+                "readiness_descriptor_attached": descriptor_attached,
+                "missing_attachment": not descriptor_attached,
+                "rejected_attachment": review_status == REJECTED_STATUS,
+                "validated_for_attachment": attachment.get("validated_for_attachment"),
+                "validated_for_execution": False,
+                "studio_execution_allowed": False,
+                "schema_path_execution_allowed": False,
+                "execution_started": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "command_session_started": False,
+            }
+        )
+    return rows
+
+
+def platform_smoke_evidence_review_row_dicts(
+    evidence_review: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = evidence_review.get("evidence_review_rows", [])
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def platform_smoke_evidence_review_readiness_row_dicts(
+    evidence_review: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rows = evidence_review.get("readiness_review_rows", [])
+    if not isinstance(rows, list):
+        return []
+    return [row for row in rows if isinstance(row, dict)]
+
+
+def platform_smoke_evidence_review_rows_match_attachments(
+    evidence_attachments: list[dict[str, Any]],
+    review_rows: list[dict[str, Any]],
+    status: Any,
+) -> bool:
+    if status not in {REVIEWED_STATUS, REJECTED_STATUS}:
+        return False
+    expected_review_status = REVIEWED_STATUS if status == REVIEWED_STATUS else REJECTED_STATUS
+    by_id = {
+        row.get("source_evidence_attachment_id"): row
+        for row in review_rows
+    }
+    if len(review_rows) != len(evidence_attachments):
+        return False
+    for attachment in evidence_attachments:
+        row = by_id.get(attachment.get("evidence_attachment_id"))
+        if not isinstance(row, dict):
+            return False
+        for key in (
+            "source_evidence_placeholder_id",
+            "source_action_report_id",
+            "source_plan_id",
+            "source_plan_action_id",
+            "owner",
+            "route_kind",
+            "required_evidence_kind",
+            "external_evidence_kind",
+            "external_evidence_descriptor_id",
+            "external_evidence_descriptor_supplied",
+            "evidence_descriptor_attached",
+        ):
+            if row.get(key) != attachment.get(key):
+                return False
+        if row.get("source_attachment_status") != attachment.get("attachment_status"):
+            return False
+        if row.get("review_status") != expected_review_status:
+            return False
+        if row.get("missing_attachment") != (
+            attachment.get("evidence_descriptor_attached") is not True
+        ):
+            return False
+        if row.get("rejected_attachment") != (expected_review_status == REJECTED_STATUS):
+            return False
+        if not platform_smoke_evidence_review_row_unstarted(row):
+            return False
+    return True
+
+
+def platform_smoke_evidence_review_readiness_rows_match_attachments(
+    readiness_attachments: list[dict[str, Any]],
+    review_rows: list[dict[str, Any]],
+    status: Any,
+) -> bool:
+    if status not in {REVIEWED_STATUS, REJECTED_STATUS}:
+        return False
+    expected_review_status = REVIEWED_STATUS if status == REVIEWED_STATUS else REJECTED_STATUS
+    by_id = {
+        row.get("source_readiness_evidence_attachment_id"): row
+        for row in review_rows
+    }
+    if len(review_rows) != len(readiness_attachments):
+        return False
+    for attachment in readiness_attachments:
+        row = by_id.get(attachment.get("readiness_evidence_attachment_id"))
+        if not isinstance(row, dict):
+            return False
+        for key in (
+            "source_readiness_result_id",
+            "source_readiness_input_id",
+            "owner",
+            "input_kind",
+            "expected_source_kind",
+            "validation_kind",
+            "external_readiness_descriptor_id",
+            "external_readiness_descriptor_supplied",
+            "readiness_descriptor_attached",
+            "validated_for_attachment",
+        ):
+            if row.get(key) != attachment.get(key):
+                return False
+        if row.get("source_attachment_status") != attachment.get("attachment_status"):
+            return False
+        if row.get("review_status") != expected_review_status:
+            return False
+        if row.get("missing_attachment") != (
+            attachment.get("readiness_descriptor_attached") is not True
+        ):
+            return False
+        if row.get("rejected_attachment") != (expected_review_status == REJECTED_STATUS):
+            return False
+        if row.get("validated_for_execution") is not False:
+            return False
+        if not platform_smoke_evidence_review_readiness_row_unstarted(row):
+            return False
+    return True
+
+
+def platform_smoke_evidence_review_row_unstarted(row: dict[str, Any]) -> bool:
+    return (
+        row.get("evidence_payload_copied") is False
+        and row.get("collection_started") is False
+        and row.get("studio_execution_allowed") is False
+        and row.get("schema_path_execution_allowed") is False
+        and row.get("runtime_execution_performed") is False
+        and row.get("platform_execution_performed") is False
+        and row.get("real_platform_execution_evidence_attached") is False
+        and row.get("command_session_started") is False
+    )
+
+
+def platform_smoke_evidence_review_readiness_row_unstarted(row: dict[str, Any]) -> bool:
+    return (
+        row.get("studio_execution_allowed") is False
+        and row.get("schema_path_execution_allowed") is False
+        and row.get("execution_started") is False
+        and row.get("runtime_execution_performed") is False
+        and row.get("platform_execution_performed") is False
+        and row.get("command_session_started") is False
+    )
+
+
+def build_projected_motion_breath_validation_handoff(
+    authoring_review: dict[str, Any],
+    package_evidence_intake: dict[str, Any] | None = None,
+    authoring_review_path: Path | None = None,
+    package_evidence_intake_path: Path | None = None,
+) -> dict[str, Any]:
+    required_package_checks = pmb_required_package_checks(authoring_review)
+    source_package_evidence_schema = (
+        package_evidence_intake.get("$schema")
+        if isinstance(package_evidence_intake, dict)
+        else authoring_review.get("source_intake_schema")
+    )
+    source_package_evidence_status = (
+        package_evidence_intake.get("status")
+        if isinstance(package_evidence_intake, dict)
+        else authoring_review.get("package_evidence_status")
+    )
+    source_package_evidence_path = (
+        str(package_evidence_intake_path)
+        if package_evidence_intake_path is not None
+        else authoring_review.get("source_intake_path")
+    )
+    package_required_check_count = int_or_zero(
+        authoring_review.get("package_required_check_count")
+    )
+    package_ready_required_check_count = int_or_zero(
+        authoring_review.get("package_ready_required_check_count")
+    )
+    package_blocked_required_check_count = int_or_zero(
+        authoring_review.get("package_blocked_required_check_count")
+    )
+    checks = [
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.authoring_schema",
+            authoring_review.get("$schema") == STUDIO_PMB_AUTHORING_REVIEW_SCHEMA,
+            "projected-motion breath authoring review schema is supported",
+            "projected-motion breath authoring review schema is unsupported",
+            "hostess.issue.projected_motion_breath_authoring_review_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.authoring_status",
+            authoring_review.get("status") == READY_STATUS,
+            "projected-motion breath authoring review is ready",
+            "projected-motion breath authoring review is blocked or rejected",
+            authoring_review.get("issue_code")
+            or "hostess.issue.projected_motion_breath_authoring_review_not_ready",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.package_schema",
+            source_package_evidence_schema == STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA,
+            "source package evidence intake schema is supported",
+            "source package evidence intake schema is unsupported",
+            "hostess.issue.projected_motion_breath_package_evidence_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.package_status",
+            source_package_evidence_status == READY_STATUS,
+            "source package evidence intake is ready",
+            "source package evidence intake is blocked or rejected",
+            (
+                package_evidence_intake.get("issue_code")
+                if isinstance(package_evidence_intake, dict)
+                else None
+            )
+            or "hostess.issue.projected_motion_breath_package_evidence_not_ready",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.required_checks",
+            pmb_required_package_checks_ready(
+                required_package_checks,
+                package_required_check_count,
+                package_ready_required_check_count,
+                package_blocked_required_check_count,
+            ),
+            "all projected-motion breath package checks are ready",
+            "projected-motion breath required package checks are missing or blocked",
+            "hostess.issue.projected_motion_breath_required_package_checks",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.package_evidence_entries",
+            pmb_package_evidence_intake_matches_required_checks(
+                package_evidence_intake,
+                required_package_checks,
+            ),
+            "package evidence intake entries match projected-motion breath requirements",
+            "package evidence intake entries do not match projected-motion breath requirements",
+            "hostess.issue.projected_motion_breath_package_evidence_entries",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.target_contract",
+            authoring_review.get("target_package_id") == PMB_TARGET_PACKAGE_ID
+            and authoring_review.get("target_module_id") == PMB_TARGET_MODULE_ID
+            and authoring_review.get("proposed_command_id") == PMB_PROPOSED_COMMAND_ID,
+            "projected-motion breath target package, module, and command are supported",
+            "projected-motion breath target package, module, or command drifted",
+            "hostess.issue.projected_motion_breath_target_contract",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.authority_boundary",
+            pmb_source_authority_preserved(authoring_review, package_evidence_intake),
+            "Studio, Manifold, and Hostess authorities are preserved",
+            "Studio, Manifold, or Hostess authority fields drifted",
+            "hostess.issue.projected_motion_breath_authority_mismatch",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff.source_no_execution",
+            pmb_sources_did_not_execute(authoring_review, package_evidence_intake),
+            "source Studio artifacts did not execute runtime or platform work",
+            "source Studio artifacts indicate runtime or platform execution",
+            "hostess.issue.projected_motion_breath_source_execution_started",
+        ),
+    ]
+    failed = [entry for entry in checks if entry["status"] == FAIL_STATUS]
+    status = READY_STATUS if not failed else BLOCKED_STATUS
+    issue_code = failed[0]["issue_code"] if failed else None
+    slots = pmb_validation_slots(status, issue_code)
+    ready_slots = [slot for slot in slots if slot.get("status") == READY_STATUS]
+    blocked_slots = [slot for slot in slots if slot.get("status") == BLOCKED_STATUS]
+    profile_id = authoring_review.get("profile_id")
+    handoff_id = (
+        f"hostess.projected_motion_breath_validation_handoff.{profile_id}"
+        if isinstance(profile_id, str) and profile_id
+        else "hostess.projected_motion_breath_validation_handoff.unknown"
+    )
+    return {
+        "$schema": PMB_VALIDATION_HANDOFF_SCHEMA,
+        "handoff_id": handoff_id,
+        "source_authoring_review_schema": authoring_review.get("$schema"),
+        "source_authoring_review_path": (
+            str(authoring_review_path) if authoring_review_path is not None else None
+        ),
+        "source_package_evidence_schema": source_package_evidence_schema,
+        "source_package_evidence_path": source_package_evidence_path,
+        "status": status,
+        "issue_code": issue_code,
+        "execution_policy": PMB_VALIDATION_HANDOFF_POLICY,
+        "handoff_owner": HOSTESS_OWNER,
+        "authoring_owner": STUDIO_REQUESTER,
+        "runtime_authority": MANIFOLD_OWNER,
+        "platform_validation_authority": HOSTESS_OWNER,
+        "studio_role": STUDIO_ROLE,
+        "target_package_id": PMB_TARGET_PACKAGE_ID,
+        "target_module_id": authoring_review.get("target_module_id"),
+        "profile_id": profile_id,
+        "proposed_command_id": authoring_review.get("proposed_command_id"),
+        "validation_scope": "schema_only_pmb_synthetic_replay_handoff",
+        "device_required": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_authoring_review_status": authoring_review.get("status"),
+        "source_package_evidence_status": source_package_evidence_status,
+        "package_required_check_count": package_required_check_count,
+        "package_ready_required_check_count": package_ready_required_check_count,
+        "package_blocked_required_check_count": package_blocked_required_check_count,
+        "required_package_checks": required_package_checks,
+        "validation_slot_count": len(slots),
+        "ready_validation_slot_count": len(ready_slots),
+        "blocked_validation_slot_count": len(blocked_slots),
+        "validation_slots": slots,
+        "checks": checks,
+        "next_required_action": (
+            "prepare_pmb_replay_validation_fixture_review"
+            if status == READY_STATUS
+            else "repair_pmb_authoring_review_or_package_evidence"
+        ),
+    }
+
+
+def validate_projected_motion_breath_validation_handoff(
+    handoff: dict[str, Any],
+) -> dict[str, Any]:
+    slots = pmb_validation_slot_dicts(handoff)
+    ready_slots = [slot for slot in slots if slot.get("status") == READY_STATUS]
+    blocked_slots = [slot for slot in slots if slot.get("status") == BLOCKED_STATUS]
+    embedded_checks = pmb_embedded_check_dicts(handoff)
+    embedded_failed = [
+        entry for entry in embedded_checks if entry.get("status") == FAIL_STATUS
+    ]
+    status = handoff.get("status")
+    checks = [
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.schema",
+            handoff.get("$schema") == PMB_VALIDATION_HANDOFF_SCHEMA,
+            "projected-motion breath validation handoff schema is supported",
+            "projected-motion breath validation handoff schema is unsupported",
+            "hostess.issue.projected_motion_breath_validation_handoff_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.status",
+            status in {READY_STATUS, BLOCKED_STATUS}
+            and (
+                (status == READY_STATUS and handoff.get("issue_code") is None)
+                or (status == BLOCKED_STATUS and isinstance(handoff.get("issue_code"), str))
+            ),
+            "projected-motion breath validation handoff status is consistent",
+            "projected-motion breath validation handoff status is inconsistent",
+            "hostess.issue.projected_motion_breath_validation_handoff_status",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.execution_policy",
+            handoff.get("execution_policy") == PMB_VALIDATION_HANDOFF_POLICY,
+            "projected-motion breath validation handoff is review-only",
+            "projected-motion breath validation handoff execution policy drifted",
+            "hostess.issue.projected_motion_breath_validation_handoff_execution_policy",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.authority",
+            handoff.get("handoff_owner") == HOSTESS_OWNER
+            and handoff.get("authoring_owner") == STUDIO_REQUESTER
+            and handoff.get("runtime_authority") == MANIFOLD_OWNER
+            and handoff.get("platform_validation_authority") == HOSTESS_OWNER
+            and handoff.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Studio, and Manifold authority fields are separated",
+            "Hostess, Studio, or Manifold authority fields drifted",
+            "hostess.issue.projected_motion_breath_validation_handoff_authority",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.target_contract",
+            handoff.get("target_package_id") == PMB_TARGET_PACKAGE_ID
+            and handoff.get("target_module_id") == PMB_TARGET_MODULE_ID
+            and handoff.get("proposed_command_id") == PMB_PROPOSED_COMMAND_ID,
+            "projected-motion breath target contract is supported",
+            "projected-motion breath target contract drifted",
+            "hostess.issue.projected_motion_breath_validation_handoff_target_contract",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.source_schemas",
+            handoff.get("source_authoring_review_schema")
+            == STUDIO_PMB_AUTHORING_REVIEW_SCHEMA
+            and handoff.get("source_package_evidence_schema")
+            == STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA,
+            "source Studio schemas are supported",
+            "source Studio schemas are unsupported",
+            "hostess.issue.projected_motion_breath_validation_handoff_source_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.source_statuses",
+            (
+                status == READY_STATUS
+                and handoff.get("source_authoring_review_status") == READY_STATUS
+                and handoff.get("source_package_evidence_status") == READY_STATUS
+            )
+            or status == BLOCKED_STATUS,
+            "source Studio statuses match handoff readiness",
+            "source Studio statuses do not match handoff readiness",
+            "hostess.issue.projected_motion_breath_validation_handoff_source_status",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.required_checks",
+            (
+                status == READY_STATUS
+                and pmb_required_package_checks_ready(
+                    pmb_required_package_checks(handoff),
+                    int_or_zero(handoff.get("package_required_check_count")),
+                    int_or_zero(handoff.get("package_ready_required_check_count")),
+                    int_or_zero(handoff.get("package_blocked_required_check_count")),
+                )
+            )
+            or (
+                status == BLOCKED_STATUS
+                and set(PMB_REQUIRED_PACKAGE_CHECKS).issubset(
+                    set(pmb_required_package_checks(handoff))
+                )
+            ),
+            "projected-motion breath package checks match handoff status",
+            "projected-motion breath package checks are inconsistent with handoff status",
+            "hostess.issue.projected_motion_breath_validation_handoff_required_checks",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.no_execution_started",
+            pmb_validation_handoff_unstarted(handoff),
+            "projected-motion breath validation handoff has not started execution",
+            "projected-motion breath validation handoff indicates execution",
+            "hostess.issue.projected_motion_breath_validation_handoff_execution_started",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.slots",
+            pmb_validation_slots_match_contracts(slots, status),
+            "projected-motion breath validation slots match the Hostess handoff contract",
+            "projected-motion breath validation slots drifted from the Hostess handoff contract",
+            "hostess.issue.projected_motion_breath_validation_handoff_slot_drift",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.slot_counts",
+            handoff.get("validation_slot_count") == len(slots)
+            and handoff.get("ready_validation_slot_count") == len(ready_slots)
+            and handoff.get("blocked_validation_slot_count") == len(blocked_slots),
+            "projected-motion breath validation slot counts match slots",
+            "projected-motion breath validation slot counts do not match slots",
+            "hostess.issue.projected_motion_breath_validation_handoff_slot_counts",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_validation_handoff_validation.embedded_checks",
+            (
+                status == READY_STATUS
+                and not embedded_failed
+                and all(entry.get("status") == PASS_STATUS for entry in embedded_checks)
+            )
+            or (
+                status == BLOCKED_STATUS
+                and bool(embedded_failed)
+                and handoff.get("issue_code") == embedded_failed[0].get("issue_code")
+            ),
+            "embedded handoff checks match handoff status",
+            "embedded handoff checks do not match handoff status",
+            "hostess.issue.projected_motion_breath_validation_handoff_checks",
+        ),
+    ]
+    failed = [entry for entry in checks if entry["status"] == FAIL_STATUS]
+    return {
+        "$schema": PMB_VALIDATION_HANDOFF_VALIDATION_SCHEMA,
+        "handoff_id": handoff.get("handoff_id"),
+        "source_handoff_schema": handoff.get("$schema"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def pmb_required_package_checks(source: dict[str, Any]) -> list[str]:
+    checks = source.get("required_package_checks", [])
+    if not isinstance(checks, list):
+        return []
+    return [entry for entry in checks if isinstance(entry, str)]
+
+
+def int_or_zero(value: Any) -> int:
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def pmb_required_package_checks_ready(
+    required_package_checks: list[str],
+    required_check_count: int,
+    ready_required_check_count: int,
+    blocked_required_check_count: int,
+) -> bool:
+    return (
+        set(PMB_REQUIRED_PACKAGE_CHECKS).issubset(set(required_package_checks))
+        and required_check_count >= len(PMB_REQUIRED_PACKAGE_CHECKS)
+        and ready_required_check_count >= len(PMB_REQUIRED_PACKAGE_CHECKS)
+        and blocked_required_check_count == 0
+    )
+
+
+def pmb_package_evidence_intake_matches_required_checks(
+    package_evidence_intake: dict[str, Any] | None,
+    required_package_checks: list[str],
+) -> bool:
+    if package_evidence_intake is None:
+        return True
+    if package_evidence_intake.get("$schema") != STUDIO_PACKAGE_EVIDENCE_INTAKE_SCHEMA:
+        return False
+    if package_evidence_intake.get("target_package_id") != PMB_TARGET_PACKAGE_ID:
+        return False
+    if package_evidence_intake.get("status") != READY_STATUS:
+        return False
+    if not pmb_required_package_checks_ready(
+        required_package_checks,
+        int_or_zero(package_evidence_intake.get("required_check_count")),
+        int_or_zero(package_evidence_intake.get("ready_required_check_count")),
+        int_or_zero(package_evidence_intake.get("blocked_required_check_count")),
+    ):
+        return False
+    entries = package_evidence_intake.get("entries", [])
+    if not isinstance(entries, list):
+        return False
+    ready_required_entry_ids = {
+        entry.get("check_id")
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("required_for_studio") is True
+        and entry.get("decision") == READY_STATUS
+    }
+    return set(PMB_REQUIRED_PACKAGE_CHECKS).issubset(ready_required_entry_ids)
+
+
+def pmb_source_authority_preserved(
+    authoring_review: dict[str, Any],
+    package_evidence_intake: dict[str, Any] | None,
+) -> bool:
+    if not pmb_authority_fields_match(authoring_review):
+        return False
+    return (
+        package_evidence_intake is None
+        or pmb_authority_fields_match(package_evidence_intake)
+    )
+
+
+def pmb_authority_fields_match(source: dict[str, Any]) -> bool:
+    return (
+        source.get("runtime_authority") == MANIFOLD_OWNER
+        and source.get("authoring_authority") == STUDIO_REQUESTER
+        and source.get("platform_validation_authority") == HOSTESS_OWNER
+    )
+
+
+def pmb_sources_did_not_execute(
+    authoring_review: dict[str, Any],
+    package_evidence_intake: dict[str, Any] | None,
+) -> bool:
+    authoring_clean = (
+        authoring_review.get("runtime_execution_performed") is False
+        and authoring_review.get("platform_execution_performed") is False
+        and authoring_review.get("execution_policy") == "not_executed.proposal_only"
+    )
+    if not authoring_clean:
+        return False
+    if package_evidence_intake is None:
+        return True
+    return (
+        package_evidence_intake.get("runtime_execution_performed") is False
+        and package_evidence_intake.get("platform_execution_performed") is False
+        and package_evidence_intake.get("execution_policy") == "not_executed.review_only"
+    )
+
+
+def pmb_validation_slots(
+    status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    slot_status = READY_STATUS if status == READY_STATUS else BLOCKED_STATUS
+    return [
+        {
+            "slot_id": contract["slot_id"],
+            "owner": contract["owner"],
+            "route_kind": contract["route_kind"],
+            "expected_input_kind": contract["expected_input_kind"],
+            "validation_kind": contract["validation_kind"],
+            "status": slot_status,
+            "issue_code": None if slot_status == READY_STATUS else issue_code,
+            "device_required": False,
+            "schema_path_execution_allowed": False,
+            "platform_execution_allowed": False,
+            "studio_execution_allowed": False,
+            "execution_started": False,
+            "runtime_execution_performed": False,
+            "platform_execution_performed": False,
+            "build_started": False,
+            "install_started": False,
+            "launch_started": False,
+            "evidence_collection_started": False,
+            "command_session_started": False,
+        }
+        for contract in PMB_VALIDATION_SLOT_CONTRACTS
+    ]
+
+
+def pmb_validation_slot_dicts(handoff: dict[str, Any]) -> list[dict[str, Any]]:
+    slots = handoff.get("validation_slots", [])
+    if not isinstance(slots, list):
+        return []
+    return [slot for slot in slots if isinstance(slot, dict)]
+
+
+def pmb_embedded_check_dicts(handoff: dict[str, Any]) -> list[dict[str, Any]]:
+    checks = handoff.get("checks", [])
+    if not isinstance(checks, list):
+        return []
+    return [entry for entry in checks if isinstance(entry, dict)]
+
+
+def pmb_validation_slots_match_contracts(
+    slots: list[dict[str, Any]],
+    handoff_status: Any,
+) -> bool:
+    if handoff_status not in {READY_STATUS, BLOCKED_STATUS}:
+        return False
+    expected_slot_status = READY_STATUS if handoff_status == READY_STATUS else BLOCKED_STATUS
+    if len(slots) != len(PMB_VALIDATION_SLOT_CONTRACTS):
+        return False
+    by_id = {slot.get("slot_id"): slot for slot in slots}
+    for contract in PMB_VALIDATION_SLOT_CONTRACTS:
+        slot = by_id.get(contract["slot_id"])
+        if not isinstance(slot, dict):
+            return False
+        for key in ("owner", "route_kind", "expected_input_kind", "validation_kind"):
+            if slot.get(key) != contract[key]:
+                return False
+        if slot.get("status") != expected_slot_status:
+            return False
+        if expected_slot_status == READY_STATUS and slot.get("issue_code") is not None:
+            return False
+        if expected_slot_status == BLOCKED_STATUS and not isinstance(
+            slot.get("issue_code"),
+            str,
+        ):
+            return False
+        if not pmb_validation_slot_unstarted(slot):
+            return False
+    return True
+
+
+def pmb_validation_slot_unstarted(slot: dict[str, Any]) -> bool:
+    return (
+        slot.get("device_required") is False
+        and slot.get("schema_path_execution_allowed") is False
+        and slot.get("platform_execution_allowed") is False
+        and slot.get("studio_execution_allowed") is False
+        and slot.get("execution_started") is False
+        and slot.get("runtime_execution_performed") is False
+        and slot.get("platform_execution_performed") is False
+        and slot.get("build_started") is False
+        and slot.get("install_started") is False
+        and slot.get("launch_started") is False
+        and slot.get("evidence_collection_started") is False
+        and slot.get("command_session_started") is False
+    )
+
+
+def pmb_validation_handoff_unstarted(handoff: dict[str, Any]) -> bool:
+    return (
+        all(handoff.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+        and handoff.get("device_required") is False
+        and handoff.get("schema_path_execution_allowed") is False
+        and handoff.get("platform_execution_allowed") is False
+        and handoff.get("studio_execution_allowed") is False
+        and handoff.get("runtime_execution_performed") is False
+        and handoff.get("platform_execution_performed") is False
+    )
+
+
+def build_projected_motion_breath_replay_validation_receipt(
+    handoff: dict[str, Any],
+    replay_descriptor_source: dict[str, Any] | None = None,
+    replay_descriptor_source_path: Path | None = None,
+) -> dict[str, Any]:
+    handoff_validation = validate_projected_motion_breath_validation_handoff(handoff)
+    descriptor_source_matches = pmb_replay_descriptor_source_matches_contracts(
+        replay_descriptor_source
+    )
+    checks = [
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.handoff_schema",
+            handoff.get("$schema") == PMB_VALIDATION_HANDOFF_SCHEMA,
+            "projected-motion breath validation handoff schema is supported",
+            "projected-motion breath validation handoff schema is unsupported",
+            "hostess.issue.projected_motion_breath_replay_handoff_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.handoff_ready",
+            handoff.get("status") == READY_STATUS
+            and handoff_validation.get("status") == PASS_STATUS,
+            "projected-motion breath validation handoff is ready and validated",
+            "projected-motion breath validation handoff is blocked or invalid",
+            handoff.get("issue_code")
+            or handoff_validation.get("issue_code")
+            or "hostess.issue.projected_motion_breath_replay_handoff_not_ready",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.handoff_slots",
+            int_or_zero(handoff.get("ready_validation_slot_count"))
+            == len(PMB_VALIDATION_SLOT_CONTRACTS)
+            and int_or_zero(handoff.get("blocked_validation_slot_count")) == 0
+            and pmb_validation_slots_match_contracts(
+                pmb_validation_slot_dicts(handoff),
+                READY_STATUS,
+            ),
+            "all projected-motion breath handoff validation slots are ready",
+            "projected-motion breath handoff validation slots are blocked or drifted",
+            "hostess.issue.projected_motion_breath_replay_handoff_slots",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.target_contract",
+            handoff.get("target_package_id") == PMB_TARGET_PACKAGE_ID
+            and handoff.get("target_module_id") == PMB_TARGET_MODULE_ID
+            and handoff.get("proposed_command_id") == PMB_PROPOSED_COMMAND_ID,
+            "projected-motion breath replay receipt target contract is supported",
+            "projected-motion breath replay receipt target contract drifted",
+            "hostess.issue.projected_motion_breath_replay_target_contract",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.no_execution_started",
+            pmb_validation_handoff_unstarted(handoff),
+            "source handoff did not start execution",
+            "source handoff indicates execution",
+            "hostess.issue.projected_motion_breath_replay_source_execution_started",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt.descriptors",
+            descriptor_source_matches,
+            "projected-motion breath replay descriptors match expected pure-processor contracts",
+            "projected-motion breath replay descriptors are missing or drifted",
+            "hostess.issue.projected_motion_breath_replay_descriptor_drift",
+        ),
+    ]
+    failed = [entry for entry in checks if entry["status"] == FAIL_STATUS]
+    status = VALIDATED_STATUS if not failed else REJECTED_STATUS
+    issue_code = failed[0]["issue_code"] if failed else None
+    descriptors = pmb_replay_descriptor_rows(
+        replay_descriptor_source,
+        status,
+        issue_code,
+    )
+    validated_descriptors = [
+        entry for entry in descriptors if entry.get("descriptor_status") == VALIDATED_STATUS
+    ]
+    rejected_descriptors = [
+        entry for entry in descriptors if entry.get("descriptor_status") == REJECTED_STATUS
+    ]
+    return {
+        "$schema": PMB_REPLAY_VALIDATION_RECEIPT_SCHEMA,
+        "receipt_id": pmb_replay_receipt_id(handoff),
+        "source_handoff_id": handoff.get("handoff_id"),
+        "source_handoff_schema": handoff.get("$schema"),
+        "source_handoff_status": handoff.get("status"),
+        "source_handoff_validation_status": handoff_validation.get("status"),
+        "source_replay_descriptor_path": (
+            str(replay_descriptor_source_path)
+            if replay_descriptor_source_path is not None
+            else None
+        ),
+        "status": status,
+        "issue_code": issue_code,
+        "execution_policy": PMB_REPLAY_VALIDATION_RECEIPT_POLICY,
+        "receipt_owner": HOSTESS_OWNER,
+        "handoff_owner": HOSTESS_OWNER,
+        "runtime_authority": MANIFOLD_OWNER,
+        "platform_validation_authority": HOSTESS_OWNER,
+        "studio_role": STUDIO_ROLE,
+        "target_package_id": PMB_TARGET_PACKAGE_ID,
+        "target_module_id": handoff.get("target_module_id"),
+        "profile_id": handoff.get("profile_id"),
+        "proposed_command_id": handoff.get("proposed_command_id"),
+        "validation_scope": "schema_only_pmb_synthetic_replay_receipt",
+        "device_required": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "replay_execution_started": False,
+        "fixture_payloads_copied": False,
+        "processor_runtime_started": False,
+        "scorecard_status": PASS_STATUS if status == VALIDATED_STATUS else FAIL_STATUS,
+        "replay_descriptor_count": len(descriptors),
+        "validated_replay_descriptor_count": len(validated_descriptors),
+        "rejected_replay_descriptor_count": len(rejected_descriptors),
+        "replay_descriptors": descriptors,
+        "checks": checks,
+        "next_required_action": (
+            "prepare_pmb_replay_scorecard_review"
+            if status == VALIDATED_STATUS
+            else "repair_pmb_replay_descriptor_or_handoff"
+        ),
+    }
+
+
+def validate_projected_motion_breath_replay_validation_receipt(
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    descriptors = pmb_replay_descriptor_dicts(receipt)
+    validated_descriptors = [
+        entry for entry in descriptors if entry.get("descriptor_status") == VALIDATED_STATUS
+    ]
+    rejected_descriptors = [
+        entry for entry in descriptors if entry.get("descriptor_status") == REJECTED_STATUS
+    ]
+    embedded_checks = pmb_embedded_check_dicts(receipt)
+    embedded_failed = [
+        entry for entry in embedded_checks if entry.get("status") == FAIL_STATUS
+    ]
+    status = receipt.get("status")
+    checks = [
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.schema",
+            receipt.get("$schema") == PMB_REPLAY_VALIDATION_RECEIPT_SCHEMA,
+            "projected-motion breath replay validation receipt schema is supported",
+            "projected-motion breath replay validation receipt schema is unsupported",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_schema",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.status",
+            status in {VALIDATED_STATUS, REJECTED_STATUS}
+            and (
+                (status == VALIDATED_STATUS and receipt.get("issue_code") is None)
+                or (status == REJECTED_STATUS and isinstance(receipt.get("issue_code"), str))
+            ),
+            "projected-motion breath replay validation receipt status is consistent",
+            "projected-motion breath replay validation receipt status is inconsistent",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_status",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.execution_policy",
+            receipt.get("execution_policy") == PMB_REPLAY_VALIDATION_RECEIPT_POLICY,
+            "projected-motion breath replay validation receipt is review-only",
+            "projected-motion breath replay validation receipt execution policy drifted",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_execution_policy",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.authority",
+            receipt.get("receipt_owner") == HOSTESS_OWNER
+            and receipt.get("handoff_owner") == HOSTESS_OWNER
+            and receipt.get("runtime_authority") == MANIFOLD_OWNER
+            and receipt.get("platform_validation_authority") == HOSTESS_OWNER
+            and receipt.get("studio_role") == STUDIO_ROLE,
+            "Hostess and Manifold authority fields are separated",
+            "Hostess or Manifold authority fields drifted",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_authority",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.target_contract",
+            receipt.get("target_package_id") == PMB_TARGET_PACKAGE_ID
+            and receipt.get("target_module_id") == PMB_TARGET_MODULE_ID
+            and receipt.get("proposed_command_id") == PMB_PROPOSED_COMMAND_ID,
+            "projected-motion breath replay target contract is supported",
+            "projected-motion breath replay target contract drifted",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_target_contract",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.source_handoff",
+            (
+                status == VALIDATED_STATUS
+                and receipt.get("source_handoff_schema") == PMB_VALIDATION_HANDOFF_SCHEMA
+                and receipt.get("source_handoff_status") == READY_STATUS
+                and receipt.get("source_handoff_validation_status") == PASS_STATUS
+            )
+            or status == REJECTED_STATUS,
+            "source projected-motion breath handoff matches receipt status",
+            "source projected-motion breath handoff does not match receipt status",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_source_handoff",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.no_execution_started",
+            pmb_replay_validation_receipt_unstarted(receipt),
+            "projected-motion breath replay validation receipt has not started execution",
+            "projected-motion breath replay validation receipt indicates execution",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_execution_started",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.descriptors",
+            pmb_replay_descriptors_match_contracts(descriptors, status),
+            "projected-motion breath replay descriptors match expected contracts",
+            "projected-motion breath replay descriptors drifted",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_descriptor_drift",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.counts",
+            receipt.get("replay_descriptor_count") == len(descriptors)
+            and receipt.get("validated_replay_descriptor_count")
+            == len(validated_descriptors)
+            and receipt.get("rejected_replay_descriptor_count")
+            == len(rejected_descriptors),
+            "projected-motion breath replay descriptor counts match descriptors",
+            "projected-motion breath replay descriptor counts do not match descriptors",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_counts",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.scorecard",
+            (
+                status == VALIDATED_STATUS
+                and receipt.get("scorecard_status") == PASS_STATUS
+            )
+            or (
+                status == REJECTED_STATUS
+                and receipt.get("scorecard_status") == FAIL_STATUS
+            ),
+            "projected-motion breath replay scorecard status matches receipt status",
+            "projected-motion breath replay scorecard status drifted",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_scorecard",
+        ),
+        check(
+            "hostess.check.projected_motion_breath_replay_validation_receipt_validation.embedded_checks",
+            (
+                status == VALIDATED_STATUS
+                and not embedded_failed
+                and all(entry.get("status") == PASS_STATUS for entry in embedded_checks)
+            )
+            or (
+                status == REJECTED_STATUS
+                and bool(embedded_failed)
+                and receipt.get("issue_code") == embedded_failed[0].get("issue_code")
+            ),
+            "embedded replay receipt checks match receipt status",
+            "embedded replay receipt checks do not match receipt status",
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_checks",
+        ),
+    ]
+    failed = [entry for entry in checks if entry["status"] == FAIL_STATUS]
+    return {
+        "$schema": PMB_REPLAY_VALIDATION_RECEIPT_VALIDATION_SCHEMA,
+        "receipt_id": receipt.get("receipt_id"),
+        "source_receipt_schema": receipt.get("$schema"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def pmb_replay_receipt_id(handoff: dict[str, Any]) -> str:
+    profile_id = handoff.get("profile_id")
+    return (
+        f"hostess.projected_motion_breath_replay_validation_receipt.{profile_id}"
+        if isinstance(profile_id, str) and profile_id
+        else "hostess.projected_motion_breath_replay_validation_receipt.unknown"
+    )
+
+
+def pmb_replay_descriptor_source_matches_contracts(
+    source: dict[str, Any] | None,
+) -> bool:
+    rows = pmb_replay_descriptor_rows(source, VALIDATED_STATUS, None)
+    return pmb_replay_descriptors_match_contracts(rows, VALIDATED_STATUS)
+
+
+def pmb_replay_descriptor_rows(
+    source: dict[str, Any] | None,
+    receipt_status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    source_by_id = pmb_replay_source_descriptor_by_id(source)
+    rows = []
+    for contract in PMB_REPLAY_DESCRIPTOR_CONTRACTS:
+        supplied = source is None or contract["descriptor_id"] in source_by_id
+        source_descriptor = source_by_id.get(contract["descriptor_id"], {})
+        matches_contract = supplied and (
+            source is None
+            or all(
+                source_descriptor.get(key) == contract[key]
+                for key in (
+                    "owner",
+                    "fixture_kind",
+                    "case_id",
+                    "expected_processor_status",
+                    "validation_kind",
+                )
+            )
+        )
+        descriptor_status = (
+            VALIDATED_STATUS
+            if receipt_status == VALIDATED_STATUS and matches_contract
+            else REJECTED_STATUS
+        )
+        rows.append(
+            {
+                "descriptor_id": contract["descriptor_id"],
+                "owner": contract["owner"],
+                "fixture_kind": contract["fixture_kind"],
+                "case_id": contract["case_id"],
+                "expected_processor_status": contract["expected_processor_status"],
+                "validation_kind": contract["validation_kind"],
+                "descriptor_supplied": supplied,
+                "source_descriptor_matches_contract": matches_contract,
+                "descriptor_status": descriptor_status,
+                "issue_code": None if descriptor_status == VALIDATED_STATUS else issue_code,
+                "device_required": False,
+                "schema_path_execution_allowed": False,
+                "platform_execution_allowed": False,
+                "studio_execution_allowed": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "execution_started": False,
+                "replay_execution_started": False,
+                "fixture_payload_copied": False,
+                "processor_runtime_started": False,
+                "evidence_collection_started": False,
+                "command_session_started": False,
+            }
+        )
+    return rows
+
+
+def pmb_replay_source_descriptor_by_id(
+    source: dict[str, Any] | None,
+) -> dict[Any, dict[str, Any]]:
+    if source is None:
+        return {}
+    rows = source.get("replay_descriptors", source.get("descriptors", []))
+    if not isinstance(rows, list):
+        return {}
+    return {
+        row.get("descriptor_id"): row
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("descriptor_id"), str)
+    }
+
+
+def pmb_replay_descriptor_dicts(receipt: dict[str, Any]) -> list[dict[str, Any]]:
+    descriptors = receipt.get("replay_descriptors", [])
+    if not isinstance(descriptors, list):
+        return []
+    return [entry for entry in descriptors if isinstance(entry, dict)]
+
+
+def pmb_replay_descriptors_match_contracts(
+    descriptors: list[dict[str, Any]],
+    receipt_status: Any,
+) -> bool:
+    if receipt_status not in {VALIDATED_STATUS, REJECTED_STATUS}:
+        return False
+    expected_descriptor_status = (
+        VALIDATED_STATUS if receipt_status == VALIDATED_STATUS else REJECTED_STATUS
+    )
+    if len(descriptors) != len(PMB_REPLAY_DESCRIPTOR_CONTRACTS):
+        return False
+    by_id = {entry.get("descriptor_id"): entry for entry in descriptors}
+    for contract in PMB_REPLAY_DESCRIPTOR_CONTRACTS:
+        descriptor = by_id.get(contract["descriptor_id"])
+        if not isinstance(descriptor, dict):
+            return False
+        for key in (
+            "owner",
+            "fixture_kind",
+            "case_id",
+            "expected_processor_status",
+            "validation_kind",
+        ):
+            if descriptor.get(key) != contract[key]:
+                return False
+        if descriptor.get("descriptor_status") != expected_descriptor_status:
+            return False
+        if expected_descriptor_status == VALIDATED_STATUS:
+            if descriptor.get("issue_code") is not None:
+                return False
+            if descriptor.get("source_descriptor_matches_contract") is not True:
+                return False
+        if expected_descriptor_status == REJECTED_STATUS and descriptor.get(
+            "descriptor_status"
+        ) != REJECTED_STATUS:
+            return False
+        if not pmb_replay_descriptor_unstarted(descriptor):
+            return False
+    return True
+
+
+def pmb_replay_descriptor_unstarted(descriptor: dict[str, Any]) -> bool:
+    return (
+        descriptor.get("device_required") is False
+        and descriptor.get("schema_path_execution_allowed") is False
+        and descriptor.get("platform_execution_allowed") is False
+        and descriptor.get("studio_execution_allowed") is False
+        and descriptor.get("runtime_execution_performed") is False
+        and descriptor.get("platform_execution_performed") is False
+        and descriptor.get("execution_started") is False
+        and descriptor.get("replay_execution_started") is False
+        and descriptor.get("fixture_payload_copied") is False
+        and descriptor.get("processor_runtime_started") is False
+        and descriptor.get("evidence_collection_started") is False
+        and descriptor.get("command_session_started") is False
+    )
+
+
+def pmb_replay_validation_receipt_unstarted(receipt: dict[str, Any]) -> bool:
+    return (
+        all(receipt.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+        and receipt.get("device_required") is False
+        and receipt.get("schema_path_execution_allowed") is False
+        and receipt.get("platform_execution_allowed") is False
+        and receipt.get("studio_execution_allowed") is False
+        and receipt.get("runtime_execution_performed") is False
+        and receipt.get("platform_execution_performed") is False
+        and receipt.get("replay_execution_started") is False
+        and receipt.get("fixture_payloads_copied") is False
+        and receipt.get("processor_runtime_started") is False
+    )
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -7303,6 +9136,16 @@ def main() -> int:
     parser.add_argument("--platform-smoke-evidence-attachment-in", type=Path)
     parser.add_argument("--platform-smoke-evidence-attachment-out", type=Path)
     parser.add_argument("--platform-smoke-evidence-attachment-rejection-out", type=Path)
+    parser.add_argument("--platform-smoke-evidence-review-in", type=Path)
+    parser.add_argument("--platform-smoke-evidence-review-out", type=Path)
+    parser.add_argument("--platform-smoke-evidence-review-rejection-out", type=Path)
+    parser.add_argument("--pmb-authoring-review-in", type=Path)
+    parser.add_argument("--pmb-package-evidence-intake-in", type=Path)
+    parser.add_argument("--pmb-validation-handoff-in", type=Path)
+    parser.add_argument("--pmb-validation-handoff-out", type=Path)
+    parser.add_argument("--pmb-replay-descriptors-in", type=Path)
+    parser.add_argument("--pmb-replay-validation-receipt-in", type=Path)
+    parser.add_argument("--pmb-replay-validation-receipt-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--target-platform", default="hostess.platform_smoke.operator_controlled")
     parser.add_argument("--host-shell-kind", default="hostess.t_or_dedicated_quest_host_shell")
@@ -7322,6 +9165,9 @@ def main() -> int:
     parser.add_argument("--validate-platform-smoke-operator-start-preflight", type=Path)
     parser.add_argument("--validate-platform-smoke-execution-report", type=Path)
     parser.add_argument("--validate-platform-smoke-evidence-attachment", type=Path)
+    parser.add_argument("--validate-platform-smoke-evidence-review", type=Path)
+    parser.add_argument("--validate-pmb-validation-handoff", type=Path)
+    parser.add_argument("--validate-pmb-replay-validation-receipt", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -7369,6 +9215,36 @@ def main() -> int:
         if args.platform_smoke_evidence_attachment_in
         else None
     )
+    platform_smoke_evidence_review = (
+        load_json(args.platform_smoke_evidence_review_in)
+        if args.platform_smoke_evidence_review_in
+        else None
+    )
+    pmb_authoring_review = (
+        load_json(args.pmb_authoring_review_in)
+        if args.pmb_authoring_review_in
+        else None
+    )
+    pmb_package_evidence_intake = (
+        load_json(args.pmb_package_evidence_intake_in)
+        if args.pmb_package_evidence_intake_in
+        else None
+    )
+    pmb_validation_handoff = (
+        load_json(args.pmb_validation_handoff_in)
+        if args.pmb_validation_handoff_in
+        else None
+    )
+    pmb_replay_descriptors = (
+        load_json(args.pmb_replay_descriptors_in)
+        if args.pmb_replay_descriptors_in
+        else None
+    )
+    pmb_replay_validation_receipt = (
+        load_json(args.pmb_replay_validation_receipt_in)
+        if args.pmb_replay_validation_receipt_in
+        else None
+    )
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -7378,6 +9254,41 @@ def main() -> int:
         write_json(args.ack_out, ack_fixture)
     if args.reject_out:
         write_json(args.reject_out, build_reject_fixture(request))
+    if args.pmb_validation_handoff_out:
+        if pmb_validation_handoff is None:
+            if pmb_authoring_review is None:
+                raise ValueError(
+                    "--pmb-authoring-review-in is required when building a PMB validation handoff"
+                )
+            pmb_validation_handoff = build_projected_motion_breath_validation_handoff(
+                pmb_authoring_review,
+                pmb_package_evidence_intake,
+                args.pmb_authoring_review_in,
+                args.pmb_package_evidence_intake_in,
+            )
+        write_json(args.pmb_validation_handoff_out, pmb_validation_handoff)
+    if args.pmb_replay_validation_receipt_out:
+        if pmb_replay_validation_receipt is None:
+            if pmb_validation_handoff is None:
+                if pmb_authoring_review is None:
+                    raise ValueError(
+                        "--pmb-validation-handoff-in or --pmb-authoring-review-in "
+                        "is required when building a PMB replay validation receipt"
+                    )
+                pmb_validation_handoff = build_projected_motion_breath_validation_handoff(
+                    pmb_authoring_review,
+                    pmb_package_evidence_intake,
+                    args.pmb_authoring_review_in,
+                    args.pmb_package_evidence_intake_in,
+                )
+            pmb_replay_validation_receipt = (
+                build_projected_motion_breath_replay_validation_receipt(
+                    pmb_validation_handoff,
+                    pmb_replay_descriptors,
+                    args.pmb_replay_descriptors_in,
+                )
+            )
+        write_json(args.pmb_replay_validation_receipt_out, pmb_replay_validation_receipt)
     if args.smoke_handoff_out:
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -7408,6 +9319,8 @@ def main() -> int:
         or args.platform_smoke_execution_report_rejection_out
         or args.platform_smoke_evidence_attachment_out
         or args.platform_smoke_evidence_attachment_rejection_out
+        or args.platform_smoke_evidence_review_out
+        or args.platform_smoke_evidence_review_rejection_out
     ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -7626,6 +9539,10 @@ def main() -> int:
             or args.platform_smoke_operator_start_preflight_rejection_out
             or args.platform_smoke_execution_report_out
             or args.platform_smoke_execution_report_rejection_out
+            or args.platform_smoke_evidence_attachment_out
+            or args.platform_smoke_evidence_attachment_rejection_out
+            or args.platform_smoke_evidence_review_out
+            or args.platform_smoke_evidence_review_rejection_out
         ):
             if dry_run_receipt is None:
                 dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
@@ -7702,6 +9619,8 @@ def main() -> int:
                 or args.platform_smoke_execution_report_rejection_out
                 or args.platform_smoke_evidence_attachment_out
                 or args.platform_smoke_evidence_attachment_rejection_out
+                or args.platform_smoke_evidence_review_out
+                or args.platform_smoke_evidence_review_rejection_out
             ):
                 if platform_smoke_operator_start_preflight is None:
                     platform_smoke_operator_start_preflight = (
@@ -7747,6 +9666,8 @@ def main() -> int:
                 if (
                     args.platform_smoke_evidence_attachment_out
                     or args.platform_smoke_evidence_attachment_rejection_out
+                    or args.platform_smoke_evidence_review_out
+                    or args.platform_smoke_evidence_review_rejection_out
                 ):
                     if platform_smoke_execution_report is None:
                         platform_smoke_execution_report = (
@@ -7791,6 +9712,56 @@ def main() -> int:
                                 reason_code="hostess.issue.operator_rejected_platform_smoke_evidence_attachment",
                             ),
                         )
+                    if (
+                        args.platform_smoke_evidence_review_out
+                        or args.platform_smoke_evidence_review_rejection_out
+                    ):
+                        if platform_smoke_evidence_attachment is None:
+                            platform_smoke_evidence_attachment = (
+                                build_platform_smoke_evidence_attachment_receipt(
+                                    platform_smoke_plan,
+                                    platform_smoke_approval,
+                                    platform_smoke_execution_request,
+                                    platform_smoke_execution_receipt,
+                                    platform_smoke_operator_start_gate,
+                                    platform_smoke_operator_start_preflight,
+                                    platform_smoke_execution_report,
+                                )
+                            )
+                        if args.platform_smoke_evidence_review_out:
+                            if platform_smoke_evidence_review is None:
+                                platform_smoke_evidence_review = (
+                                    build_platform_smoke_evidence_review(
+                                        platform_smoke_plan,
+                                        platform_smoke_approval,
+                                        platform_smoke_execution_request,
+                                        platform_smoke_execution_receipt,
+                                        platform_smoke_operator_start_gate,
+                                        platform_smoke_operator_start_preflight,
+                                        platform_smoke_execution_report,
+                                        platform_smoke_evidence_attachment,
+                                    )
+                                )
+                            write_json(
+                                args.platform_smoke_evidence_review_out,
+                                platform_smoke_evidence_review,
+                            )
+                        if args.platform_smoke_evidence_review_rejection_out:
+                            write_json(
+                                args.platform_smoke_evidence_review_rejection_out,
+                                build_platform_smoke_evidence_review(
+                                    platform_smoke_plan,
+                                    platform_smoke_approval,
+                                    platform_smoke_execution_request,
+                                    platform_smoke_execution_receipt,
+                                    platform_smoke_operator_start_gate,
+                                    platform_smoke_operator_start_preflight,
+                                    platform_smoke_execution_report,
+                                    platform_smoke_evidence_attachment,
+                                    decision=REJECTED_STATUS,
+                                    reason_code="hostess.issue.operator_rejected_platform_smoke_evidence_review",
+                                ),
+                            )
     if (
         args.validate_platform_smoke_approval
         or args.validate_platform_smoke_execution_request
@@ -7799,6 +9770,7 @@ def main() -> int:
         or args.validate_platform_smoke_operator_start_preflight
         or args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_plan is None:
         if args.validate_platform_smoke_plan:
             platform_smoke_plan = load_json(args.validate_platform_smoke_plan)
@@ -7838,6 +9810,7 @@ def main() -> int:
         or args.validate_platform_smoke_operator_start_preflight
         or args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_approval is None:
         if args.validate_platform_smoke_approval:
             platform_smoke_approval = load_json(args.validate_platform_smoke_approval)
@@ -7852,6 +9825,7 @@ def main() -> int:
         or args.validate_platform_smoke_operator_start_preflight
         or args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_execution_request is None:
         if args.validate_platform_smoke_execution_request:
             platform_smoke_execution_request = load_json(args.validate_platform_smoke_execution_request)
@@ -7865,6 +9839,7 @@ def main() -> int:
         or args.validate_platform_smoke_operator_start_preflight
         or args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_execution_receipt is None:
         if args.validate_platform_smoke_execution_receipt:
             platform_smoke_execution_receipt = load_json(args.validate_platform_smoke_execution_receipt)
@@ -7878,6 +9853,7 @@ def main() -> int:
         args.validate_platform_smoke_operator_start_preflight
         or args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_operator_start_gate is None:
         if args.validate_platform_smoke_operator_start_gate:
             platform_smoke_operator_start_gate = load_json(args.validate_platform_smoke_operator_start_gate)
@@ -7892,6 +9868,7 @@ def main() -> int:
     if (
         args.validate_platform_smoke_execution_report
         or args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
     ) and platform_smoke_operator_start_preflight is None:
         if args.validate_platform_smoke_operator_start_preflight:
             platform_smoke_operator_start_preflight = load_json(
@@ -7908,7 +9885,10 @@ def main() -> int:
                     decision=APPROVED_STATUS,
                 )
             )
-    if args.validate_platform_smoke_evidence_attachment and platform_smoke_execution_report is None:
+    if (
+        args.validate_platform_smoke_evidence_attachment
+        or args.validate_platform_smoke_evidence_review
+    ) and platform_smoke_execution_report is None:
         if args.validate_platform_smoke_execution_report:
             platform_smoke_execution_report = load_json(args.validate_platform_smoke_execution_report)
         else:
@@ -7919,6 +9899,23 @@ def main() -> int:
                 platform_smoke_execution_receipt,
                 platform_smoke_operator_start_gate,
                 platform_smoke_operator_start_preflight,
+            )
+    if args.validate_platform_smoke_evidence_review and platform_smoke_evidence_attachment is None:
+        if args.validate_platform_smoke_evidence_attachment:
+            platform_smoke_evidence_attachment = load_json(
+                args.validate_platform_smoke_evidence_attachment
+            )
+        else:
+            platform_smoke_evidence_attachment = (
+                build_platform_smoke_evidence_attachment_receipt(
+                    platform_smoke_plan,
+                    platform_smoke_approval,
+                    platform_smoke_execution_request,
+                    platform_smoke_execution_receipt,
+                    platform_smoke_operator_start_gate,
+                    platform_smoke_operator_start_preflight,
+                    platform_smoke_execution_report,
+                )
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -8098,6 +10095,46 @@ def main() -> int:
                 args.validate_platform_smoke_evidence_attachment.suffix + ".validation.json"
             ),
             evidence_attachment_report,
+        )
+    if args.validate_platform_smoke_evidence_review:
+        evidence_review_report = validate_platform_smoke_evidence_review(
+            platform_smoke_plan,
+            platform_smoke_approval,
+            platform_smoke_execution_request,
+            platform_smoke_execution_receipt,
+            platform_smoke_operator_start_gate,
+            platform_smoke_operator_start_preflight,
+            platform_smoke_execution_report,
+            platform_smoke_evidence_attachment,
+            load_json(args.validate_platform_smoke_evidence_review),
+        )
+        write_json(
+            args.validate_platform_smoke_evidence_review.with_suffix(
+                args.validate_platform_smoke_evidence_review.suffix + ".validation.json"
+            ),
+            evidence_review_report,
+        )
+    if args.validate_pmb_validation_handoff:
+        pmb_validation_report = validate_projected_motion_breath_validation_handoff(
+            load_json(args.validate_pmb_validation_handoff)
+        )
+        write_json(
+            args.validate_pmb_validation_handoff.with_suffix(
+                args.validate_pmb_validation_handoff.suffix + ".validation.json"
+            ),
+            pmb_validation_report,
+        )
+    if args.validate_pmb_replay_validation_receipt:
+        pmb_replay_validation_report = (
+            validate_projected_motion_breath_replay_validation_receipt(
+                load_json(args.validate_pmb_replay_validation_receipt)
+            )
+        )
+        write_json(
+            args.validate_pmb_replay_validation_receipt.with_suffix(
+                args.validate_pmb_replay_validation_receipt.suffix + ".validation.json"
+            ),
+            pmb_replay_validation_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 
