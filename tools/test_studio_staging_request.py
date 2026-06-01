@@ -861,6 +861,225 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_approval_receipt_action_drift",
         )
 
+    def test_builds_platform_smoke_execution_request_and_receipt_without_execution(self) -> None:
+        plan = ready_platform_smoke_plan()
+        approval = adapter.build_platform_smoke_approval_receipt(plan)
+
+        execution_request = adapter.build_platform_smoke_execution_request(plan, approval)
+
+        self.assertEqual(
+            execution_request["$schema"],
+            adapter.PLATFORM_SMOKE_EXECUTION_REQUEST_SCHEMA,
+        )
+        self.assertEqual(execution_request["status"], adapter.READY_STATUS)
+        self.assertIsNone(execution_request["issue_code"])
+        self.assertEqual(
+            execution_request["execution_policy"],
+            adapter.PLATFORM_SMOKE_EXECUTION_REQUEST_POLICY,
+        )
+        self.assertEqual(execution_request["request_owner"], "rusty.hostess")
+        self.assertEqual(execution_request["execution_owner"], "rusty.hostess")
+        self.assertEqual(execution_request["command_session_authority"], "rusty.manifold")
+        self.assertEqual(execution_request["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertFalse(execution_request["device_required"])
+        self.assertTrue(execution_request["target_device_required_for_future_execution"])
+        self.assertFalse(execution_request["schema_path_execution_allowed"])
+        self.assertFalse(execution_request["platform_execution_allowed"])
+        self.assertFalse(execution_request["studio_execution_allowed"])
+        self.assertTrue(execution_request["operator_approved"])
+        self.assertTrue(execution_request["future_execution_authorized"])
+        self.assertTrue(execution_request["operator_controlled_execution_required"])
+        self.assertTrue(execution_request["hostess_shell_execution_required"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(execution_request[flag], flag)
+        self.assertFalse(execution_request["runtime_execution_performed"])
+        self.assertFalse(execution_request["platform_execution_performed"])
+        self.assertEqual(
+            execution_request["execution_action_request_count"],
+            len(approval["action_approval_receipts"]),
+        )
+        self.assertEqual(
+            execution_request["pending_execution_action_count"],
+            len(approval["action_approval_receipts"]),
+        )
+        self.assertEqual(execution_request["rejected_execution_action_count"], 0)
+        self.assertTrue(
+            all(
+                action["execution_request_status"] == adapter.PENDING_STATUS
+                and action["execution_requested"] is True
+                and action["execution_started"] is False
+                and action["runtime_execution_performed"] is False
+                and action["platform_execution_performed"] is False
+                and action["studio_execution_allowed"] is False
+                for action in execution_request["execution_action_requests"]
+            )
+        )
+        request_validation = adapter.validate_platform_smoke_execution_request(
+            plan,
+            approval,
+            execution_request,
+        )
+        self.assertEqual(request_validation["status"], "pass")
+        self.assertFalse(request_validation["runtime_execution_performed"])
+        self.assertFalse(request_validation["platform_execution_performed"])
+
+        execution_receipt = adapter.build_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+        )
+
+        self.assertEqual(
+            execution_receipt["$schema"],
+            adapter.PLATFORM_SMOKE_EXECUTION_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(execution_receipt["status"], adapter.PENDING_STATUS)
+        self.assertEqual(
+            execution_receipt["execution_policy"],
+            adapter.PLATFORM_SMOKE_EXECUTION_RECEIPT_POLICY,
+        )
+        self.assertTrue(execution_receipt["execution_acknowledged"])
+        self.assertTrue(execution_receipt["schema_checks_performed"])
+        self.assertFalse(execution_receipt["device_required"])
+        self.assertFalse(execution_receipt["schema_path_execution_allowed"])
+        self.assertFalse(execution_receipt["platform_execution_allowed"])
+        self.assertFalse(execution_receipt["studio_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(execution_receipt[flag], flag)
+        self.assertFalse(execution_receipt["runtime_execution_performed"])
+        self.assertFalse(execution_receipt["platform_execution_performed"])
+        self.assertEqual(
+            execution_receipt["pending_execution_action_count"],
+            len(execution_request["execution_action_requests"]),
+        )
+        self.assertEqual(execution_receipt["rejected_execution_action_count"], 0)
+        self.assertTrue(
+            all(
+                receipt["execution_receipt_status"] == adapter.PENDING_STATUS
+                and receipt["execution_acknowledged"] is True
+                and receipt["execution_started"] is False
+                and receipt["runtime_execution_performed"] is False
+                and receipt["platform_execution_performed"] is False
+                and receipt["studio_execution_allowed"] is False
+                for receipt in execution_receipt["execution_action_receipts"]
+            )
+        )
+        receipt_validation = adapter.validate_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+        )
+        self.assertEqual(receipt_validation["status"], "pass")
+        self.assertFalse(receipt_validation["runtime_execution_performed"])
+        self.assertFalse(receipt_validation["platform_execution_performed"])
+
+    def test_platform_smoke_execution_request_blocks_rejected_approval(self) -> None:
+        plan = ready_platform_smoke_plan()
+        approval = adapter.build_platform_smoke_approval_receipt(
+            plan,
+            decision=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_platform_smoke",
+        )
+
+        execution_request = adapter.build_platform_smoke_execution_request(plan, approval)
+
+        self.assertEqual(execution_request["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            execution_request["issue_code"],
+            "hostess.issue.operator_declined_platform_smoke",
+        )
+        self.assertFalse(execution_request["operator_approved"])
+        self.assertFalse(execution_request["future_execution_authorized"])
+        self.assertFalse(execution_request["hostess_shell_execution_required"])
+        self.assertEqual(execution_request["pending_execution_action_count"], 0)
+        self.assertEqual(
+            execution_request["rejected_execution_action_count"],
+            len(approval["action_approval_receipts"]),
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_execution_request(
+                plan,
+                approval,
+                execution_request,
+            )["status"],
+            "pass",
+        )
+
+        execution_receipt = adapter.build_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+        )
+        self.assertEqual(execution_receipt["status"], adapter.REJECTED_STATUS)
+        self.assertFalse(execution_receipt["execution_acknowledged"])
+        self.assertFalse(execution_receipt["platform_execution_performed"])
+        self.assertEqual(
+            adapter.validate_platform_smoke_execution_receipt(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_execution_validations_reject_action_or_runtime_drift(self) -> None:
+        plan = ready_platform_smoke_plan()
+        approval = adapter.build_platform_smoke_approval_receipt(plan)
+        execution_request = adapter.build_platform_smoke_execution_request(plan, approval)
+
+        route_drift = copy.deepcopy(execution_request)
+        route_drift["execution_action_requests"][0]["owner"] = "rusty.studio"
+        route_drift["execution_action_requests"][0]["route_kind"] = (
+            "studio.platform_smoke.copy_stage_files"
+        )
+        route_drift["execution_action_requests"][0]["expected_input_kind"] = (
+            "studio_owned_input"
+        )
+        route_report = adapter.validate_platform_smoke_execution_request(
+            plan,
+            approval,
+            route_drift,
+        )
+        self.assertEqual(route_report["status"], "fail")
+        self.assertEqual(
+            route_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_request_action_drift",
+        )
+
+        started = copy.deepcopy(execution_request)
+        started["copy_started"] = True
+        started_report = adapter.validate_platform_smoke_execution_request(
+            plan,
+            approval,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_request_execution_started",
+        )
+
+        execution_receipt = adapter.build_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+        )
+        receipt_drift = copy.deepcopy(execution_receipt)
+        receipt_drift["execution_action_receipts"][0]["platform_execution_performed"] = True
+        receipt_report = adapter.validate_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+            receipt_drift,
+        )
+        self.assertEqual(receipt_report["status"], "fail")
+        self.assertEqual(
+            receipt_report["issue_code"],
+            "hostess.issue.platform_smoke_execution_receipt_action_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -877,6 +1096,8 @@ class StudioStagingRequestTests(unittest.TestCase):
             plan_path = root / "platform-smoke-plan.json"
             approval_path = root / "platform-smoke-approval.json"
             rejection_path = root / "platform-smoke-rejection.json"
+            execution_request_path = root / "platform-smoke-execution-request.json"
+            execution_receipt_path = root / "platform-smoke-execution-receipt.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -924,6 +1145,14 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(plan_path),
                     "--validate-platform-smoke-approval",
                     str(approval_path),
+                    "--platform-smoke-execution-request-out",
+                    str(execution_request_path),
+                    "--platform-smoke-execution-receipt-out",
+                    str(execution_receipt_path),
+                    "--validate-platform-smoke-execution-request",
+                    str(execution_request_path),
+                    "--validate-platform-smoke-execution-receipt",
+                    str(execution_receipt_path),
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -965,6 +1194,18 @@ class StudioStagingRequestTests(unittest.TestCase):
                 )
             )
             rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            platform_request = json.loads(execution_request_path.read_text(encoding="utf-8"))
+            platform_request_report = json.loads(
+                execution_request_path.with_suffix(
+                    execution_request_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            platform_receipt = json.loads(execution_receipt_path.read_text(encoding="utf-8"))
+            platform_receipt_report = json.loads(
+                execution_receipt_path.with_suffix(
+                    execution_receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
             self.assertEqual(ack["ack_status"], "accepted")
@@ -1009,6 +1250,27 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertFalse(rejection["future_execution_authorized"])
             self.assertFalse(rejection["execution_performed"])
             self.assertFalse(rejection["platform_execution_performed"])
+            self.assertEqual(platform_request["status"], "ready")
+            self.assertFalse(platform_request["device_required"])
+            self.assertFalse(platform_request["execution_performed"])
+            self.assertFalse(platform_request["platform_execution_performed"])
+            self.assertFalse(platform_request["schema_path_execution_allowed"])
+            self.assertEqual(
+                platform_request["pending_execution_action_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(platform_request_report["status"], "pass")
+            self.assertEqual(platform_receipt["status"], "pending")
+            self.assertTrue(platform_receipt["execution_acknowledged"])
+            self.assertTrue(platform_receipt["schema_checks_performed"])
+            self.assertFalse(platform_receipt["execution_performed"])
+            self.assertFalse(platform_receipt["platform_execution_performed"])
+            self.assertFalse(platform_receipt["schema_path_execution_allowed"])
+            self.assertEqual(
+                platform_receipt["pending_execution_action_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(platform_receipt_report["status"], "pass")
 
 
 def valid_request() -> dict[str, object]:

@@ -43,7 +43,9 @@ python tools\studio_staging_request.py `
   --smoke-review-bundle-out <hostess-smoke-review-bundle.json> `
   --platform-smoke-plan-out <hostess-platform-smoke-plan.json> `
   --platform-smoke-approval-out <hostess-platform-smoke-approval.json> `
-  --platform-smoke-rejection-out <hostess-platform-smoke-rejection.json>
+  --platform-smoke-rejection-out <hostess-platform-smoke-rejection.json> `
+  --platform-smoke-execution-request-out <hostess-platform-smoke-execution-request.json> `
+  --platform-smoke-execution-receipt-out <hostess-platform-smoke-execution-receipt.json>
 ```
 
 The intake report uses
@@ -115,3 +117,23 @@ work, but the receipt itself still records `execution_performed = false`,
 `evidence_collection_started = false`, and `command_session_started = false`.
 It is an approval/rejection contract only; it does not copy, stage, install,
 launch, collect evidence, open a command session, or run Quest/APK work.
+
+The platform smoke execution request uses
+`rusty.hostess.studio_staging_platform_smoke_execution_request.v1`. It consumes
+an approved platform smoke approval receipt and converts each approved planned
+action into a pending Hostess-owned execution request for a future Hostess T or
+dedicated host-shell run. The request records
+`operator_controlled_execution_required = true` and
+`hostess_shell_execution_required = true`, but it still records
+`device_required = false`, `schema_path_execution_allowed = false`,
+`platform_execution_allowed = false`, `studio_execution_allowed = false`,
+`execution_performed = false`, `runtime_execution_performed = false`, and
+`platform_execution_performed = false`.
+
+The platform smoke execution receipt uses
+`rusty.hostess.studio_staging_platform_smoke_execution_receipt.v1`. It
+acknowledges or rejects the execution request shape and leaves all copy, stage,
+install, launch, evidence collection, command-session, ADB, Quest, OpenXR, APK,
+and runtime execution flags false. A pending receipt is not proof that platform
+work ran; it is the reviewed handoff shape that a Hostess-owned shell may
+consume after an operator starts that shell outside Studio.
