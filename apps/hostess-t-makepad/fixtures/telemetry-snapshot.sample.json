@@ -1,0 +1,98 @@
+{
+  "$schema": "rusty.hostess.telemetry.snapshot.v1",
+  "commands": [
+    {
+      "authority": "Manifold command route through Hostess",
+      "command": "run-replay",
+      "route": "hostessctl run-replay",
+      "state_changing": true
+    },
+    {
+      "authority": "Hostess evidence export",
+      "command": "render-telemetry",
+      "route": "hostessctl render-telemetry",
+      "state_changing": false
+    }
+  ],
+  "created_at_utc": "2026-05-31T00:00:00+00:00",
+  "evidence": {
+    "capture": "fixtures/replay-evidence.json",
+    "graph_execution_report": "fixtures/replay.graph-execution-report.json",
+    "runtime_input": "fixtures/replay.runtime-input.json"
+  },
+  "issues": [],
+  "module_outputs": [
+    {
+      "input_stream_id": "stream.polar_h10.hr_rr",
+      "issue_code": null,
+      "metrics": {
+        "ln_rmssd": 2.565,
+        "quality": "stable"
+      },
+      "module_id": "module.polar_h10.hrv_window",
+      "status": "pass",
+      "stream_id": "stream.polar_h10.hrv_window",
+      "summary": "2.565 lnRMSSD"
+    },
+    {
+      "input_stream_id": "stream.polar_h10.hr_rr",
+      "issue_code": null,
+      "metrics": {
+        "normalized_score": 0.952,
+        "quality": "stable"
+      },
+      "module_id": "module.polar_h10.coherence",
+      "status": "pass",
+      "stream_id": "stream.polar_h10.coherence",
+      "summary": "0.952 coherence"
+    },
+    {
+      "input_stream_id": "stream.polar_h10.breath_volume",
+      "issue_code": null,
+      "metrics": {
+        "breathing_rate_bpm": 12.0,
+        "quality": "stable"
+      },
+      "module_id": "module.polar_h10.breath_dynamics",
+      "status": "pass",
+      "stream_id": "stream.polar_h10.breath_dynamics",
+      "summary": "12.000 bpm"
+    }
+  ],
+  "raw_streams": [
+    {
+      "counters": {
+        "heart_rate_event_count": 6,
+        "malformed_frame_count": 0,
+        "rr_interval_count": 6,
+        "status": "pass"
+      },
+      "preview": [
+        1000.0,
+        1010.0,
+        990.0,
+        1005.0,
+        995.0,
+        1000.0
+      ],
+      "status": "pass",
+      "stream_id": "stream.polar_h10.hr_rr",
+      "summary": "6 HR / 6 RR"
+    }
+  ],
+  "run": {
+    "graph_id": "graph.polar_h10_processing",
+    "graph_status": "pass",
+    "host_profile": "desktop",
+    "mode": "module",
+    "runtime_path": "rust.polar_h10_core.v1",
+    "selected_module_ids": [
+      "module.polar_h10.hrv_window",
+      "module.polar_h10.coherence",
+      "module.polar_h10.breath_dynamics"
+    ],
+    "status": "pass"
+  },
+  "snapshot_id": "snapshot.sample",
+  "source_evidence_path": "fixtures/replay-evidence.json"
+}

@@ -20,6 +20,7 @@
             <intent-filter>
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_REPLAY" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

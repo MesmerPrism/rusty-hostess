@@ -26,7 +26,7 @@ final class PolarRuntime {
         if (!loadAttempted) {
             loadAttempted = true;
             try {
-                System.loadLibrary("polar_h10_core");
+                System.loadLibrary("hostess_polar_runtime_jni");
                 loaded = true;
             } catch (UnsatisfiedLinkError error) {
                 loadError = error.toString();

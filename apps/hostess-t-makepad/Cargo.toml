@@ -1,0 +1,17 @@
+[package]
+name = "hostess-t-makepad"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[package.metadata.packager]
+identifier = "io.github.mesmerprism.rustyhostess.makepad"
+product_name = "Rusty Hostess Makepad"
+
+[package.metadata.makepad.android]
+version_code = 1
+version_name = "0.1.0"
+min_sdk_version = 26
+
+[dependencies]
+makepad-widgets = { path = "../../../makepad-rusty-xr/widgets", version = "2.0.0" }

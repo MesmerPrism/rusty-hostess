@@ -17,24 +17,69 @@ JSON that includes package manifest hashes.
 
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
   Polar stream validation using a local Python dependency.
+- `apps/hostess-t-makepad`: the intended Hostess T GUI surface. It can seed
+  itself from bounded `TelemetrySnapshot` checkpoint JSON, then watch an
+  append-only telemetry JSONL stream and maintain independent rolling plots per
+  datastream. Snapshots are evidence/checkpoint artifacts, not the live data
+  plane.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles, and
-  shows rolling raw telemetry plus graph-resolved module telemetry while a
-  capture is running. The APK packages the Polar Rust core as a native library
-  and calls it through the Hostess JNI bridge.
+  owns platform lifecycle, BLE acquisition, permissions, ADB command bridging,
+  app-private evidence storage, and the Hostess JNI bridge. Its native Canvas
+  telemetry view is fallback/debug-only platform evidence plumbing; Makepad is
+  the scalable GUI path.
 - `tools/hostessctl/hostessctl.py render-telemetry`: Android-class app-rendered
   PNG export for phone and headset telemetry evidence, plus desktop PNG
-  rendering from completed evidence artifacts.
+  rendering from completed evidence artifacts. Renders must pass dimension and
+  nonblank checks and write a JSON sidecar beside the PNG.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
+- `tools/hostessctl/hostessctl.py run-pmb-replay`: projected-motion breath
+  replay execution. Desktop runs `projected-motion-breath-core` against the
+  package golden fixtures directly. Phone and Quest launch the Hostess Android
+  app, execute the same PMB core through JNI over packaged synthetic assets,
+  pull app-private evidence, and emit Hostess validation plus host-run evidence.
+- `tools/hostessctl/hostessctl.py run-pmb-controller-preflight`: non-human
+  Android/Quest controller-path preflight for projected-motion breath. It
+  launches the Hostess Android app, runs a packaged headset-controller-shaped
+  `stream.motion.object_pose` provider fixture through the same PMB core, pulls
+  app-private evidence, and emits Hostess validation plus host-run evidence
+  with physical controller input explicitly marked unused.
+- `tools/hostessctl/hostessctl.py record-values`: general Manifold value
+  recording entrypoint. It accepts repeated `--value <stream-id-or-alias>` and
+  `--duration-seconds`, builds provider plans, runs an existing single-value
+  live capture route when one is available, and otherwise writes explicit
+  ready/blocked Hostess evidence without making the recorder Polar- or
+  controller-specific.
+- `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
+  replay/live evidence into `rusty.hostess.telemetry.snapshot.v1` checkpoints
+  for Makepad and future Rusty GUI surfaces.
+- `tools/telemetry_stream.py`: emits replay-derived
+  `rusty.hostess.telemetry.stream_event.v1` JSONL batches for Makepad watcher
+  validation. Real live adapters should append the same event shape as data
+  arrives.
 
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
-python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
+python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
+python tools\hostessctl\hostessctl.py run-pmb-replay --target quest --adb <adb> --serial <serial> --packages-root <packages-root> --out <pmb-quest-replay-evidence.json>
+python tools\hostessctl\hostessctl.py run-pmb-controller-preflight --target quest --adb <adb> --serial <serial> --packages-root <packages-root> --out <pmb-quest-controller-preflight-evidence.json>
+python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording-plan.json> --plan-only --allow-blocked
+python tools\hostessctl\hostessctl.py snapshot-telemetry --input <capture.json> --out <snapshot.json>
+cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
+```
+
+For Makepad running-telemetry validation from a replay checkpoint:
+
+```powershell
+python tools\hostessctl\hostessctl.py snapshot-telemetry --input <capture.json> --out <snapshot.json>
+python tools\telemetry_stream.py --snapshot <snapshot.json> --out <telemetry.jsonl>
+cargo run --manifest-path apps\hostess-t-makepad\Cargo.toml -- --snapshot <snapshot.json> --stream-jsonl <telemetry.jsonl>
 ```
 
 Live evidence, including runtime processor-module metrics, is validated with:
@@ -43,16 +88,31 @@ Live evidence, including runtime processor-module metrics, is validated with:
 python tools\check_live_capture_evidence.py --input <capture.json> --packages-root <packages-root>
 ```
 
-`hostessctl run-live` and `hostessctl run-replay` validate evidence through the
-same validator and write a companion `rusty.manifold.hostess.run_evidence.v1`
-contract artifact beside the raw capture JSON. Runtime artifacts should be
-written outside this repository.
+`hostessctl run-live`, `hostessctl run-replay`, `hostessctl run-pmb-replay`,
+`hostessctl run-pmb-controller-preflight`, and `hostessctl record-values`
+validate evidence and write
+companion `rusty.manifold.host_run.run_evidence.v1` contract artifacts beside
+the raw capture JSON. Runtime artifacts should be written outside this
+repository.
 
 Direct stream slots use `--stream hr_rr|ecg|acc|coherence`. Processor modules
 are opt-in with repeated `--module` selections, for example:
 
 ```powershell
 python tools\hostessctl\hostessctl.py run-live --target desktop --module hrv_window --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
+```
+
+General value recording uses Manifold stream IDs or aliases. Current supported
+single-value live routes are Polar H10 streams (`stream.polar_h10.hr_rr`,
+`stream.polar_h10.ecg`, `stream.polar_h10.acc`, and
+`stream.polar_h10.coherence`). `stream.motion.object_pose` is registered as the
+Quest controller-pose provider boundary and currently reports blocked for live
+recording until the XR/OpenXR provider is attached. Multi-value simultaneous
+recording is also reported as blocked until a combined scheduler lands.
+
+```powershell
+python tools\hostessctl\hostessctl.py record-values --target desktop --value stream.polar_h10.acc --duration-seconds 120 --packages-root <packages-root> --out <recording.json>
+python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording-plan.json> --plan-only --allow-blocked
 ```
 
 For visual telemetry evidence on Android-class targets, prefer the app-rendered

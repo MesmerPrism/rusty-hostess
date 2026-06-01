@@ -25,12 +25,23 @@ hash. The desktop script follows the same evidence shape. Both desktop and
 Android captures are accepted only after the shared evidence validator compares
 the reported manifest hash against the supplied package root.
 
-The Android-class app shell includes compact raw and module telemetry pages for
-phone and headset profiles. It displays rolling direct-stream buffers,
-graph-resolved module outputs, and run status from the same activity path that
-the CLI starts. It does not own processor formulas, package state, or module
-authority. The desktop CLI can render equivalent evidence pages from completed
-run artifacts.
+The intended GUI surface is Makepad. `apps/hostess-t-makepad` seeds from
+bounded `TelemetrySnapshot` checkpoint JSON when useful, then watches
+append-only `TelemetryStreamEvent` JSONL and maintains rolling buffers per
+datastream. It is the first scalable Rusty GUI example for Hostess T. It
+observes run state and can request commands only through the same
+Hostess/Manifold command routes as `hostessctl`.
+
+The Android-class app shell includes a compact native Canvas telemetry view for
+phone and headset profiles, but that view is fallback/debug-only platform
+evidence plumbing. Android Java owns Activity lifecycle, BLE acquisition,
+permission UX, ADB intent/file command bridging, app-private evidence storage,
+and JNI calls into the Rust runtime. It does not own reusable panel layout,
+processor formulas, package state, graph execution, or module authority.
+
+The desktop CLI can render equivalent evidence pages from completed run
+artifacts. Rendered PNGs must include dimensions, nonblank content evidence,
+and a JSON sidecar before they are accepted as visual evidence.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
@@ -53,7 +64,7 @@ from the Rust graph report.
 The telemetry panel boundary is recorded in `docs/TELEMETRY_GUI.md`.
 
 After a raw capture validates, `hostessctl` writes a
-`rusty.manifold.hostess.run_evidence.v1` wrapper with a scorecard so the live
+`rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live
 run is tied back to the Manifold Hostess contract spine.
 
 ## Non-Scope
