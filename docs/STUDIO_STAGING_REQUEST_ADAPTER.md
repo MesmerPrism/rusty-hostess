@@ -39,7 +39,8 @@ python tools\studio_staging_request.py `
   --smoke-dry-run-request-out <hostess-smoke-dry-run-request.json> `
   --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json> `
   --smoke-preflight-out <hostess-smoke-preflight.json> `
-  --smoke-host-shell-execution-out <hostess-smoke-host-shell-execution.json>
+  --smoke-host-shell-execution-out <hostess-smoke-host-shell-execution.json> `
+  --smoke-review-bundle-out <hostess-smoke-review-bundle.json>
 ```
 
 The intake report uses
@@ -80,3 +81,12 @@ while `execution_performed`, `runtime_execution_performed`,
 `stage_started`, `install_started`, `launch_started`,
 `evidence_collection_started`, and `command_session_started` remain false. It
 is not a Quest/APK build, app install, app launch, or evidence-capture run.
+
+The reviewed Hostess bundle uses
+`rusty.hostess.studio_staging_smoke_review_bundle.v1`. It consumes the
+no-device host-shell execution artifact, checks its validation status, and
+bundles the source evidence records into Hostess-reviewed handoff records. It
+records `review_bundle_written = true` and
+`operator_review_required_before_platform_smoke = true`, while device,
+platform, Studio, build, copy, stage, install, launch, evidence collection, and
+command-session execution remain disabled.

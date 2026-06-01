@@ -25,6 +25,10 @@ SMOKE_HOST_SHELL_EXECUTION_SCHEMA = "rusty.hostess.studio_staging_smoke_host_she
 SMOKE_HOST_SHELL_EXECUTION_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_smoke_host_shell_execution_validation.v1"
 )
+SMOKE_REVIEW_BUNDLE_SCHEMA = "rusty.hostess.studio_staging_smoke_review_bundle.v1"
+SMOKE_REVIEW_BUNDLE_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_smoke_review_bundle_validation.v1"
+)
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
@@ -32,6 +36,7 @@ ACCEPTED_STATUS = "accepted"
 REJECTED_STATUS = "rejected"
 PENDING_STATUS = "pending"
 COMPLETED_STATUS = "completed"
+REVIEWED_STATUS = "reviewed"
 PASS_STATUS = "pass"
 FAIL_STATUS = "fail"
 
@@ -41,6 +46,7 @@ STUDIO_REQUESTER = "rusty.studio"
 STUDIO_ROLE = "authoring.export_planning"
 REQUEST_POLICY = "not_executed.hostess_request_only"
 HOST_SHELL_EXECUTION_POLICY = "hostess.no_device_host_shell_schema_execution_only"
+SMOKE_REVIEW_BUNDLE_POLICY = "hostess.no_device_review_bundle_only"
 
 REQUIRED_PROHIBITED_ACTIONS = [
     "stage_generated_shells",
@@ -1638,6 +1644,377 @@ def first_evidence_issue_code(records: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def build_smoke_review_bundle(execution: dict[str, Any]) -> dict[str, Any]:
+    execution_validation = validate_smoke_host_shell_execution(execution)
+    source_records = smoke_host_shell_execution_evidence_records(execution)
+    bundle_records = smoke_review_bundle_records(
+        execution,
+        execution_validation,
+        source_records,
+    )
+    checks = smoke_review_bundle_checks(
+        execution,
+        execution_validation,
+        source_records,
+        bundle_records,
+    )
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    execution_id = execution.get("execution_id")
+    bundle_id = (
+        f"hostess.smoke_review_bundle.{execution_id}"
+        if isinstance(execution_id, str) and execution_id
+        else "hostess.smoke_review_bundle.unknown"
+    )
+    reviewed_records = [
+        record for record in bundle_records if record.get("review_status") == REVIEWED_STATUS
+    ]
+    blocked_records = [
+        record for record in bundle_records if record.get("review_status") == BLOCKED_STATUS
+    ]
+
+    return {
+        "$schema": SMOKE_REVIEW_BUNDLE_SCHEMA,
+        "bundle_id": bundle_id,
+        "source_execution_id": execution_id,
+        "preflight_id": execution.get("preflight_id"),
+        "dry_run_request_id": execution.get("dry_run_request_id"),
+        "dry_run_receipt_id": execution.get("dry_run_receipt_id"),
+        "smoke_handoff_id": execution.get("smoke_handoff_id"),
+        "source_request_id": execution.get("source_request_id"),
+        "target_profile": execution.get("target_profile"),
+        "status": REVIEWED_STATUS if not failed else BLOCKED_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_policy": SMOKE_REVIEW_BUNDLE_POLICY,
+        "bundle_owner": HOSTESS_OWNER,
+        "reviewer_owner": HOSTESS_OWNER,
+        "executor_owner": execution.get("executor_owner"),
+        "adapter_owner": execution.get("adapter_owner"),
+        "requester_role": execution.get("requester_role"),
+        "command_session_authority": execution.get("command_session_authority"),
+        "install_launch_evidence_authority": execution.get("install_launch_evidence_authority"),
+        "studio_role": execution.get("studio_role"),
+        "host_shell_owner": execution.get("host_shell_owner"),
+        "host_shell_kind": execution.get("host_shell_kind"),
+        "device_required": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "operator_review_required_before_platform_smoke": True,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "review_bundle_written": True,
+        "host_shell_harness_performed": execution.get("host_shell_harness_performed") is True,
+        "schema_checks_performed": execution.get("schema_checks_performed") is True,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_execution_status": execution.get("status"),
+        "source_execution_validation_status": execution_validation.get("status"),
+        "source_execution_issue_code": execution.get("issue_code") or execution_validation.get("issue_code"),
+        "source_evidence_record_count": len(source_records),
+        "bundle_record_count": len(bundle_records),
+        "reviewed_record_count": len(reviewed_records),
+        "blocked_record_count": len(blocked_records),
+        "source_evidence_records": source_records,
+        "bundle_records": bundle_records,
+        "checks": checks,
+        "next_required_action": (
+            "operator_review_platform_smoke_plan_outside_studio"
+            if not failed
+            else "repair_hostess_no_device_smoke_harness"
+        ),
+    }
+
+
+def validate_smoke_review_bundle(bundle: dict[str, Any]) -> dict[str, Any]:
+    source_records = smoke_review_bundle_source_records(bundle)
+    bundle_records = smoke_review_bundle_record_dicts(bundle)
+    embedded_checks = bundle.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    reviewed_records = [
+        record for record in bundle_records if record.get("review_status") == REVIEWED_STATUS
+    ]
+    blocked_records = [
+        record for record in bundle_records if record.get("review_status") == BLOCKED_STATUS
+    ]
+    checks = [
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.schema",
+            bundle.get("$schema") == SMOKE_REVIEW_BUNDLE_SCHEMA,
+            "smoke review bundle schema is supported",
+            "smoke review bundle schema is unsupported",
+            "hostess.issue.smoke_review_bundle_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.status",
+            bundle.get("status") in {REVIEWED_STATUS, BLOCKED_STATUS},
+            "smoke review bundle status is supported",
+            "smoke review bundle status is unsupported",
+            "hostess.issue.smoke_review_bundle_status",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.execution_policy",
+            bundle.get("execution_policy") == SMOKE_REVIEW_BUNDLE_POLICY,
+            "smoke review bundle is no-device review-only",
+            "smoke review bundle execution policy drifted",
+            "hostess.issue.smoke_review_bundle_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.no_runtime_started",
+            all(bundle.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and bundle.get("runtime_execution_performed") is False
+            and bundle.get("platform_execution_performed") is False,
+            "smoke review bundle did not start runtime or platform work",
+            "smoke review bundle indicates runtime or platform work started",
+            "hostess.issue.smoke_review_bundle_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.no_device",
+            bundle.get("device_required") is False
+            and bundle.get("platform_execution_allowed") is False
+            and bundle.get("studio_execution_allowed") is False,
+            "smoke review bundle keeps device and Studio execution disabled",
+            "smoke review bundle allows device, platform, or Studio execution",
+            "hostess.issue.smoke_review_bundle_device_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.authority",
+            bundle.get("bundle_owner") == HOSTESS_OWNER
+            and bundle.get("reviewer_owner") == HOSTESS_OWNER
+            and bundle.get("executor_owner") == HOSTESS_OWNER
+            and bundle.get("adapter_owner") == HOSTESS_OWNER
+            and bundle.get("requester_role") == STUDIO_REQUESTER
+            and bundle.get("command_session_authority") == MANIFOLD_OWNER
+            and bundle.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and bundle.get("studio_role") == STUDIO_ROLE
+            and bundle.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.source_execution",
+            bundle.get("status") != REVIEWED_STATUS
+            or (
+                bundle.get("source_execution_status") == COMPLETED_STATUS
+                and bundle.get("source_execution_validation_status") == PASS_STATUS
+            ),
+            "reviewed source host-shell execution completed and validates",
+            "source host-shell execution is blocked or invalid",
+            bundle.get("source_execution_issue_code")
+            or "hostess.issue.smoke_host_shell_execution_not_completed",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.counts",
+            bundle.get("source_evidence_record_count") == len(source_records)
+            and bundle.get("bundle_record_count") == len(bundle_records)
+            and bundle.get("reviewed_record_count") == len(reviewed_records)
+            and bundle.get("blocked_record_count") == len(blocked_records),
+            "smoke review bundle counts match records",
+            "smoke review bundle counts drifted",
+            "hostess.issue.smoke_review_bundle_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.records",
+            smoke_review_bundle_records_match_source(source_records, bundle_records),
+            "smoke review bundle records match source evidence records",
+            "smoke review bundle records drifted from source evidence",
+            "hostess.issue.smoke_review_bundle_record_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.reviewed_consistency",
+            bundle.get("status") != REVIEWED_STATUS
+            or (
+                all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(record.get("review_status") == REVIEWED_STATUS for record in bundle_records)
+                and all(record.get("included_in_bundle") is True for record in bundle_records)
+            ),
+            "reviewed smoke bundle has passing checks and reviewed included records",
+            "reviewed smoke bundle has failed checks or unreviewed records",
+            "hostess.issue.smoke_review_bundle_reviewed_inconsistent",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": SMOKE_REVIEW_BUNDLE_VALIDATION_SCHEMA,
+        "bundle_id": bundle.get("bundle_id"),
+        "source_execution_id": bundle.get("source_execution_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def smoke_review_bundle_records(
+    execution: dict[str, Any],
+    execution_validation: dict[str, Any],
+    source_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    execution_ready = (
+        execution.get("status") == COMPLETED_STATUS
+        and execution_validation.get("status") == PASS_STATUS
+        and all(record.get("evidence_status") == ACCEPTED_STATUS for record in source_records)
+    )
+    records = []
+    for source in source_records:
+        source_evidence_id = source.get("evidence_id")
+        issue_code = None
+        if not execution_ready:
+            issue_code = (
+                source.get("issue_code")
+                or execution.get("issue_code")
+                or execution_validation.get("issue_code")
+                or "hostess.issue.smoke_host_shell_execution_not_completed"
+            )
+        records.append(
+            {
+                "bundle_record_id": (
+                    f"hostess.smoke_review_bundle_record.{source_evidence_id}"
+                    if isinstance(source_evidence_id, str) and source_evidence_id
+                    else "hostess.smoke_review_bundle_record.unknown"
+                ),
+                "source_evidence_id": source_evidence_id,
+                "owner": source.get("owner"),
+                "source_capability_id": source.get("source_capability_id"),
+                "route_kind": source.get("route_kind"),
+                "evidence_kind": source.get("evidence_kind"),
+                "source_evidence_status": source.get("evidence_status"),
+                "review_status": REVIEWED_STATUS if issue_code is None else BLOCKED_STATUS,
+                "issue_code": issue_code,
+                "included_in_bundle": issue_code is None,
+                "device_required": False,
+                "schema_check_performed": True,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "command_session_started": False,
+            }
+        )
+    return records
+
+
+def smoke_review_bundle_checks(
+    execution: dict[str, Any],
+    execution_validation: dict[str, Any],
+    source_records: list[dict[str, Any]],
+    bundle_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.source_execution",
+            execution.get("$schema") == SMOKE_HOST_SHELL_EXECUTION_SCHEMA
+            and execution.get("status") == COMPLETED_STATUS
+            and execution_validation.get("status") == PASS_STATUS,
+            "source host-shell execution completed and validates",
+            "source host-shell execution is blocked or invalid",
+            execution.get("issue_code")
+            or execution_validation.get("issue_code")
+            or "hostess.issue.smoke_host_shell_execution_not_completed",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.authority",
+            execution.get("executor_owner") == HOSTESS_OWNER
+            and execution.get("adapter_owner") == HOSTESS_OWNER
+            and execution.get("requester_role") == STUDIO_REQUESTER
+            and execution.get("command_session_authority") == MANIFOLD_OWNER
+            and execution.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and execution.get("studio_role") == STUDIO_ROLE
+            and execution.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.no_runtime_started",
+            all(execution.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and execution.get("runtime_execution_performed") is False
+            and execution.get("platform_execution_performed") is False,
+            "source host-shell execution did not start runtime or platform work",
+            "source host-shell execution indicates runtime or platform work started",
+            "hostess.issue.smoke_review_bundle_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.records",
+            smoke_review_bundle_records_match_source(source_records, bundle_records),
+            "bundle records match source evidence records",
+            "bundle records drifted from source evidence records",
+            "hostess.issue.smoke_review_bundle_record_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_review_bundle.records_reviewed",
+            all(record.get("review_status") == REVIEWED_STATUS for record in bundle_records),
+            "bundle records are reviewed",
+            "bundle records are blocked",
+            first_bundle_record_issue_code(bundle_records)
+            or "hostess.issue.smoke_review_bundle_records_blocked",
+        ),
+    ]
+
+
+def smoke_review_bundle_source_records(bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    records = bundle.get("source_evidence_records", [])
+    if not isinstance(records, list):
+        return []
+    return [record for record in records if isinstance(record, dict)]
+
+
+def smoke_review_bundle_record_dicts(bundle: dict[str, Any]) -> list[dict[str, Any]]:
+    records = bundle.get("bundle_records", [])
+    if not isinstance(records, list):
+        return []
+    return [record for record in records if isinstance(record, dict)]
+
+
+def smoke_review_bundle_records_match_source(
+    source_records: list[dict[str, Any]],
+    bundle_records: list[dict[str, Any]],
+) -> bool:
+    by_id = {record.get("source_evidence_id"): record for record in bundle_records}
+    if len(bundle_records) != len(source_records):
+        return False
+    for source in source_records:
+        source_evidence_id = source.get("evidence_id")
+        record = by_id.get(source_evidence_id)
+        if not isinstance(record, dict):
+            return False
+        if record.get("owner") != source.get("owner"):
+            return False
+        if record.get("source_capability_id") != source.get("source_capability_id"):
+            return False
+        if record.get("route_kind") != source.get("route_kind"):
+            return False
+        if record.get("evidence_kind") != source.get("evidence_kind"):
+            return False
+        if record.get("source_evidence_status") != source.get("evidence_status"):
+            return False
+        if record.get("device_required") is not False:
+            return False
+        if record.get("schema_check_performed") is not True:
+            return False
+        if record.get("runtime_execution_performed") is not False:
+            return False
+        if record.get("platform_execution_performed") is not False:
+            return False
+        if record.get("command_session_started") is not False:
+            return False
+    return True
+
+
+def first_bundle_record_issue_code(records: list[dict[str, Any]]) -> str | None:
+    for record in records:
+        issue_code = record.get("issue_code")
+        if isinstance(issue_code, str) and issue_code:
+            return issue_code
+    return None
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -1945,7 +2322,9 @@ def main() -> int:
     parser.add_argument("--smoke-dry-run-receipt-out", type=Path)
     parser.add_argument("--smoke-preflight-in", type=Path)
     parser.add_argument("--smoke-preflight-out", type=Path)
+    parser.add_argument("--smoke-host-shell-execution-in", type=Path)
     parser.add_argument("--smoke-host-shell-execution-out", type=Path)
+    parser.add_argument("--smoke-review-bundle-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
@@ -1954,6 +2333,7 @@ def main() -> int:
     parser.add_argument("--validate-smoke-dry-run-receipt", type=Path)
     parser.add_argument("--validate-smoke-preflight", type=Path)
     parser.add_argument("--validate-smoke-host-shell-execution", type=Path)
+    parser.add_argument("--validate-smoke-review-bundle", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -1963,6 +2343,9 @@ def main() -> int:
     dry_run_request = load_json(args.smoke_dry_run_request_in) if args.smoke_dry_run_request_in else None
     dry_run_receipt = load_json(args.smoke_dry_run_receipt_in) if args.smoke_dry_run_receipt_in else None
     smoke_preflight = load_json(args.smoke_preflight_in) if args.smoke_preflight_in else None
+    host_shell_execution = (
+        load_json(args.smoke_host_shell_execution_in) if args.smoke_host_shell_execution_in else None
+    )
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -1989,6 +2372,7 @@ def main() -> int:
         or args.smoke_dry_run_receipt_out
         or args.smoke_preflight_out
         or args.smoke_host_shell_execution_out
+        or args.smoke_review_bundle_out
     ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -2030,9 +2414,26 @@ def main() -> int:
                     dry_run_receipt,
                     target_profile=args.target_profile,
                 )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
             write_json(
                 args.smoke_host_shell_execution_out,
-                build_smoke_host_shell_execution(smoke_preflight),
+                host_shell_execution,
+            )
+        if args.smoke_review_bundle_out:
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            write_json(
+                args.smoke_review_bundle_out,
+                build_smoke_review_bundle(host_shell_execution),
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -2098,6 +2499,14 @@ def main() -> int:
                 args.validate_smoke_host_shell_execution.suffix + ".validation.json"
             ),
             execution_report,
+        )
+    if args.validate_smoke_review_bundle:
+        bundle_report = validate_smoke_review_bundle(load_json(args.validate_smoke_review_bundle))
+        write_json(
+            args.validate_smoke_review_bundle.with_suffix(
+                args.validate_smoke_review_bundle.suffix + ".validation.json"
+            ),
+            bundle_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 

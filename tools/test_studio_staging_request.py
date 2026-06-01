@@ -525,6 +525,115 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.smoke_host_shell_evidence_contract_drift",
         )
 
+    def test_builds_smoke_review_bundle_from_host_shell_execution(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+            target_profile="hostess.t.desktop.schema_smoke",
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+
+        bundle = adapter.build_smoke_review_bundle(execution)
+
+        self.assertEqual(bundle["$schema"], adapter.SMOKE_REVIEW_BUNDLE_SCHEMA)
+        self.assertEqual(bundle["status"], "reviewed")
+        self.assertIsNone(bundle["issue_code"])
+        self.assertEqual(bundle["execution_policy"], adapter.SMOKE_REVIEW_BUNDLE_POLICY)
+        self.assertEqual(bundle["bundle_owner"], "rusty.hostess")
+        self.assertEqual(bundle["reviewer_owner"], "rusty.hostess")
+        self.assertEqual(bundle["source_execution_status"], "completed")
+        self.assertEqual(bundle["source_execution_validation_status"], "pass")
+        self.assertFalse(bundle["execution_performed"])
+        self.assertFalse(bundle["runtime_execution_performed"])
+        self.assertFalse(bundle["platform_execution_performed"])
+        self.assertTrue(bundle["review_bundle_written"])
+        self.assertFalse(bundle["device_required"])
+        self.assertFalse(bundle["platform_execution_allowed"])
+        self.assertFalse(bundle["studio_execution_allowed"])
+        self.assertTrue(bundle["operator_review_required_before_platform_smoke"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(bundle[flag], flag)
+        self.assertEqual(bundle["source_evidence_record_count"], len(execution["evidence_records"]))
+        self.assertEqual(bundle["bundle_record_count"], len(execution["evidence_records"]))
+        self.assertEqual(bundle["reviewed_record_count"], len(execution["evidence_records"]))
+        self.assertEqual(bundle["blocked_record_count"], 0)
+        self.assertTrue(
+            all(
+                record["review_status"] == "reviewed"
+                and record["included_in_bundle"] is True
+                and record["runtime_execution_performed"] is False
+                and record["platform_execution_performed"] is False
+                for record in bundle["bundle_records"]
+            )
+        )
+
+        validation = adapter.validate_smoke_review_bundle(bundle)
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_smoke_review_bundle_blocks_invalid_host_shell_execution(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+        execution["platform_execution_performed"] = True
+
+        bundle = adapter.build_smoke_review_bundle(execution)
+
+        self.assertEqual(bundle["status"], "blocked")
+        self.assertEqual(
+            bundle["issue_code"],
+            "hostess.issue.smoke_host_shell_execution_runtime_started",
+        )
+        self.assertGreater(bundle["blocked_record_count"], 0)
+        self.assertEqual(
+            adapter.validate_smoke_review_bundle(bundle)["status"],
+            "pass",
+        )
+
+    def test_smoke_review_bundle_validation_rejects_runtime_or_record_drift(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+        execution = adapter.build_smoke_host_shell_execution(preflight)
+        bundle = adapter.build_smoke_review_bundle(execution)
+
+        started = copy.deepcopy(bundle)
+        started["launch_started"] = True
+        started_report = adapter.validate_smoke_review_bundle(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.smoke_review_bundle_runtime_started",
+        )
+
+        record_drift = copy.deepcopy(bundle)
+        record_drift["bundle_records"][0]["included_in_bundle"] = False
+        record_report = adapter.validate_smoke_review_bundle(record_drift)
+        self.assertEqual(record_report["status"], "fail")
+        self.assertEqual(
+            record_report["issue_code"],
+            "hostess.issue.smoke_review_bundle_reviewed_inconsistent",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -537,6 +646,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             receipt_path = root / "smoke-dry-run-receipt.json"
             preflight_path = root / "smoke-preflight.json"
             execution_path = root / "smoke-host-shell-execution.json"
+            bundle_path = root / "smoke-review-bundle.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -568,6 +678,10 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(execution_path),
                     "--validate-smoke-host-shell-execution",
                     str(execution_path),
+                    "--smoke-review-bundle-out",
+                    str(bundle_path),
+                    "--validate-smoke-review-bundle",
+                    str(bundle_path),
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -587,6 +701,12 @@ class StudioStagingRequestTests(unittest.TestCase):
             execution = json.loads(execution_path.read_text(encoding="utf-8"))
             execution_report = json.loads(
                 execution_path.with_suffix(execution_path.suffix + ".validation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            bundle = json.loads(bundle_path.read_text(encoding="utf-8"))
+            bundle_report = json.loads(
+                bundle_path.with_suffix(bundle_path.suffix + ".validation.json").read_text(
                     encoding="utf-8"
                 )
             )
@@ -614,6 +734,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertFalse(execution["platform_execution_performed"])
             self.assertTrue(execution["host_shell_harness_performed"])
             self.assertEqual(execution_report["status"], "pass")
+            self.assertEqual(bundle["status"], "reviewed")
+            self.assertFalse(bundle["platform_execution_performed"])
+            self.assertTrue(bundle["review_bundle_written"])
+            self.assertEqual(bundle_report["status"], "pass")
 
 
 def valid_request() -> dict[str, object]:
