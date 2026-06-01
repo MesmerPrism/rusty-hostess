@@ -37,7 +37,8 @@ python tools\studio_staging_request.py `
   --reject-out <hostess-reject-fixture.json> `
   --smoke-handoff-out <hostess-smoke-handoff.json> `
   --smoke-dry-run-request-out <hostess-smoke-dry-run-request.json> `
-  --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json>
+  --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json> `
+  --smoke-preflight-out <hostess-smoke-preflight.json>
 ```
 
 The intake report uses
@@ -58,6 +59,12 @@ The dry-run request uses
 handoff checklist into Hostess/Manifold-owned request steps and expected
 receipt kinds, but still records all runtime-start flags as false. The dry-run
 receipt uses `rusty.hostess.studio_staging_smoke_dry_run_receipt.v1` and
-acknowledges those request steps without performing them. It is the last
-schema-only readiness fixture before Hostess T or a dedicated host shell starts
-real platform smoke execution.
+acknowledges those request steps without performing them.
+
+The smoke execution preflight uses
+`rusty.hostess.studio_staging_smoke_execution_preflight.v1`. It consumes the
+dry-run request and receipt, verifies the Hostess/Manifold capability routes and
+receipt kinds, and records `device_required = false` and
+`platform_execution_allowed = false`. It is the last schema-only readiness
+fixture before Hostess T or a dedicated host shell starts real platform smoke
+execution.

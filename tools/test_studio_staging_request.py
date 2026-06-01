@@ -301,6 +301,120 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.smoke_dry_run_receipt_item_executed",
         )
 
+    def test_builds_smoke_execution_preflight_without_runtime_execution(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+            target_profile="hostess.t.desktop.schema_smoke",
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+
+        preflight = adapter.build_smoke_execution_preflight(
+            dry_run,
+            receipt,
+            target_profile="hostess.t.desktop.no_device_preflight",
+        )
+
+        self.assertEqual(preflight["$schema"], adapter.SMOKE_EXECUTION_PREFLIGHT_SCHEMA)
+        self.assertEqual(preflight["status"], "ready")
+        self.assertIsNone(preflight["issue_code"])
+        self.assertEqual(preflight["execution_policy"], "not_executed.hostess_execution_preflight_only")
+        self.assertEqual(preflight["adapter_owner"], "rusty.hostess")
+        self.assertEqual(preflight["requester_role"], "rusty.studio")
+        self.assertEqual(preflight["command_session_authority"], "rusty.manifold")
+        self.assertEqual(preflight["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertEqual(preflight["host_shell_owner"], "rusty.hostess")
+        self.assertEqual(preflight["host_shell_kind"], "hostess.t.no_device_preflight")
+        self.assertFalse(preflight["device_required"])
+        self.assertFalse(preflight["platform_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(preflight[flag], flag)
+        self.assertEqual(
+            set(preflight["required_receipt_kinds"]),
+            set(adapter.SMOKE_DRY_RUN_REQUIRED_RECEIPT_KINDS),
+        )
+        self.assertEqual(
+            [capability["capability_id"] for capability in preflight["preflight_capabilities"]],
+            [
+                contract["capability_id"]
+                for contract in adapter.SMOKE_PREFLIGHT_CAPABILITY_CONTRACTS
+            ],
+        )
+        self.assertTrue(
+            all(
+                capability["status"] == "ready"
+                and capability["execution_started"] is False
+                and capability["device_required"] is False
+                for capability in preflight["preflight_capabilities"]
+            )
+        )
+        self.assertTrue(all(check["status"] == "pass" for check in preflight["checks"]))
+
+        validation = adapter.validate_smoke_execution_preflight(preflight)
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["execution_performed"])
+
+    def test_smoke_execution_preflight_blocks_rejected_receipt(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        receipt["status"] = "rejected"
+
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+
+        self.assertEqual(preflight["status"], "blocked")
+        self.assertEqual(
+            preflight["issue_code"],
+            "hostess.issue.smoke_dry_run_receipt_status",
+        )
+        self.assertTrue(
+            any(
+                capability["status"] == "blocked"
+                for capability in preflight["preflight_capabilities"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_smoke_execution_preflight(preflight)["status"],
+            "pass",
+        )
+
+    def test_smoke_execution_preflight_validation_rejects_runtime_or_capability_drift(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        preflight = adapter.build_smoke_execution_preflight(dry_run, receipt)
+
+        started = copy.deepcopy(preflight)
+        started["launch_started"] = True
+        started_report = adapter.validate_smoke_execution_preflight(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.smoke_execution_preflight_runtime_started",
+        )
+
+        capability_drift = copy.deepcopy(preflight)
+        capability_drift["preflight_capabilities"][0]["owner"] = "rusty.studio"
+        capability_report = adapter.validate_smoke_execution_preflight(capability_drift)
+        self.assertEqual(capability_report["status"], "fail")
+        self.assertEqual(
+            capability_report["issue_code"],
+            "hostess.issue.smoke_execution_preflight_capability_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -311,6 +425,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             smoke_path = root / "smoke-handoff.json"
             dry_run_path = root / "smoke-dry-run-request.json"
             receipt_path = root / "smoke-dry-run-receipt.json"
+            preflight_path = root / "smoke-preflight.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -334,6 +449,10 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(dry_run_path),
                     "--smoke-dry-run-receipt-out",
                     str(receipt_path),
+                    "--smoke-preflight-out",
+                    str(preflight_path),
+                    "--validate-smoke-preflight",
+                    str(preflight_path),
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -344,6 +463,12 @@ class StudioStagingRequestTests(unittest.TestCase):
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
             dry_run = json.loads(dry_run_path.read_text(encoding="utf-8"))
             receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+            preflight_report = json.loads(
+                preflight_path.with_suffix(preflight_path.suffix + ".validation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
             self.assertEqual(ack["ack_status"], "accepted")
@@ -355,6 +480,15 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertFalse(dry_run["copy_started"])
             self.assertEqual(receipt["status"], "accepted")
             self.assertFalse(receipt["launch_started"])
+            self.assertEqual(preflight["status"], "ready")
+            self.assertFalse(preflight["platform_execution_allowed"])
+            self.assertTrue(
+                all(
+                    capability["execution_started"] is False
+                    for capability in preflight["preflight_capabilities"]
+                )
+            )
+            self.assertEqual(preflight_report["status"], "pass")
 
 
 def valid_request() -> dict[str, object]:
