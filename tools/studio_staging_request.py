@@ -14,6 +14,9 @@ REJECT_SCHEMA = "rusty.studio.shell_hostess_staging_execution_reject.v1"
 INTAKE_SCHEMA = "rusty.hostess.studio_staging_execution_request_intake.v1"
 SMOKE_HANDOFF_SCHEMA = "rusty.hostess.studio_staging_smoke_handoff.v1"
 SMOKE_HANDOFF_VALIDATION_SCHEMA = "rusty.hostess.studio_staging_smoke_handoff_validation.v1"
+SMOKE_DRY_RUN_REQUEST_SCHEMA = "rusty.hostess.studio_staging_smoke_dry_run_request.v1"
+SMOKE_DRY_RUN_RECEIPT_SCHEMA = "rusty.hostess.studio_staging_smoke_dry_run_receipt.v1"
+SMOKE_DRY_RUN_VALIDATION_SCHEMA = "rusty.hostess.studio_staging_smoke_dry_run_validation.v1"
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
@@ -47,6 +50,10 @@ REQUIRED_EVIDENCE_KINDS = [
 
 SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS = REQUIRED_EVIDENCE_KINDS + [
     "hostess_smoke_handoff_checklist",
+]
+
+SMOKE_DRY_RUN_REQUIRED_RECEIPT_KINDS = SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS + [
+    "hostess_smoke_dry_run_receipt",
 ]
 
 HOSTESS_ACTION_ROUTES = {
@@ -107,6 +114,44 @@ SMOKE_HANDOFF_ITEM_CONTRACTS = [
         "source_action_id": "adapter.manifold.review_command_session_contract",
         "route_kind": "manifold.review.command_session_contract",
         "expected_output_kind": "manifold_command_session_contract_review",
+    },
+]
+
+SMOKE_DRY_RUN_STEP_CONTRACTS = [
+    {
+        "step_id": "hostess.dry_run.validate_request_intake",
+        "owner": HOSTESS_OWNER,
+        "source_item_id": "hostess.smoke.validate_studio_request_intake",
+        "route_kind": "hostess.adapter.validate_studio_request",
+        "expected_receipt_kind": "hostess_smoke_handoff_checklist",
+    },
+    {
+        "step_id": "hostess.dry_run.accept_request_ack",
+        "owner": HOSTESS_OWNER,
+        "source_item_id": "hostess.smoke.ack_or_reject_request",
+        "route_kind": "hostess.adapter.ack_or_reject_studio_request",
+        "expected_receipt_kind": "hostess_staging_request_ack",
+    },
+    {
+        "step_id": "hostess.dry_run.plan_stage_copy_receipt",
+        "owner": HOSTESS_OWNER,
+        "source_item_id": "hostess.smoke.plan_stage_copy_receipt",
+        "route_kind": "hostess.stage.files_from_plan",
+        "expected_receipt_kind": "hostess_file_copy_stage_receipt",
+    },
+    {
+        "step_id": "hostess.dry_run.plan_install_launch_receipt",
+        "owner": HOSTESS_OWNER,
+        "source_item_id": "hostess.smoke.plan_install_launch_receipt",
+        "route_kind": "hostess.collect.install_launch_evidence",
+        "expected_receipt_kind": "hostess_install_launch_evidence_receipt",
+    },
+    {
+        "step_id": "hostess.dry_run.plan_command_session_review",
+        "owner": MANIFOLD_OWNER,
+        "source_item_id": "hostess.smoke.plan_command_session_review",
+        "route_kind": "manifold.review.command_session_contract",
+        "expected_receipt_kind": "manifold_command_session_contract_review",
     },
 ]
 
@@ -451,6 +496,417 @@ def first_item_issue_code(items: list[dict[str, Any]]) -> str | None:
     return None
 
 
+def build_smoke_dry_run_request(
+    smoke_handoff: dict[str, Any],
+    target_profile: str | None = None,
+) -> dict[str, Any]:
+    handoff_validation = validate_smoke_handoff_checklist(smoke_handoff)
+    steps = smoke_dry_run_steps(smoke_handoff, handoff_validation)
+    checks = smoke_dry_run_request_checks(smoke_handoff, handoff_validation, steps)
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    handoff_id = smoke_handoff.get("handoff_id")
+    dry_run_request_id = (
+        f"hostess.smoke_dry_run_request.{handoff_id}"
+        if isinstance(handoff_id, str) and handoff_id
+        else "hostess.smoke_dry_run_request.unknown"
+    )
+
+    return {
+        "$schema": SMOKE_DRY_RUN_REQUEST_SCHEMA,
+        "dry_run_request_id": dry_run_request_id,
+        "smoke_handoff_id": handoff_id,
+        "source_request_id": smoke_handoff.get("request_id"),
+        "source_smoke_schema": smoke_handoff.get("$schema"),
+        "target_profile": target_profile or smoke_handoff.get("target_profile"),
+        "status": READY_STATUS if not failed else BLOCKED_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_policy": "not_executed.hostess_dry_run_request_only",
+        "adapter_owner": HOSTESS_OWNER,
+        "requester_role": smoke_handoff.get("requester_role"),
+        "command_session_authority": smoke_handoff.get("command_session_authority"),
+        "install_launch_evidence_authority": smoke_handoff.get("install_launch_evidence_authority"),
+        "studio_role": smoke_handoff.get("studio_role"),
+        "execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "required_receipt_kinds": SMOKE_DRY_RUN_REQUIRED_RECEIPT_KINDS,
+        "dry_run_steps": steps,
+        "checks": checks,
+    }
+
+
+def build_smoke_dry_run_receipt(dry_run_request: dict[str, Any]) -> dict[str, Any]:
+    validation = validate_smoke_dry_run_request(dry_run_request)
+    request_ready = (
+        dry_run_request.get("status") == READY_STATUS and validation.get("status") == PASS_STATUS
+    )
+    steps = smoke_dry_run_request_steps(dry_run_request)
+    receipt_items = [
+        {
+            "step_id": step.get("step_id"),
+            "owner": step.get("owner"),
+            "route_kind": step.get("route_kind"),
+            "receipt_kind": step.get("expected_receipt_kind"),
+            "receipt_status": ACCEPTED_STATUS if request_ready else REJECTED_STATUS,
+            "execution_performed": False,
+            "issue_code": None if request_ready else step.get("issue_code") or validation.get("issue_code"),
+        }
+        for step in steps
+    ]
+    dry_run_request_id = dry_run_request.get("dry_run_request_id")
+    receipt_id = (
+        f"hostess.smoke_dry_run_receipt.{dry_run_request_id}"
+        if isinstance(dry_run_request_id, str) and dry_run_request_id
+        else "hostess.smoke_dry_run_receipt.unknown"
+    )
+
+    return {
+        "$schema": SMOKE_DRY_RUN_RECEIPT_SCHEMA,
+        "receipt_id": receipt_id,
+        "dry_run_request_id": dry_run_request_id,
+        "smoke_handoff_id": dry_run_request.get("smoke_handoff_id"),
+        "source_request_id": dry_run_request.get("source_request_id"),
+        "target_profile": dry_run_request.get("target_profile"),
+        "status": ACCEPTED_STATUS if request_ready else REJECTED_STATUS,
+        "issue_code": None if request_ready else validation.get("issue_code"),
+        "execution_policy": "not_executed.hostess_dry_run_receipt_only",
+        "adapter_owner": HOSTESS_OWNER,
+        "command_session_authority": dry_run_request.get("command_session_authority"),
+        "install_launch_evidence_authority": dry_run_request.get("install_launch_evidence_authority"),
+        "execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "requested_step_count": len(steps),
+        "accepted_step_count": len(steps) if request_ready else 0,
+        "rejected_step_count": 0 if request_ready else len(steps),
+        "required_receipt_kinds": dry_run_request.get("required_receipt_kinds", []),
+        "receipt_items": receipt_items,
+        "checks": validation.get("checks", []),
+    }
+
+
+def validate_smoke_dry_run_request(dry_run_request: dict[str, Any]) -> dict[str, Any]:
+    steps = smoke_dry_run_request_steps(dry_run_request)
+    embedded_checks = dry_run_request.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    checks = [
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.schema",
+            dry_run_request.get("$schema") == SMOKE_DRY_RUN_REQUEST_SCHEMA,
+            "dry-run request schema is supported",
+            "dry-run request schema is unsupported",
+            "hostess.issue.smoke_dry_run_request_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.status",
+            dry_run_request.get("status") in {READY_STATUS, BLOCKED_STATUS},
+            "dry-run request status is supported",
+            "dry-run request status is unsupported",
+            "hostess.issue.smoke_dry_run_request_status",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.no_runtime_started",
+            all(dry_run_request.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS),
+            "dry-run request has not started runtime work",
+            "dry-run request indicates runtime work started",
+            "hostess.issue.smoke_dry_run_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.authority",
+            dry_run_request.get("adapter_owner") == HOSTESS_OWNER
+            and dry_run_request.get("requester_role") == STUDIO_REQUESTER
+            and dry_run_request.get("command_session_authority") == MANIFOLD_OWNER
+            and dry_run_request.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and dry_run_request.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.receipt_kinds",
+            set(dry_run_request.get("required_receipt_kinds", []))
+            == set(SMOKE_DRY_RUN_REQUIRED_RECEIPT_KINDS),
+            "dry-run request declares required receipt kinds",
+            "dry-run request receipt kinds drifted",
+            "hostess.issue.smoke_dry_run_receipt_kinds",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.step_contracts",
+            smoke_dry_run_steps_match_contracts(steps),
+            "dry-run steps match owner and route contracts",
+            "dry-run steps drifted from owner or route contracts",
+            "hostess.issue.smoke_dry_run_step_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.no_step_execution",
+            all(step.get("execution_started") is False for step in steps),
+            "dry-run steps have not started runtime work",
+            "dry-run step indicates runtime work started",
+            "hostess.issue.smoke_dry_run_step_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_request.ready_consistency",
+            dry_run_request.get("status") != READY_STATUS
+            or (
+                all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(step.get("status") == READY_STATUS for step in steps)
+            ),
+            "ready dry-run request has passing checks and ready steps",
+            "ready dry-run request has failed checks or blocked steps",
+            "hostess.issue.smoke_dry_run_ready_inconsistent",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": SMOKE_DRY_RUN_VALIDATION_SCHEMA,
+        "fixture_kind": "dry_run_request",
+        "dry_run_request_id": dry_run_request.get("dry_run_request_id"),
+        "smoke_handoff_id": dry_run_request.get("smoke_handoff_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_performed": False,
+        "checks": checks,
+    }
+
+
+def validate_smoke_dry_run_receipt(
+    dry_run_request: dict[str, Any],
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    request_validation = validate_smoke_dry_run_request(dry_run_request)
+    request_ready = (
+        dry_run_request.get("status") == READY_STATUS and request_validation.get("status") == PASS_STATUS
+    )
+    receipt_items = receipt.get("receipt_items", [])
+    if not isinstance(receipt_items, list):
+        receipt_items = []
+    receipt_item_dicts = [item for item in receipt_items if isinstance(item, dict)]
+    expected_status = ACCEPTED_STATUS if request_ready else REJECTED_STATUS
+    checks = [
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.schema",
+            receipt.get("$schema") == SMOKE_DRY_RUN_RECEIPT_SCHEMA,
+            "dry-run receipt schema is supported",
+            "dry-run receipt schema is unsupported",
+            "hostess.issue.smoke_dry_run_receipt_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.request_id",
+            receipt.get("dry_run_request_id") == dry_run_request.get("dry_run_request_id"),
+            "dry-run receipt request id matches",
+            "dry-run receipt request id differs",
+            "hostess.issue.smoke_dry_run_receipt_request_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.status",
+            receipt.get("status") == expected_status,
+            "dry-run receipt status matches request readiness",
+            "dry-run receipt status differs from request readiness",
+            "hostess.issue.smoke_dry_run_receipt_status",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.no_runtime_started",
+            all(receipt.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS),
+            "dry-run receipt has not started runtime work",
+            "dry-run receipt indicates runtime work started",
+            "hostess.issue.smoke_dry_run_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.items",
+            receipt_items_match_dry_run_steps(dry_run_request, receipt_item_dicts),
+            "dry-run receipt items match request steps",
+            "dry-run receipt items drifted from request steps",
+            "hostess.issue.smoke_dry_run_receipt_item_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run_receipt.no_item_execution",
+            all(item.get("execution_performed") is False for item in receipt_item_dicts),
+            "dry-run receipt items did not execute runtime work",
+            "dry-run receipt item indicates runtime execution",
+            "hostess.issue.smoke_dry_run_receipt_item_executed",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": SMOKE_DRY_RUN_VALIDATION_SCHEMA,
+        "fixture_kind": "dry_run_receipt",
+        "dry_run_request_id": dry_run_request.get("dry_run_request_id"),
+        "receipt_id": receipt.get("receipt_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_performed": False,
+        "checks": checks,
+    }
+
+
+def smoke_dry_run_steps(
+    smoke_handoff: dict[str, Any],
+    handoff_validation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    source_items = {
+        item.get("item_id"): item
+        for item in smoke_handoff.get("checklist_items", [])
+        if isinstance(item, dict)
+    }
+    handoff_ready = (
+        smoke_handoff.get("status") == READY_STATUS and handoff_validation.get("status") == PASS_STATUS
+    )
+    steps = []
+    for contract in SMOKE_DRY_RUN_STEP_CONTRACTS:
+        source_item = source_items.get(contract["source_item_id"])
+        issue_code = None
+        if not isinstance(source_item, dict):
+            issue_code = "hostess.issue.smoke_dry_run_source_item_missing"
+        elif not handoff_ready:
+            issue_code = (
+                smoke_handoff.get("issue_code")
+                or handoff_validation.get("issue_code")
+                or "hostess.issue.smoke_handoff_not_ready"
+            )
+        elif source_item.get("status") != READY_STATUS:
+            issue_code = source_item.get("issue_code") or "hostess.issue.smoke_handoff_item_blocked"
+        steps.append(
+            {
+                "step_id": contract["step_id"],
+                "owner": contract["owner"],
+                "status": READY_STATUS if issue_code is None else BLOCKED_STATUS,
+                "issue_code": issue_code,
+                "source_item_id": contract["source_item_id"],
+                "source_route_kind": source_item.get("route_kind") if isinstance(source_item, dict) else None,
+                "route_kind": contract["route_kind"],
+                "expected_receipt_kind": contract["expected_receipt_kind"],
+                "receipt_required": True,
+                "execution_started": False,
+            }
+        )
+    return steps
+
+
+def smoke_dry_run_request_checks(
+    smoke_handoff: dict[str, Any],
+    handoff_validation: dict[str, Any],
+    steps: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.handoff_schema",
+            smoke_handoff.get("$schema") == SMOKE_HANDOFF_SCHEMA,
+            "smoke handoff schema is supported",
+            "smoke handoff schema is unsupported",
+            "hostess.issue.smoke_handoff_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.handoff_ready",
+            smoke_handoff.get("status") == READY_STATUS
+            and handoff_validation.get("status") == PASS_STATUS,
+            "smoke handoff is ready and validates",
+            "smoke handoff is blocked or invalid",
+            smoke_handoff.get("issue_code")
+            or handoff_validation.get("issue_code")
+            or "hostess.issue.smoke_handoff_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.authority",
+            smoke_handoff.get("adapter_owner") == HOSTESS_OWNER
+            and smoke_handoff.get("requester_role") == STUDIO_REQUESTER
+            and smoke_handoff.get("command_session_authority") == MANIFOLD_OWNER
+            and smoke_handoff.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and smoke_handoff.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.steps_ready",
+            all(step.get("status") == READY_STATUS for step in steps),
+            "dry-run steps are ready",
+            "dry-run steps are blocked",
+            first_step_issue_code(steps) or "hostess.issue.smoke_dry_run_steps_blocked",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.no_step_execution",
+            all(step.get("execution_started") is False for step in steps),
+            "dry-run steps have not started runtime work",
+            "dry-run step indicates runtime work started",
+            "hostess.issue.smoke_dry_run_step_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_dry_run.step_contracts",
+            smoke_dry_run_steps_match_contracts(steps),
+            "dry-run steps match owner and route contracts",
+            "dry-run steps drifted from owner or route contracts",
+            "hostess.issue.smoke_dry_run_step_contract_drift",
+        ),
+    ]
+
+
+def smoke_dry_run_request_steps(dry_run_request: dict[str, Any]) -> list[dict[str, Any]]:
+    steps = dry_run_request.get("dry_run_steps", [])
+    if not isinstance(steps, list):
+        return []
+    return [step for step in steps if isinstance(step, dict)]
+
+
+def smoke_dry_run_steps_match_contracts(steps: list[dict[str, Any]]) -> bool:
+    by_id = {step.get("step_id"): step for step in steps}
+    for contract in SMOKE_DRY_RUN_STEP_CONTRACTS:
+        step = by_id.get(contract["step_id"])
+        if not isinstance(step, dict):
+            return False
+        if step.get("owner") != contract["owner"]:
+            return False
+        if step.get("source_item_id") != contract["source_item_id"]:
+            return False
+        if step.get("route_kind") != contract["route_kind"]:
+            return False
+        if step.get("expected_receipt_kind") != contract["expected_receipt_kind"]:
+            return False
+        if step.get("receipt_required") is not True:
+            return False
+    return True
+
+
+def receipt_items_match_dry_run_steps(
+    dry_run_request: dict[str, Any],
+    receipt_items: list[dict[str, Any]],
+) -> bool:
+    steps = smoke_dry_run_request_steps(dry_run_request)
+    by_id = {item.get("step_id"): item for item in receipt_items}
+    if len(receipt_items) != len(steps):
+        return False
+    for step in steps:
+        item = by_id.get(step.get("step_id"))
+        if not isinstance(item, dict):
+            return False
+        if item.get("owner") != step.get("owner"):
+            return False
+        if item.get("route_kind") != step.get("route_kind"):
+            return False
+        if item.get("receipt_kind") != step.get("expected_receipt_kind"):
+            return False
+    return True
+
+
+def first_step_issue_code(steps: list[dict[str, Any]]) -> str | None:
+    for step in steps:
+        issue_code = step.get("issue_code")
+        if isinstance(issue_code, str) and issue_code:
+            return issue_code
+    return None
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -750,16 +1206,24 @@ def main() -> int:
     parser.add_argument("--report-out", type=Path)
     parser.add_argument("--ack-out", type=Path)
     parser.add_argument("--reject-out", type=Path)
+    parser.add_argument("--smoke-handoff-in", type=Path)
     parser.add_argument("--smoke-handoff-out", type=Path)
+    parser.add_argument("--smoke-dry-run-request-in", type=Path)
+    parser.add_argument("--smoke-dry-run-request-out", type=Path)
+    parser.add_argument("--smoke-dry-run-receipt-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
     parser.add_argument("--validate-smoke-handoff", type=Path)
+    parser.add_argument("--validate-smoke-dry-run-request", type=Path)
+    parser.add_argument("--validate-smoke-dry-run-receipt", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
     report = build_intake_report(request, args.request)
     ack_fixture = build_ack_fixture(request) if report["status"] == ACCEPTED_STATUS else None
+    smoke_handoff = load_json(args.smoke_handoff_in) if args.smoke_handoff_in else None
+    dry_run_request = load_json(args.smoke_dry_run_request_in) if args.smoke_dry_run_request_in else None
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -770,15 +1234,34 @@ def main() -> int:
     if args.reject_out:
         write_json(args.reject_out, build_reject_fixture(request))
     if args.smoke_handoff_out:
-        write_json(
-            args.smoke_handoff_out,
-            build_smoke_handoff_checklist(
+        if smoke_handoff is None:
+            smoke_handoff = build_smoke_handoff_checklist(
                 request,
                 report,
                 ack_fixture,
                 target_profile=args.target_profile,
-            ),
+            )
+        write_json(
+            args.smoke_handoff_out,
+            smoke_handoff,
         )
+    if args.smoke_dry_run_request_out or args.smoke_dry_run_receipt_out:
+        if smoke_handoff is None:
+            smoke_handoff = build_smoke_handoff_checklist(
+                request,
+                report,
+                ack_fixture,
+                target_profile=args.target_profile,
+            )
+        if dry_run_request is None:
+            dry_run_request = build_smoke_dry_run_request(
+                smoke_handoff,
+                target_profile=args.target_profile,
+            )
+        if args.smoke_dry_run_request_out:
+            write_json(args.smoke_dry_run_request_out, dry_run_request)
+        if args.smoke_dry_run_receipt_out:
+            write_json(args.smoke_dry_run_receipt_out, build_smoke_dry_run_receipt(dry_run_request))
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
         write_json(args.validate_ack.with_suffix(args.validate_ack.suffix + ".validation.json"), ack_report)
@@ -793,6 +1276,40 @@ def main() -> int:
         write_json(
             args.validate_smoke_handoff.with_suffix(args.validate_smoke_handoff.suffix + ".validation.json"),
             smoke_report,
+        )
+    if args.validate_smoke_dry_run_request:
+        request_report = validate_smoke_dry_run_request(load_json(args.validate_smoke_dry_run_request))
+        write_json(
+            args.validate_smoke_dry_run_request.with_suffix(
+                args.validate_smoke_dry_run_request.suffix + ".validation.json"
+            ),
+            request_report,
+        )
+    if args.validate_smoke_dry_run_receipt:
+        if dry_run_request is None:
+            if args.validate_smoke_dry_run_request:
+                dry_run_request = load_json(args.validate_smoke_dry_run_request)
+            else:
+                if smoke_handoff is None:
+                    smoke_handoff = build_smoke_handoff_checklist(
+                        request,
+                        report,
+                        ack_fixture,
+                        target_profile=args.target_profile,
+                    )
+                dry_run_request = build_smoke_dry_run_request(
+                    smoke_handoff,
+                    target_profile=args.target_profile,
+                )
+        receipt_report = validate_smoke_dry_run_receipt(
+            dry_run_request,
+            load_json(args.validate_smoke_dry_run_receipt),
+        )
+        write_json(
+            args.validate_smoke_dry_run_receipt.with_suffix(
+                args.validate_smoke_dry_run_receipt.suffix + ".validation.json"
+            ),
+            receipt_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 

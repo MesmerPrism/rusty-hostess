@@ -193,6 +193,114 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.smoke_handoff_evidence_kinds",
         )
 
+    def test_builds_smoke_dry_run_request_and_receipt_without_runtime_execution(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+            target_profile="hostess.t.desktop.schema_smoke",
+        )
+
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        self.assertEqual(dry_run["$schema"], adapter.SMOKE_DRY_RUN_REQUEST_SCHEMA)
+        self.assertEqual(dry_run["status"], "ready")
+        self.assertEqual(dry_run["execution_policy"], "not_executed.hostess_dry_run_request_only")
+        self.assertEqual(dry_run["adapter_owner"], "rusty.hostess")
+        self.assertEqual(dry_run["requester_role"], "rusty.studio")
+        self.assertEqual(dry_run["command_session_authority"], "rusty.manifold")
+        self.assertEqual(dry_run["install_launch_evidence_authority"], "rusty.hostess")
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(dry_run[flag], flag)
+        self.assertEqual(
+            set(dry_run["required_receipt_kinds"]),
+            set(adapter.SMOKE_DRY_RUN_REQUIRED_RECEIPT_KINDS),
+        )
+        self.assertEqual(
+            [step["step_id"] for step in dry_run["dry_run_steps"]],
+            [contract["step_id"] for contract in adapter.SMOKE_DRY_RUN_STEP_CONTRACTS],
+        )
+        self.assertTrue(all(step["execution_started"] is False for step in dry_run["dry_run_steps"]))
+        self.assertEqual(adapter.validate_smoke_dry_run_request(dry_run)["status"], "pass")
+
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        self.assertEqual(receipt["$schema"], adapter.SMOKE_DRY_RUN_RECEIPT_SCHEMA)
+        self.assertEqual(receipt["status"], "accepted")
+        self.assertEqual(receipt["dry_run_request_id"], dry_run["dry_run_request_id"])
+        self.assertFalse(receipt["execution_performed"])
+        self.assertFalse(receipt["build_started"])
+        self.assertFalse(receipt["launch_started"])
+        self.assertEqual(receipt["accepted_step_count"], len(dry_run["dry_run_steps"]))
+        self.assertEqual(receipt["rejected_step_count"], 0)
+        self.assertTrue(
+            all(item["execution_performed"] is False for item in receipt["receipt_items"])
+        )
+        self.assertEqual(
+            adapter.validate_smoke_dry_run_receipt(dry_run, receipt)["status"],
+            "pass",
+        )
+
+    def test_smoke_dry_run_request_blocks_invalid_handoff(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        handoff["status"] = "ready"
+        handoff["build_started"] = True
+
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+        self.assertEqual(dry_run["status"], "blocked")
+        self.assertEqual(dry_run["issue_code"], "hostess.issue.smoke_handoff_runtime_started")
+        self.assertTrue(any(step["status"] == "blocked" for step in dry_run["dry_run_steps"]))
+
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        self.assertEqual(receipt["status"], "rejected")
+        self.assertEqual(receipt["accepted_step_count"], 0)
+        self.assertEqual(receipt["rejected_step_count"], len(dry_run["dry_run_steps"]))
+        self.assertEqual(
+            adapter.validate_smoke_dry_run_receipt(dry_run, receipt)["status"],
+            "pass",
+        )
+
+    def test_smoke_dry_run_validation_rejects_runtime_or_step_drift(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+        dry_run = adapter.build_smoke_dry_run_request(handoff)
+
+        started = copy.deepcopy(dry_run)
+        started["install_started"] = True
+        started_report = adapter.validate_smoke_dry_run_request(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.smoke_dry_run_runtime_started",
+        )
+
+        step_drift = copy.deepcopy(dry_run)
+        step_drift["dry_run_steps"][0]["owner"] = "rusty.studio"
+        step_report = adapter.validate_smoke_dry_run_request(step_drift)
+        self.assertEqual(step_report["status"], "fail")
+        self.assertEqual(
+            step_report["issue_code"],
+            "hostess.issue.smoke_dry_run_step_contract_drift",
+        )
+
+        receipt = adapter.build_smoke_dry_run_receipt(dry_run)
+        receipt_drift = copy.deepcopy(receipt)
+        receipt_drift["receipt_items"][0]["execution_performed"] = True
+        receipt_report = adapter.validate_smoke_dry_run_receipt(dry_run, receipt_drift)
+        self.assertEqual(receipt_report["status"], "fail")
+        self.assertEqual(
+            receipt_report["issue_code"],
+            "hostess.issue.smoke_dry_run_receipt_item_executed",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -201,6 +309,8 @@ class StudioStagingRequestTests(unittest.TestCase):
             ack_path = root / "ack.json"
             reject_path = root / "reject.json"
             smoke_path = root / "smoke-handoff.json"
+            dry_run_path = root / "smoke-dry-run-request.json"
+            receipt_path = root / "smoke-dry-run-receipt.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -220,6 +330,10 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(smoke_path),
                     "--target-profile",
                     "hostess.t.desktop.schema_smoke",
+                    "--smoke-dry-run-request-out",
+                    str(dry_run_path),
+                    "--smoke-dry-run-receipt-out",
+                    str(receipt_path),
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -228,6 +342,8 @@ class StudioStagingRequestTests(unittest.TestCase):
             ack = json.loads(ack_path.read_text(encoding="utf-8"))
             reject = json.loads(reject_path.read_text(encoding="utf-8"))
             smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
+            dry_run = json.loads(dry_run_path.read_text(encoding="utf-8"))
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
             self.assertEqual(ack["ack_status"], "accepted")
@@ -235,6 +351,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertEqual(smoke["status"], "ready")
             self.assertFalse(smoke["build_started"])
             self.assertFalse(smoke["install_started"])
+            self.assertEqual(dry_run["status"], "ready")
+            self.assertFalse(dry_run["copy_started"])
+            self.assertEqual(receipt["status"], "accepted")
+            self.assertFalse(receipt["launch_started"])
 
 
 def valid_request() -> dict[str, object]:

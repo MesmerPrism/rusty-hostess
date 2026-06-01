@@ -8,10 +8,10 @@ has selected and compared accepted handoff/acceptance artifacts. Hostess reads
 that request, validates the authority and route contract, and can emit accepted
 ack or rejected reject fixtures. Hostess can also emit a schema-only smoke
 handoff checklist that names the request, ack, and expected evidence receipt
-items for the first small Hostess-owned build smoke test. This tool does not
-copy files, stage files, install apps, launch apps, open command sessions,
-collect evidence, talk to ADB, run Quest builds, or execute Hostess runtime
-behavior.
+items for the first small Hostess-owned build smoke test, then a dry-run
+request/receipt pair over that checklist. This tool does not copy files, stage
+files, install apps, launch apps, open command sessions, collect evidence, talk
+to ADB, run Quest builds, or execute Hostess runtime behavior.
 
 Authority:
 
@@ -35,7 +35,9 @@ python tools\studio_staging_request.py `
   --report-out <hostess-intake-report.json> `
   --ack-out <hostess-ack-fixture.json> `
   --reject-out <hostess-reject-fixture.json> `
-  --smoke-handoff-out <hostess-smoke-handoff.json>
+  --smoke-handoff-out <hostess-smoke-handoff.json> `
+  --smoke-dry-run-request-out <hostess-smoke-dry-run-request.json> `
+  --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json>
 ```
 
 The intake report uses
@@ -50,3 +52,12 @@ The smoke handoff checklist uses
 `evidence_collection_started = false`, and `command_session_started = false`.
 It is a checklist for Hostess T or a dedicated host shell to consume later, not
 a build or device execution command.
+
+The dry-run request uses
+`rusty.hostess.studio_staging_smoke_dry_run_request.v1`. It turns the smoke
+handoff checklist into Hostess/Manifold-owned request steps and expected
+receipt kinds, but still records all runtime-start flags as false. The dry-run
+receipt uses `rusty.hostess.studio_staging_smoke_dry_run_receipt.v1` and
+acknowledges those request steps without performing them. It is the last
+schema-only readiness fixture before Hostess T or a dedicated host shell starts
+real platform smoke execution.
