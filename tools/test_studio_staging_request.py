@@ -1080,6 +1080,202 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_execution_receipt_action_drift",
         )
 
+    def test_builds_platform_smoke_operator_start_gate_without_execution(self) -> None:
+        plan, approval, execution_request, execution_receipt = ready_platform_smoke_execution_chain()
+
+        gate = adapter.build_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            host_shell_kind="hostess.t.quest_host_shell.schema_gate",
+        )
+
+        self.assertEqual(gate["$schema"], adapter.PLATFORM_SMOKE_OPERATOR_START_GATE_SCHEMA)
+        self.assertEqual(gate["status"], adapter.READY_STATUS)
+        self.assertIsNone(gate["issue_code"])
+        self.assertEqual(gate["execution_policy"], adapter.PLATFORM_SMOKE_OPERATOR_START_GATE_POLICY)
+        self.assertEqual(gate["gate_owner"], "rusty.hostess")
+        self.assertEqual(gate["operator_start_owner"], "rusty.hostess")
+        self.assertEqual(gate["host_shell_owner"], "rusty.hostess")
+        self.assertEqual(gate["command_session_authority"], "rusty.manifold")
+        self.assertEqual(gate["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertFalse(gate["device_required"])
+        self.assertTrue(gate["target_device_required_for_future_execution"])
+        self.assertTrue(gate["operator_approval_required"])
+        self.assertTrue(gate["operator_start_required"])
+        self.assertFalse(gate["operator_started"])
+        self.assertFalse(gate["operator_start_acknowledged"])
+        self.assertFalse(gate["host_shell_started"])
+        self.assertFalse(gate["schema_path_execution_allowed"])
+        self.assertFalse(gate["platform_execution_allowed"])
+        self.assertFalse(gate["studio_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(gate[flag], flag)
+        self.assertFalse(gate["runtime_execution_performed"])
+        self.assertFalse(gate["platform_execution_performed"])
+        self.assertEqual(
+            gate["operator_start_action_gate_count"],
+            len(execution_receipt["execution_action_receipts"]),
+        )
+        self.assertEqual(
+            gate["pending_operator_start_action_count"],
+            len(execution_receipt["execution_action_receipts"]),
+        )
+        self.assertEqual(gate["rejected_operator_start_action_count"], 0)
+        self.assertEqual(
+            gate["operator_start_request_template"]["$schema"],
+            adapter.OPERATOR_START_REQUEST_TEMPLATE_SCHEMA,
+        )
+        self.assertEqual(
+            gate["operator_start_ack_template"]["$schema"],
+            adapter.OPERATOR_START_ACK_TEMPLATE_SCHEMA,
+        )
+        self.assertEqual(
+            gate["operator_start_reject_template"]["$schema"],
+            adapter.OPERATOR_START_REJECT_TEMPLATE_SCHEMA,
+        )
+        self.assertEqual(
+            len(gate["expected_evidence_receipt_templates"]),
+            len(gate["operator_start_action_gates"]),
+        )
+        self.assertTrue(
+            all(
+                action["operator_start_gate_status"] == adapter.PENDING_STATUS
+                and action["operator_start_required"] is True
+                and action["operator_started"] is False
+                and action["execution_started"] is False
+                and action["runtime_execution_performed"] is False
+                and action["platform_execution_performed"] is False
+                and action["studio_execution_allowed"] is False
+                for action in gate["operator_start_action_gates"]
+            )
+        )
+        self.assertTrue(
+            all(
+                template["$schema"] == adapter.PLATFORM_SMOKE_EVIDENCE_RECEIPT_TEMPLATE_SCHEMA
+                and template["evidence_receipt_status"] == adapter.PENDING_STATUS
+                and template["operator_started"] is False
+                and template["execution_started"] is False
+                and template["platform_execution_performed"] is False
+                for template in gate["expected_evidence_receipt_templates"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_platform_smoke_operator_start_gate_blocks_rejected_execution_receipt(self) -> None:
+        plan = ready_platform_smoke_plan()
+        approval = adapter.build_platform_smoke_approval_receipt(
+            plan,
+            decision=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_platform_smoke",
+        )
+        execution_request = adapter.build_platform_smoke_execution_request(plan, approval)
+        execution_receipt = adapter.build_platform_smoke_execution_receipt(
+            plan,
+            approval,
+            execution_request,
+        )
+
+        gate = adapter.build_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+        )
+
+        self.assertEqual(gate["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            gate["issue_code"],
+            "hostess.issue.operator_declined_platform_smoke",
+        )
+        self.assertFalse(gate["operator_start_required"])
+        self.assertFalse(gate["host_shell_execution_required"])
+        self.assertEqual(gate["pending_operator_start_action_count"], 0)
+        self.assertEqual(
+            gate["rejected_operator_start_action_count"],
+            len(execution_receipt["execution_action_receipts"]),
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_operator_start_gate(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_operator_start_gate_validation_rejects_start_or_template_drift(self) -> None:
+        plan, approval, execution_request, execution_receipt = ready_platform_smoke_execution_chain()
+        gate = adapter.build_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+        )
+
+        started = copy.deepcopy(gate)
+        started["operator_started"] = True
+        started_report = adapter.validate_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_gate_execution_started",
+        )
+
+        action_drift = copy.deepcopy(gate)
+        action_drift["operator_start_action_gates"][0]["route_kind"] = (
+            "studio.platform_smoke.start_copy"
+        )
+        action_drift["operator_start_action_gates"][0]["owner"] = "rusty.studio"
+        action_report = adapter.validate_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            action_drift,
+        )
+        self.assertEqual(action_report["status"], "fail")
+        self.assertEqual(
+            action_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_gate_action_drift",
+        )
+
+        template_drift = copy.deepcopy(gate)
+        template_drift["operator_start_ack_template"]["accepted_action_gate_ids"] = [
+            gate["operator_start_action_gates"][0]["action_gate_id"]
+        ]
+        template_report = adapter.validate_platform_smoke_operator_start_gate(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            template_drift,
+        )
+        self.assertEqual(template_report["status"], "fail")
+        self.assertEqual(
+            template_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_gate_template_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -1098,6 +1294,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             rejection_path = root / "platform-smoke-rejection.json"
             execution_request_path = root / "platform-smoke-execution-request.json"
             execution_receipt_path = root / "platform-smoke-execution-receipt.json"
+            operator_start_path = root / "platform-smoke-operator-start-gate.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -1153,6 +1350,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(execution_request_path),
                     "--validate-platform-smoke-execution-receipt",
                     str(execution_receipt_path),
+                    "--platform-smoke-operator-start-gate-out",
+                    str(operator_start_path),
+                    "--validate-platform-smoke-operator-start-gate",
+                    str(operator_start_path),
+                    "--host-shell-kind",
+                    "hostess.t.quest_host_shell.schema_gate",
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -1205,6 +1408,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                 execution_receipt_path.with_suffix(
                     execution_receipt_path.suffix + ".validation.json"
                 ).read_text(encoding="utf-8")
+            )
+            operator_start = json.loads(operator_start_path.read_text(encoding="utf-8"))
+            operator_start_report = json.loads(
+                operator_start_path.with_suffix(operator_start_path.suffix + ".validation.json").read_text(
+                    encoding="utf-8"
+                )
             )
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
@@ -1271,6 +1480,26 @@ class StudioStagingRequestTests(unittest.TestCase):
                 len(plan["planned_actions"]),
             )
             self.assertEqual(platform_receipt_report["status"], "pass")
+            self.assertEqual(operator_start["status"], "ready")
+            self.assertFalse(operator_start["device_required"])
+            self.assertFalse(operator_start["operator_started"])
+            self.assertFalse(operator_start["host_shell_started"])
+            self.assertFalse(operator_start["execution_performed"])
+            self.assertFalse(operator_start["platform_execution_performed"])
+            self.assertFalse(operator_start["schema_path_execution_allowed"])
+            self.assertEqual(
+                operator_start["pending_operator_start_action_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(
+                operator_start["operator_start_ack_template"]["ack_status"],
+                "pending",
+            )
+            self.assertEqual(
+                len(operator_start["expected_evidence_receipt_templates"]),
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(operator_start_report["status"], "pass")
 
 
 def valid_request() -> dict[str, object]:
@@ -1430,6 +1659,23 @@ def ready_platform_smoke_plan() -> dict[str, object]:
         bundle,
         target_platform="hostess.quest.operator_controlled_smoke_plan",
     )
+
+
+def ready_platform_smoke_execution_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan = ready_platform_smoke_plan()
+    approval = adapter.build_platform_smoke_approval_receipt(plan)
+    execution_request = adapter.build_platform_smoke_execution_request(plan, approval)
+    execution_receipt = adapter.build_platform_smoke_execution_receipt(
+        plan,
+        approval,
+        execution_request,
+    )
+    return plan, approval, execution_request, execution_receipt
 
 
 if __name__ == "__main__":

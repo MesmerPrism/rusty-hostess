@@ -45,7 +45,8 @@ python tools\studio_staging_request.py `
   --platform-smoke-approval-out <hostess-platform-smoke-approval.json> `
   --platform-smoke-rejection-out <hostess-platform-smoke-rejection.json> `
   --platform-smoke-execution-request-out <hostess-platform-smoke-execution-request.json> `
-  --platform-smoke-execution-receipt-out <hostess-platform-smoke-execution-receipt.json>
+  --platform-smoke-execution-receipt-out <hostess-platform-smoke-execution-receipt.json> `
+  --platform-smoke-operator-start-gate-out <hostess-platform-smoke-operator-start-gate.json>
 ```
 
 The intake report uses
@@ -137,3 +138,17 @@ install, launch, evidence collection, command-session, ADB, Quest, OpenXR, APK,
 and runtime execution flags false. A pending receipt is not proof that platform
 work ran; it is the reviewed handoff shape that a Hostess-owned shell may
 consume after an operator starts that shell outside Studio.
+
+The platform smoke operator-start gate uses
+`rusty.hostess.studio_staging_platform_smoke_operator_start_gate.v1`. It
+consumes a pending platform smoke execution receipt and emits request, ack,
+reject, and expected evidence receipt templates for a future Hostess T or
+dedicated Quest host-shell operator start. The gate records
+`operator_start_required = true`, but it also records `operator_started =
+false`, `host_shell_started = false`, `device_required = false`,
+`schema_path_execution_allowed = false`, `platform_execution_allowed = false`,
+`studio_execution_allowed = false`, `execution_performed = false`,
+`runtime_execution_performed = false`, and `platform_execution_performed =
+false`. It is a schema handoff gate only; the actual first build smoke test
+must be Hostess-owned, operator-started outside Studio, and separately
+evidenced.

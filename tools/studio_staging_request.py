@@ -51,6 +51,24 @@ PLATFORM_SMOKE_EXECUTION_RECEIPT_SCHEMA = (
 PLATFORM_SMOKE_EXECUTION_RECEIPT_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_platform_smoke_execution_receipt_validation.v1"
 )
+PLATFORM_SMOKE_OPERATOR_START_GATE_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_operator_start_gate.v1"
+)
+PLATFORM_SMOKE_OPERATOR_START_GATE_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_operator_start_gate_validation.v1"
+)
+OPERATOR_START_REQUEST_TEMPLATE_SCHEMA = (
+    "rusty.hostess.platform_smoke_operator_start_request_template.v1"
+)
+OPERATOR_START_ACK_TEMPLATE_SCHEMA = (
+    "rusty.hostess.platform_smoke_operator_start_ack_template.v1"
+)
+OPERATOR_START_REJECT_TEMPLATE_SCHEMA = (
+    "rusty.hostess.platform_smoke_operator_start_reject_template.v1"
+)
+PLATFORM_SMOKE_EVIDENCE_RECEIPT_TEMPLATE_SCHEMA = (
+    "rusty.hostess.platform_smoke_expected_evidence_receipt_template.v1"
+)
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
@@ -80,6 +98,9 @@ PLATFORM_SMOKE_EXECUTION_REQUEST_POLICY = (
 )
 PLATFORM_SMOKE_EXECUTION_RECEIPT_POLICY = (
     "hostess.operator_controlled_platform_smoke_execution_receipt_only"
+)
+PLATFORM_SMOKE_OPERATOR_START_GATE_POLICY = (
+    "hostess.operator_controlled_platform_smoke_operator_start_gate_only"
 )
 
 REQUIRED_PROHIBITED_ACTIONS = [
@@ -3821,6 +3842,851 @@ def platform_smoke_execution_action_receipt_unstarted(receipt: dict[str, Any]) -
     )
 
 
+def build_platform_smoke_operator_start_gate(
+    plan: dict[str, Any],
+    approval_receipt: dict[str, Any],
+    execution_request: dict[str, Any],
+    execution_receipt: dict[str, Any],
+    host_shell_kind: str = "hostess.t_or_dedicated_quest_host_shell",
+) -> dict[str, Any]:
+    receipt_validation = validate_platform_smoke_execution_receipt(
+        plan,
+        approval_receipt,
+        execution_request,
+        execution_receipt,
+    )
+    action_receipts = platform_smoke_execution_action_receipt_dicts(execution_receipt)
+    gate_ready = (
+        execution_receipt.get("status") == PENDING_STATUS
+        and receipt_validation.get("status") == PASS_STATUS
+        and execution_receipt.get("execution_acknowledged") is True
+        and execution_receipt.get("operator_approved") is True
+        and execution_receipt.get("hostess_shell_execution_required") is True
+        and all(
+            receipt.get("execution_receipt_status") == PENDING_STATUS
+            for receipt in action_receipts
+        )
+    )
+    status = READY_STATUS if gate_ready else REJECTED_STATUS
+    issue_code = None
+    if status == REJECTED_STATUS:
+        issue_code = (
+            execution_receipt.get("issue_code")
+            or receipt_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_operator_start_gate_not_ready"
+        )
+    action_gates = platform_smoke_operator_start_action_gates(
+        execution_receipt,
+        action_receipts,
+        status,
+        issue_code,
+    )
+    pending_gates = [
+        gate
+        for gate in action_gates
+        if gate.get("operator_start_gate_status") == PENDING_STATUS
+    ]
+    rejected_gates = [
+        gate
+        for gate in action_gates
+        if gate.get("operator_start_gate_status") == REJECTED_STATUS
+    ]
+
+    execution_receipt_id = execution_receipt.get("execution_receipt_id")
+    gate_id = (
+        f"hostess.platform_smoke_operator_start_gate.{execution_receipt_id}"
+        if isinstance(execution_receipt_id, str) and execution_receipt_id
+        else "hostess.platform_smoke_operator_start_gate.unknown"
+    )
+    request_template = platform_smoke_operator_start_request_template(
+        gate_id,
+        execution_receipt,
+        action_gates,
+        status,
+        host_shell_kind,
+    )
+    ack_template = platform_smoke_operator_start_ack_template(
+        gate_id,
+        execution_receipt,
+        action_gates,
+        status,
+        host_shell_kind,
+    )
+    reject_template = platform_smoke_operator_start_reject_template(
+        gate_id,
+        execution_receipt,
+        action_gates,
+        status,
+    )
+    evidence_templates = platform_smoke_expected_evidence_receipt_templates(
+        gate_id,
+        action_gates,
+        status,
+    )
+    checks = platform_smoke_operator_start_gate_checks(
+        execution_receipt,
+        receipt_validation,
+        action_receipts,
+        action_gates,
+        request_template,
+        ack_template,
+        reject_template,
+        evidence_templates,
+        status,
+    )
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    if failed and status == READY_STATUS:
+        status = REJECTED_STATUS
+        issue_code = failed[0]["issue_code"]
+        action_gates = platform_smoke_operator_start_action_gates(
+            execution_receipt,
+            action_receipts,
+            status,
+            issue_code,
+        )
+        pending_gates = []
+        rejected_gates = action_gates
+        request_template = platform_smoke_operator_start_request_template(
+            gate_id,
+            execution_receipt,
+            action_gates,
+            status,
+            host_shell_kind,
+        )
+        ack_template = platform_smoke_operator_start_ack_template(
+            gate_id,
+            execution_receipt,
+            action_gates,
+            status,
+            host_shell_kind,
+        )
+        reject_template = platform_smoke_operator_start_reject_template(
+            gate_id,
+            execution_receipt,
+            action_gates,
+            status,
+        )
+        evidence_templates = platform_smoke_expected_evidence_receipt_templates(
+            gate_id,
+            action_gates,
+            status,
+        )
+
+    return {
+        "$schema": PLATFORM_SMOKE_OPERATOR_START_GATE_SCHEMA,
+        "operator_start_gate_id": gate_id,
+        "source_execution_receipt_id": execution_receipt_id,
+        "source_execution_request_id": execution_receipt.get("source_execution_request_id"),
+        "source_approval_receipt_id": execution_receipt.get("source_approval_receipt_id"),
+        "source_plan_id": execution_receipt.get("source_plan_id"),
+        "source_bundle_id": execution_receipt.get("source_bundle_id"),
+        "source_execution_id": execution_receipt.get("source_execution_id"),
+        "source_request_id": execution_receipt.get("source_request_id"),
+        "target_profile": execution_receipt.get("target_profile"),
+        "target_platform": execution_receipt.get("target_platform"),
+        "host_shell_kind": host_shell_kind,
+        "status": status,
+        "issue_code": issue_code,
+        "execution_policy": PLATFORM_SMOKE_OPERATOR_START_GATE_POLICY,
+        "gate_owner": HOSTESS_OWNER,
+        "operator_start_owner": HOSTESS_OWNER,
+        "host_shell_owner": HOSTESS_OWNER,
+        "platform_owner": execution_receipt.get("platform_owner"),
+        "requester_role": execution_receipt.get("requester_role"),
+        "command_session_authority": execution_receipt.get("command_session_authority"),
+        "install_launch_evidence_authority": execution_receipt.get("install_launch_evidence_authority"),
+        "studio_role": execution_receipt.get("studio_role"),
+        "device_required": False,
+        "target_device_required_for_future_execution": status == READY_STATUS,
+        "operator_approval_required": True,
+        "operator_start_required": status == READY_STATUS,
+        "operator_started": False,
+        "operator_start_acknowledged": False,
+        "host_shell_started": False,
+        "host_shell_execution_required": status == READY_STATUS,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_execution_receipt_status": execution_receipt.get("status"),
+        "source_execution_receipt_validation_status": receipt_validation.get("status"),
+        "source_execution_receipt_issue_code": (
+            execution_receipt.get("issue_code") or receipt_validation.get("issue_code")
+        ),
+        "source_execution_action_receipt_count": len(action_receipts),
+        "operator_start_action_gate_count": len(action_gates),
+        "pending_operator_start_action_count": len(pending_gates),
+        "rejected_operator_start_action_count": len(rejected_gates),
+        "source_execution_action_receipts": action_receipts,
+        "operator_start_action_gates": action_gates,
+        "operator_start_request_template": request_template,
+        "operator_start_ack_template": ack_template,
+        "operator_start_reject_template": reject_template,
+        "expected_evidence_receipt_templates": evidence_templates,
+        "checks": checks,
+        "next_required_action": (
+            "operator_start_hostess_host_shell_outside_studio"
+            if status == READY_STATUS
+            else "repair_or_reject_platform_smoke_execution_receipt"
+        ),
+    }
+
+
+def validate_platform_smoke_operator_start_gate(
+    plan: dict[str, Any],
+    approval_receipt: dict[str, Any],
+    execution_request: dict[str, Any],
+    execution_receipt: dict[str, Any],
+    operator_start_gate: dict[str, Any],
+) -> dict[str, Any]:
+    receipt_validation = validate_platform_smoke_execution_receipt(
+        plan,
+        approval_receipt,
+        execution_request,
+        execution_receipt,
+    )
+    action_receipts = platform_smoke_execution_action_receipt_dicts(execution_receipt)
+    action_gates = platform_smoke_operator_start_action_gate_dicts(operator_start_gate)
+    evidence_templates = platform_smoke_expected_evidence_receipt_template_dicts(
+        operator_start_gate
+    )
+    request_template = operator_start_gate.get("operator_start_request_template")
+    ack_template = operator_start_gate.get("operator_start_ack_template")
+    reject_template = operator_start_gate.get("operator_start_reject_template")
+    if not isinstance(request_template, dict):
+        request_template = {}
+    if not isinstance(ack_template, dict):
+        ack_template = {}
+    if not isinstance(reject_template, dict):
+        reject_template = {}
+    pending_gates = [
+        gate
+        for gate in action_gates
+        if gate.get("operator_start_gate_status") == PENDING_STATUS
+    ]
+    rejected_gates = [
+        gate
+        for gate in action_gates
+        if gate.get("operator_start_gate_status") == REJECTED_STATUS
+    ]
+    embedded_checks = operator_start_gate.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    checks = [
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.schema",
+            operator_start_gate.get("$schema") == PLATFORM_SMOKE_OPERATOR_START_GATE_SCHEMA,
+            "platform smoke operator-start gate schema is supported",
+            "platform smoke operator-start gate schema is unsupported",
+            "hostess.issue.platform_smoke_operator_start_gate_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.receipt_id",
+            operator_start_gate.get("source_execution_receipt_id")
+            == execution_receipt.get("execution_receipt_id"),
+            "platform smoke operator-start gate receipt id matches",
+            "platform smoke operator-start gate receipt id differs",
+            "hostess.issue.platform_smoke_operator_start_gate_receipt_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.status",
+            operator_start_gate.get("status") in {READY_STATUS, REJECTED_STATUS},
+            "platform smoke operator-start gate status is supported",
+            "platform smoke operator-start gate status is unsupported",
+            "hostess.issue.platform_smoke_operator_start_gate_status",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.execution_policy",
+            operator_start_gate.get("execution_policy") == PLATFORM_SMOKE_OPERATOR_START_GATE_POLICY,
+            "platform smoke operator-start gate is gate-only",
+            "platform smoke operator-start gate execution policy drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.no_execution_started",
+            all(operator_start_gate.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and operator_start_gate.get("runtime_execution_performed") is False
+            and operator_start_gate.get("platform_execution_performed") is False
+            and operator_start_gate.get("operator_started") is False
+            and operator_start_gate.get("operator_start_acknowledged") is False
+            and operator_start_gate.get("host_shell_started") is False,
+            "platform smoke operator-start gate has not started runtime or platform work",
+            "platform smoke operator-start gate indicates runtime, platform, or operator start",
+            "hostess.issue.platform_smoke_operator_start_gate_execution_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.execution_gate",
+            operator_start_gate.get("schema_path_execution_allowed") is False
+            and operator_start_gate.get("platform_execution_allowed") is False
+            and operator_start_gate.get("studio_execution_allowed") is False
+            and operator_start_gate.get("device_required") is False,
+            "platform smoke operator-start gate keeps schema path and Studio execution disabled",
+            "platform smoke operator-start gate allows schema path, platform, device, or Studio execution",
+            "hostess.issue.platform_smoke_operator_start_gate_execution_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.authority",
+            operator_start_gate.get("gate_owner") == HOSTESS_OWNER
+            and operator_start_gate.get("operator_start_owner") == HOSTESS_OWNER
+            and operator_start_gate.get("host_shell_owner") == HOSTESS_OWNER
+            and operator_start_gate.get("platform_owner") == HOSTESS_OWNER
+            and operator_start_gate.get("requester_role") == STUDIO_REQUESTER
+            and operator_start_gate.get("command_session_authority") == MANIFOLD_OWNER
+            and operator_start_gate.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and operator_start_gate.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.source_receipt",
+            operator_start_gate.get("status") != READY_STATUS
+            or (
+                execution_receipt.get("status") == PENDING_STATUS
+                and receipt_validation.get("status") == PASS_STATUS
+                and execution_receipt.get("execution_acknowledged") is True
+            ),
+            "source platform smoke execution receipt is pending and validates",
+            "source platform smoke execution receipt is rejected or invalid",
+            execution_receipt.get("issue_code")
+            or receipt_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_operator_start_gate_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.action_gates",
+            platform_smoke_operator_start_action_gates_match_receipts(
+                action_receipts,
+                action_gates,
+                operator_start_gate.get("status"),
+            ),
+            "platform smoke operator-start action gates match execution receipts",
+            "platform smoke operator-start action gates drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_action_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.templates",
+            platform_smoke_operator_start_templates_match_gate(
+                operator_start_gate,
+                action_gates,
+                request_template,
+                ack_template,
+                reject_template,
+                evidence_templates,
+            ),
+            "platform smoke operator-start request, ack, reject, and evidence templates match the gate",
+            "platform smoke operator-start templates drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_template_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.counts",
+            operator_start_gate.get("source_execution_action_receipt_count") == len(action_receipts)
+            and operator_start_gate.get("operator_start_action_gate_count") == len(action_gates)
+            and operator_start_gate.get("pending_operator_start_action_count") == len(pending_gates)
+            and operator_start_gate.get("rejected_operator_start_action_count") == len(rejected_gates)
+            and len(evidence_templates) == len(action_gates),
+            "platform smoke operator-start gate counts match action gates and evidence templates",
+            "platform smoke operator-start gate counts drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.ready_consistency",
+            operator_start_gate.get("status") != READY_STATUS
+            or (
+                operator_start_gate.get("operator_start_required") is True
+                and operator_start_gate.get("host_shell_execution_required") is True
+                and all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(
+                    gate.get("operator_start_gate_status") == PENDING_STATUS
+                    and gate.get("operator_start_required") is True
+                    and gate.get("operator_started") is False
+                    for gate in action_gates
+                )
+            ),
+            "ready platform smoke operator-start gate carries pending unstarted action gates",
+            "ready platform smoke operator-start gate is inconsistent",
+            "hostess.issue.platform_smoke_operator_start_gate_ready_inconsistent",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.rejection_reason",
+            operator_start_gate.get("status") != REJECTED_STATUS
+            or isinstance(operator_start_gate.get("issue_code"), str),
+            "rejected platform smoke operator-start gate carries a reason code",
+            "rejected platform smoke operator-start gate is missing a reason code",
+            "hostess.issue.platform_smoke_operator_start_gate_rejection_reason",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": PLATFORM_SMOKE_OPERATOR_START_GATE_VALIDATION_SCHEMA,
+        "operator_start_gate_id": operator_start_gate.get("operator_start_gate_id"),
+        "source_execution_receipt_id": operator_start_gate.get("source_execution_receipt_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def platform_smoke_operator_start_action_gates(
+    execution_receipt: dict[str, Any],
+    action_receipts: list[dict[str, Any]],
+    gate_status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    action_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    gates = []
+    for receipt in action_receipts:
+        source_receipt_id = receipt.get("action_execution_receipt_id")
+        source_plan_action_id = receipt.get("source_plan_action_id")
+        gates.append(
+            {
+                "action_gate_id": (
+                    f"hostess.platform_smoke_operator_start_action_gate.{source_plan_action_id}"
+                    if isinstance(source_plan_action_id, str) and source_plan_action_id
+                    else "hostess.platform_smoke_operator_start_action_gate.unknown"
+                ),
+                "source_execution_receipt_id": execution_receipt.get("execution_receipt_id"),
+                "source_action_execution_receipt_id": source_receipt_id,
+                "source_plan_id": receipt.get("source_plan_id"),
+                "source_plan_action_id": source_plan_action_id,
+                "owner": receipt.get("owner"),
+                "route_kind": receipt.get("route_kind"),
+                "action_kind": receipt.get("action_kind"),
+                "approval_kind": receipt.get("approval_kind"),
+                "expected_input_kind": receipt.get("expected_input_kind"),
+                "expected_output_kind": receipt.get("expected_output_kind"),
+                "operator_start_gate_status": action_status,
+                "issue_code": None if action_status == PENDING_STATUS else issue_code,
+                "operator_start_required": action_status == PENDING_STATUS,
+                "operator_started": False,
+                "operator_start_acknowledged": False,
+                "host_shell_execution_required": action_status == PENDING_STATUS,
+                "execution_started": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "studio_execution_allowed": False,
+                "command_session_started": False,
+            }
+        )
+    return gates
+
+
+def platform_smoke_operator_start_gate_checks(
+    execution_receipt: dict[str, Any],
+    receipt_validation: dict[str, Any],
+    action_receipts: list[dict[str, Any]],
+    action_gates: list[dict[str, Any]],
+    request_template: dict[str, Any],
+    ack_template: dict[str, Any],
+    reject_template: dict[str, Any],
+    evidence_templates: list[dict[str, Any]],
+    gate_status: str,
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.source_receipt",
+            execution_receipt.get("$schema") == PLATFORM_SMOKE_EXECUTION_RECEIPT_SCHEMA
+            and execution_receipt.get("status") == PENDING_STATUS
+            and receipt_validation.get("status") == PASS_STATUS,
+            "platform smoke execution receipt is pending and validates",
+            "platform smoke execution receipt is rejected or invalid",
+            execution_receipt.get("issue_code")
+            or receipt_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_operator_start_gate_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.action_receipts",
+            all(
+                receipt.get("execution_receipt_status") == PENDING_STATUS
+                and platform_smoke_execution_action_receipt_unstarted(receipt)
+                for receipt in action_receipts
+            ),
+            "platform smoke execution action receipts are pending and unstarted",
+            "platform smoke execution action receipts are rejected, drifted, or started",
+            "hostess.issue.platform_smoke_operator_start_gate_receipt_action_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.action_gates",
+            platform_smoke_operator_start_action_gates_match_receipts(
+                action_receipts,
+                action_gates,
+                gate_status,
+            ),
+            "platform smoke operator-start action gates match source receipts",
+            "platform smoke operator-start action gates drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_action_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.no_action_execution",
+            all(platform_smoke_operator_start_action_gate_unstarted(gate) for gate in action_gates),
+            "platform smoke operator-start action gates have not started execution",
+            "platform smoke operator-start action gate indicates execution started",
+            "hostess.issue.platform_smoke_operator_start_gate_action_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_operator_start_gate.templates",
+            platform_smoke_operator_start_templates_core_valid(
+                action_gates,
+                request_template,
+                ack_template,
+                reject_template,
+                evidence_templates,
+                gate_status,
+            ),
+            "platform smoke operator-start request, ack, reject, and evidence templates are pending and unstarted",
+            "platform smoke operator-start templates drifted",
+            "hostess.issue.platform_smoke_operator_start_gate_template_drift",
+        ),
+    ]
+
+
+def platform_smoke_operator_start_action_gate_dicts(
+    operator_start_gate: dict[str, Any],
+) -> list[dict[str, Any]]:
+    gates = operator_start_gate.get("operator_start_action_gates", [])
+    if not isinstance(gates, list):
+        return []
+    return [item for item in gates if isinstance(item, dict)]
+
+
+def platform_smoke_operator_start_action_gates_match_receipts(
+    action_receipts: list[dict[str, Any]],
+    action_gates: list[dict[str, Any]],
+    gate_status: Any,
+) -> bool:
+    if gate_status not in {READY_STATUS, REJECTED_STATUS}:
+        return False
+    expected_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    by_id = {
+        gate.get("source_action_execution_receipt_id"): gate
+        for gate in action_gates
+    }
+    if len(action_gates) != len(action_receipts):
+        return False
+    for receipt in action_receipts:
+        gate = by_id.get(receipt.get("action_execution_receipt_id"))
+        if not isinstance(gate, dict):
+            return False
+        for key in (
+            "owner",
+            "route_kind",
+            "action_kind",
+            "approval_kind",
+            "expected_input_kind",
+            "expected_output_kind",
+        ):
+            if gate.get(key) != receipt.get(key):
+                return False
+        if gate.get("source_plan_action_id") != receipt.get("source_plan_action_id"):
+            return False
+        if gate.get("operator_start_gate_status") != expected_status:
+            return False
+        if gate.get("operator_start_required") != (expected_status == PENDING_STATUS):
+            return False
+        if gate.get("host_shell_execution_required") != (expected_status == PENDING_STATUS):
+            return False
+        if not platform_smoke_operator_start_action_gate_unstarted(gate):
+            return False
+    return True
+
+
+def platform_smoke_operator_start_action_gate_unstarted(gate: dict[str, Any]) -> bool:
+    return (
+        gate.get("operator_started") is False
+        and gate.get("operator_start_acknowledged") is False
+        and gate.get("execution_started") is False
+        and gate.get("runtime_execution_performed") is False
+        and gate.get("platform_execution_performed") is False
+        and gate.get("studio_execution_allowed") is False
+        and gate.get("command_session_started") is False
+    )
+
+
+def platform_smoke_operator_start_request_template(
+    gate_id: str,
+    execution_receipt: dict[str, Any],
+    action_gates: list[dict[str, Any]],
+    gate_status: str,
+    host_shell_kind: str,
+) -> dict[str, Any]:
+    template_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    return {
+        "$schema": OPERATOR_START_REQUEST_TEMPLATE_SCHEMA,
+        "template_status": template_status,
+        "source_operator_start_gate_id": gate_id,
+        "source_execution_receipt_id": execution_receipt.get("execution_receipt_id"),
+        "request_owner": HOSTESS_OWNER,
+        "operator_start_owner": HOSTESS_OWNER,
+        "host_shell_owner": HOSTESS_OWNER,
+        "host_shell_kind": host_shell_kind,
+        "command_session_authority": execution_receipt.get("command_session_authority"),
+        "install_launch_evidence_authority": execution_receipt.get("install_launch_evidence_authority"),
+        "operator_start_required": gate_status == READY_STATUS,
+        "operator_started": False,
+        "operator_start_acknowledged": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "action_gate_ids": [gate.get("action_gate_id") for gate in action_gates],
+    }
+
+
+def platform_smoke_operator_start_ack_template(
+    gate_id: str,
+    execution_receipt: dict[str, Any],
+    action_gates: list[dict[str, Any]],
+    gate_status: str,
+    host_shell_kind: str,
+) -> dict[str, Any]:
+    ack_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    return {
+        "$schema": OPERATOR_START_ACK_TEMPLATE_SCHEMA,
+        "ack_status": ack_status,
+        "source_operator_start_gate_id": gate_id,
+        "source_execution_receipt_id": execution_receipt.get("execution_receipt_id"),
+        "ack_owner": HOSTESS_OWNER,
+        "operator_start_owner": HOSTESS_OWNER,
+        "host_shell_owner": HOSTESS_OWNER,
+        "host_shell_kind": host_shell_kind,
+        "operator_started": False,
+        "operator_start_acknowledged": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "accepted_action_gate_ids": [],
+        "required_action_gate_ids": [gate.get("action_gate_id") for gate in action_gates],
+    }
+
+
+def platform_smoke_operator_start_reject_template(
+    gate_id: str,
+    execution_receipt: dict[str, Any],
+    action_gates: list[dict[str, Any]],
+    gate_status: str,
+) -> dict[str, Any]:
+    reject_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    return {
+        "$schema": OPERATOR_START_REJECT_TEMPLATE_SCHEMA,
+        "reject_status": reject_status,
+        "source_operator_start_gate_id": gate_id,
+        "source_execution_receipt_id": execution_receipt.get("execution_receipt_id"),
+        "reject_owner": HOSTESS_OWNER,
+        "operator_started": False,
+        "operator_start_acknowledged": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "rejected_action_gate_ids": [],
+        "required_action_gate_ids": [gate.get("action_gate_id") for gate in action_gates],
+        "next_required_action": "repair_or_decline_platform_smoke_operator_start",
+    }
+
+
+def platform_smoke_expected_evidence_receipt_templates(
+    gate_id: str,
+    action_gates: list[dict[str, Any]],
+    gate_status: str,
+) -> list[dict[str, Any]]:
+    template_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    templates = []
+    for gate in action_gates:
+        source_plan_action_id = gate.get("source_plan_action_id")
+        templates.append(
+            {
+                "$schema": PLATFORM_SMOKE_EVIDENCE_RECEIPT_TEMPLATE_SCHEMA,
+                "evidence_receipt_template_id": (
+                    f"hostess.platform_smoke_expected_evidence_receipt.{source_plan_action_id}"
+                    if isinstance(source_plan_action_id, str) and source_plan_action_id
+                    else "hostess.platform_smoke_expected_evidence_receipt.unknown"
+                ),
+                "source_operator_start_gate_id": gate_id,
+                "source_action_gate_id": gate.get("action_gate_id"),
+                "source_action_execution_receipt_id": gate.get(
+                    "source_action_execution_receipt_id"
+                ),
+                "source_plan_id": gate.get("source_plan_id"),
+                "source_plan_action_id": source_plan_action_id,
+                "owner": gate.get("owner"),
+                "route_kind": gate.get("route_kind"),
+                "action_kind": gate.get("action_kind"),
+                "expected_input_kind": gate.get("expected_input_kind"),
+                "expected_output_kind": gate.get("expected_output_kind"),
+                "evidence_receipt_status": template_status,
+                "operator_started": False,
+                "execution_started": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "studio_execution_allowed": False,
+                "command_session_started": False,
+            }
+        )
+    return templates
+
+
+def platform_smoke_expected_evidence_receipt_template_dicts(
+    operator_start_gate: dict[str, Any],
+) -> list[dict[str, Any]]:
+    templates = operator_start_gate.get("expected_evidence_receipt_templates", [])
+    if not isinstance(templates, list):
+        return []
+    return [item for item in templates if isinstance(item, dict)]
+
+
+def platform_smoke_operator_start_templates_core_valid(
+    action_gates: list[dict[str, Any]],
+    request_template: dict[str, Any],
+    ack_template: dict[str, Any],
+    reject_template: dict[str, Any],
+    evidence_templates: list[dict[str, Any]],
+    gate_status: Any,
+) -> bool:
+    if gate_status not in {READY_STATUS, REJECTED_STATUS}:
+        return False
+    expected_status = PENDING_STATUS if gate_status == READY_STATUS else REJECTED_STATUS
+    action_gate_ids = [gate.get("action_gate_id") for gate in action_gates]
+    if request_template.get("$schema") != OPERATOR_START_REQUEST_TEMPLATE_SCHEMA:
+        return False
+    if request_template.get("template_status") != expected_status:
+        return False
+    if request_template.get("action_gate_ids") != action_gate_ids:
+        return False
+    if ack_template.get("$schema") != OPERATOR_START_ACK_TEMPLATE_SCHEMA:
+        return False
+    if ack_template.get("ack_status") != expected_status:
+        return False
+    if ack_template.get("required_action_gate_ids") != action_gate_ids:
+        return False
+    if ack_template.get("accepted_action_gate_ids") != []:
+        return False
+    if reject_template.get("$schema") != OPERATOR_START_REJECT_TEMPLATE_SCHEMA:
+        return False
+    if reject_template.get("reject_status") != expected_status:
+        return False
+    if reject_template.get("required_action_gate_ids") != action_gate_ids:
+        return False
+    if reject_template.get("rejected_action_gate_ids") != []:
+        return False
+    if len(evidence_templates) != len(action_gates):
+        return False
+    return platform_smoke_operator_start_templates_unstarted(
+        request_template,
+        ack_template,
+        reject_template,
+        evidence_templates,
+        expected_status,
+    )
+
+
+def platform_smoke_operator_start_templates_match_gate(
+    operator_start_gate: dict[str, Any],
+    action_gates: list[dict[str, Any]],
+    request_template: dict[str, Any],
+    ack_template: dict[str, Any],
+    reject_template: dict[str, Any],
+    evidence_templates: list[dict[str, Any]],
+) -> bool:
+    if not platform_smoke_operator_start_templates_core_valid(
+        action_gates,
+        request_template,
+        ack_template,
+        reject_template,
+        evidence_templates,
+        operator_start_gate.get("status"),
+    ):
+        return False
+    gate_id = operator_start_gate.get("operator_start_gate_id")
+    receipt_id = operator_start_gate.get("source_execution_receipt_id")
+    for template in (request_template, ack_template, reject_template):
+        if template.get("source_operator_start_gate_id") != gate_id:
+            return False
+        if template.get("source_execution_receipt_id") != receipt_id:
+            return False
+    by_gate_id = {
+        template.get("source_action_gate_id"): template
+        for template in evidence_templates
+    }
+    for gate in action_gates:
+        template = by_gate_id.get(gate.get("action_gate_id"))
+        if not isinstance(template, dict):
+            return False
+        if template.get("source_operator_start_gate_id") != gate_id:
+            return False
+        for key in (
+            "owner",
+            "route_kind",
+            "action_kind",
+            "expected_input_kind",
+            "expected_output_kind",
+        ):
+            if template.get(key) != gate.get(key):
+                return False
+    return True
+
+
+def platform_smoke_operator_start_templates_unstarted(
+    request_template: dict[str, Any],
+    ack_template: dict[str, Any],
+    reject_template: dict[str, Any],
+    evidence_templates: list[dict[str, Any]],
+    expected_status: str,
+) -> bool:
+    for template in (request_template, ack_template, reject_template):
+        if template.get("operator_started") is not False:
+            return False
+        if template.get("operator_start_acknowledged") is not False:
+            return False
+        if template.get("schema_path_execution_allowed") is not False:
+            return False
+        if template.get("platform_execution_allowed") is not False:
+            return False
+        if template.get("studio_execution_allowed") is not False:
+            return False
+        if template.get("execution_performed") is not False:
+            return False
+        if template.get("runtime_execution_performed") is not False:
+            return False
+        if template.get("platform_execution_performed") is not False:
+            return False
+    for template in evidence_templates:
+        if template.get("$schema") != PLATFORM_SMOKE_EVIDENCE_RECEIPT_TEMPLATE_SCHEMA:
+            return False
+        if template.get("evidence_receipt_status") != expected_status:
+            return False
+        if template.get("operator_started") is not False:
+            return False
+        if template.get("execution_started") is not False:
+            return False
+        if template.get("runtime_execution_performed") is not False:
+            return False
+        if template.get("platform_execution_performed") is not False:
+            return False
+        if template.get("studio_execution_allowed") is not False:
+            return False
+        if template.get("command_session_started") is not False:
+            return False
+    return True
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -4141,8 +5007,11 @@ def main() -> int:
     parser.add_argument("--platform-smoke-execution-request-out", type=Path)
     parser.add_argument("--platform-smoke-execution-receipt-in", type=Path)
     parser.add_argument("--platform-smoke-execution-receipt-out", type=Path)
+    parser.add_argument("--platform-smoke-operator-start-gate-in", type=Path)
+    parser.add_argument("--platform-smoke-operator-start-gate-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--target-platform", default="hostess.platform_smoke.operator_controlled")
+    parser.add_argument("--host-shell-kind", default="hostess.t_or_dedicated_quest_host_shell")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
     parser.add_argument("--validate-smoke-handoff", type=Path)
@@ -4155,6 +5024,7 @@ def main() -> int:
     parser.add_argument("--validate-platform-smoke-approval", type=Path)
     parser.add_argument("--validate-platform-smoke-execution-request", type=Path)
     parser.add_argument("--validate-platform-smoke-execution-receipt", type=Path)
+    parser.add_argument("--validate-platform-smoke-operator-start-gate", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -4180,6 +5050,11 @@ def main() -> int:
     platform_smoke_execution_receipt = (
         load_json(args.platform_smoke_execution_receipt_in)
         if args.platform_smoke_execution_receipt_in
+        else None
+    )
+    platform_smoke_operator_start_gate = (
+        load_json(args.platform_smoke_operator_start_gate_in)
+        if args.platform_smoke_operator_start_gate_in
         else None
     )
     if args.report_out:
@@ -4214,6 +5089,7 @@ def main() -> int:
         or args.platform_smoke_rejection_out
         or args.platform_smoke_execution_request_out
         or args.platform_smoke_execution_receipt_out
+        or args.platform_smoke_operator_start_gate_out
     ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -4381,10 +5257,57 @@ def main() -> int:
                     args.platform_smoke_execution_receipt_out,
                     platform_smoke_execution_receipt,
                 )
+        if args.platform_smoke_operator_start_gate_out:
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            if smoke_review_bundle is None:
+                smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
+            if platform_smoke_plan is None:
+                platform_smoke_plan = build_platform_smoke_plan(
+                    smoke_review_bundle,
+                    target_platform=args.target_platform,
+                )
+            if platform_smoke_approval is None:
+                platform_smoke_approval = build_platform_smoke_approval_receipt(
+                    platform_smoke_plan,
+                    decision=APPROVED_STATUS,
+                )
+            if platform_smoke_execution_request is None:
+                platform_smoke_execution_request = build_platform_smoke_execution_request(
+                    platform_smoke_plan,
+                    platform_smoke_approval,
+                )
+            if platform_smoke_execution_receipt is None:
+                platform_smoke_execution_receipt = build_platform_smoke_execution_receipt(
+                    platform_smoke_plan,
+                    platform_smoke_approval,
+                    platform_smoke_execution_request,
+                )
+            if platform_smoke_operator_start_gate is None:
+                platform_smoke_operator_start_gate = build_platform_smoke_operator_start_gate(
+                    platform_smoke_plan,
+                    platform_smoke_approval,
+                    platform_smoke_execution_request,
+                    platform_smoke_execution_receipt,
+                    host_shell_kind=args.host_shell_kind,
+                )
+            write_json(
+                args.platform_smoke_operator_start_gate_out,
+                platform_smoke_operator_start_gate,
+            )
     if (
         args.validate_platform_smoke_approval
         or args.validate_platform_smoke_execution_request
         or args.validate_platform_smoke_execution_receipt
+        or args.validate_platform_smoke_operator_start_gate
     ) and platform_smoke_plan is None:
         if args.validate_platform_smoke_plan:
             platform_smoke_plan = load_json(args.validate_platform_smoke_plan)
@@ -4420,6 +5343,7 @@ def main() -> int:
     if (
         args.validate_platform_smoke_execution_request
         or args.validate_platform_smoke_execution_receipt
+        or args.validate_platform_smoke_operator_start_gate
     ) and platform_smoke_approval is None:
         if args.validate_platform_smoke_approval:
             platform_smoke_approval = load_json(args.validate_platform_smoke_approval)
@@ -4428,13 +5352,25 @@ def main() -> int:
                 platform_smoke_plan,
                 decision=APPROVED_STATUS,
             )
-    if args.validate_platform_smoke_execution_receipt and platform_smoke_execution_request is None:
+    if (
+        args.validate_platform_smoke_execution_receipt
+        or args.validate_platform_smoke_operator_start_gate
+    ) and platform_smoke_execution_request is None:
         if args.validate_platform_smoke_execution_request:
             platform_smoke_execution_request = load_json(args.validate_platform_smoke_execution_request)
         else:
             platform_smoke_execution_request = build_platform_smoke_execution_request(
                 platform_smoke_plan,
                 platform_smoke_approval,
+            )
+    if args.validate_platform_smoke_operator_start_gate and platform_smoke_execution_receipt is None:
+        if args.validate_platform_smoke_execution_receipt:
+            platform_smoke_execution_receipt = load_json(args.validate_platform_smoke_execution_receipt)
+        else:
+            platform_smoke_execution_receipt = build_platform_smoke_execution_receipt(
+                platform_smoke_plan,
+                platform_smoke_approval,
+                platform_smoke_execution_request,
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -4552,6 +5488,20 @@ def main() -> int:
                 args.validate_platform_smoke_execution_receipt.suffix + ".validation.json"
             ),
             execution_receipt_report,
+        )
+    if args.validate_platform_smoke_operator_start_gate:
+        operator_start_report = validate_platform_smoke_operator_start_gate(
+            platform_smoke_plan,
+            platform_smoke_approval,
+            platform_smoke_execution_request,
+            platform_smoke_execution_receipt,
+            load_json(args.validate_platform_smoke_operator_start_gate),
+        )
+        write_json(
+            args.validate_platform_smoke_operator_start_gate.with_suffix(
+                args.validate_platform_smoke_operator_start_gate.suffix + ".validation.json"
+            ),
+            operator_start_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 
