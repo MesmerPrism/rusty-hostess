@@ -1819,6 +1819,253 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_execution_report_evidence_drift",
         )
 
+    def test_builds_platform_smoke_evidence_attachment_without_collection_or_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+        ) = ready_platform_smoke_execution_report_chain()
+
+        receipt = adapter.build_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+        )
+
+        self.assertEqual(
+            receipt["$schema"],
+            adapter.PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(receipt["status"], adapter.VALIDATED_STATUS)
+        self.assertIsNone(receipt["issue_code"])
+        self.assertEqual(
+            receipt["execution_policy"],
+            adapter.PLATFORM_SMOKE_EVIDENCE_ATTACHMENT_RECEIPT_POLICY,
+        )
+        self.assertEqual(receipt["receipt_owner"], "rusty.hostess")
+        self.assertEqual(receipt["evidence_owner"], "rusty.hostess")
+        self.assertEqual(receipt["command_session_authority"], "rusty.manifold")
+        self.assertEqual(receipt["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertTrue(receipt["external_evidence_required"])
+        self.assertTrue(receipt["external_evidence_descriptors_supplied"])
+        self.assertTrue(receipt["external_evidence_descriptors_attached"])
+        self.assertTrue(receipt["all_placeholders_bound"])
+        self.assertFalse(receipt["device_required"])
+        self.assertFalse(receipt["evidence_payloads_copied"])
+        self.assertFalse(receipt["real_platform_execution_evidence_attached"])
+        self.assertFalse(receipt["schema_path_execution_allowed"])
+        self.assertFalse(receipt["platform_execution_allowed"])
+        self.assertFalse(receipt["studio_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(receipt[flag], flag)
+        self.assertFalse(receipt["runtime_execution_performed"])
+        self.assertFalse(receipt["platform_execution_performed"])
+        self.assertEqual(
+            receipt["evidence_attachment_count"],
+            len(execution_report["evidence_placeholders"]),
+        )
+        self.assertEqual(
+            receipt["validated_evidence_attachment_count"],
+            len(execution_report["evidence_placeholders"]),
+        )
+        self.assertEqual(receipt["rejected_evidence_attachment_count"], 0)
+        self.assertEqual(
+            receipt["readiness_evidence_attachment_count"],
+            len(execution_report["readiness_results"]),
+        )
+        self.assertTrue(
+            all(
+                attachment["attachment_status"] == adapter.VALIDATED_STATUS
+                and attachment["external_evidence_descriptor_supplied"] is True
+                and attachment["evidence_descriptor_attached"] is True
+                and attachment["evidence_payload_copied"] is False
+                and attachment["collection_started"] is False
+                and attachment["studio_execution_allowed"] is False
+                and attachment["schema_path_execution_allowed"] is False
+                and attachment["runtime_execution_performed"] is False
+                and attachment["platform_execution_performed"] is False
+                and attachment["real_platform_execution_evidence_attached"] is False
+                for attachment in receipt["evidence_attachments"]
+            )
+        )
+        self.assertTrue(
+            all(
+                attachment["attachment_status"] == adapter.VALIDATED_STATUS
+                and attachment["external_readiness_descriptor_supplied"] is True
+                and attachment["readiness_descriptor_attached"] is True
+                and attachment["validated_for_attachment"] is True
+                and attachment["validated_for_execution"] is False
+                and attachment["execution_started"] is False
+                for attachment in receipt["readiness_evidence_attachments"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            receipt,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+        self.assertFalse(validation["real_platform_execution_evidence_attached"])
+
+    def test_platform_smoke_evidence_attachment_rejection_without_collection(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+        ) = ready_platform_smoke_execution_report_chain()
+
+        receipt = adapter.build_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            decision=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_platform_smoke_evidence_attachment",
+        )
+
+        self.assertEqual(receipt["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            receipt["issue_code"],
+            "hostess.issue.operator_declined_platform_smoke_evidence_attachment",
+        )
+        self.assertFalse(receipt["external_evidence_descriptors_supplied"])
+        self.assertFalse(receipt["external_evidence_descriptors_attached"])
+        self.assertFalse(receipt["all_placeholders_bound"])
+        self.assertFalse(receipt["evidence_payloads_copied"])
+        self.assertFalse(receipt["real_platform_execution_evidence_attached"])
+        self.assertEqual(receipt["validated_evidence_attachment_count"], 0)
+        self.assertEqual(
+            receipt["rejected_evidence_attachment_count"],
+            len(execution_report["evidence_placeholders"]),
+        )
+        self.assertTrue(
+            all(
+                attachment["attachment_status"] == adapter.REJECTED_STATUS
+                and attachment["issue_code"]
+                == "hostess.issue.operator_declined_platform_smoke_evidence_attachment"
+                and attachment["external_evidence_descriptor_supplied"] is False
+                and attachment["evidence_payload_copied"] is False
+                and attachment["collection_started"] is False
+                for attachment in receipt["evidence_attachments"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_evidence_attachment_receipt(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+                preflight,
+                execution_report,
+                receipt,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_evidence_attachment_validation_rejects_collection_or_descriptor_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+        ) = ready_platform_smoke_execution_report_chain()
+        receipt = adapter.build_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+        )
+
+        started = copy.deepcopy(receipt)
+        started["evidence_collection_started"] = True
+        started_report = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_attachment_execution_started",
+        )
+
+        attachment_drift = copy.deepcopy(receipt)
+        attachment_drift["evidence_attachments"][0]["owner"] = "rusty.studio"
+        attachment_drift["evidence_attachments"][0]["required_evidence_kind"] = (
+            "studio_owned_evidence"
+        )
+        attachment_report = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment_drift,
+        )
+        self.assertEqual(attachment_report["status"], "fail")
+        self.assertEqual(
+            attachment_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_attachment_drift",
+        )
+
+        readiness_drift = copy.deepcopy(receipt)
+        readiness_drift["readiness_evidence_attachments"][0]["owner"] = "rusty.studio"
+        readiness_drift["readiness_evidence_attachments"][0]["input_kind"] = (
+            "studio_owned_readiness"
+        )
+        readiness_report = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            readiness_drift,
+        )
+        self.assertEqual(readiness_report["status"], "fail")
+        self.assertEqual(
+            readiness_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_attachment_readiness_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -1847,6 +2094,10 @@ class StudioStagingRequestTests(unittest.TestCase):
             execution_report_path = root / "platform-smoke-execution-report.json"
             execution_report_rejection_path = (
                 root / "platform-smoke-execution-report-rejection.json"
+            )
+            evidence_attachment_path = root / "platform-smoke-evidence-attachment.json"
+            evidence_attachment_rejection_path = (
+                root / "platform-smoke-evidence-attachment-rejection.json"
             )
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
@@ -1919,6 +2170,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(execution_report_rejection_path),
                     "--validate-platform-smoke-execution-report",
                     str(execution_report_path),
+                    "--platform-smoke-evidence-attachment-out",
+                    str(evidence_attachment_path),
+                    "--platform-smoke-evidence-attachment-rejection-out",
+                    str(evidence_attachment_rejection_path),
+                    "--validate-platform-smoke-evidence-attachment",
+                    str(evidence_attachment_path),
                     "--host-shell-kind",
                     "hostess.t.quest_host_shell.schema_gate",
                 ],
@@ -2000,6 +2257,17 @@ class StudioStagingRequestTests(unittest.TestCase):
             platform_execution_report_validation = json.loads(
                 execution_report_path.with_suffix(
                     execution_report_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            evidence_attachment = json.loads(
+                evidence_attachment_path.read_text(encoding="utf-8")
+            )
+            evidence_attachment_rejection = json.loads(
+                evidence_attachment_rejection_path.read_text(encoding="utf-8")
+            )
+            evidence_attachment_validation = json.loads(
+                evidence_attachment_path.with_suffix(
+                    evidence_attachment_path.suffix + ".validation.json"
                 ).read_text(encoding="utf-8")
             )
             self.assertEqual(report["status"], "accepted")
@@ -2140,6 +2408,27 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertFalse(platform_execution_report_rejection["platform_execution_performed"])
             self.assertEqual(
                 platform_execution_report_rejection["rejected_action_report_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(evidence_attachment["status"], "validated")
+            self.assertTrue(evidence_attachment["external_evidence_descriptors_attached"])
+            self.assertTrue(evidence_attachment["all_placeholders_bound"])
+            self.assertFalse(evidence_attachment["evidence_payloads_copied"])
+            self.assertFalse(evidence_attachment["evidence_collection_started"])
+            self.assertFalse(evidence_attachment["platform_execution_performed"])
+            self.assertFalse(evidence_attachment["real_platform_execution_evidence_attached"])
+            self.assertEqual(
+                evidence_attachment["validated_evidence_attachment_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(evidence_attachment_validation["status"], "pass")
+            self.assertEqual(evidence_attachment_rejection["status"], "rejected")
+            self.assertFalse(
+                evidence_attachment_rejection["external_evidence_descriptors_attached"]
+            )
+            self.assertFalse(evidence_attachment_rejection["evidence_payloads_copied"])
+            self.assertEqual(
+                evidence_attachment_rejection["rejected_evidence_attachment_count"],
                 len(plan["planned_actions"]),
             )
 
@@ -2356,6 +2645,29 @@ def ready_platform_smoke_operator_start_preflight_chain() -> tuple[
         gate,
     )
     return plan, approval, execution_request, execution_receipt, gate, preflight
+
+
+def ready_platform_smoke_execution_report_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan, approval, execution_request, execution_receipt, gate, preflight = (
+        ready_platform_smoke_operator_start_preflight_chain()
+    )
+    report = adapter.build_platform_smoke_execution_report(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+    )
+    return plan, approval, execution_request, execution_receipt, gate, preflight, report
 
 
 if __name__ == "__main__":

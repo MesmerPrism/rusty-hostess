@@ -50,7 +50,9 @@ python tools\studio_staging_request.py `
   --platform-smoke-operator-start-preflight-out <hostess-platform-smoke-operator-start-preflight.json> `
   --platform-smoke-operator-start-preflight-rejection-out <hostess-platform-smoke-operator-start-preflight-rejection.json> `
   --platform-smoke-execution-report-out <hostess-platform-smoke-execution-report.json> `
-  --platform-smoke-execution-report-rejection-out <hostess-platform-smoke-execution-report-rejection.json>
+  --platform-smoke-execution-report-rejection-out <hostess-platform-smoke-execution-report-rejection.json> `
+  --platform-smoke-evidence-attachment-out <hostess-platform-smoke-evidence-attachment.json> `
+  --platform-smoke-evidence-attachment-rejection-out <hostess-platform-smoke-evidence-attachment-rejection.json>
 ```
 
 The intake report uses
@@ -186,3 +188,18 @@ and `real_platform_execution_evidence_attached = false`. The report is the
 next Hostess-owned handoff shape toward build readiness; real Quest/APK copy,
 stage, install, launch, and evidence collection remain outside Studio and must
 be evidenced by a later Hostess-owned shell or Quest host.
+
+The platform smoke evidence attachment receipt uses
+`rusty.hostess.studio_staging_platform_smoke_evidence_attachment_receipt.v1`.
+It consumes the platform smoke execution report and binds externally supplied
+Hostess evidence descriptors to the report's pending evidence placeholders and
+readiness results. It is descriptor-only: it can validate that each placeholder
+has a matching Hostess-owned external evidence descriptor, but it does not copy
+payloads, collect files, start ADB, install, launch, or run Quest/APK work. It
+records `device_required = false`, `evidence_payloads_copied = false`,
+`schema_path_execution_allowed = false`, `platform_execution_allowed = false`,
+`studio_execution_allowed = false`, `execution_performed = false`,
+`runtime_execution_performed = false`, `platform_execution_performed = false`,
+`evidence_collection_started = false`, and
+`real_platform_execution_evidence_attached = false`. Actual evidence
+collection and artifact storage remain Hostess-owned work outside Studio.
