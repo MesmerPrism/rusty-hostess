@@ -104,6 +104,95 @@ class StudioStagingRequestTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             adapter.build_ack_fixture(request)
 
+    def test_builds_ready_smoke_handoff_checklist_without_runtime_execution(self) -> None:
+        request = valid_request()
+        intake = adapter.build_intake_report(request)
+        ack = adapter.build_ack_fixture(request)
+
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            intake,
+            ack,
+            target_profile="hostess.t.desktop.schema_smoke",
+        )
+
+        self.assertEqual(handoff["$schema"], adapter.SMOKE_HANDOFF_SCHEMA)
+        self.assertEqual(handoff["status"], "ready")
+        self.assertIsNone(handoff["issue_code"])
+        self.assertEqual(handoff["adapter_owner"], "rusty.hostess")
+        self.assertEqual(handoff["requester_role"], "rusty.studio")
+        self.assertEqual(handoff["command_session_authority"], "rusty.manifold")
+        self.assertEqual(handoff["install_launch_evidence_authority"], "rusty.hostess")
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(handoff[flag], flag)
+        self.assertEqual(handoff["request_action_ids"], expected_action_ids())
+        self.assertEqual(handoff["accepted_action_ids"], expected_action_ids())
+        self.assertEqual(
+            set(handoff["required_evidence_kinds"]),
+            set(adapter.SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS),
+        )
+        self.assertEqual(
+            [item["item_id"] for item in handoff["checklist_items"]],
+            [contract["item_id"] for contract in adapter.SMOKE_HANDOFF_ITEM_CONTRACTS],
+        )
+        self.assertTrue(
+            all(item["execution_started"] is False for item in handoff["checklist_items"])
+        )
+        self.assertTrue(all(check["status"] == "pass" for check in handoff["checks"]))
+
+        validation = adapter.validate_smoke_handoff_checklist(handoff)
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["execution_performed"])
+
+    def test_smoke_handoff_blocks_rejected_studio_request(self) -> None:
+        request = valid_request()
+        request["actions"][3]["route_kind"] = "hostess.stage.files_from_drifted_plan"
+        intake = adapter.build_intake_report(request)
+
+        handoff = adapter.build_smoke_handoff_checklist(request, intake, None)
+
+        self.assertEqual(handoff["status"], "blocked")
+        self.assertEqual(handoff["issue_code"], "hostess.issue.adapter_action_contract_drift")
+        self.assertEqual(handoff["accepted_action_ids"], [])
+        self.assertTrue(
+            any(
+                check["check_id"] == "hostess.check.studio_staging_smoke_handoff.intake_status"
+                and check["status"] == "fail"
+                for check in handoff["checks"]
+            )
+        )
+        self.assertTrue(any(item["status"] == "blocked" for item in handoff["checklist_items"]))
+        self.assertEqual(
+            adapter.validate_smoke_handoff_checklist(handoff)["status"],
+            "pass",
+        )
+
+    def test_smoke_handoff_validation_rejects_runtime_start_or_evidence_drift(self) -> None:
+        request = valid_request()
+        handoff = adapter.build_smoke_handoff_checklist(
+            request,
+            adapter.build_intake_report(request),
+            adapter.build_ack_fixture(request),
+        )
+
+        started = copy.deepcopy(handoff)
+        started["launch_started"] = True
+        started_report = adapter.validate_smoke_handoff_checklist(started)
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.smoke_handoff_runtime_started",
+        )
+
+        evidence_drift = copy.deepcopy(handoff)
+        evidence_drift["required_evidence_kinds"] = evidence_drift["required_evidence_kinds"][:-1]
+        evidence_report = adapter.validate_smoke_handoff_checklist(evidence_drift)
+        self.assertEqual(evidence_report["status"], "fail")
+        self.assertEqual(
+            evidence_report["issue_code"],
+            "hostess.issue.smoke_handoff_evidence_kinds",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -111,6 +200,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             report_path = root / "report.json"
             ack_path = root / "ack.json"
             reject_path = root / "reject.json"
+            smoke_path = root / "smoke-handoff.json"
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -126,6 +216,10 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(ack_path),
                     "--reject-out",
                     str(reject_path),
+                    "--smoke-handoff-out",
+                    str(smoke_path),
+                    "--target-profile",
+                    "hostess.t.desktop.schema_smoke",
                 ],
             ):
                 self.assertEqual(adapter.main(), 0)
@@ -133,10 +227,14 @@ class StudioStagingRequestTests(unittest.TestCase):
             report = json.loads(report_path.read_text(encoding="utf-8"))
             ack = json.loads(ack_path.read_text(encoding="utf-8"))
             reject = json.loads(reject_path.read_text(encoding="utf-8"))
+            smoke = json.loads(smoke_path.read_text(encoding="utf-8"))
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
             self.assertEqual(ack["ack_status"], "accepted")
             self.assertEqual(reject["reject_status"], "rejected")
+            self.assertEqual(smoke["status"], "ready")
+            self.assertFalse(smoke["build_started"])
+            self.assertFalse(smoke["install_started"])
 
 
 def valid_request() -> dict[str, object]:

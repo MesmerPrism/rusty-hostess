@@ -6,9 +6,12 @@ execution requests.
 Studio emits `rusty.studio.shell_hostess_staging_execution_request.v1` after it
 has selected and compared accepted handoff/acceptance artifacts. Hostess reads
 that request, validates the authority and route contract, and can emit accepted
-ack or rejected reject fixtures. This tool does not copy files, stage files,
-install apps, launch apps, open command sessions, collect evidence, talk to
-ADB, run Quest builds, or execute Hostess runtime behavior.
+ack or rejected reject fixtures. Hostess can also emit a schema-only smoke
+handoff checklist that names the request, ack, and expected evidence receipt
+items for the first small Hostess-owned build smoke test. This tool does not
+copy files, stage files, install apps, launch apps, open command sessions,
+collect evidence, talk to ADB, run Quest builds, or execute Hostess runtime
+behavior.
 
 Authority:
 
@@ -31,10 +34,19 @@ python tools\studio_staging_request.py `
   --request <studio-execution-request.json> `
   --report-out <hostess-intake-report.json> `
   --ack-out <hostess-ack-fixture.json> `
-  --reject-out <hostess-reject-fixture.json>
+  --reject-out <hostess-reject-fixture.json> `
+  --smoke-handoff-out <hostess-smoke-handoff.json>
 ```
 
 The intake report uses
 `rusty.hostess.studio_staging_execution_request_intake.v1` and always records
 `execution_performed = false`, `copy_stage_install_launch_evidence_started =
 false`, and `command_session_started = false`.
+
+The smoke handoff checklist uses
+`rusty.hostess.studio_staging_smoke_handoff.v1`. It records
+`build_started = false`, `copy_started = false`, `stage_started = false`,
+`install_started = false`, `launch_started = false`,
+`evidence_collection_started = false`, and `command_session_started = false`.
+It is a checklist for Hostess T or a dedicated host shell to consume later, not
+a build or device execution command.

@@ -12,8 +12,11 @@ REQUEST_SCHEMA = "rusty.studio.shell_hostess_staging_execution_request.v1"
 ACK_SCHEMA = "rusty.studio.shell_hostess_staging_execution_ack.v1"
 REJECT_SCHEMA = "rusty.studio.shell_hostess_staging_execution_reject.v1"
 INTAKE_SCHEMA = "rusty.hostess.studio_staging_execution_request_intake.v1"
+SMOKE_HANDOFF_SCHEMA = "rusty.hostess.studio_staging_smoke_handoff.v1"
+SMOKE_HANDOFF_VALIDATION_SCHEMA = "rusty.hostess.studio_staging_smoke_handoff_validation.v1"
 
 READY_STATUS = "ready"
+BLOCKED_STATUS = "blocked"
 ACCEPTED_STATUS = "accepted"
 REJECTED_STATUS = "rejected"
 PENDING_STATUS = "pending"
@@ -42,6 +45,10 @@ REQUIRED_EVIDENCE_KINDS = [
     "manifold_command_session_contract_review",
 ]
 
+SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS = REQUIRED_EVIDENCE_KINDS + [
+    "hostess_smoke_handoff_checklist",
+]
+
 HOSTESS_ACTION_ROUTES = {
     "adapter.hostess.accept_staging_handoff": "hostess.accept.staging_handoff",
     "adapter.hostess.verify_staging_file_plan_checksum": "hostess.verify.staging_file_plan_checksum",
@@ -53,6 +60,55 @@ HOSTESS_ACTION_ROUTES = {
 MANIFOLD_ACTION_ROUTES = {
     "adapter.manifold.review_command_session_contract": "manifold.review.command_session_contract",
 }
+
+SMOKE_HANDOFF_STARTED_FLAGS = [
+    "execution_performed",
+    "build_started",
+    "copy_started",
+    "stage_started",
+    "install_started",
+    "launch_started",
+    "evidence_collection_started",
+    "command_session_started",
+]
+
+SMOKE_HANDOFF_ITEM_CONTRACTS = [
+    {
+        "item_id": "hostess.smoke.validate_studio_request_intake",
+        "owner": HOSTESS_OWNER,
+        "source_action_id": "adapter.hostess.accept_staging_handoff",
+        "route_kind": "hostess.adapter.validate_studio_request",
+        "expected_output_kind": "studio_staging_execution_request_intake",
+    },
+    {
+        "item_id": "hostess.smoke.ack_or_reject_request",
+        "owner": HOSTESS_OWNER,
+        "source_action_id": "adapter.hostess.accept_staging_handoff",
+        "route_kind": "hostess.adapter.ack_or_reject_studio_request",
+        "expected_output_kind": "hostess_staging_request_ack_or_reject",
+    },
+    {
+        "item_id": "hostess.smoke.plan_stage_copy_receipt",
+        "owner": HOSTESS_OWNER,
+        "source_action_id": "adapter.hostess.copy_staging_files",
+        "route_kind": "hostess.stage.files_from_plan",
+        "expected_output_kind": "hostess_file_copy_stage_receipt",
+    },
+    {
+        "item_id": "hostess.smoke.plan_install_launch_receipt",
+        "owner": HOSTESS_OWNER,
+        "source_action_id": "adapter.hostess.collect_install_launch_evidence",
+        "route_kind": "hostess.collect.install_launch_evidence",
+        "expected_output_kind": "hostess_install_launch_evidence_receipt",
+    },
+    {
+        "item_id": "hostess.smoke.plan_command_session_review",
+        "owner": MANIFOLD_OWNER,
+        "source_action_id": "adapter.manifold.review_command_session_contract",
+        "route_kind": "manifold.review.command_session_contract",
+        "expected_output_kind": "manifold_command_session_contract_review",
+    },
+]
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -143,6 +199,256 @@ def build_reject_fixture(
         "next_required_action": "repair_studio_staging_execution_request",
         "issue_code": issue_code,
     }
+
+
+def build_smoke_handoff_checklist(
+    request: dict[str, Any],
+    intake_report: dict[str, Any] | None = None,
+    ack: dict[str, Any] | None = None,
+    target_profile: str = "hostess.t.schema_smoke",
+) -> dict[str, Any]:
+    intake = intake_report or build_intake_report(request)
+    items = smoke_handoff_items(request, intake)
+    checks = smoke_handoff_checks(request, intake, ack, items)
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    request_id = request.get("request_id")
+    handoff_id = (
+        f"hostess.smoke_handoff.{request_id}"
+        if isinstance(request_id, str) and request_id
+        else "hostess.smoke_handoff.unknown"
+    )
+    action_ids = expected_action_ids(request)
+    ack_action_ids = ack.get("accepted_action_ids", []) if isinstance(ack, dict) else []
+
+    return {
+        "$schema": SMOKE_HANDOFF_SCHEMA,
+        "handoff_id": handoff_id,
+        "request_id": request_id,
+        "request_schema": request.get("$schema"),
+        "intake_schema": intake.get("$schema"),
+        "target_profile": target_profile,
+        "status": READY_STATUS if not failed else BLOCKED_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "smoke_scope": "schema_only_request_ack_evidence_checklist",
+        "adapter_owner": HOSTESS_OWNER,
+        "requester_role": request.get("requester_role"),
+        "command_session_authority": request.get("command_session_authority"),
+        "install_launch_evidence_authority": request.get("install_launch_evidence_authority"),
+        "studio_role": request.get("studio_role"),
+        "execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "request_action_ids": action_ids,
+        "accepted_action_ids": ack_action_ids,
+        "required_evidence_kinds": SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS,
+        "checklist_items": items,
+        "checks": checks,
+    }
+
+
+def validate_smoke_handoff_checklist(checklist: dict[str, Any]) -> dict[str, Any]:
+    items = checklist.get("checklist_items", [])
+    if not isinstance(items, list):
+        items = []
+    item_dicts = [item for item in items if isinstance(item, dict)]
+    embedded_checks = checklist.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    checks = [
+        check(
+            "hostess.check.studio_staging_smoke_handoff.schema",
+            checklist.get("$schema") == SMOKE_HANDOFF_SCHEMA,
+            "smoke handoff schema is supported",
+            "smoke handoff schema is unsupported",
+            "hostess.issue.smoke_handoff_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.status",
+            checklist.get("status") in {READY_STATUS, BLOCKED_STATUS},
+            "smoke handoff status is supported",
+            "smoke handoff status is unsupported",
+            "hostess.issue.smoke_handoff_status",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.no_runtime_started",
+            all(checklist.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS),
+            "smoke handoff has not started runtime work",
+            "smoke handoff indicates runtime work started",
+            "hostess.issue.smoke_handoff_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.evidence_kinds",
+            set(checklist.get("required_evidence_kinds", []))
+            == set(SMOKE_HANDOFF_REQUIRED_EVIDENCE_KINDS),
+            "smoke handoff declares required evidence kinds",
+            "smoke handoff evidence kinds drifted",
+            "hostess.issue.smoke_handoff_evidence_kinds",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.item_contracts",
+            smoke_handoff_items_match_contracts(item_dicts),
+            "smoke handoff items match owner and route contracts",
+            "smoke handoff items drifted from owner or route contracts",
+            "hostess.issue.smoke_handoff_item_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.no_item_execution",
+            all(item.get("execution_started") is False for item in item_dicts),
+            "smoke handoff items have not started runtime work",
+            "smoke handoff item indicates runtime work started",
+            "hostess.issue.smoke_handoff_item_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.ready_consistency",
+            checklist.get("status") != READY_STATUS
+            or (
+                all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(item.get("status") == READY_STATUS for item in item_dicts)
+            ),
+            "ready smoke handoff has passing checks and ready items",
+            "ready smoke handoff has failed checks or blocked items",
+            "hostess.issue.smoke_handoff_ready_inconsistent",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": SMOKE_HANDOFF_VALIDATION_SCHEMA,
+        "handoff_id": checklist.get("handoff_id"),
+        "request_id": checklist.get("request_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_performed": False,
+        "checks": checks,
+    }
+
+
+def smoke_handoff_items(
+    request: dict[str, Any],
+    intake_report: dict[str, Any],
+) -> list[dict[str, Any]]:
+    actions = {action.get("action_id"): action for action in request_actions(request)}
+    intake_accepted = intake_report.get("status") == ACCEPTED_STATUS
+    items = []
+    for contract in SMOKE_HANDOFF_ITEM_CONTRACTS:
+        source_action = actions.get(contract["source_action_id"])
+        issue_code = None
+        if not isinstance(source_action, dict):
+            issue_code = "hostess.issue.smoke_handoff_source_action_missing"
+        elif not intake_accepted:
+            issue_code = intake_report.get("issue_code") or "hostess.issue.staging_request_rejected"
+        items.append(
+            {
+                "item_id": contract["item_id"],
+                "owner": contract["owner"],
+                "status": READY_STATUS if issue_code is None else BLOCKED_STATUS,
+                "issue_code": issue_code,
+                "source_action_id": contract["source_action_id"],
+                "source_route_kind": source_action.get("route_kind") if isinstance(source_action, dict) else None,
+                "route_kind": contract["route_kind"],
+                "expected_input_path": source_action.get("expected_input_path")
+                if isinstance(source_action, dict)
+                else None,
+                "expected_output_kind": contract["expected_output_kind"],
+                "execution_started": False,
+            }
+        )
+    return items
+
+
+def smoke_handoff_checks(
+    request: dict[str, Any],
+    intake_report: dict[str, Any],
+    ack: dict[str, Any] | None,
+    items: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    ack_report = validate_ack_fixture(request, ack) if isinstance(ack, dict) else None
+    return [
+        check(
+            "hostess.check.studio_staging_smoke_handoff.request_schema",
+            request.get("$schema") == REQUEST_SCHEMA,
+            "Studio request schema is supported",
+            "Studio request schema is unsupported",
+            "hostess.issue.staging_request_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.intake_status",
+            intake_report.get("$schema") == INTAKE_SCHEMA
+            and intake_report.get("status") == ACCEPTED_STATUS,
+            "Hostess intake accepted the Studio request",
+            "Hostess intake did not accept the Studio request",
+            intake_report.get("issue_code") or "hostess.issue.staging_request_rejected",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.ack",
+            ack_report is not None and ack_report.get("status") == PASS_STATUS,
+            "Hostess ack fixture validates",
+            "Hostess ack fixture is missing or invalid",
+            (ack_report or {}).get("issue_code") or "hostess.issue.smoke_handoff_ack_missing",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.authority",
+            request.get("adapter_owner") == HOSTESS_OWNER
+            and request.get("requester_role") == STUDIO_REQUESTER
+            and request.get("command_session_authority") == MANIFOLD_OWNER
+            and request.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and request.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.items_ready",
+            all(item.get("status") == READY_STATUS for item in items),
+            "smoke handoff items are ready",
+            "smoke handoff items are blocked",
+            first_item_issue_code(items) or "hostess.issue.smoke_handoff_items_blocked",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.no_item_execution",
+            all(item.get("execution_started") is False for item in items),
+            "smoke handoff items have not started runtime work",
+            "smoke handoff item indicates runtime work started",
+            "hostess.issue.smoke_handoff_item_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_handoff.item_contracts",
+            smoke_handoff_items_match_contracts(items),
+            "smoke handoff items match owner and route contracts",
+            "smoke handoff items drifted from owner or route contracts",
+            "hostess.issue.smoke_handoff_item_contract_drift",
+        ),
+    ]
+
+
+def smoke_handoff_items_match_contracts(items: list[dict[str, Any]]) -> bool:
+    by_id = {item.get("item_id"): item for item in items}
+    for contract in SMOKE_HANDOFF_ITEM_CONTRACTS:
+        item = by_id.get(contract["item_id"])
+        if not isinstance(item, dict):
+            return False
+        if item.get("owner") != contract["owner"]:
+            return False
+        if item.get("source_action_id") != contract["source_action_id"]:
+            return False
+        if item.get("route_kind") != contract["route_kind"]:
+            return False
+        if item.get("expected_output_kind") != contract["expected_output_kind"]:
+            return False
+    return True
+
+
+def first_item_issue_code(items: list[dict[str, Any]]) -> str | None:
+    for item in items:
+        issue_code = item.get("issue_code")
+        if isinstance(issue_code, str) and issue_code:
+            return issue_code
+    return None
 
 
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
@@ -444,21 +750,35 @@ def main() -> int:
     parser.add_argument("--report-out", type=Path)
     parser.add_argument("--ack-out", type=Path)
     parser.add_argument("--reject-out", type=Path)
+    parser.add_argument("--smoke-handoff-out", type=Path)
+    parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
+    parser.add_argument("--validate-smoke-handoff", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
     report = build_intake_report(request, args.request)
+    ack_fixture = build_ack_fixture(request) if report["status"] == ACCEPTED_STATUS else None
     if args.report_out:
         write_json(args.report_out, report)
     else:
         print(json.dumps(report, indent=2, sort_keys=True))
 
-    if args.ack_out and report["status"] == ACCEPTED_STATUS:
-        write_json(args.ack_out, build_ack_fixture(request))
+    if args.ack_out and ack_fixture is not None:
+        write_json(args.ack_out, ack_fixture)
     if args.reject_out:
         write_json(args.reject_out, build_reject_fixture(request))
+    if args.smoke_handoff_out:
+        write_json(
+            args.smoke_handoff_out,
+            build_smoke_handoff_checklist(
+                request,
+                report,
+                ack_fixture,
+                target_profile=args.target_profile,
+            ),
+        )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
         write_json(args.validate_ack.with_suffix(args.validate_ack.suffix + ".validation.json"), ack_report)
@@ -467,6 +787,12 @@ def main() -> int:
         write_json(
             args.validate_reject.with_suffix(args.validate_reject.suffix + ".validation.json"),
             reject_report,
+        )
+    if args.validate_smoke_handoff:
+        smoke_report = validate_smoke_handoff_checklist(load_json(args.validate_smoke_handoff))
+        write_json(
+            args.validate_smoke_handoff.with_suffix(args.validate_smoke_handoff.suffix + ".validation.json"),
+            smoke_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 
