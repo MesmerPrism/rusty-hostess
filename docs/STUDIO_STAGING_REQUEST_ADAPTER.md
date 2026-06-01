@@ -257,3 +257,35 @@ records `device_required = false`, `schema_path_execution_allowed = false`,
 `fixture_payloads_copied = false`, and `processor_runtime_started = false`.
 Actual replay execution and any later platform smoke test remain Hostess-owned
 work outside Studio and outside this schema path.
+
+Operator release/readiness bundle:
+
+```powershell
+python tools\studio_staging_request.py `
+  --request <studio-execution-request.json> `
+  --platform-smoke-evidence-review-in <hostess-platform-smoke-evidence-review.json> `
+  --pmb-replay-validation-receipt-in <hostess-pmb-replay-validation-receipt.json> `
+  --operator-release-readiness-bundle-out <hostess-operator-release-readiness-bundle.json> `
+  --operator-release-readiness-bundle-rejection-out <hostess-operator-release-readiness-bundle-rejection.json> `
+  --validate-operator-release-readiness-bundle <hostess-operator-release-readiness-bundle.json>
+```
+
+The operator release/readiness bundle uses
+`rusty.hostess.studio_staging_operator_release_readiness_bundle.v1`. It
+consumes the platform smoke evidence review and projected-motion breath replay
+validation receipt, then records the selected schema artifacts and Hostess T or
+dedicated Quest host-shell readiness targets for later operator-owned work. It
+is the next build-readiness handoff shape, not a build runner. It records
+`operator_release_ready = true` only when both source artifacts are reviewed or
+validated, and it keeps `operator_started = false`, `host_shell_started =
+false`, `device_required = false`, `schema_path_execution_allowed = false`,
+`platform_execution_allowed = false`, `studio_execution_allowed = false`,
+`execution_performed = false`, `runtime_execution_performed = false`,
+`platform_execution_performed = false`, `build_started = false`,
+`copy_started = false`, `stage_started = false`, `install_started = false`,
+`launch_started = false`, `evidence_collection_started = false`,
+`command_session_started = false`, `replay_execution_started = false`,
+`apk_build_started = false`, `schema_artifact_payloads_copied = false`,
+`release_payloads_copied = false`, and `evidence_payloads_copied = false`.
+Hostess T or a dedicated Quest host shell still owns any first real build
+smoke test; Studio remains authoring, export-planning, and review.

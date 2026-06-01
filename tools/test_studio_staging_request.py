@@ -2553,6 +2553,226 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.projected_motion_breath_replay_validation_receipt_descriptor_drift",
         )
 
+    def test_builds_operator_release_readiness_bundle_without_execution(self) -> None:
+        evidence_review, replay_receipt = ready_operator_release_inputs()
+
+        bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+
+        self.assertEqual(bundle["$schema"], adapter.OPERATOR_RELEASE_READINESS_BUNDLE_SCHEMA)
+        self.assertEqual(bundle["status"], "ready")
+        self.assertIsNone(bundle["issue_code"])
+        self.assertEqual(
+            bundle["execution_policy"],
+            adapter.OPERATOR_RELEASE_READINESS_BUNDLE_POLICY,
+        )
+        self.assertEqual(bundle["bundle_owner"], "rusty.hostess")
+        self.assertEqual(bundle["runtime_authority"], "rusty.manifold")
+        self.assertEqual(bundle["command_session_authority"], "rusty.manifold")
+        self.assertEqual(bundle["studio_role"], "authoring.export_planning")
+        self.assertTrue(bundle["operator_release_ready"])
+        self.assertFalse(bundle["operator_started"])
+        self.assertFalse(bundle["host_shell_started"])
+        self.assertFalse(bundle["schema_path_execution_allowed"])
+        self.assertFalse(bundle["platform_execution_allowed"])
+        self.assertFalse(bundle["studio_execution_allowed"])
+        self.assertFalse(bundle["execution_performed"])
+        self.assertFalse(bundle["runtime_execution_performed"])
+        self.assertFalse(bundle["platform_execution_performed"])
+        self.assertFalse(bundle["apk_build_started"])
+        self.assertFalse(bundle["replay_execution_started"])
+        self.assertFalse(bundle["schema_artifact_payloads_copied"])
+        self.assertFalse(bundle["release_payloads_copied"])
+        self.assertEqual(
+            bundle["ready_schema_artifact_count"],
+            len(adapter.OPERATOR_RELEASE_ARTIFACT_CONTRACTS),
+        )
+        self.assertEqual(
+            bundle["ready_host_shell_readiness_target_count"],
+            len(adapter.OPERATOR_RELEASE_HOST_SHELL_TARGET_CONTRACTS),
+        )
+        self.assertEqual(
+            {row["source_role"] for row in bundle["schema_artifacts"]},
+            {
+                "platform_smoke_evidence_review",
+                "projected_motion_breath_replay_validation_receipt",
+            },
+        )
+        self.assertTrue(
+            all(
+                row["artifact_status"] == "ready"
+                and row["schema_artifact_payload_copied"] is False
+                and row["release_payload_copied"] is False
+                and row["platform_execution_performed"] is False
+                for row in bundle["schema_artifacts"]
+            )
+        )
+        self.assertEqual(
+            {target["host_shell_kind"] for target in bundle["host_shell_readiness_targets"]},
+            {"hostess.t", "dedicated_quest_host_shell"},
+        )
+        self.assertTrue(
+            all(
+                target["target_status"] == "ready"
+                and target["host_shell_started"] is False
+                and target["operator_started"] is False
+                and target["platform_execution_performed"] is False
+                for target in bundle["host_shell_readiness_targets"]
+            )
+        )
+
+        validation = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            bundle,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_operator_release_readiness_bundle_blocks_unready_replay_receipt(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_operator_release_inputs()
+        replay_receipt["replay_execution_started"] = True
+
+        bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+
+        self.assertEqual(bundle["status"], "blocked")
+        self.assertEqual(bundle["scorecard_status"], "fail")
+        self.assertFalse(bundle["operator_release_ready"])
+        self.assertEqual(bundle["blocked_schema_artifact_count"], 1)
+        self.assertEqual(
+            bundle["issue_code"],
+            "hostess.issue.projected_motion_breath_replay_validation_receipt_execution_started",
+        )
+        self.assertEqual(
+            adapter.validate_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+                bundle,
+            )["status"],
+            "pass",
+        )
+
+    def test_operator_release_readiness_bundle_validation_rejects_execution_or_artifact_drift(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_operator_release_inputs()
+        bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+
+        started = copy.deepcopy(bundle)
+        started["install_started"] = True
+        started_report = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.operator_release_readiness_bundle_execution_started",
+        )
+
+        artifact_drift = copy.deepcopy(bundle)
+        artifact_drift["schema_artifacts"][0]["owner"] = "rusty.studio"
+        artifact_report = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            artifact_drift,
+        )
+        self.assertEqual(artifact_report["status"], "fail")
+        self.assertEqual(
+            artifact_report["issue_code"],
+            "hostess.issue.operator_release_readiness_bundle_artifact_drift",
+        )
+
+        host_shell_drift = copy.deepcopy(bundle)
+        host_shell_drift["host_shell_readiness_targets"][0]["host_shell_started"] = True
+        host_shell_report = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            host_shell_drift,
+        )
+        self.assertEqual(host_shell_report["status"], "fail")
+        self.assertEqual(
+            host_shell_report["issue_code"],
+            "hostess.issue.operator_release_readiness_bundle_host_shell_drift",
+        )
+
+    def test_cli_writes_operator_release_readiness_bundle(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            evidence_review_path = root / "platform-smoke-evidence-review.json"
+            replay_receipt_path = root / "pmb-replay-validation-receipt.json"
+            release_bundle_path = root / "operator-release-readiness-bundle.json"
+            release_rejection_path = (
+                root / "operator-release-readiness-bundle-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            evidence_review, replay_receipt = ready_operator_release_inputs()
+            evidence_review_path.write_text(
+                json.dumps(evidence_review),
+                encoding="utf-8",
+            )
+            replay_receipt_path.write_text(
+                json.dumps(replay_receipt),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--platform-smoke-evidence-review-in",
+                    str(evidence_review_path),
+                    "--pmb-replay-validation-receipt-in",
+                    str(replay_receipt_path),
+                    "--operator-release-readiness-bundle-out",
+                    str(release_bundle_path),
+                    "--operator-release-readiness-bundle-rejection-out",
+                    str(release_rejection_path),
+                    "--validate-operator-release-readiness-bundle",
+                    str(release_bundle_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            release_bundle = json.loads(release_bundle_path.read_text(encoding="utf-8"))
+            release_validation = json.loads(
+                release_bundle_path.with_suffix(
+                    release_bundle_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            release_rejection = json.loads(
+                release_rejection_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(release_bundle["status"], "ready")
+            self.assertTrue(release_bundle["operator_release_ready"])
+            self.assertFalse(release_bundle["copy_started"])
+            self.assertFalse(release_bundle["install_started"])
+            self.assertFalse(release_bundle["launch_started"])
+            self.assertFalse(release_bundle["apk_build_started"])
+            self.assertFalse(release_bundle["evidence_collection_started"])
+            self.assertEqual(release_validation["status"], "pass")
+            self.assertEqual(release_rejection["status"], "rejected")
+            self.assertFalse(release_rejection["operator_release_ready"])
+            self.assertFalse(release_rejection["release_payloads_copied"])
+
     def test_cli_writes_projected_motion_breath_validation_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -3390,6 +3610,33 @@ def ready_platform_smoke_evidence_attachment_chain() -> tuple[
         report,
         attachment,
     )
+
+
+def ready_operator_release_inputs() -> tuple[dict[str, object], dict[str, object]]:
+    (
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    ) = ready_platform_smoke_evidence_attachment_chain()
+    evidence_review = adapter.build_platform_smoke_evidence_review(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    )
+    replay_receipt = adapter.build_projected_motion_breath_replay_validation_receipt(
+        ready_pmb_validation_handoff()
+    )
+    return evidence_review, replay_receipt
 
 
 if __name__ == "__main__":
