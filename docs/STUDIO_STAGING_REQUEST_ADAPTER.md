@@ -41,7 +41,9 @@ python tools\studio_staging_request.py `
   --smoke-preflight-out <hostess-smoke-preflight.json> `
   --smoke-host-shell-execution-out <hostess-smoke-host-shell-execution.json> `
   --smoke-review-bundle-out <hostess-smoke-review-bundle.json> `
-  --platform-smoke-plan-out <hostess-platform-smoke-plan.json>
+  --platform-smoke-plan-out <hostess-platform-smoke-plan.json> `
+  --platform-smoke-approval-out <hostess-platform-smoke-approval.json> `
+  --platform-smoke-rejection-out <hostess-platform-smoke-rejection.json>
 ```
 
 The intake report uses
@@ -100,3 +102,16 @@ The plan records `operator_approved = false`, `schema_path_execution_allowed =
 false`, `platform_execution_allowed = false`, and
 `studio_execution_allowed = false`; it is a plan and approval surface, not an
 execution command.
+
+The platform smoke approval receipt uses
+`rusty.hostess.studio_staging_platform_smoke_approval_receipt.v1`. It consumes
+the platform smoke plan and records either an approved or rejected operator
+decision over each planned action. An approved receipt may set
+`future_execution_authorized = true` so a later Hostess-owned shell can start
+work, but the receipt itself still records `execution_performed = false`,
+`runtime_execution_performed = false`, `platform_execution_performed = false`,
+`build_started = false`, `copy_started = false`, `stage_started = false`,
+`install_started = false`, `launch_started = false`,
+`evidence_collection_started = false`, and `command_session_started = false`.
+It is an approval/rejection contract only; it does not copy, stage, install,
+launch, collect evidence, open a command session, or run Quest/APK work.

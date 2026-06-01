@@ -33,6 +33,12 @@ PLATFORM_SMOKE_PLAN_SCHEMA = "rusty.hostess.studio_staging_platform_smoke_plan.v
 PLATFORM_SMOKE_PLAN_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_platform_smoke_plan_validation.v1"
 )
+PLATFORM_SMOKE_APPROVAL_RECEIPT_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_approval_receipt.v1"
+)
+PLATFORM_SMOKE_APPROVAL_RECEIPT_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_platform_smoke_approval_receipt_validation.v1"
+)
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
@@ -42,6 +48,7 @@ PENDING_STATUS = "pending"
 COMPLETED_STATUS = "completed"
 REVIEWED_STATUS = "reviewed"
 PLANNED_STATUS = "planned"
+APPROVED_STATUS = "approved"
 PASS_STATUS = "pass"
 FAIL_STATUS = "fail"
 
@@ -53,6 +60,9 @@ REQUEST_POLICY = "not_executed.hostess_request_only"
 HOST_SHELL_EXECUTION_POLICY = "hostess.no_device_host_shell_schema_execution_only"
 SMOKE_REVIEW_BUNDLE_POLICY = "hostess.no_device_review_bundle_only"
 PLATFORM_SMOKE_PLAN_POLICY = "hostess.operator_controlled_platform_smoke_plan_only"
+PLATFORM_SMOKE_APPROVAL_RECEIPT_POLICY = (
+    "hostess.operator_controlled_platform_smoke_approval_receipt_only"
+)
 
 REQUIRED_PROHIBITED_ACTIONS = [
     "stage_generated_shells",
@@ -2497,6 +2507,401 @@ def platform_smoke_plan_approvals_match_actions(
     return True
 
 
+def build_platform_smoke_approval_receipt(
+    plan: dict[str, Any],
+    decision: str = APPROVED_STATUS,
+    reason_code: str | None = None,
+) -> dict[str, Any]:
+    plan_validation = validate_platform_smoke_plan(plan)
+    actions = platform_smoke_plan_action_dicts(plan)
+    decision_supported = decision in {APPROVED_STATUS, REJECTED_STATUS}
+    plan_ready = (
+        plan.get("status") == PLANNED_STATUS
+        and plan_validation.get("status") == PASS_STATUS
+        and all(action.get("status") == PLANNED_STATUS for action in actions)
+    )
+    status = APPROVED_STATUS if decision == APPROVED_STATUS and plan_ready else REJECTED_STATUS
+    issue_code = None
+    if status == REJECTED_STATUS:
+        issue_code = (
+            reason_code
+            or plan.get("issue_code")
+            or plan_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_approval_rejected"
+        )
+    receipts = platform_smoke_action_approval_receipts(plan, actions, status, issue_code)
+    approved_receipts = [
+        receipt for receipt in receipts if receipt.get("approval_status") == APPROVED_STATUS
+    ]
+    rejected_receipts = [
+        receipt for receipt in receipts if receipt.get("approval_status") == REJECTED_STATUS
+    ]
+    checks = platform_smoke_approval_receipt_checks(
+        plan,
+        plan_validation,
+        actions,
+        receipts,
+        status,
+        decision_supported,
+    )
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    if failed and status == APPROVED_STATUS:
+        status = REJECTED_STATUS
+        issue_code = failed[0]["issue_code"]
+        receipts = platform_smoke_action_approval_receipts(plan, actions, status, issue_code)
+        approved_receipts = []
+        rejected_receipts = receipts
+
+    plan_id = plan.get("plan_id")
+    receipt_id = (
+        f"hostess.platform_smoke_approval_receipt.{plan_id}"
+        if isinstance(plan_id, str) and plan_id
+        else "hostess.platform_smoke_approval_receipt.unknown"
+    )
+
+    return {
+        "$schema": PLATFORM_SMOKE_APPROVAL_RECEIPT_SCHEMA,
+        "approval_receipt_id": receipt_id,
+        "source_plan_id": plan_id,
+        "source_bundle_id": plan.get("source_bundle_id"),
+        "source_execution_id": plan.get("source_execution_id"),
+        "source_request_id": plan.get("source_request_id"),
+        "target_profile": plan.get("target_profile"),
+        "target_platform": plan.get("target_platform"),
+        "status": status,
+        "approval_decision": decision if decision_supported else REJECTED_STATUS,
+        "issue_code": issue_code,
+        "execution_policy": PLATFORM_SMOKE_APPROVAL_RECEIPT_POLICY,
+        "receipt_owner": HOSTESS_OWNER,
+        "approval_owner": HOSTESS_OWNER,
+        "plan_owner": plan.get("plan_owner"),
+        "platform_owner": plan.get("platform_owner"),
+        "requester_role": plan.get("requester_role"),
+        "command_session_authority": plan.get("command_session_authority"),
+        "install_launch_evidence_authority": plan.get("install_launch_evidence_authority"),
+        "studio_role": plan.get("studio_role"),
+        "device_required": False,
+        "schema_path_execution_allowed": False,
+        "platform_execution_allowed": False,
+        "studio_execution_allowed": False,
+        "operator_approved": status == APPROVED_STATUS,
+        "future_execution_authorized": status == APPROVED_STATUS,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "source_plan_status": plan.get("status"),
+        "source_plan_validation_status": plan_validation.get("status"),
+        "source_plan_issue_code": plan.get("issue_code") or plan_validation.get("issue_code"),
+        "source_planned_action_count": len(actions),
+        "approval_receipt_count": len(receipts),
+        "approved_action_count": len(approved_receipts),
+        "rejected_action_count": len(rejected_receipts),
+        "source_planned_actions": actions,
+        "action_approval_receipts": receipts,
+        "checks": checks,
+        "next_required_action": (
+            "hostess_operator_start_platform_smoke_outside_studio"
+            if status == APPROVED_STATUS
+            else "repair_or_reject_platform_smoke_plan"
+        ),
+    }
+
+
+def validate_platform_smoke_approval_receipt(
+    plan: dict[str, Any],
+    receipt: dict[str, Any],
+) -> dict[str, Any]:
+    plan_validation = validate_platform_smoke_plan(plan)
+    actions = platform_smoke_plan_action_dicts(plan)
+    receipts = platform_smoke_action_approval_receipt_dicts(receipt)
+    approved_receipts = [
+        item for item in receipts if item.get("approval_status") == APPROVED_STATUS
+    ]
+    rejected_receipts = [
+        item for item in receipts if item.get("approval_status") == REJECTED_STATUS
+    ]
+    embedded_checks = receipt.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    checks = [
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.schema",
+            receipt.get("$schema") == PLATFORM_SMOKE_APPROVAL_RECEIPT_SCHEMA,
+            "platform smoke approval receipt schema is supported",
+            "platform smoke approval receipt schema is unsupported",
+            "hostess.issue.platform_smoke_approval_receipt_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.plan_id",
+            receipt.get("source_plan_id") == plan.get("plan_id"),
+            "platform smoke approval receipt plan id matches",
+            "platform smoke approval receipt plan id differs",
+            "hostess.issue.platform_smoke_approval_receipt_plan_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.status",
+            receipt.get("status") in {APPROVED_STATUS, REJECTED_STATUS},
+            "platform smoke approval receipt status is supported",
+            "platform smoke approval receipt status is unsupported",
+            "hostess.issue.platform_smoke_approval_receipt_status",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.execution_policy",
+            receipt.get("execution_policy") == PLATFORM_SMOKE_APPROVAL_RECEIPT_POLICY,
+            "platform smoke approval receipt is decision-only",
+            "platform smoke approval receipt execution policy drifted",
+            "hostess.issue.platform_smoke_approval_receipt_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.no_execution_started",
+            all(receipt.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and receipt.get("runtime_execution_performed") is False
+            and receipt.get("platform_execution_performed") is False,
+            "platform smoke approval receipt has not started runtime or platform work",
+            "platform smoke approval receipt indicates runtime or platform work started",
+            "hostess.issue.platform_smoke_approval_receipt_execution_started",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.execution_gate",
+            receipt.get("schema_path_execution_allowed") is False
+            and receipt.get("platform_execution_allowed") is False
+            and receipt.get("studio_execution_allowed") is False,
+            "platform smoke approval receipt keeps schema path and Studio execution disabled",
+            "platform smoke approval receipt allows schema path, platform, or Studio execution",
+            "hostess.issue.platform_smoke_approval_receipt_execution_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.authority",
+            receipt.get("receipt_owner") == HOSTESS_OWNER
+            and receipt.get("approval_owner") == HOSTESS_OWNER
+            and receipt.get("plan_owner") == HOSTESS_OWNER
+            and receipt.get("platform_owner") == HOSTESS_OWNER
+            and receipt.get("requester_role") == STUDIO_REQUESTER
+            and receipt.get("command_session_authority") == MANIFOLD_OWNER
+            and receipt.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and receipt.get("studio_role") == STUDIO_ROLE,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.source_plan",
+            receipt.get("status") != APPROVED_STATUS
+            or (
+                plan.get("status") == PLANNED_STATUS
+                and plan_validation.get("status") == PASS_STATUS
+            ),
+            "approved source platform smoke plan is planned and validates",
+            "approved source platform smoke plan is blocked or invalid",
+            plan.get("issue_code")
+            or plan_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_plan_not_planned",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.action_receipts",
+            platform_smoke_action_approval_receipts_match_actions(
+                actions,
+                receipts,
+                receipt.get("status"),
+            ),
+            "platform smoke approval action receipts match planned actions",
+            "platform smoke approval action receipts drifted",
+            "hostess.issue.platform_smoke_approval_receipt_action_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.counts",
+            receipt.get("source_planned_action_count") == len(actions)
+            and receipt.get("approval_receipt_count") == len(receipts)
+            and receipt.get("approved_action_count") == len(approved_receipts)
+            and receipt.get("rejected_action_count") == len(rejected_receipts),
+            "platform smoke approval receipt counts match actions",
+            "platform smoke approval receipt counts drifted",
+            "hostess.issue.platform_smoke_approval_receipt_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.decision_consistency",
+            receipt.get("status") != APPROVED_STATUS
+            or (
+                receipt.get("operator_approved") is True
+                and receipt.get("future_execution_authorized") is True
+                and all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(item.get("approval_status") == APPROVED_STATUS for item in receipts)
+            ),
+            "approved platform smoke receipt carries approved action receipts",
+            "approved platform smoke receipt is inconsistent",
+            "hostess.issue.platform_smoke_approval_receipt_approved_inconsistent",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.rejection_reason",
+            receipt.get("status") != REJECTED_STATUS
+            or isinstance(receipt.get("issue_code"), str),
+            "rejected platform smoke receipt carries a reason code",
+            "rejected platform smoke receipt is missing a reason code",
+            "hostess.issue.platform_smoke_approval_receipt_rejection_reason",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": PLATFORM_SMOKE_APPROVAL_RECEIPT_VALIDATION_SCHEMA,
+        "approval_receipt_id": receipt.get("approval_receipt_id"),
+        "source_plan_id": receipt.get("source_plan_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def platform_smoke_action_approval_receipts(
+    plan: dict[str, Any],
+    actions: list[dict[str, Any]],
+    status: str,
+    issue_code: str | None,
+) -> list[dict[str, Any]]:
+    receipts = []
+    for action in actions:
+        action_id = action.get("plan_action_id")
+        receipts.append(
+            {
+                "action_approval_receipt_id": (
+                    f"hostess.platform_smoke_action_approval_receipt.{action_id}"
+                    if isinstance(action_id, str) and action_id
+                    else "hostess.platform_smoke_action_approval_receipt.unknown"
+                ),
+                "source_plan_id": plan.get("plan_id"),
+                "source_plan_action_id": action_id,
+                "owner": action.get("owner"),
+                "route_kind": action.get("route_kind"),
+                "action_kind": action.get("action_kind"),
+                "approval_kind": action.get("approval_kind"),
+                "expected_input_kind": action.get("expected_input_kind"),
+                "expected_output_kind": action.get("expected_output_kind"),
+                "approval_status": status,
+                "issue_code": None if status == APPROVED_STATUS else issue_code,
+                "operator_approved": status == APPROVED_STATUS,
+                "future_execution_authorized": status == APPROVED_STATUS,
+                "execution_started": False,
+                "runtime_execution_performed": False,
+                "platform_execution_performed": False,
+                "studio_execution_allowed": False,
+                "command_session_started": False,
+            }
+        )
+    return receipts
+
+
+def platform_smoke_approval_receipt_checks(
+    plan: dict[str, Any],
+    plan_validation: dict[str, Any],
+    actions: list[dict[str, Any]],
+    receipts: list[dict[str, Any]],
+    status: str,
+    decision_supported: bool,
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.source_plan",
+            plan.get("$schema") == PLATFORM_SMOKE_PLAN_SCHEMA
+            and plan.get("status") == PLANNED_STATUS
+            and plan_validation.get("status") == PASS_STATUS,
+            "platform smoke plan is planned and validates",
+            "platform smoke plan is blocked or invalid",
+            plan.get("issue_code")
+            or plan_validation.get("issue_code")
+            or "hostess.issue.platform_smoke_plan_not_planned",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.decision",
+            decision_supported,
+            "platform smoke approval decision is supported",
+            "platform smoke approval decision is unsupported",
+            "hostess.issue.platform_smoke_approval_receipt_decision",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.action_contracts",
+            platform_smoke_plan_actions_match_contracts(actions),
+            "platform smoke approval source actions match contracts",
+            "platform smoke approval source actions drifted",
+            "hostess.issue.platform_smoke_plan_action_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.action_receipts",
+            platform_smoke_action_approval_receipts_match_actions(actions, receipts, status),
+            "platform smoke approval receipts match source actions",
+            "platform smoke approval receipts drifted",
+            "hostess.issue.platform_smoke_approval_receipt_action_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_platform_smoke_approval_receipt.no_action_execution",
+            all(platform_smoke_approval_receipt_unstarted(receipt) for receipt in receipts),
+            "platform smoke approval receipts have not started execution",
+            "platform smoke approval receipt indicates execution started",
+            "hostess.issue.platform_smoke_approval_receipt_action_started",
+        ),
+    ]
+
+
+def platform_smoke_action_approval_receipt_dicts(receipt: dict[str, Any]) -> list[dict[str, Any]]:
+    receipts = receipt.get("action_approval_receipts", [])
+    if not isinstance(receipts, list):
+        return []
+    return [item for item in receipts if isinstance(item, dict)]
+
+
+def platform_smoke_action_approval_receipts_match_actions(
+    actions: list[dict[str, Any]],
+    receipts: list[dict[str, Any]],
+    status: Any,
+) -> bool:
+    if status not in {APPROVED_STATUS, REJECTED_STATUS}:
+        return False
+    by_id = {receipt.get("source_plan_action_id"): receipt for receipt in receipts}
+    if len(receipts) != len(actions):
+        return False
+    for action in actions:
+        receipt = by_id.get(action.get("plan_action_id"))
+        if not isinstance(receipt, dict):
+            return False
+        for key in (
+            "owner",
+            "route_kind",
+            "action_kind",
+            "approval_kind",
+            "expected_input_kind",
+            "expected_output_kind",
+        ):
+            if receipt.get(key) != action.get(key):
+                return False
+        if receipt.get("approval_status") != status:
+            return False
+        if receipt.get("operator_approved") != (status == APPROVED_STATUS):
+            return False
+        if receipt.get("future_execution_authorized") != (status == APPROVED_STATUS):
+            return False
+        if not platform_smoke_approval_receipt_unstarted(receipt):
+            return False
+    return True
+
+
+def platform_smoke_approval_receipt_unstarted(receipt: dict[str, Any]) -> bool:
+    return (
+        receipt.get("execution_started") is False
+        and receipt.get("runtime_execution_performed") is False
+        and receipt.get("platform_execution_performed") is False
+        and receipt.get("studio_execution_allowed") is False
+        and receipt.get("command_session_started") is False
+    )
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -2808,7 +3213,10 @@ def main() -> int:
     parser.add_argument("--smoke-host-shell-execution-out", type=Path)
     parser.add_argument("--smoke-review-bundle-in", type=Path)
     parser.add_argument("--smoke-review-bundle-out", type=Path)
+    parser.add_argument("--platform-smoke-plan-in", type=Path)
     parser.add_argument("--platform-smoke-plan-out", type=Path)
+    parser.add_argument("--platform-smoke-approval-out", type=Path)
+    parser.add_argument("--platform-smoke-rejection-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--target-platform", default="hostess.platform_smoke.operator_controlled")
     parser.add_argument("--validate-ack", type=Path)
@@ -2820,6 +3228,7 @@ def main() -> int:
     parser.add_argument("--validate-smoke-host-shell-execution", type=Path)
     parser.add_argument("--validate-smoke-review-bundle", type=Path)
     parser.add_argument("--validate-platform-smoke-plan", type=Path)
+    parser.add_argument("--validate-platform-smoke-approval", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -2833,6 +3242,7 @@ def main() -> int:
         load_json(args.smoke_host_shell_execution_in) if args.smoke_host_shell_execution_in else None
     )
     smoke_review_bundle = load_json(args.smoke_review_bundle_in) if args.smoke_review_bundle_in else None
+    platform_smoke_plan = load_json(args.platform_smoke_plan_in) if args.platform_smoke_plan_in else None
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -2861,6 +3271,8 @@ def main() -> int:
         or args.smoke_host_shell_execution_out
         or args.smoke_review_bundle_out
         or args.platform_smoke_plan_out
+        or args.platform_smoke_approval_out
+        or args.platform_smoke_rejection_out
     ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
@@ -2938,12 +3350,81 @@ def main() -> int:
                 host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
             if smoke_review_bundle is None:
                 smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
-            write_json(
-                args.platform_smoke_plan_out,
-                build_platform_smoke_plan(
+            if platform_smoke_plan is None:
+                platform_smoke_plan = build_platform_smoke_plan(
                     smoke_review_bundle,
                     target_platform=args.target_platform,
-                ),
+                )
+            write_json(
+                args.platform_smoke_plan_out,
+                platform_smoke_plan,
+            )
+        if args.platform_smoke_approval_out or args.platform_smoke_rejection_out:
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            if smoke_review_bundle is None:
+                smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
+            if platform_smoke_plan is None:
+                platform_smoke_plan = build_platform_smoke_plan(
+                    smoke_review_bundle,
+                    target_platform=args.target_platform,
+                )
+            if args.platform_smoke_approval_out:
+                write_json(
+                    args.platform_smoke_approval_out,
+                    build_platform_smoke_approval_receipt(
+                        platform_smoke_plan,
+                        decision=APPROVED_STATUS,
+                    ),
+                )
+            if args.platform_smoke_rejection_out:
+                write_json(
+                    args.platform_smoke_rejection_out,
+                    build_platform_smoke_approval_receipt(
+                        platform_smoke_plan,
+                        decision=REJECTED_STATUS,
+                        reason_code="hostess.issue.operator_rejected_platform_smoke_plan",
+                    ),
+                )
+    if args.validate_platform_smoke_approval and platform_smoke_plan is None:
+        if args.validate_platform_smoke_plan:
+            platform_smoke_plan = load_json(args.validate_platform_smoke_plan)
+        else:
+            if dry_run_request is None:
+                if smoke_handoff is None:
+                    smoke_handoff = build_smoke_handoff_checklist(
+                        request,
+                        report,
+                        ack_fixture,
+                        target_profile=args.target_profile,
+                    )
+                dry_run_request = build_smoke_dry_run_request(
+                    smoke_handoff,
+                    target_profile=args.target_profile,
+                )
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            if host_shell_execution is None:
+                host_shell_execution = build_smoke_host_shell_execution(smoke_preflight)
+            if smoke_review_bundle is None:
+                smoke_review_bundle = build_smoke_review_bundle(host_shell_execution)
+            platform_smoke_plan = build_platform_smoke_plan(
+                smoke_review_bundle,
+                target_platform=args.target_platform,
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -3025,6 +3506,17 @@ def main() -> int:
                 args.validate_platform_smoke_plan.suffix + ".validation.json"
             ),
             plan_report,
+        )
+    if args.validate_platform_smoke_approval:
+        approval_report = validate_platform_smoke_approval_receipt(
+            platform_smoke_plan,
+            load_json(args.validate_platform_smoke_approval),
+        )
+        write_json(
+            args.validate_platform_smoke_approval.with_suffix(
+                args.validate_platform_smoke_approval.suffix + ".validation.json"
+            ),
+            approval_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 
