@@ -21,12 +21,17 @@ SMOKE_EXECUTION_PREFLIGHT_SCHEMA = "rusty.hostess.studio_staging_smoke_execution
 SMOKE_EXECUTION_PREFLIGHT_VALIDATION_SCHEMA = (
     "rusty.hostess.studio_staging_smoke_execution_preflight_validation.v1"
 )
+SMOKE_HOST_SHELL_EXECUTION_SCHEMA = "rusty.hostess.studio_staging_smoke_host_shell_execution.v1"
+SMOKE_HOST_SHELL_EXECUTION_VALIDATION_SCHEMA = (
+    "rusty.hostess.studio_staging_smoke_host_shell_execution_validation.v1"
+)
 
 READY_STATUS = "ready"
 BLOCKED_STATUS = "blocked"
 ACCEPTED_STATUS = "accepted"
 REJECTED_STATUS = "rejected"
 PENDING_STATUS = "pending"
+COMPLETED_STATUS = "completed"
 PASS_STATUS = "pass"
 FAIL_STATUS = "fail"
 
@@ -35,6 +40,7 @@ MANIFOLD_OWNER = "rusty.manifold"
 STUDIO_REQUESTER = "rusty.studio"
 STUDIO_ROLE = "authoring.export_planning"
 REQUEST_POLICY = "not_executed.hostess_request_only"
+HOST_SHELL_EXECUTION_POLICY = "hostess.no_device_host_shell_schema_execution_only"
 
 REQUIRED_PROHIBITED_ACTIONS = [
     "stage_generated_shells",
@@ -1276,6 +1282,362 @@ def first_capability_issue_code(capabilities: list[dict[str, Any]]) -> str | Non
     return None
 
 
+def build_smoke_host_shell_execution(preflight: dict[str, Any]) -> dict[str, Any]:
+    preflight_validation = validate_smoke_execution_preflight(preflight)
+    capabilities = preflight_capabilities(preflight)
+    evidence_records = smoke_host_shell_evidence_records(
+        preflight,
+        preflight_validation,
+        capabilities,
+    )
+    checks = smoke_host_shell_execution_checks(
+        preflight,
+        preflight_validation,
+        capabilities,
+        evidence_records,
+    )
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    preflight_id = preflight.get("preflight_id")
+    execution_id = (
+        f"hostess.smoke_host_shell_execution.{preflight_id}"
+        if isinstance(preflight_id, str) and preflight_id
+        else "hostess.smoke_host_shell_execution.unknown"
+    )
+
+    accepted_records = [
+        record for record in evidence_records if record.get("evidence_status") == ACCEPTED_STATUS
+    ]
+    rejected_records = [
+        record for record in evidence_records if record.get("evidence_status") == REJECTED_STATUS
+    ]
+
+    return {
+        "$schema": SMOKE_HOST_SHELL_EXECUTION_SCHEMA,
+        "execution_id": execution_id,
+        "preflight_id": preflight_id,
+        "dry_run_request_id": preflight.get("dry_run_request_id"),
+        "dry_run_receipt_id": preflight.get("dry_run_receipt_id"),
+        "smoke_handoff_id": preflight.get("smoke_handoff_id"),
+        "source_request_id": preflight.get("source_request_id"),
+        "target_profile": preflight.get("target_profile"),
+        "status": COMPLETED_STATUS if not failed else BLOCKED_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "execution_policy": HOST_SHELL_EXECUTION_POLICY,
+        "executor_owner": HOSTESS_OWNER,
+        "adapter_owner": preflight.get("adapter_owner"),
+        "requester_role": preflight.get("requester_role"),
+        "command_session_authority": preflight.get("command_session_authority"),
+        "install_launch_evidence_authority": preflight.get("install_launch_evidence_authority"),
+        "studio_role": preflight.get("studio_role"),
+        "host_shell_owner": preflight.get("host_shell_owner"),
+        "host_shell_kind": preflight.get("host_shell_kind"),
+        "device_required": False,
+        "platform_execution_allowed": False,
+        "execution_performed": False,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "host_shell_harness_performed": True,
+        "schema_checks_performed": True,
+        "build_started": False,
+        "copy_started": False,
+        "stage_started": False,
+        "install_started": False,
+        "launch_started": False,
+        "evidence_collection_started": False,
+        "command_session_started": False,
+        "preflight_status": preflight.get("status"),
+        "preflight_validation_status": preflight_validation.get("status"),
+        "preflight_issue_code": preflight.get("issue_code") or preflight_validation.get("issue_code"),
+        "preflight_capabilities": capabilities,
+        "evidence_record_count": len(evidence_records),
+        "accepted_evidence_record_count": len(accepted_records),
+        "rejected_evidence_record_count": len(rejected_records),
+        "evidence_records": evidence_records,
+        "checks": checks,
+        "next_required_action": (
+            "hostess_t_operator_review_before_platform_smoke_outside_studio"
+            if not failed
+            else "repair_hostess_smoke_execution_preflight"
+        ),
+    }
+
+
+def validate_smoke_host_shell_execution(execution: dict[str, Any]) -> dict[str, Any]:
+    capabilities = preflight_capabilities(execution)
+    records = smoke_host_shell_execution_evidence_records(execution)
+    embedded_checks = execution.get("checks", [])
+    if not isinstance(embedded_checks, list):
+        embedded_checks = []
+    embedded_check_dicts = [check for check in embedded_checks if isinstance(check, dict)]
+    accepted_records = [
+        record for record in records if record.get("evidence_status") == ACCEPTED_STATUS
+    ]
+    rejected_records = [
+        record for record in records if record.get("evidence_status") == REJECTED_STATUS
+    ]
+    checks = [
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.schema",
+            execution.get("$schema") == SMOKE_HOST_SHELL_EXECUTION_SCHEMA,
+            "smoke host-shell execution schema is supported",
+            "smoke host-shell execution schema is unsupported",
+            "hostess.issue.smoke_host_shell_execution_schema",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.status",
+            execution.get("status") in {COMPLETED_STATUS, BLOCKED_STATUS},
+            "smoke host-shell execution status is supported",
+            "smoke host-shell execution status is unsupported",
+            "hostess.issue.smoke_host_shell_execution_status",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.execution_policy",
+            execution.get("execution_policy") == HOST_SHELL_EXECUTION_POLICY,
+            "smoke host-shell execution is no-device schema execution only",
+            "smoke host-shell execution policy drifted",
+            "hostess.issue.smoke_host_shell_execution_policy",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.no_runtime_started",
+            all(execution.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS)
+            and execution.get("runtime_execution_performed") is False
+            and execution.get("platform_execution_performed") is False,
+            "smoke host-shell execution did not start runtime or platform work",
+            "smoke host-shell execution indicates runtime or platform work started",
+            "hostess.issue.smoke_host_shell_execution_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.no_device",
+            execution.get("device_required") is False
+            and execution.get("platform_execution_allowed") is False,
+            "smoke host-shell execution is no-device",
+            "smoke host-shell execution allows device or platform execution",
+            "hostess.issue.smoke_host_shell_execution_device_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.authority",
+            execution.get("executor_owner") == HOSTESS_OWNER
+            and execution.get("adapter_owner") == HOSTESS_OWNER
+            and execution.get("requester_role") == STUDIO_REQUESTER
+            and execution.get("command_session_authority") == MANIFOLD_OWNER
+            and execution.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and execution.get("studio_role") == STUDIO_ROLE
+            and execution.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.harness",
+            execution.get("host_shell_harness_performed") is True
+            and execution.get("schema_checks_performed") is True,
+            "Hostess host-shell harness performed schema checks",
+            "Hostess host-shell harness did not record schema checks",
+            "hostess.issue.smoke_host_shell_harness_not_performed",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.evidence_counts",
+            execution.get("evidence_record_count") == len(records)
+            and execution.get("accepted_evidence_record_count") == len(accepted_records)
+            and execution.get("rejected_evidence_record_count") == len(rejected_records),
+            "smoke host-shell evidence counts match records",
+            "smoke host-shell evidence counts drifted",
+            "hostess.issue.smoke_host_shell_evidence_count_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.evidence_contracts",
+            smoke_host_shell_evidence_records_match_capabilities(capabilities, records),
+            "smoke host-shell evidence records match capability contracts",
+            "smoke host-shell evidence records drifted",
+            "hostess.issue.smoke_host_shell_evidence_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.completed_consistency",
+            execution.get("status") != COMPLETED_STATUS
+            or (
+                execution.get("preflight_status") == READY_STATUS
+                and execution.get("preflight_validation_status") == PASS_STATUS
+                and all(check.get("status") == PASS_STATUS for check in embedded_check_dicts)
+                and all(record.get("evidence_status") == ACCEPTED_STATUS for record in records)
+            ),
+            "completed smoke host-shell execution has passing checks and accepted evidence",
+            "completed smoke host-shell execution has failed checks or rejected evidence",
+            "hostess.issue.smoke_host_shell_completed_inconsistent",
+        ),
+    ]
+    failed = [check for check in checks if check["status"] == FAIL_STATUS]
+    return {
+        "$schema": SMOKE_HOST_SHELL_EXECUTION_VALIDATION_SCHEMA,
+        "execution_id": execution.get("execution_id"),
+        "preflight_id": execution.get("preflight_id"),
+        "status": PASS_STATUS if not failed else FAIL_STATUS,
+        "issue_code": failed[0]["issue_code"] if failed else None,
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "checks": checks,
+    }
+
+
+def smoke_host_shell_evidence_records(
+    preflight: dict[str, Any],
+    preflight_validation: dict[str, Any],
+    capabilities: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    preflight_ready = (
+        preflight.get("status") == READY_STATUS
+        and preflight_validation.get("status") == PASS_STATUS
+        and all(capability.get("status") == READY_STATUS for capability in capabilities)
+    )
+    records = []
+    for capability in capabilities:
+        capability_id = capability.get("capability_id")
+        issue_code = None
+        if not preflight_ready:
+            issue_code = (
+                capability.get("issue_code")
+                or preflight.get("issue_code")
+                or preflight_validation.get("issue_code")
+                or "hostess.issue.smoke_execution_preflight_not_ready"
+            )
+        records.append(
+            {
+                "evidence_id": (
+                    f"hostess.smoke_host_shell_evidence.{capability_id}"
+                    if isinstance(capability_id, str) and capability_id
+                    else "hostess.smoke_host_shell_evidence.unknown"
+                ),
+                "owner": capability.get("owner"),
+                "source_capability_id": capability_id,
+                "route_kind": capability.get("route_kind"),
+                "evidence_kind": capability.get("evidence_kind"),
+                "evidence_status": ACCEPTED_STATUS if issue_code is None else REJECTED_STATUS,
+                "issue_code": issue_code,
+                "device_required": False,
+                "schema_check_performed": True,
+                "platform_execution_performed": False,
+                "runtime_execution_performed": False,
+                "command_session_started": False,
+            }
+        )
+    return records
+
+
+def smoke_host_shell_execution_checks(
+    preflight: dict[str, Any],
+    preflight_validation: dict[str, Any],
+    capabilities: list[dict[str, Any]],
+    evidence_records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    return [
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.preflight",
+            preflight.get("$schema") == SMOKE_EXECUTION_PREFLIGHT_SCHEMA
+            and preflight.get("status") == READY_STATUS
+            and preflight_validation.get("status") == PASS_STATUS,
+            "smoke execution preflight is ready and validates",
+            "smoke execution preflight is blocked or invalid",
+            preflight.get("issue_code")
+            or preflight_validation.get("issue_code")
+            or "hostess.issue.smoke_execution_preflight_not_ready",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.authority",
+            preflight.get("adapter_owner") == HOSTESS_OWNER
+            and preflight.get("requester_role") == STUDIO_REQUESTER
+            and preflight.get("command_session_authority") == MANIFOLD_OWNER
+            and preflight.get("install_launch_evidence_authority") == HOSTESS_OWNER
+            and preflight.get("studio_role") == STUDIO_ROLE
+            and preflight.get("host_shell_owner") == HOSTESS_OWNER,
+            "Hostess, Manifold, and Studio authority fields are separated",
+            "authority fields drifted",
+            "hostess.issue.runtime_authority_mismatch",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.no_device",
+            preflight.get("device_required") is False
+            and preflight.get("platform_execution_allowed") is False,
+            "preflight is no-device and does not allow platform execution",
+            "preflight allows device or platform execution",
+            "hostess.issue.smoke_host_shell_execution_device_gate",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.no_runtime_started",
+            all(preflight.get(flag) is False for flag in SMOKE_HANDOFF_STARTED_FLAGS),
+            "preflight has not started runtime work",
+            "preflight indicates runtime work started",
+            "hostess.issue.smoke_host_shell_execution_runtime_started",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.capability_contracts",
+            smoke_preflight_capabilities_match_contracts(capabilities),
+            "preflight capabilities match owner and route contracts",
+            "preflight capabilities drifted",
+            "hostess.issue.smoke_execution_preflight_capability_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.evidence_contracts",
+            smoke_host_shell_evidence_records_match_capabilities(capabilities, evidence_records),
+            "host-shell evidence records match capability contracts",
+            "host-shell evidence records drifted",
+            "hostess.issue.smoke_host_shell_evidence_contract_drift",
+        ),
+        check(
+            "hostess.check.studio_staging_smoke_host_shell_execution.evidence_accepted",
+            all(record.get("evidence_status") == ACCEPTED_STATUS for record in evidence_records),
+            "host-shell evidence records are accepted",
+            "host-shell evidence records are rejected",
+            first_evidence_issue_code(evidence_records)
+            or "hostess.issue.smoke_host_shell_evidence_rejected",
+        ),
+    ]
+
+
+def smoke_host_shell_execution_evidence_records(execution: dict[str, Any]) -> list[dict[str, Any]]:
+    records = execution.get("evidence_records", [])
+    if not isinstance(records, list):
+        return []
+    return [record for record in records if isinstance(record, dict)]
+
+
+def smoke_host_shell_evidence_records_match_capabilities(
+    capabilities: list[dict[str, Any]],
+    records: list[dict[str, Any]],
+) -> bool:
+    by_id = {record.get("source_capability_id"): record for record in records}
+    if len(records) != len(capabilities):
+        return False
+    for capability in capabilities:
+        capability_id = capability.get("capability_id")
+        record = by_id.get(capability_id)
+        if not isinstance(record, dict):
+            return False
+        if record.get("owner") != capability.get("owner"):
+            return False
+        if record.get("route_kind") != capability.get("route_kind"):
+            return False
+        if record.get("evidence_kind") != capability.get("evidence_kind"):
+            return False
+        if record.get("device_required") is not False:
+            return False
+        if record.get("schema_check_performed") is not True:
+            return False
+        if record.get("platform_execution_performed") is not False:
+            return False
+        if record.get("runtime_execution_performed") is not False:
+            return False
+        if record.get("command_session_started") is not False:
+            return False
+    return True
+
+
+def first_evidence_issue_code(records: list[dict[str, Any]]) -> str | None:
+    for record in records:
+        issue_code = record.get("issue_code")
+        if isinstance(issue_code, str) and issue_code:
+            return issue_code
+    return None
+
+
 def validate_ack_fixture(request: dict[str, Any], ack: dict[str, Any]) -> dict[str, Any]:
     checks = [
         check(
@@ -1581,7 +1943,9 @@ def main() -> int:
     parser.add_argument("--smoke-dry-run-request-out", type=Path)
     parser.add_argument("--smoke-dry-run-receipt-in", type=Path)
     parser.add_argument("--smoke-dry-run-receipt-out", type=Path)
+    parser.add_argument("--smoke-preflight-in", type=Path)
     parser.add_argument("--smoke-preflight-out", type=Path)
+    parser.add_argument("--smoke-host-shell-execution-out", type=Path)
     parser.add_argument("--target-profile", default="hostess.t.schema_smoke")
     parser.add_argument("--validate-ack", type=Path)
     parser.add_argument("--validate-reject", type=Path)
@@ -1589,6 +1953,7 @@ def main() -> int:
     parser.add_argument("--validate-smoke-dry-run-request", type=Path)
     parser.add_argument("--validate-smoke-dry-run-receipt", type=Path)
     parser.add_argument("--validate-smoke-preflight", type=Path)
+    parser.add_argument("--validate-smoke-host-shell-execution", type=Path)
     args = parser.parse_args()
 
     request = load_json(args.request)
@@ -1597,6 +1962,7 @@ def main() -> int:
     smoke_handoff = load_json(args.smoke_handoff_in) if args.smoke_handoff_in else None
     dry_run_request = load_json(args.smoke_dry_run_request_in) if args.smoke_dry_run_request_in else None
     dry_run_receipt = load_json(args.smoke_dry_run_receipt_in) if args.smoke_dry_run_receipt_in else None
+    smoke_preflight = load_json(args.smoke_preflight_in) if args.smoke_preflight_in else None
     if args.report_out:
         write_json(args.report_out, report)
     else:
@@ -1618,7 +1984,12 @@ def main() -> int:
             args.smoke_handoff_out,
             smoke_handoff,
         )
-    if args.smoke_dry_run_request_out or args.smoke_dry_run_receipt_out or args.smoke_preflight_out:
+    if (
+        args.smoke_dry_run_request_out
+        or args.smoke_dry_run_receipt_out
+        or args.smoke_preflight_out
+        or args.smoke_host_shell_execution_out
+    ):
         if smoke_handoff is None:
             smoke_handoff = build_smoke_handoff_checklist(
                 request,
@@ -1640,13 +2011,28 @@ def main() -> int:
         if args.smoke_preflight_out:
             if dry_run_receipt is None:
                 dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
-            write_json(
-                args.smoke_preflight_out,
-                build_smoke_execution_preflight(
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
                     dry_run_request,
                     dry_run_receipt,
                     target_profile=args.target_profile,
-                ),
+                )
+            write_json(
+                args.smoke_preflight_out,
+                smoke_preflight,
+            )
+        if args.smoke_host_shell_execution_out:
+            if dry_run_receipt is None:
+                dry_run_receipt = build_smoke_dry_run_receipt(dry_run_request)
+            if smoke_preflight is None:
+                smoke_preflight = build_smoke_execution_preflight(
+                    dry_run_request,
+                    dry_run_receipt,
+                    target_profile=args.target_profile,
+                )
+            write_json(
+                args.smoke_host_shell_execution_out,
+                build_smoke_host_shell_execution(smoke_preflight),
             )
     if args.validate_ack:
         ack_report = validate_ack_fixture(request, load_json(args.validate_ack))
@@ -1704,6 +2090,14 @@ def main() -> int:
                 args.validate_smoke_preflight.suffix + ".validation.json"
             ),
             preflight_report,
+        )
+    if args.validate_smoke_host_shell_execution:
+        execution_report = validate_smoke_host_shell_execution(load_json(args.validate_smoke_host_shell_execution))
+        write_json(
+            args.validate_smoke_host_shell_execution.with_suffix(
+                args.validate_smoke_host_shell_execution.suffix + ".validation.json"
+            ),
+            execution_report,
         )
     return 0 if report["status"] == ACCEPTED_STATUS else 2
 

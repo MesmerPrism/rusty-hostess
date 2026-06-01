@@ -38,7 +38,8 @@ python tools\studio_staging_request.py `
   --smoke-handoff-out <hostess-smoke-handoff.json> `
   --smoke-dry-run-request-out <hostess-smoke-dry-run-request.json> `
   --smoke-dry-run-receipt-out <hostess-smoke-dry-run-receipt.json> `
-  --smoke-preflight-out <hostess-smoke-preflight.json>
+  --smoke-preflight-out <hostess-smoke-preflight.json> `
+  --smoke-host-shell-execution-out <hostess-smoke-host-shell-execution.json>
 ```
 
 The intake report uses
@@ -68,3 +69,14 @@ receipt kinds, and records `device_required = false` and
 `platform_execution_allowed = false`. It is the last schema-only readiness
 fixture before Hostess T or a dedicated host shell starts real platform smoke
 execution.
+
+The no-device host-shell execution uses
+`rusty.hostess.studio_staging_smoke_host_shell_execution.v1`. It consumes the
+preflight, performs Hostess-owned schema checks, and emits evidence records for
+each Hostess/Manifold capability. It records
+`host_shell_harness_performed = true` and `schema_checks_performed = true`,
+while `execution_performed`, `runtime_execution_performed`,
+`platform_execution_performed`, `build_started`, `copy_started`,
+`stage_started`, `install_started`, `launch_started`,
+`evidence_collection_started`, and `command_session_started` remain false. It
+is not a Quest/APK build, app install, app launch, or evidence-capture run.
