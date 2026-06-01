@@ -46,7 +46,9 @@ python tools\studio_staging_request.py `
   --platform-smoke-rejection-out <hostess-platform-smoke-rejection.json> `
   --platform-smoke-execution-request-out <hostess-platform-smoke-execution-request.json> `
   --platform-smoke-execution-receipt-out <hostess-platform-smoke-execution-receipt.json> `
-  --platform-smoke-operator-start-gate-out <hostess-platform-smoke-operator-start-gate.json>
+  --platform-smoke-operator-start-gate-out <hostess-platform-smoke-operator-start-gate.json> `
+  --platform-smoke-operator-start-preflight-out <hostess-platform-smoke-operator-start-preflight.json> `
+  --platform-smoke-operator-start-preflight-rejection-out <hostess-platform-smoke-operator-start-preflight-rejection.json>
 ```
 
 The intake report uses
@@ -152,3 +154,19 @@ false`, `host_shell_started = false`, `device_required = false`,
 false`. It is a schema handoff gate only; the actual first build smoke test
 must be Hostess-owned, operator-started outside Studio, and separately
 evidenced.
+
+The platform smoke operator-start preflight receipt uses
+`rusty.hostess.studio_staging_platform_smoke_operator_start_preflight_receipt.v1`.
+It consumes the operator-start gate and records an approved or rejected
+operator decision over the gate, required Hostess shell/toolchain/device
+readiness inputs, the Manifold command-session review input, evidence
+destination readiness, rollback readiness, and per-action decision receipts.
+An approved preflight may authorize a future Hostess-owned host shell to start,
+but this receipt still records `operator_started = false`,
+`host_shell_started = false`, `device_required = false`,
+`schema_path_execution_allowed = false`, `platform_execution_allowed = false`,
+`studio_execution_allowed = false`, `execution_performed = false`,
+`runtime_execution_performed = false`, and `platform_execution_performed =
+false`. It is a preflight approval/rejection contract only; the actual first
+build smoke test remains Hostess-owned, operator-started outside Studio, and
+separately evidenced.

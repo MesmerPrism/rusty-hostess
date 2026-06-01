@@ -1276,6 +1276,260 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_operator_start_gate_template_drift",
         )
 
+    def test_builds_platform_smoke_operator_start_preflight_receipt_without_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+
+        receipt = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        )
+
+        self.assertEqual(
+            receipt["$schema"],
+            adapter.PLATFORM_SMOKE_OPERATOR_START_PREFLIGHT_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(receipt["status"], adapter.APPROVED_STATUS)
+        self.assertEqual(receipt["preflight_decision"], adapter.APPROVED_STATUS)
+        self.assertIsNone(receipt["issue_code"])
+        self.assertEqual(
+            receipt["execution_policy"],
+            adapter.PLATFORM_SMOKE_OPERATOR_START_PREFLIGHT_RECEIPT_POLICY,
+        )
+        self.assertEqual(receipt["receipt_owner"], "rusty.hostess")
+        self.assertEqual(receipt["preflight_owner"], "rusty.hostess")
+        self.assertEqual(receipt["operator_start_owner"], "rusty.hostess")
+        self.assertEqual(receipt["host_shell_owner"], "rusty.hostess")
+        self.assertEqual(receipt["command_session_authority"], "rusty.manifold")
+        self.assertEqual(receipt["install_launch_evidence_authority"], "rusty.hostess")
+        self.assertFalse(receipt["device_required"])
+        self.assertTrue(receipt["target_device_required_for_future_execution"])
+        self.assertTrue(receipt["operator_approved"])
+        self.assertTrue(receipt["operator_start_preflight_approved"])
+        self.assertTrue(receipt["operator_start_required"])
+        self.assertTrue(receipt["host_shell_execution_required"])
+        self.assertFalse(receipt["operator_started"])
+        self.assertFalse(receipt["host_shell_started"])
+        self.assertFalse(receipt["schema_path_execution_allowed"])
+        self.assertFalse(receipt["platform_execution_allowed"])
+        self.assertFalse(receipt["studio_execution_allowed"])
+        for flag in adapter.SMOKE_HANDOFF_STARTED_FLAGS:
+            self.assertFalse(receipt[flag], flag)
+        self.assertFalse(receipt["runtime_execution_performed"])
+        self.assertFalse(receipt["platform_execution_performed"])
+        self.assertEqual(
+            receipt["readiness_input_count"],
+            len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+        )
+        self.assertEqual(
+            receipt["approved_readiness_input_count"],
+            len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+        )
+        self.assertEqual(receipt["rejected_readiness_input_count"], 0)
+        self.assertTrue(
+            any(
+                item["readiness_input_id"] == "hostess.operator_start.toolchain_readiness"
+                for item in receipt["readiness_inputs"]
+            )
+        )
+        self.assertTrue(
+            any(
+                item["readiness_input_id"] == "hostess.operator_start.device_readiness"
+                for item in receipt["readiness_inputs"]
+            )
+        )
+        self.assertEqual(
+            receipt["operator_start_action_decision_receipt_count"],
+            len(gate["operator_start_action_gates"]),
+        )
+        self.assertEqual(
+            receipt["approved_operator_start_action_count"],
+            len(gate["operator_start_action_gates"]),
+        )
+        self.assertEqual(receipt["rejected_operator_start_action_count"], 0)
+        self.assertTrue(
+            all(
+                action["decision_status"] == adapter.APPROVED_STATUS
+                and action["operator_started"] is False
+                and action["execution_started"] is False
+                and action["runtime_execution_performed"] is False
+                and action["platform_execution_performed"] is False
+                and action["studio_execution_allowed"] is False
+                for action in receipt["operator_start_action_decision_receipts"]
+            )
+        )
+        self.assertTrue(
+            all(
+                item["readiness_status"] == adapter.APPROVED_STATUS
+                and item["operator_supplied"] is False
+                and item["validated_for_execution"] is False
+                and item["operator_started"] is False
+                and item["execution_started"] is False
+                for item in receipt["readiness_inputs"]
+            )
+        )
+
+        validation = adapter.validate_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            receipt,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_platform_smoke_operator_start_preflight_rejection_receipt_without_execution(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+
+        receipt = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            decision=adapter.REJECTED_STATUS,
+            reason_code="hostess.issue.operator_declined_operator_start_preflight",
+        )
+
+        self.assertEqual(receipt["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(receipt["preflight_decision"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            receipt["issue_code"],
+            "hostess.issue.operator_declined_operator_start_preflight",
+        )
+        self.assertFalse(receipt["operator_approved"])
+        self.assertFalse(receipt["operator_start_preflight_approved"])
+        self.assertFalse(receipt["operator_start_required"])
+        self.assertFalse(receipt["host_shell_execution_required"])
+        self.assertFalse(receipt["operator_started"])
+        self.assertFalse(receipt["host_shell_started"])
+        self.assertFalse(receipt["execution_performed"])
+        self.assertFalse(receipt["platform_execution_performed"])
+        self.assertEqual(receipt["approved_readiness_input_count"], 0)
+        self.assertEqual(
+            receipt["rejected_readiness_input_count"],
+            len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+        )
+        self.assertEqual(receipt["approved_operator_start_action_count"], 0)
+        self.assertEqual(
+            receipt["rejected_operator_start_action_count"],
+            len(gate["operator_start_action_gates"]),
+        )
+        self.assertTrue(
+            all(
+                item["readiness_status"] == adapter.REJECTED_STATUS
+                and item["issue_code"]
+                == "hostess.issue.operator_declined_operator_start_preflight"
+                and item["operator_started"] is False
+                for item in receipt["readiness_inputs"]
+            )
+        )
+        self.assertTrue(
+            all(
+                action["decision_status"] == adapter.REJECTED_STATUS
+                and action["issue_code"]
+                == "hostess.issue.operator_declined_operator_start_preflight"
+                and action["operator_started"] is False
+                for action in receipt["operator_start_action_decision_receipts"]
+            )
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_operator_start_preflight_receipt(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+                receipt,
+            )["status"],
+            "pass",
+        )
+
+    def test_platform_smoke_operator_start_preflight_validation_rejects_start_or_contract_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+        receipt = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        )
+
+        started = copy.deepcopy(receipt)
+        started["operator_started"] = True
+        started_report = adapter.validate_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            started,
+        )
+        self.assertEqual(started_report["status"], "fail")
+        self.assertEqual(
+            started_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_preflight_execution_started",
+        )
+
+        readiness_drift = copy.deepcopy(receipt)
+        readiness_drift["readiness_inputs"][0]["owner"] = "rusty.studio"
+        readiness_drift["readiness_inputs"][0]["input_kind"] = "studio_owned_input"
+        readiness_report = adapter.validate_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            readiness_drift,
+        )
+        self.assertEqual(readiness_report["status"], "fail")
+        self.assertEqual(
+            readiness_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_preflight_readiness_drift",
+        )
+
+        action_drift = copy.deepcopy(receipt)
+        action_drift["operator_start_action_decision_receipts"][0]["owner"] = "rusty.studio"
+        action_drift["operator_start_action_decision_receipts"][0]["route_kind"] = (
+            "studio.platform_smoke.operator_start"
+        )
+        action_report = adapter.validate_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            action_drift,
+        )
+        self.assertEqual(action_report["status"], "fail")
+        self.assertEqual(
+            action_report["issue_code"],
+            "hostess.issue.platform_smoke_operator_start_preflight_action_drift",
+        )
+
     def test_cli_writes_schema_only_report_and_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -1295,6 +1549,12 @@ class StudioStagingRequestTests(unittest.TestCase):
             execution_request_path = root / "platform-smoke-execution-request.json"
             execution_receipt_path = root / "platform-smoke-execution-receipt.json"
             operator_start_path = root / "platform-smoke-operator-start-gate.json"
+            operator_start_preflight_path = (
+                root / "platform-smoke-operator-start-preflight.json"
+            )
+            operator_start_preflight_rejection_path = (
+                root / "platform-smoke-operator-start-preflight-rejection.json"
+            )
             request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
 
             with patch.object(
@@ -1354,6 +1614,12 @@ class StudioStagingRequestTests(unittest.TestCase):
                     str(operator_start_path),
                     "--validate-platform-smoke-operator-start-gate",
                     str(operator_start_path),
+                    "--platform-smoke-operator-start-preflight-out",
+                    str(operator_start_preflight_path),
+                    "--platform-smoke-operator-start-preflight-rejection-out",
+                    str(operator_start_preflight_rejection_path),
+                    "--validate-platform-smoke-operator-start-preflight",
+                    str(operator_start_preflight_path),
                     "--host-shell-kind",
                     "hostess.t.quest_host_shell.schema_gate",
                 ],
@@ -1414,6 +1680,17 @@ class StudioStagingRequestTests(unittest.TestCase):
                 operator_start_path.with_suffix(operator_start_path.suffix + ".validation.json").read_text(
                     encoding="utf-8"
                 )
+            )
+            operator_start_preflight = json.loads(
+                operator_start_preflight_path.read_text(encoding="utf-8")
+            )
+            operator_start_preflight_rejection = json.loads(
+                operator_start_preflight_rejection_path.read_text(encoding="utf-8")
+            )
+            operator_start_preflight_report = json.loads(
+                operator_start_preflight_path.with_suffix(
+                    operator_start_preflight_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
             )
             self.assertEqual(report["status"], "accepted")
             self.assertFalse(report["execution_performed"])
@@ -1500,6 +1777,33 @@ class StudioStagingRequestTests(unittest.TestCase):
                 len(plan["planned_actions"]),
             )
             self.assertEqual(operator_start_report["status"], "pass")
+            self.assertEqual(operator_start_preflight["status"], "approved")
+            self.assertTrue(operator_start_preflight["operator_start_preflight_approved"])
+            self.assertFalse(operator_start_preflight["device_required"])
+            self.assertFalse(operator_start_preflight["operator_started"])
+            self.assertFalse(operator_start_preflight["host_shell_started"])
+            self.assertFalse(operator_start_preflight["execution_performed"])
+            self.assertFalse(operator_start_preflight["platform_execution_performed"])
+            self.assertFalse(operator_start_preflight["schema_path_execution_allowed"])
+            self.assertEqual(
+                operator_start_preflight["approved_readiness_input_count"],
+                len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+            )
+            self.assertEqual(
+                operator_start_preflight["approved_operator_start_action_count"],
+                len(plan["planned_actions"]),
+            )
+            self.assertEqual(operator_start_preflight_report["status"], "pass")
+            self.assertEqual(operator_start_preflight_rejection["status"], "rejected")
+            self.assertFalse(operator_start_preflight_rejection["operator_start_preflight_approved"])
+            self.assertFalse(operator_start_preflight_rejection["operator_started"])
+            self.assertFalse(operator_start_preflight_rejection["host_shell_started"])
+            self.assertFalse(operator_start_preflight_rejection["execution_performed"])
+            self.assertFalse(operator_start_preflight_rejection["platform_execution_performed"])
+            self.assertEqual(
+                operator_start_preflight_rejection["rejected_readiness_input_count"],
+                len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS),
+            )
 
 
 def valid_request() -> dict[str, object]:
@@ -1676,6 +1980,23 @@ def ready_platform_smoke_execution_chain() -> tuple[
         execution_request,
     )
     return plan, approval, execution_request, execution_receipt
+
+
+def ready_platform_smoke_operator_start_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan, approval, execution_request, execution_receipt = ready_platform_smoke_execution_chain()
+    gate = adapter.build_platform_smoke_operator_start_gate(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+    )
+    return plan, approval, execution_request, execution_receipt, gate
 
 
 if __name__ == "__main__":
