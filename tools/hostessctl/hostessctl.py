@@ -272,6 +272,7 @@ def main() -> int:
     record_values.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     record_values.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
     record_values.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    record_values.add_argument("--makepad-pose-ready-timeout-seconds", type=float, default=20.0)
     record_values.add_argument("--cargo", default="cargo")
     record_values.add_argument("--pmb-live-processor", action="store_true")
     record_values.add_argument("--pmb-feedback-publish-limit", type=int, default=24)
@@ -1292,6 +1293,12 @@ def record_broker_websocket_streams(
                 )
                 makepad_publish_enabled = True
                 makepad_breath_feedback_enabled = pmb_bridge_enabled
+                wait_for_makepad_controller_pose_ready(
+                    args,
+                    ws,
+                    provider_actions,
+                    errors,
+                )
         deadline = time.monotonic() + float(args.duration_seconds)
         with events_jsonl.open("a", encoding="utf-8") as events_file:
             while time.monotonic() < deadline:
@@ -1542,6 +1549,89 @@ def configure_makepad_controller_pose_provider(
         adb_prefix(args) + ["shell", "am", "start", "-n", args.makepad_provider_activity],
         allow_failure=False,
     )
+
+
+def wait_for_makepad_controller_pose_ready(
+    args: argparse.Namespace,
+    ws: BrokerWebSocketClient,
+    provider_actions: list[dict[str, Any]],
+    errors: list[str],
+) -> None:
+    timeout_seconds = float(getattr(args, "makepad_pose_ready_timeout_seconds", 20.0))
+    deadline = time.monotonic() + max(timeout_seconds, 0.1)
+    observed = 0
+    active = 0
+    tracked = 0
+    connected = 0
+    last_payload: dict[str, Any] | None = None
+    while time.monotonic() < deadline:
+        message = ws.recv_json(timeout=0.25)
+        if message is None:
+            continue
+        if message.get("type") != "stream_event":
+            provider_actions.append(
+                {
+                    "action": "wait-makepad-controller-pose-ready-observed-broker-message",
+                    "status": "observed",
+                    "message_type": str(message.get("type") or message.get("command") or "broker-message"),
+                    "request_id": message.get("request_id"),
+                }
+            )
+            continue
+        payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+        stream = str(message.get("stream") or message.get("stream_id") or payload.get("stream_id") or payload.get("stream") or "")
+        if stream != "stream.motion.object_pose":
+            continue
+        observed += 1
+        last_payload = payload
+        if payload.get("active") is True:
+            active += 1
+        if payload.get("tracked") is True:
+            tracked += 1
+        if payload.get("connected") is True:
+            connected += 1
+        if (
+            payload.get("active") is True
+            and payload.get("tracked") is True
+            and payload.get("connected") is True
+        ):
+            provider_actions.append(
+                {
+                    "action": "wait-makepad-controller-pose-ready",
+                    "status": "pass",
+                    "timeout_seconds": timeout_seconds,
+                    "observed_pose_events": observed,
+                    "active_pose_events": active,
+                    "tracked_pose_events": tracked,
+                    "connected_pose_events": connected,
+                    "controller": payload.get("controller"),
+                    "pose_kind": payload.get("pose_kind"),
+                    "quality01": payload.get("quality01"),
+                    "stream": stream,
+                }
+            )
+            return
+    message = (
+        "Makepad controller pose provider did not produce active/tracked/connected "
+        f"stream.motion.object_pose within {timeout_seconds:.1f}s"
+    )
+    provider_actions.append(
+        {
+            "action": "wait-makepad-controller-pose-ready",
+            "status": "fail",
+            "timeout_seconds": timeout_seconds,
+            "observed_pose_events": observed,
+            "active_pose_events": active,
+            "tracked_pose_events": tracked,
+            "connected_pose_events": connected,
+            "last_active": last_payload.get("active") if last_payload else None,
+            "last_tracked": last_payload.get("tracked") if last_payload else None,
+            "last_connected": last_payload.get("connected") if last_payload else None,
+            "last_quality01": last_payload.get("quality01") if last_payload else None,
+        }
+    )
+    errors.append(message)
+    raise RuntimeError(message)
 
 
 def run_pmb_live_processor_bridge(

@@ -343,6 +343,47 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
             [1, 3, 2, 4],
         )
 
+    def test_makepad_pose_ready_gate_requires_active_tracked_connected_pose(self) -> None:
+        actions: list[dict[str, object]] = []
+        errors: list[str] = []
+        args = argparse.Namespace(makepad_pose_ready_timeout_seconds=1.0)
+        ws = FakeWebSocket(
+            [
+                {
+                    "type": "stream_event",
+                    "stream": "stream.motion.object_pose",
+                    "payload": {
+                        "active": False,
+                        "tracked": False,
+                        "connected": False,
+                        "quality01": 0,
+                    },
+                },
+                {
+                    "type": "stream_event",
+                    "stream": "stream.motion.object_pose",
+                    "payload": {
+                        "active": True,
+                        "tracked": True,
+                        "connected": True,
+                        "controller": "right",
+                        "pose_kind": "grip",
+                        "quality01": 1,
+                    },
+                },
+            ]
+        )
+
+        hostessctl.wait_for_makepad_controller_pose_ready(args, ws, actions, errors)
+
+        self.assertEqual(errors, [])
+        self.assertEqual(actions[-1]["action"], "wait-makepad-controller-pose-ready")
+        self.assertEqual(actions[-1]["status"], "pass")
+        self.assertEqual(actions[-1]["observed_pose_events"], 2)
+        self.assertEqual(actions[-1]["active_pose_events"], 1)
+        self.assertEqual(actions[-1]["tracked_pose_events"], 1)
+        self.assertEqual(actions[-1]["connected_pose_events"], 1)
+
 
 def record_args(
     root: Path,
@@ -375,6 +416,7 @@ def record_args(
         makepad_pose_controller="right",
         makepad_pose_kind="grip",
         makepad_pose_sample_hz=20.0,
+        makepad_pose_ready_timeout_seconds=20.0,
         cargo="cargo",
         pmb_live_processor=pmb_live_processor,
         pmb_feedback_publish_limit=24,
@@ -386,6 +428,16 @@ def record_args(
         plan_only=plan_only,
         allow_blocked=allow_blocked,
     )
+
+
+class FakeWebSocket:
+    def __init__(self, messages: list[dict[str, object]]) -> None:
+        self.messages = list(messages)
+
+    def recv_json(self, *, timeout: float) -> dict[str, object] | None:
+        if not self.messages:
+            return None
+        return self.messages.pop(0)
 
 
 def read_json(path: Path) -> dict[str, object]:
