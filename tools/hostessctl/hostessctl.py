@@ -75,6 +75,7 @@ MANIFOLD_VALUE_ALIASES = {
     "motion.vector3": "stream.motion.vector3",
     "breath.volume": "stream.breath.volume",
     "breath.dynamics": "stream.breath.dynamics",
+    "breath.feedback_state": "stream.breath.feedback_state",
 }
 
 MANIFOLD_VALUE_PROVIDERS = {
@@ -180,6 +181,18 @@ MANIFOLD_VALUE_PROVIDERS = {
         "preflight_supported": True,
         "blocked_reason": "processor output recording requires at least one bound PMB input provider",
     },
+    "stream.breath.feedback_state": {
+        "value_id": "value.breath.feedback_state",
+        "stream_id": "stream.breath.feedback_state",
+        "provider_id": "processor.projected_motion_breath.feedback_sink",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_feedback_state",
+        "supported_targets": ["desktop", "phone", "quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "processor feedback recording requires the PMB live broker route self-test and live processor bridge",
+    },
 }
 
 
@@ -234,6 +247,11 @@ def main() -> int:
     run_pmb_controller_preflight_parser.add_argument("--packages-root", required=True)
     run_pmb_controller_preflight_parser.add_argument("--adb", required=True)
     run_pmb_controller_preflight_parser.add_argument("--serial", required=True)
+
+    run_pmb_live_route_self_test_parser = subcommands.add_parser("run-pmb-live-route-self-test")
+    run_pmb_live_route_self_test_parser.add_argument("--out", required=True)
+    run_pmb_live_route_self_test_parser.add_argument("--packages-root", required=True)
+    run_pmb_live_route_self_test_parser.add_argument("--cargo", default="cargo")
 
     record_values = subcommands.add_parser("record-values")
     record_values.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
@@ -296,6 +314,8 @@ def main() -> int:
         return run_pmb_replay_capture(args)
     if args.command == "run-pmb-controller-preflight":
         return run_pmb_controller_preflight(args)
+    if args.command == "run-pmb-live-route-self-test":
+        return run_pmb_live_route_self_test(args)
     if args.command == "record-values":
         return run_manifold_value_recording(args)
     if args.command == "render-telemetry":
@@ -499,6 +519,63 @@ def run_pmb_replay_capture(args: argparse.Namespace) -> int:
     )
     if validation_report["status"] == "pass":
         write_pmb_host_run_evidence(out, validation_path, evidence)
+    return 0 if validation_report["status"] == "pass" else core_run.returncode or 2
+
+
+def run_pmb_live_route_self_test(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    packages_root = Path(args.packages_root)
+    package_root = projected_motion_breath_package_root(packages_root)
+    if not package_root.exists():
+        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
+    route_report_path = out.with_name(f"{out.stem}.live-broker-route-report.json")
+    stdout_path = out.with_name(f"{out.stem}.stdout.txt")
+    stderr_path = out.with_name(f"{out.stem}.stderr.txt")
+    started_utc = datetime.now(UTC)
+    command = [
+        args.cargo,
+        "run",
+        "--quiet",
+        "-p",
+        "projected-motion-breath-core",
+        "--",
+        "live-route-self-test",
+        "--package-root",
+        str(package_root),
+    ]
+    core_run = run_captured(command, allow_failure=True, cwd=packages_root)
+    ended_utc = datetime.now(UTC)
+    stdout_path.write_text(core_run.stdout, encoding="utf-8")
+    stderr_path.write_text(core_run.stderr, encoding="utf-8")
+    route_report, parse_error = parse_pmb_core_report(core_run.stdout)
+    if route_report is not None:
+        route_report_path.write_text(
+            json.dumps(route_report, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    evidence = build_pmb_live_route_self_test_evidence(
+        packages_root=packages_root,
+        package_root=package_root,
+        command=command,
+        core_run=core_run,
+        route_report=route_report,
+        route_report_path=route_report_path,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        started_utc=started_utc,
+        ended_utc=ended_utc,
+        parse_error=parse_error,
+    )
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    validation_report = validate_pmb_live_route_self_test_evidence(evidence)
+    validation_path = out.with_name(f"{out.stem}.validation-report.json")
+    validation_path.write_text(
+        json.dumps(validation_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if validation_report["status"] == "pass":
+        write_pmb_live_route_host_run_evidence(out, validation_path, evidence)
     return 0 if validation_report["status"] == "pass" else core_run.returncode or 2
 
 
@@ -2627,6 +2704,283 @@ def validate_pmb_desktop_replay_execution_evidence(evidence: dict[str, Any]) -> 
     }
 
 
+def build_pmb_live_route_self_test_evidence(
+    *,
+    packages_root: Path,
+    package_root: Path,
+    command: list[str],
+    core_run: subprocess.CompletedProcess[str],
+    route_report: dict[str, Any] | None,
+    route_report_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+    started_utc: datetime,
+    ended_utc: datetime,
+    parse_error: str | None,
+) -> dict[str, Any]:
+    route_status = route_report.get("status") if route_report else "missing"
+    status = "pass" if core_run.returncode == 0 and route_status == "pass" and parse_error is None else "fail"
+    package = projected_motion_package_snapshot(package_root)
+    issues = []
+    if parse_error:
+        issues.append(
+            {
+                "code": "hostess.issue.pmb_live_route_report_parse_failed",
+                "severity": "error",
+                "message": parse_error,
+            }
+        )
+    if route_report:
+        for issue in route_report.get("issues", []):
+            issues.append(
+                {
+                    "code": "hostess.issue.pmb_live_route_report_issue",
+                    "severity": "error",
+                    "message": str(issue),
+                }
+            )
+    input_stream_ids = route_report.get("input_stream_ids", []) if route_report else []
+    normalized_stream_ids = route_report.get("normalized_stream_ids", []) if route_report else []
+    output_stream_ids = route_report.get("output_stream_ids", []) if route_report else []
+    source_routes = route_report.get("source_routes", []) if route_report else []
+    feedback_samples = route_report.get("feedback_samples", []) if route_report else []
+    receipts = (
+        route_report.get("receiver_receipts")
+        or route_report.get("makepad_receipts")
+        or []
+        if route_report
+        else []
+    )
+    subscription = (
+        route_report.get("receiver_subscription")
+        or route_report.get("makepad_subscription")
+        or {}
+        if route_report
+        else {}
+    )
+    checks = [
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_core_exit",
+            core_run.returncode == 0,
+            f"projected-motion-breath-core exited with {core_run.returncode}",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_report_parse",
+            route_report is not None and parse_error is None,
+            "projected-motion-breath-core emitted a parseable live broker route report",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_report_status",
+            route_status == "pass",
+            f"live broker route report status was {route_status}",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_inputs",
+            {"bio:polar_acc", "stream.motion.object_pose"}.issubset(set(input_stream_ids))
+            and {"stream.motion.vector3", "stream.motion.object_pose"}.issubset(set(normalized_stream_ids)),
+            "self-test route consumes Polar ACC plus Makepad controller pose and normalizes them",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_outputs",
+            {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(set(output_stream_ids)),
+            "self-test route emits breath volume and breath feedback state",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_makepad_subscription",
+            subscription.get("command") == "subscribe"
+            and subscription.get("stream") == "stream.breath.feedback_state",
+            "Makepad subscription contract targets stream.breath.feedback_state",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_makepad_receipts",
+            bool(receipts)
+            and all(
+                receipt.get("command") == "breath_feedback.received"
+                and receipt.get("schema") == "rusty.manifold.breath.feedback_receipt.v1"
+                and receipt.get("received_stream") == "stream.breath.feedback_state"
+                and receipt.get("acknowledged") is True
+                for receipt in receipts
+                if isinstance(receipt, dict)
+            ),
+            "Makepad receipt contract acknowledges every feedback sample",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_non_live",
+            bool(route_report)
+            and route_report.get("plan_only") is True
+            and route_report.get("broker_transport_used", route_report.get("external_transport_used")) is False
+            and route_report.get("live_sensor_used") is False
+            and route_report.get("quest_execution_performed", route_report.get("headset_execution_performed")) is False,
+            "self-test avoided broker transport, live sensors, and headset execution",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+    ]
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.live_broker_route_self_test_evidence.v1",
+        "status": status,
+        "target": "desktop",
+        "host_profile": "desktop",
+        "started_at_utc": started_utc.isoformat(),
+        "ended_at_utc": ended_utc.isoformat(),
+        "duration_ms": int((ended_utc - started_utc).total_seconds() * 1000),
+        "software": {
+            "origin": "rusty-hostess",
+            "host_app": "app.rusty_hostess_t.desktop",
+            "host_app_version": "0.1.0",
+        },
+        "package": package,
+        "package_root_name": package_root.name,
+        "packages_workspace_name": packages_root.name,
+        "execution": {
+            "mode": "projected_motion_breath_live_broker_route_self_test",
+            "command": command,
+            "returncode": core_run.returncode,
+            "runtime_path": "rust.projected_motion_breath_core.v1",
+            "route_report_artifact": route_report_path.name if route_report is not None else None,
+            "stdout_artifact": stdout_path.name,
+            "stderr_artifact": stderr_path.name,
+            "processor_core_executed": bool(route_report and route_report.get("processor_core_executed") is True),
+            "execution_performed": True,
+            "runtime_execution_performed": bool(route_report and route_report.get("runtime_execution_performed") is True),
+            "desktop_execution_performed": True,
+            "platform_execution_performed": False,
+            "device_required": False,
+            "android_execution_performed": False,
+            "quest_execution_performed": False,
+            "apk_build_performed": False,
+            "openxr_runtime_used": False,
+            "adb_used": False,
+            "broker_transport_used": bool(
+                route_report
+                and (
+                    route_report.get("broker_transport_used") is True
+                    or route_report.get("external_transport_used") is True
+                )
+            ),
+            "live_sensor_used": bool(route_report and route_report.get("live_sensor_used") is True),
+            "plan_only": bool(route_report and route_report.get("plan_only") is True),
+        },
+        "route_report_summary": {
+            "schema": route_report.get("schema") if route_report else None,
+            "status": route_status,
+            "route_id": route_report.get("route_id") if route_report else None,
+            "input_stream_ids": input_stream_ids,
+            "normalized_stream_ids": normalized_stream_ids,
+            "output_stream_ids": output_stream_ids,
+            "source_route_count": len(source_routes),
+            "breath_sample_count": len(route_report.get("breath_samples", [])) if route_report else 0,
+            "feedback_sample_count": len(feedback_samples),
+            "receipt_count": len(receipts),
+            "makepad_subscription": subscription,
+        },
+        "commands": [
+            {
+                "command": "run_projected_motion_breath_live_broker_route_self_test",
+                "status": "acknowledged" if core_run.returncode == 0 else "rejected",
+                "runtime_path": "rust.projected_motion_breath_core.v1",
+            }
+        ],
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.hostess.projected_motion_breath.live_broker_route_self_test",
+            "target_id": "hostess.projected_motion_breath.live_broker_route_self_test",
+            "target_revision": 1,
+            "status": "pass" if all(check["status"] == "pass" for check in checks) else "fail",
+            "checks": checks,
+            "issues": issues,
+        },
+    }
+
+
+def validate_pmb_live_route_self_test_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    execution = evidence.get("execution", {})
+    summary = evidence.get("route_report_summary", {})
+    subscription = summary.get("makepad_subscription", {})
+    checks = [
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.schema",
+            evidence.get("$schema")
+            == "rusty.hostess.projected_motion_breath.live_broker_route_self_test_evidence.v1",
+            "PMB live broker route self-test evidence schema is supported",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.status",
+            evidence.get("status") == "pass",
+            "PMB live broker route self-test evidence status passed",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.runtime_executed",
+            execution.get("execution_performed") is True
+            and execution.get("runtime_execution_performed") is True
+            and execution.get("processor_core_executed") is True,
+            "PMB processor core execution was performed",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.non_live",
+            execution.get("plan_only") is True
+            and execution.get("platform_execution_performed") is False
+            and execution.get("device_required") is False
+            and execution.get("android_execution_performed") is False
+            and execution.get("quest_execution_performed") is False
+            and execution.get("apk_build_performed") is False
+            and execution.get("openxr_runtime_used") is False
+            and execution.get("adb_used") is False
+            and execution.get("broker_transport_used") is False
+            and execution.get("live_sensor_used") is False,
+            "PMB live broker route self-test avoided devices and live transports",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.stream_contract",
+            {"bio:polar_acc", "stream.motion.object_pose"}.issubset(
+                set(summary.get("input_stream_ids", []))
+            )
+            and {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(
+                set(summary.get("output_stream_ids", []))
+            )
+            and int(summary.get("source_route_count", 0)) >= 2,
+            "PMB live route stream contract includes the required inputs and outputs",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.feedback_ack",
+            subscription.get("stream") == "stream.breath.feedback_state"
+            and int(summary.get("feedback_sample_count", 0)) > 0
+            and int(summary.get("receipt_count", 0)) == int(summary.get("feedback_sample_count", -1)),
+            "PMB live route has a Makepad feedback subscription and one receipt per feedback sample",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_live_route.app_scorecard",
+            evidence.get("scorecard", {}).get("status") == "pass",
+            "PMB live route self-test scorecard passed",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+    ]
+    errors = [
+        check["evidence"]
+        for check in checks
+        if check["status"] != "pass"
+    ]
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.live_broker_route_self_test_validation.v1",
+        "status": "pass" if not errors else "fail",
+        "evidence_status": evidence.get("status"),
+        "checks": checks,
+        "errors": errors,
+    }
+
+
 def validate_pmb_android_replay_execution_evidence(
     evidence: dict[str, Any],
     *,
@@ -2889,6 +3243,97 @@ def write_pmb_host_run_evidence(raw_evidence_path: Path, validation_report_path:
             "$schema": "rusty.manifold.validation.scorecard.v1",
             "scorecard_id": "scorecard.host_run.projected_motion_breath.desktop_replay",
             "target_id": f"host_run.run.projected_motion_breath.desktop_replay.{started_ms}",
+            "target_revision": 1,
+            "status": status,
+            "checks": checks,
+            "issues": [],
+        },
+    }
+    contract_path = raw_evidence_path.with_name(f"{raw_evidence_path.stem}.host-run-evidence.json")
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_pmb_live_route_host_run_evidence(
+    raw_evidence_path: Path,
+    validation_report_path: Path,
+    raw: dict[str, Any],
+) -> None:
+    started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
+    ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
+    validation_report = json.loads(validation_report_path.read_text(encoding="utf-8"))
+    summary = raw.get("route_report_summary", {})
+    execution = raw.get("execution", {})
+    checks = [
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_status",
+            validation_report.get("status") == "pass" and raw.get("status") == "pass",
+            "PMB live broker route self-test evidence and validation report passed",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_processor_core",
+            execution.get("processor_core_executed") is True
+            and execution.get("runtime_execution_performed") is True,
+            "PMB processor core executed through Hostess",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_non_live_gate",
+            execution.get("plan_only") is True
+            and execution.get("broker_transport_used") is False
+            and execution.get("live_sensor_used") is False
+            and execution.get("quest_execution_performed") is False,
+            "PMB route self-test did not use live broker/device resources",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_feedback_ack",
+            int(summary.get("receipt_count", 0)) == int(summary.get("feedback_sample_count", -1))
+            and int(summary.get("receipt_count", 0)) > 0,
+            "PMB route self-test included one Makepad receipt plan per feedback sample",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+    ]
+    status = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
+    contract = {
+        "$schema": "rusty.manifold.host_run.run_evidence.v1",
+        "run_id": f"host_run.run.projected_motion_breath.live_broker_route_self_test.{started_ms}",
+        "bundle_id": "host_run.bundle.projected_motion_breath.live_broker_route_self_test",
+        "validation_slot_id": "host_run.slot.projected_motion_breath.live_broker_route_self_test",
+        "host_profile": "host.desktop",
+        "app_id": "app.rusty_hostess_t.desktop",
+        "package_ids": ["package.projected_motion_breath"],
+        "module_ids": [
+            "module.breath.projected_motion",
+            "module.breath.feedback_sink",
+            "module.hostess.manifold_value_recorder",
+        ],
+        "status": status,
+        "started_at_ms": started_ms,
+        "ended_at_ms": ended_ms,
+        "evidence_artifacts": [
+            "artifact.projected_motion_breath_live_broker_route_self_test_evidence",
+            "artifact.projected_motion_breath_live_broker_route_report",
+            "artifact.projected_motion_breath_live_broker_route_self_test_validation_report",
+            "artifact.host_run_evidence",
+        ],
+        "result_fields": {
+            "input_stream_ids": summary.get("input_stream_ids", []),
+            "normalized_stream_ids": summary.get("normalized_stream_ids", []),
+            "output_stream_ids": summary.get("output_stream_ids", []),
+            "source_route_count": summary.get("source_route_count"),
+            "breath_sample_count": summary.get("breath_sample_count"),
+            "feedback_sample_count": summary.get("feedback_sample_count"),
+            "receipt_count": summary.get("receipt_count"),
+            "plan_only": execution.get("plan_only"),
+            "broker_transport_used": execution.get("broker_transport_used"),
+            "live_sensor_used": execution.get("live_sensor_used"),
+            "quest_execution_performed": execution.get("quest_execution_performed"),
+        },
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.host_run.projected_motion_breath.live_broker_route_self_test",
+            "target_id": f"host_run.run.projected_motion_breath.live_broker_route_self_test.{started_ms}",
             "target_revision": 1,
             "status": status,
             "checks": checks,

@@ -112,6 +112,107 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             )
             self.assertFalse(out.with_name("pmb-desktop-replay.host-run-evidence.json").exists())
 
+    def test_run_pmb_live_route_self_test_writes_non_live_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            out = root / "evidence" / "pmb-live-route-self-test.json"
+            route_report = ready_pmb_live_route_report()
+            completed = subprocess.CompletedProcess(
+                args=["cargo", "run"],
+                returncode=0,
+                stdout=f"{json.dumps(route_report)}\n",
+                stderr="",
+            )
+
+            with patch.object(hostessctl, "run_captured", return_value=completed):
+                status = hostessctl.run_pmb_live_route_self_test(
+                    argparse.Namespace(
+                        out=str(out),
+                        packages_root=str(packages_root),
+                        cargo="cargo",
+                    )
+                )
+
+            self.assertEqual(status, 0)
+            evidence = json.loads(out.read_text(encoding="utf-8"))
+            validation = json.loads(
+                out.with_name("pmb-live-route-self-test.validation-report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            host_run = json.loads(
+                out.with_name("pmb-live-route-self-test.host-run-evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                evidence["$schema"],
+                "rusty.hostess.projected_motion_breath.live_broker_route_self_test_evidence.v1",
+            )
+            self.assertEqual(evidence["status"], "pass")
+            self.assertTrue(evidence["execution"]["plan_only"])
+            self.assertFalse(evidence["execution"]["broker_transport_used"])
+            self.assertFalse(evidence["execution"]["live_sensor_used"])
+            self.assertFalse(evidence["execution"]["quest_execution_performed"])
+            self.assertEqual(
+                set(evidence["route_report_summary"]["input_stream_ids"]),
+                {"bio:polar_acc", "stream.motion.object_pose"},
+            )
+            self.assertEqual(
+                evidence["route_report_summary"]["makepad_subscription"]["stream"],
+                "stream.breath.feedback_state",
+            )
+            self.assertEqual(evidence["route_report_summary"]["receipt_count"], 2)
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(host_run["status"], "pass")
+            self.assertFalse(host_run["result_fields"]["live_sensor_used"])
+
+    def test_pmb_live_route_self_test_rejects_missing_receipts(self) -> None:
+        evidence = {
+            "$schema": "rusty.hostess.projected_motion_breath.live_broker_route_self_test_evidence.v1",
+            "status": "pass",
+            "execution": {
+                "execution_performed": True,
+                "runtime_execution_performed": True,
+                "processor_core_executed": True,
+                "plan_only": True,
+                "platform_execution_performed": False,
+                "device_required": False,
+                "android_execution_performed": False,
+                "quest_execution_performed": False,
+                "apk_build_performed": False,
+                "openxr_runtime_used": False,
+                "adb_used": False,
+                "broker_transport_used": False,
+                "live_sensor_used": False,
+            },
+            "route_report_summary": {
+                "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
+                "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+                "source_route_count": 2,
+                "feedback_sample_count": 2,
+                "receipt_count": 0,
+                "makepad_subscription": {
+                    "command": "subscribe",
+                    "stream": "stream.breath.feedback_state",
+                },
+            },
+            "scorecard": {"status": "pass"},
+        }
+
+        validation = hostessctl.validate_pmb_live_route_self_test_evidence(evidence)
+
+        self.assertEqual(validation["status"], "fail")
+        self.assertTrue(
+            any(
+                check["check_id"] == "hostess.check.pmb_live_route.feedback_ack"
+                and check["status"] == "fail"
+                for check in validation["checks"]
+            )
+        )
+
     def test_run_pmb_replay_requires_projected_motion_package_root(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / "pmb-desktop-replay.json"
@@ -334,6 +435,60 @@ def ready_pmb_controller_preflight_report() -> dict[str, object]:
                 "volume01": 0.333,
                 "tracking01": 0.98,
                 "quality": "stable",
+            },
+        ],
+        "issues": [],
+    }
+
+
+def ready_pmb_live_route_report() -> dict[str, object]:
+    return {
+        "schema": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+        "package_root": "packages/projected-motion-breath",
+        "status": "pass",
+        "route_id": "route.projected_motion_breath.live_stream.polar_acc_controller_pose.self_test",
+        "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
+        "normalized_stream_ids": ["stream.motion.vector3", "stream.motion.object_pose"],
+        "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+        "processor_core_executed": True,
+        "runtime_execution_performed": True,
+        "external_transport_used": False,
+        "live_sensor_used": False,
+        "headset_execution_performed": False,
+        "plan_only": True,
+        "source_routes": [
+            {"source_stream_id": "bio:polar_acc"},
+            {"source_stream_id": "stream.motion.object_pose"},
+        ],
+        "breath_samples": [
+            {"sequence_id": 1, "volume01": 0.5, "phase": "pause"},
+            {"sequence_id": 2, "volume01": 0.75, "phase": "inhale"},
+        ],
+        "feedback_samples": [
+            {"sequence_id": 1, "stream_id": "stream.breath.feedback_state"},
+            {"sequence_id": 2, "stream_id": "stream.breath.feedback_state"},
+        ],
+        "receiver_subscription": {
+            "command": "subscribe",
+            "stream": "stream.breath.feedback_state",
+            "receiver_id": "app.downstream_camera_shell.breath_feedback",
+        },
+        "receiver_receipts": [
+            {
+                "command": "breath_feedback.received",
+                "schema": "rusty.manifold.breath.feedback_receipt.v1",
+                "received_stream": "stream.breath.feedback_state",
+                "received_sequence_id": 1,
+                "receiver_id": "app.downstream_camera_shell.breath_feedback",
+                "acknowledged": True,
+            },
+            {
+                "command": "breath_feedback.received",
+                "schema": "rusty.manifold.breath.feedback_receipt.v1",
+                "received_stream": "stream.breath.feedback_state",
+                "received_sequence_id": 2,
+                "receiver_id": "app.downstream_camera_shell.breath_feedback",
+                "acknowledged": True,
             },
         ],
         "issues": [],
