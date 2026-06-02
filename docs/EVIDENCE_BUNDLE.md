@@ -48,11 +48,13 @@ accepts repeated values and a duration, normalizes known aliases, builds
 provider plans, and writes a companion validation report plus
 `rusty.manifold.host_run.run_evidence.v1`. When exactly one requested value has
 an existing live route, the recorder delegates to that route and records the
-source capture artifact. Otherwise it writes `status=ready` for plan-only
-single-value readiness or `status=blocked` with explicit reasons. The evidence
-must record `general_recorder=true`, `polar_specific=false`,
-`controller_specific=false`, and must not claim physical controller input unless
-a future live controller provider has actually produced it.
+source capture artifact. On Quest, provider sets that share the broker
+WebSocket transport can be recorded together. The broker route writes
+`rusty.hostess.broker_stream_recording.evidence.v1`, captures matching broker
+`stream_event` JSONL, and fails explicitly if any selected stream is missing.
+The evidence must record `general_recorder=true`, `polar_specific=false`,
+`controller_specific=false`, and must only claim physical controller input when
+`stream.motion.object_pose` events were actually captured.
 
 Required fields:
 

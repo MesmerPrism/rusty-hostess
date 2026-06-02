@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 import json
+import os
+import socket
 import subprocess
 import sys
 import time
@@ -19,6 +23,12 @@ from tools.check_live_capture_evidence import package_snapshot, sha256_file  # n
 from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
+BROKER_PACKAGE = "com.example.rustyxr.broker"
+BROKER_ACTIVITY = f"{BROKER_PACKAGE}/.BrokerStartActivity"
+BROKER_PORT = 8765
+BROKER_LOCAL_FORWARD_PORT = 18765
+MAKEPAD_XR_PROVIDER_PACKAGE = "io.github.mesmerprism.rustyxr.makepad.camera"
+MAKEPAD_XR_PROVIDER_ACTIVITY = f"{MAKEPAD_XR_PROVIDER_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
 MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
@@ -95,6 +105,7 @@ MANIFOLD_VALUE_PROVIDERS = {
     "stream.polar_h10.acc": {
         "value_id": "value.polar_h10.acc",
         "stream_id": "stream.polar_h10.acc",
+        "broker_stream_id": "bio:polar_acc",
         "provider_id": "provider.polar_h10.ble",
         "provider_kind": "ble_polar_h10",
         "package_id": "package.polar_h10",
@@ -102,6 +113,9 @@ MANIFOLD_VALUE_PROVIDERS = {
         "sample_kind": "motion_vector3",
         "supported_targets": ["desktop", "phone", "quest"],
         "single_value_live_route_supported": True,
+        "broker_websocket_recording_supported": True,
+        "broker_start_command": "polar_pmd.start",
+        "broker_stop_command": "polar_pmd.stop",
         "preflight_supported": False,
     },
     "stream.polar_h10.coherence": {
@@ -119,15 +133,17 @@ MANIFOLD_VALUE_PROVIDERS = {
     "stream.motion.object_pose": {
         "value_id": "value.motion.object_pose",
         "stream_id": "stream.motion.object_pose",
-        "provider_id": "provider.headset.controller_pose",
-        "provider_kind": "xr_controller_pose",
+        "broker_stream_id": "stream.motion.object_pose",
+        "provider_id": "provider.makepad_xr.controller_pose",
+        "provider_kind": "xr_object_pose",
         "package_id": "package.projected_motion_breath",
         "sample_kind": "object_pose",
         "supported_targets": ["quest"],
         "single_value_live_route_supported": False,
+        "broker_websocket_recording_supported": True,
+        "provider_launch": "makepad_xr_controller_pose",
         "preflight_supported": True,
         "preflight_route": "hostessctl.run-pmb-controller-preflight",
-        "blocked_reason": "live OpenXR/controller pose provider is not attached to Hostess record-values yet",
     },
     "stream.motion.vector3": {
         "value_id": "value.motion.vector3",
@@ -229,6 +245,17 @@ def main() -> int:
     record_values.add_argument("--adb")
     record_values.add_argument("--serial")
     record_values.add_argument("--acc-rate", type=int, default=200)
+    record_values.add_argument("--broker-package", default=BROKER_PACKAGE)
+    record_values.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    record_values.add_argument("--broker-port", type=int, default=BROKER_PORT)
+    record_values.add_argument("--broker-local-port", type=int, default=BROKER_LOCAL_FORWARD_PORT)
+    record_values.add_argument("--makepad-provider-package", default=MAKEPAD_XR_PROVIDER_PACKAGE)
+    record_values.add_argument("--makepad-provider-activity", default=MAKEPAD_XR_PROVIDER_ACTIVITY)
+    record_values.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
+    record_values.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
+    record_values.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    record_values.add_argument("--no-launch-broker", action="store_true")
+    record_values.add_argument("--no-launch-providers", action="store_true")
     record_values.add_argument("--runtime-core", choices=["rust", "python-smoke"], default="rust")
     record_values.add_argument("--telemetry-page", choices=["raw", "modules"], default="raw")
     record_values.add_argument("--plan-only", action="store_true")
@@ -693,13 +720,19 @@ def run_manifold_value_recording(args: argparse.Namespace) -> int:
     capture_evidence_path: Path | None = None
 
     if not args.plan_only and route_status == "ready":
-        plan = provider_plans[0]
-        capture_evidence_path = out.with_name(
-            f"{out.stem}.{recording_segment([plan['stream_id']])}.live-capture.json"
-        )
-        capture_status = run_live_capture(
-            single_value_live_capture_args(args, plan, capture_evidence_path)
-        )
+        if all(plan.get("recording_route") == "hostessctl.broker-websocket-record" for plan in provider_plans):
+            capture_evidence_path = out.with_name(
+                f"{out.stem}.{recording_segment(requested_values)}.broker-streams.json"
+            )
+            capture_status = record_broker_websocket_streams(args, provider_plans, capture_evidence_path)
+        else:
+            plan = provider_plans[0]
+            capture_evidence_path = out.with_name(
+                f"{out.stem}.{recording_segment([plan['stream_id']])}.live-capture.json"
+            )
+            capture_status = run_live_capture(
+                single_value_live_capture_args(args, plan, capture_evidence_path)
+            )
         if capture_evidence_path.exists():
             capture_evidence = json.loads(capture_evidence_path.read_text(encoding="utf-8"))
 
@@ -776,15 +809,22 @@ def manifold_value_provider_plan(value_id: str, *, target: str) -> dict[str, Any
     supported_targets = list(provider.get("supported_targets", []))
     target_supported = target in supported_targets
     single_live = bool(provider.get("single_value_live_route_supported")) and target_supported
-    status = "ready" if single_live else "requires_provider"
+    broker_live = bool(provider.get("broker_websocket_recording_supported")) and target == "quest" and target_supported
+    status = "ready" if single_live or broker_live else "requires_provider"
     blocked_reason = provider.get("blocked_reason")
     if not target_supported:
         status = "unavailable_on_target"
         blocked_reason = f"value is not available on target {target}"
+    recording_route = None
+    if broker_live:
+        recording_route = "hostessctl.broker-websocket-record"
+    elif single_live:
+        recording_route = "hostessctl.run-live"
     return {
         "value_id": provider["value_id"],
         "requested_value_id": value_id,
         "stream_id": provider["stream_id"],
+        "broker_stream_id": provider.get("broker_stream_id", provider["stream_id"]),
         "provider_id": provider["provider_id"],
         "provider_kind": provider["provider_kind"],
         "package_id": provider.get("package_id"),
@@ -793,12 +833,16 @@ def manifold_value_provider_plan(value_id: str, *, target: str) -> dict[str, Any
         "supported_targets": supported_targets,
         "status": status,
         "live_supported": single_live,
+        "broker_websocket_recording_supported": broker_live,
         "preflight_supported": bool(provider.get("preflight_supported")),
         "single_value_live_route_supported": single_live,
-        "combined_recording_supported": False,
-        "recording_route": "hostessctl.run-live" if single_live else None,
+        "combined_recording_supported": broker_live,
+        "recording_route": recording_route,
         "live_stream_mode": provider.get("live_stream_mode"),
         "preflight_route": provider.get("preflight_route"),
+        "broker_start_command": provider.get("broker_start_command"),
+        "broker_stop_command": provider.get("broker_stop_command"),
+        "provider_launch": provider.get("provider_launch"),
         "blocked_reason": blocked_reason,
     }
 
@@ -815,7 +859,11 @@ def manifold_recording_route_status(
         for plan in provider_plans
         if plan.get("status") != "ready"
     ]
-    if len(provider_plans) > 1:
+    if len(provider_plans) > 1 and not all(
+        plan.get("combined_recording_supported")
+        and plan.get("recording_route") == "hostessctl.broker-websocket-record"
+        for plan in provider_plans
+    ):
         blocked_reasons.append(
             "simultaneous multi-value recording is not implemented for the selected provider set"
         )
@@ -850,6 +898,518 @@ def single_value_live_capture_args(
         rmssd_baseline_source="explicit_baseline",
         telemetry_page=args.telemetry_page,
     )
+
+
+class BrokerWebSocketClient:
+    def __init__(
+        self,
+        host: str,
+        port: int,
+        *,
+        path: str = "/rustyxr/v1/events",
+        timeout: float = 5.0,
+    ) -> None:
+        self.host = host
+        self.port = port
+        self.path = path
+        self.sock = socket.create_connection((host, port), timeout=timeout)
+        self.sock.settimeout(timeout)
+        self.key = base64.b64encode(os.urandom(16)).decode("ascii")
+        request = (
+            f"GET {path} HTTP/1.1\r\n"
+            f"Host: {host}:{port}\r\n"
+            "Upgrade: websocket\r\n"
+            "Connection: Upgrade\r\n"
+            f"Sec-WebSocket-Key: {self.key}\r\n"
+            "Sec-WebSocket-Version: 13\r\n"
+            "\r\n"
+        )
+        self.sock.sendall(request.encode("ascii"))
+        response = self._read_http_response()
+        status_line = response.split(b"\r\n", 1)[0]
+        if b" 101 " not in status_line:
+            raise RuntimeError(f"broker websocket handshake failed: {status_line.decode('ascii', 'replace')}")
+        expected_accept = base64.b64encode(
+            hashlib.sha1((self.key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
+        ).decode("ascii")
+        headers = {}
+        for line in response.split(b"\r\n")[1:]:
+            if b":" not in line:
+                continue
+            name, value = line.split(b":", 1)
+            headers[name.decode("ascii", "ignore").strip().lower()] = value.decode("ascii", "ignore").strip()
+        if headers.get("sec-websocket-accept") != expected_accept:
+            raise RuntimeError("broker websocket handshake accept header did not match")
+
+    def close(self) -> None:
+        try:
+            self._send_frame(b"", opcode=0x8)
+        except OSError:
+            pass
+        try:
+            self.sock.close()
+        except OSError:
+            pass
+
+    def send_json(self, payload: dict[str, Any]) -> None:
+        data = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
+        self._send_frame(data, opcode=0x1)
+
+    def recv_json(self, *, timeout: float) -> dict[str, Any] | None:
+        old_timeout = self.sock.gettimeout()
+        self.sock.settimeout(timeout)
+        try:
+            while True:
+                opcode, payload = self._recv_frame()
+                if opcode == 0x1:
+                    return json.loads(payload.decode("utf-8"))
+                if opcode == 0x8:
+                    return None
+                if opcode == 0x9:
+                    self._send_frame(payload, opcode=0xA)
+        except socket.timeout:
+            return None
+        finally:
+            self.sock.settimeout(old_timeout)
+
+    def _read_http_response(self) -> bytes:
+        data = bytearray()
+        while b"\r\n\r\n" not in data:
+            chunk = self.sock.recv(4096)
+            if not chunk:
+                break
+            data.extend(chunk)
+            if len(data) > 65536:
+                raise RuntimeError("broker websocket handshake response exceeded 64 KiB")
+        return bytes(data)
+
+    def _send_frame(self, payload: bytes, *, opcode: int) -> None:
+        header = bytearray()
+        header.append(0x80 | (opcode & 0x0F))
+        length = len(payload)
+        if length < 126:
+            header.append(0x80 | length)
+        elif length <= 0xFFFF:
+            header.append(0x80 | 126)
+            header.extend(length.to_bytes(2, "big"))
+        else:
+            header.append(0x80 | 127)
+            header.extend(length.to_bytes(8, "big"))
+        mask = os.urandom(4)
+        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        self.sock.sendall(bytes(header) + mask + masked)
+
+    def _recv_frame(self) -> tuple[int, bytes]:
+        first = self._read_exact(2)
+        opcode = first[0] & 0x0F
+        masked = bool(first[1] & 0x80)
+        length = first[1] & 0x7F
+        if length == 126:
+            length = int.from_bytes(self._read_exact(2), "big")
+        elif length == 127:
+            length = int.from_bytes(self._read_exact(8), "big")
+        mask = self._read_exact(4) if masked else b""
+        payload = self._read_exact(length) if length else b""
+        if masked:
+            payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
+        return opcode, payload
+
+    def _read_exact(self, size: int) -> bytes:
+        data = bytearray()
+        while len(data) < size:
+            chunk = self.sock.recv(size - len(data))
+            if not chunk:
+                raise RuntimeError("broker websocket closed while reading")
+            data.extend(chunk)
+        return bytes(data)
+
+
+def record_broker_websocket_streams(
+    args: argparse.Namespace,
+    provider_plans: list[dict[str, Any]],
+    out: Path,
+) -> int:
+    out.parent.mkdir(parents=True, exist_ok=True)
+    started = datetime.now(UTC)
+    started_monotonic = time.monotonic()
+    requested_streams = [
+        {
+            "stream_id": str(plan["stream_id"]),
+            "broker_stream_id": str(plan.get("broker_stream_id") or plan["stream_id"]),
+            "provider_id": plan.get("provider_id"),
+            "provider_kind": plan.get("provider_kind"),
+        }
+        for plan in provider_plans
+    ]
+    stream_rows: dict[str, dict[str, Any]] = {
+        stream["broker_stream_id"]: {
+            **stream,
+            "status": "missing",
+            "event_count": 0,
+            "sample_count": 0,
+            "first_event_at_utc": None,
+            "last_event_at_utc": None,
+        }
+        for stream in requested_streams
+    }
+    provider_actions: list[dict[str, Any]] = []
+    broker_acks: list[dict[str, Any]] = []
+    errors: list[str] = []
+    events_jsonl = out.with_name(f"{out.stem}.events.jsonl")
+    ws: BrokerWebSocketClient | None = None
+    polar_started = False
+    makepad_publish_enabled = False
+    forward_spec = f"tcp:{args.broker_local_port}"
+
+    def run_adb(label: str, command: list[str], *, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
+        result = run_captured(command, allow_failure=True)
+        provider_actions.append(
+            {
+                "action": label,
+                "command": redact_command(command),
+                "returncode": result.returncode,
+                "stdout": result.stdout.strip(),
+                "stderr": result.stderr.strip(),
+                "status": "pass" if result.returncode == 0 else "fail",
+            }
+        )
+        if result.returncode != 0 and not allow_failure:
+            message = f"{label} failed with exit code {result.returncode}"
+            errors.append(message)
+            raise RuntimeError(message)
+        return result
+
+    def send_broker_command(command: str, params: dict[str, Any] | None = None) -> None:
+        assert ws is not None
+        request_id = f"hostess-record-values-{command.replace('.', '-')}-{len(broker_acks) + 1}"
+        message = broker_command_message(command, params=params, request_id=request_id)
+        ws.send_json(message)
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline:
+            reply = ws.recv_json(timeout=0.25)
+            if reply is None:
+                continue
+            if reply.get("type") == "stream_event":
+                accept_broker_stream_event(reply, stream_rows, events_jsonl)
+                continue
+            if reply.get("request_id") == request_id or reply.get("command") == command:
+                ok = bool(reply.get("ok", reply.get("success", True)))
+                broker_acks.append(
+                    {
+                        "command": command,
+                        "request_id": request_id,
+                        "status": "pass" if ok else "fail",
+                        "reply": reply,
+                    }
+                )
+                if not ok:
+                    errors.append(f"broker command {command} failed: {reply}")
+                return
+        broker_acks.append(
+            {
+                "command": command,
+                "request_id": request_id,
+                "status": "unknown",
+                "reply": None,
+            }
+        )
+        errors.append(f"broker command {command} did not return an acknowledgement")
+
+    try:
+        run_adb("adb-forward-remove-existing", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
+        if not args.no_launch_broker:
+            run_adb(
+                "launch-broker",
+                adb_prefix(args) + ["shell", "am", "start", "-n", args.broker_activity],
+                allow_failure=False,
+            )
+        run_adb(
+            "adb-forward-broker-websocket",
+            adb_prefix(args) + ["forward", forward_spec, f"tcp:{args.broker_port}"],
+            allow_failure=False,
+        )
+        ws = connect_broker_websocket_with_retry(
+            "127.0.0.1",
+            int(args.broker_local_port),
+            provider_actions,
+            errors,
+        )
+        ws.send_json(
+            {
+                "type": "hello",
+                "client_id": "hostessctl.record_values",
+                "app_package": "rusty-hostess",
+                "role": "hostess_manifold_value_recorder",
+            }
+        )
+        ws.recv_json(timeout=1.0)
+        events_jsonl.write_text("", encoding="utf-8")
+        for stream in requested_streams:
+            send_broker_command("subscribe", {"stream": stream["broker_stream_id"]})
+        for plan in provider_plans:
+            if plan.get("broker_start_command") == "polar_pmd.start":
+                send_broker_command(
+                    "polar_pmd.start",
+                    {
+                        "device_address": args.device_address or "",
+                        "scan_timeout_ms": 30000,
+                        "pmd_stream": "acc",
+                        "acc_sample_rate_hz": args.acc_rate,
+                        "high_connection_priority": True,
+                    },
+                )
+                polar_started = True
+            if plan.get("provider_launch") == "makepad_xr_controller_pose" and not args.no_launch_providers:
+                configure_makepad_controller_pose_provider(args, run_adb)
+                makepad_publish_enabled = True
+        deadline = time.monotonic() + float(args.duration_seconds)
+        with events_jsonl.open("a", encoding="utf-8") as events_file:
+            while time.monotonic() < deadline:
+                remaining = max(0.05, min(0.5, deadline - time.monotonic()))
+                message = ws.recv_json(timeout=remaining)
+                if message is None:
+                    continue
+                if message.get("type") == "stream_event":
+                    accept_broker_stream_event(message, stream_rows, events_jsonl, events_file=events_file)
+                else:
+                    broker_acks.append(
+                        {
+                            "command": str(message.get("command") or message.get("type") or "broker-message"),
+                            "request_id": message.get("request_id"),
+                            "status": "observed",
+                            "reply": message,
+                        }
+                    )
+    except Exception as ex:
+        errors.append(str(ex))
+    finally:
+        if ws is not None:
+            try:
+                if polar_started:
+                    request_id = "hostess-record-values-polar-pmd-stop"
+                    ws.send_json(broker_command_message("polar_pmd.stop", request_id=request_id))
+            except Exception as ex:
+                errors.append(f"polar_pmd.stop cleanup failed: {ex}")
+            ws.close()
+        if makepad_publish_enabled:
+            run_adb(
+                "disable-makepad-pose-publish",
+                adb_prefix(args) + [
+                    "shell",
+                    "setprop",
+                    "debug.rustyxr.manifold.pose.publish.enabled",
+                    "false",
+                ],
+                allow_failure=True,
+            )
+        run_adb("adb-forward-remove-broker-websocket", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
+
+    ended = datetime.now(UTC)
+    for row in stream_rows.values():
+        if int(row["event_count"]) > 0:
+            row["status"] = "pass"
+            row["sample_count"] = row["event_count"]
+    missing = [
+        row["stream_id"]
+        for row in stream_rows.values()
+        if row["status"] != "pass"
+    ]
+    errors.extend([f"missing stream events for {stream_id}" for stream_id in missing])
+    status = "pass" if not missing and not errors else "fail"
+    has_object_pose = any(row["stream_id"] == "stream.motion.object_pose" for row in stream_rows.values())
+    object_pose_events = any(
+        row["stream_id"] == "stream.motion.object_pose" and row["status"] == "pass"
+        for row in stream_rows.values()
+    )
+    evidence = {
+        "$schema": "rusty.hostess.broker_stream_recording.evidence.v1",
+        "status": status,
+        "target": args.target,
+        "started_at_utc": started.isoformat(),
+        "ended_at_utc": ended.isoformat(),
+        "duration_ms": int((ended - started).total_seconds() * 1000),
+        "requested_duration_ms": int(args.duration_seconds * 1000),
+        "transport": {
+            "kind": "adb-forwarded-broker-websocket",
+            "websocket_url": f"ws://127.0.0.1:{args.broker_local_port}/rustyxr/v1/events",
+            "broker_device_port": args.broker_port,
+            "host_forward_port": args.broker_local_port,
+            "adb_serial": args.serial,
+        },
+        "provider_actions": provider_actions,
+        "broker_acks": broker_acks,
+        "streams": list(stream_rows.values()),
+        "missing_streams": missing,
+        "events_jsonl": str(events_jsonl),
+        "errors": errors,
+        "quest_execution_performed": args.target == "quest",
+        "broker_websocket_recording": True,
+        "pmb_processor_executed": False,
+        "controller_provider_route_ready": has_object_pose and (makepad_publish_enabled or object_pose_events),
+        "polar_provider_route_ready": any(plan.get("broker_start_command") == "polar_pmd.start" for plan in provider_plans),
+        "controller_input_used": object_pose_events,
+        "physical_controller_input_used": object_pose_events,
+        "manual_controller_trial_required": has_object_pose and not object_pose_events,
+        "elapsed_monotonic_ms": int((time.monotonic() - started_monotonic) * 1000),
+    }
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    validation = validate_broker_websocket_stream_recording_evidence(evidence)
+    out.with_name(f"{out.stem}.validation-report.json").write_text(
+        json.dumps(validation, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    return 0 if status == "pass" else 2
+
+
+def adb_prefix(args: argparse.Namespace) -> list[str]:
+    return [args.adb, "-s", args.serial]
+
+
+def broker_command_message(
+    command: str,
+    params: dict[str, Any] | None = None,
+    *,
+    request_id: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "type": "command",
+        "request_id": request_id or f"hostess-record-values-{command.replace('.', '-')}",
+        "command": command,
+        "params": params or {},
+        "client_id": "hostessctl.record_values",
+        "app_package": "rusty-hostess",
+    }
+
+
+def connect_broker_websocket_with_retry(
+    host: str,
+    port: int,
+    provider_actions: list[dict[str, Any]],
+    errors: list[str],
+) -> BrokerWebSocketClient:
+    deadline = time.monotonic() + 15.0
+    attempt = 0
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        attempt += 1
+        try:
+            client = BrokerWebSocketClient(host, port, timeout=2.0)
+            provider_actions.append(
+                {
+                    "action": "connect-broker-websocket",
+                    "attempt": attempt,
+                    "status": "pass",
+                    "host": host,
+                    "port": port,
+                }
+            )
+            return client
+        except OSError as ex:
+            last_error = ex
+            time.sleep(0.25)
+        except RuntimeError as ex:
+            last_error = ex
+            time.sleep(0.25)
+    message = f"broker websocket connection failed: {last_error}"
+    errors.append(message)
+    raise RuntimeError(message)
+
+
+def configure_makepad_controller_pose_provider(
+    args: argparse.Namespace,
+    run_adb: Any,
+) -> None:
+    setprops = {
+        "debug.rustyxr.manifold.pose.publish.enabled": "true",
+        "debug.rustyxr.manifold.pose.stream": "stream.motion.object_pose",
+        "debug.rustyxr.manifold.pose.source": "provider.makepad_xr.controller_pose",
+        "debug.rustyxr.manifold.pose.controller": args.makepad_pose_controller,
+        "debug.rustyxr.manifold.pose.kind": args.makepad_pose_kind,
+        "debug.rustyxr.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
+        "debug.rustyxr.manifold.broker.host": "127.0.0.1",
+        "debug.rustyxr.manifold.broker.port": str(args.broker_port),
+        "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
+    }
+    for key, value in setprops.items():
+        run_adb(
+            f"setprop-{key}",
+            adb_prefix(args) + ["shell", "setprop", key, value],
+            allow_failure=False,
+        )
+    run_adb(
+        "force-stop-makepad-controller-pose-provider",
+        adb_prefix(args) + ["shell", "am", "force-stop", args.makepad_provider_package],
+        allow_failure=True,
+    )
+    run_adb(
+        "launch-makepad-controller-pose-provider",
+        adb_prefix(args) + ["shell", "am", "start", "-n", args.makepad_provider_activity],
+        allow_failure=False,
+    )
+
+
+def accept_broker_stream_event(
+    event: dict[str, Any],
+    stream_rows: dict[str, dict[str, Any]],
+    events_jsonl: Path,
+    *,
+    events_file: Any | None = None,
+) -> None:
+    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
+    stream = str(event.get("stream") or event.get("stream_id") or payload.get("stream_id") or "")
+    if stream not in stream_rows:
+        return
+    now = datetime.now(UTC).isoformat()
+    row = stream_rows[stream]
+    row["event_count"] = int(row["event_count"]) + 1
+    row["sample_count"] = int(row["sample_count"]) + 1
+    if row["first_event_at_utc"] is None:
+        row["first_event_at_utc"] = now
+    row["last_event_at_utc"] = now
+    line = json.dumps(event, separators=(",", ":"), sort_keys=True)
+    if events_file is not None:
+        events_file.write(line + "\n")
+    else:
+        with events_jsonl.open("a", encoding="utf-8") as file:
+            file.write(line + "\n")
+
+
+def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    streams = [stream for stream in evidence.get("streams", []) if isinstance(stream, dict)]
+    checks = [
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.schema",
+            evidence.get("$schema") == "rusty.hostess.broker_stream_recording.evidence.v1",
+            "broker stream recording evidence schema is supported",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.streams",
+            bool(streams) and all(stream.get("status") == "pass" for stream in streams),
+            "all requested broker streams produced at least one event",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.transport",
+            evidence.get("broker_websocket_recording") is True
+            and evidence.get("transport", {}).get("kind") == "adb-forwarded-broker-websocket",
+            "recording used the adb-forwarded broker websocket transport",
+        ),
+    ]
+    errors = [check["evidence"] for check in checks if check["status"] != "pass"]
+    return {
+        "$schema": "rusty.hostess.broker_stream_recording.validation.v1",
+        "status": "pass" if not errors and evidence.get("status") == "pass" else "fail",
+        "evidence_status": evidence.get("status"),
+        "checks": checks,
+        "errors": errors + list(evidence.get("errors", [])),
+    }
+
+
+def redact_command(command: list[str]) -> list[str]:
+    redacted = list(command)
+    for index, token in enumerate(redacted[:-1]):
+        if token in {"--device-address"}:
+            redacted[index + 1] = "<redacted>"
+    return redacted
 
 
 def build_manifold_value_recording_evidence(
@@ -898,6 +1458,7 @@ def build_manifold_value_recording_evidence(
         captured_streams = [
             {
                 "stream_id": stream.get("stream_id"),
+                "broker_stream_id": stream.get("broker_stream_id"),
                 "status": stream.get("status"),
                 "sample_count": stream.get("sample_count"),
                 "event_count": stream.get("event_count"),
@@ -905,6 +1466,21 @@ def build_manifold_value_recording_evidence(
             for stream in capture_evidence.get("streams", [])
             if isinstance(stream, dict)
         ]
+    has_object_pose = any(
+        plan.get("stream_id") == "stream.motion.object_pose"
+        for plan in provider_plans
+    )
+    object_pose_captured = any(
+        stream.get("stream_id") == "stream.motion.object_pose"
+        and stream.get("status") == "pass"
+        and int(stream.get("event_count") or stream.get("sample_count") or 0) > 0
+        for stream in captured_streams
+    )
+    all_combined_supported = all(
+        bool(plan.get("combined_recording_supported"))
+        for plan in provider_plans
+    )
+    controller_input_used = bool(recording_performed and object_pose_captured)
     return {
         "$schema": "rusty.hostess.manifold_value_recording.evidence.v1",
         "status": status,
@@ -939,13 +1515,10 @@ def build_manifold_value_recording_evidence(
             "controller_specific": False,
             "provider_bound": True,
             "live_sensor_used": recording_performed,
-            "physical_controller_input_used": False,
-            "controller_input_used": False,
-            "simultaneous_multi_value_recording_supported": len(provider_plans) == 1,
-            "manual_controller_trial_required": any(
-                plan.get("stream_id") == "stream.motion.object_pose"
-                for plan in provider_plans
-            ),
+            "physical_controller_input_used": controller_input_used,
+            "controller_input_used": controller_input_used,
+            "simultaneous_multi_value_recording_supported": all_combined_supported,
+            "manual_controller_trial_required": has_object_pose and not controller_input_used,
         },
         "provider_plans": provider_plans,
         "blocked_reasons": route_reasons,
@@ -982,7 +1555,59 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
     recording = evidence.get("recording", {})
     request = evidence.get("request", {})
     provider_plans = evidence.get("provider_plans", [])
+    captured_streams = [
+        stream
+        for stream in evidence.get("captured_streams", [])
+        if isinstance(stream, dict)
+    ]
     status = evidence.get("status")
+    has_object_pose = any(
+        isinstance(plan, dict) and plan.get("stream_id") == "stream.motion.object_pose"
+        for plan in provider_plans
+    )
+    object_pose_captured = any(
+        stream.get("stream_id") == "stream.motion.object_pose"
+        and stream.get("status") == "pass"
+        and int(stream.get("event_count") or stream.get("sample_count") or 0) > 0
+        for stream in captured_streams
+    )
+    recording_performed = recording.get("recording_performed") is True
+    controller_claim_ok = (
+        (
+            not has_object_pose
+            and recording.get("physical_controller_input_used") is False
+            and recording.get("controller_input_used") is False
+        )
+        or (
+            has_object_pose
+            and not recording_performed
+            and recording.get("physical_controller_input_used") is False
+            and recording.get("controller_input_used") is False
+        )
+        or (
+            has_object_pose
+            and recording_performed
+            and object_pose_captured
+            and recording.get("physical_controller_input_used") is True
+            and recording.get("controller_input_used") is True
+        )
+        or (
+            has_object_pose
+            and recording_performed
+            and not object_pose_captured
+            and recording.get("physical_controller_input_used") is False
+            and recording.get("controller_input_used") is False
+        )
+    )
+    requested_streams = [
+        str(value)
+        for value in request.get("requested_value_ids", [])
+    ]
+    captured_pass_streams = {
+        str(stream.get("stream_id"))
+        for stream in captured_streams
+        if stream.get("status") == "pass"
+    }
     checks = [
         recording_scorecard_check(
             "hostess.check.manifold_value_recording.schema",
@@ -1008,9 +1633,8 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
         ),
         recording_scorecard_check(
             "hostess.check.manifold_value_recording.controller_claim",
-            recording.get("physical_controller_input_used") is False
-            and recording.get("controller_input_used") is False,
-            "evidence does not claim live physical controller input",
+            controller_claim_ok,
+            "controller input claim matches requested provider and execution state",
         ),
         recording_scorecard_check(
             "hostess.check.manifold_value_recording.status",
@@ -1026,6 +1650,11 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
             "hostess.check.manifold_value_recording.blocked_is_explicit",
             status != "blocked" or bool(evidence.get("blocked_reasons")),
             "blocked recording evidence lists explicit blocked reasons",
+        ),
+        recording_scorecard_check(
+            "hostess.check.manifold_value_recording.pass_streams",
+            status != "pass" or all(stream_id in captured_pass_streams for stream_id in requested_streams),
+            "passing recording evidence includes every requested stream",
         ),
     ]
     errors = [

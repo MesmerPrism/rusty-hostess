@@ -49,9 +49,10 @@ JSON that includes package manifest hashes.
 - `tools/hostessctl/hostessctl.py record-values`: general Manifold value
   recording entrypoint. It accepts repeated `--value <stream-id-or-alias>` and
   `--duration-seconds`, builds provider plans, runs an existing single-value
-  live capture route when one is available, and otherwise writes explicit
-  ready/blocked Hostess evidence without making the recorder Polar- or
-  controller-specific.
+  live capture route when one is available, or records Quest broker WebSocket
+  streams for provider sets that share that transport. The recorder remains
+  general-purpose and records explicit missing-stream evidence instead of
+  becoming Polar- or controller-specific.
 - `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
   replay/live evidence into `rusty.hostess.telemetry.snapshot.v1` checkpoints
   for Makepad and future Rusty GUI surfaces.
@@ -69,7 +70,7 @@ python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target quest --adb <adb> --serial <serial> --packages-root <packages-root> --out <pmb-quest-replay-evidence.json>
 python tools\hostessctl\hostessctl.py run-pmb-controller-preflight --target quest --adb <adb> --serial <serial> --packages-root <packages-root> --out <pmb-quest-controller-preflight-evidence.json>
-python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording-plan.json> --plan-only --allow-blocked
+python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording.json> --adb <adb> --serial <quest-serial> --device-address <polar-address> --makepad-pose-controller right --makepad-pose-kind grip --makepad-pose-sample-hz 20
 python tools\hostessctl\hostessctl.py snapshot-telemetry --input <capture.json> --out <snapshot.json>
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 ```
@@ -105,14 +106,17 @@ python tools\hostessctl\hostessctl.py run-live --target desktop --module hrv_win
 General value recording uses Manifold stream IDs or aliases. Current supported
 single-value live routes are Polar H10 streams (`stream.polar_h10.hr_rr`,
 `stream.polar_h10.ecg`, `stream.polar_h10.acc`, and
-`stream.polar_h10.coherence`). `stream.motion.object_pose` is registered as the
-Quest controller-pose provider boundary and currently reports blocked for live
-recording until the XR/OpenXR provider is attached. Multi-value simultaneous
-recording is also reported as blocked until a combined scheduler lands.
+`stream.polar_h10.coherence`). Quest broker WebSocket recording supports
+combined provider sets whose providers publish through the broker, including
+`stream.polar_h10.acc` via Polar PMD and `stream.motion.object_pose` via the
+Makepad XR controller-pose provider. The combined route launches or reuses the
+broker, configures the Makepad provider, starts Polar PMD when requested,
+records for the requested duration, and reports a failed run if any selected
+stream is missing.
 
 ```powershell
 python tools\hostessctl\hostessctl.py record-values --target desktop --value stream.polar_h10.acc --duration-seconds 120 --packages-root <packages-root> --out <recording.json>
-python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording-plan.json> --plan-only --allow-blocked
+python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording.json> --adb <adb> --serial <quest-serial> --device-address <polar-address> --makepad-pose-controller right --makepad-pose-kind grip --makepad-pose-sample-hz 20
 ```
 
 For visual telemetry evidence on Android-class targets, prefer the app-rendered
