@@ -272,6 +272,10 @@ def main() -> int:
     record_values.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     record_values.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
     record_values.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    record_values.add_argument("--cargo", default="cargo")
+    record_values.add_argument("--pmb-live-processor", action="store_true")
+    record_values.add_argument("--pmb-feedback-publish-limit", type=int, default=24)
+    record_values.add_argument("--pmb-receipt-listen-seconds", type=float, default=3.0)
     record_values.add_argument("--no-launch-broker", action="store_true")
     record_values.add_argument("--no-launch-providers", action="store_true")
     record_values.add_argument("--runtime-core", choices=["rust", "python-smoke"], default="rust")
@@ -791,6 +795,11 @@ def run_manifold_value_recording(args: argparse.Namespace) -> int:
         provider_plans,
         plan_only=args.plan_only,
     )
+    if args.pmb_live_processor and not pmb_live_processor_inputs_ready(provider_plans):
+        route_status = "blocked"
+        route_reasons.append(
+            "PMB live processor bridge requires stream.polar_h10.acc and stream.motion.object_pose"
+        )
     started_utc = datetime.now(UTC)
     capture_status: int | None = None
     capture_evidence: dict[str, Any] | None = None
@@ -949,6 +958,14 @@ def manifold_recording_route_status(
     if plan_only:
         return "ready", []
     return "ready", []
+
+
+def pmb_live_processor_inputs_ready(provider_plans: list[dict[str, Any]]) -> bool:
+    stream_ids = {str(plan.get("stream_id")) for plan in provider_plans}
+    return {
+        "stream.polar_h10.acc",
+        "stream.motion.object_pose",
+    }.issubset(stream_ids)
 
 
 def single_value_live_capture_args(
@@ -1136,7 +1153,35 @@ def record_broker_websocket_streams(
     ws: BrokerWebSocketClient | None = None
     polar_started = False
     makepad_publish_enabled = False
+    makepad_breath_feedback_enabled = False
+    pmb_bridge_enabled = bool(getattr(args, "pmb_live_processor", False)) and pmb_live_processor_inputs_ready(provider_plans)
+    pmb_bridge: dict[str, Any] = {
+        "requested": bool(getattr(args, "pmb_live_processor", False)),
+        "enabled": pmb_bridge_enabled,
+        "status": "not_requested" if not getattr(args, "pmb_live_processor", False) else "pending",
+        "artifacts": [],
+    }
     forward_spec = f"tcp:{args.broker_local_port}"
+
+    if pmb_bridge_enabled:
+        for broker_stream_id, sample_kind in [
+            ("stream.breath.volume", "breath_volume"),
+            ("stream.breath.feedback_state", "breath_feedback_state"),
+            ("stream.breath.feedback_receipt", "breath_feedback_receipt"),
+        ]:
+            stream_rows[broker_stream_id] = {
+                "stream_id": broker_stream_id,
+                "broker_stream_id": broker_stream_id,
+                "provider_id": "processor.projected_motion_breath.live_bridge",
+                "provider_kind": "processor_bridge_output",
+                "sample_kind": sample_kind,
+                "status": "missing",
+                "event_count": 0,
+                "sample_count": 0,
+                "first_event_at_utc": None,
+                "last_event_at_utc": None,
+                "pmb_bridge_stream": True,
+            }
 
     def run_adb(label: str, command: list[str], *, allow_failure: bool = False) -> subprocess.CompletedProcess[str]:
         result = run_captured(command, allow_failure=True)
@@ -1156,7 +1201,7 @@ def record_broker_websocket_streams(
             raise RuntimeError(message)
         return result
 
-    def send_broker_command(command: str, params: dict[str, Any] | None = None) -> None:
+    def send_broker_command(command: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         assert ws is not None
         request_id = f"hostess-record-values-{command.replace('.', '-')}-{len(broker_acks) + 1}"
         message = broker_command_message(command, params=params, request_id=request_id)
@@ -1170,27 +1215,26 @@ def record_broker_websocket_streams(
                 accept_broker_stream_event(reply, stream_rows, events_jsonl)
                 continue
             if reply.get("request_id") == request_id or reply.get("command") == command:
-                ok = bool(reply.get("ok", reply.get("success", True)))
-                broker_acks.append(
-                    {
-                        "command": command,
-                        "request_id": request_id,
-                        "status": "pass" if ok else "fail",
-                        "reply": reply,
-                    }
-                )
+                ok = broker_ack_accepted(reply)
+                ack = {
+                    "command": command,
+                    "request_id": request_id,
+                    "status": "pass" if ok else "fail",
+                    "reply": reply,
+                }
+                broker_acks.append(ack)
                 if not ok:
                     errors.append(f"broker command {command} failed: {reply}")
-                return
-        broker_acks.append(
-            {
-                "command": command,
-                "request_id": request_id,
-                "status": "unknown",
-                "reply": None,
-            }
-        )
+                return ack
+        ack = {
+            "command": command,
+            "request_id": request_id,
+            "status": "unknown",
+            "reply": None,
+        }
+        broker_acks.append(ack)
         errors.append(f"broker command {command} did not return an acknowledgement")
+        return ack
 
     try:
         run_adb("adb-forward-remove-existing", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
@@ -1223,6 +1267,10 @@ def record_broker_websocket_streams(
         events_jsonl.write_text("", encoding="utf-8")
         for stream in requested_streams:
             send_broker_command("subscribe", {"stream": stream["broker_stream_id"]})
+        if pmb_bridge_enabled:
+            send_broker_command("subscribe", {"stream": "stream.breath.volume"})
+            send_broker_command("subscribe", {"stream": "stream.breath.feedback_state"})
+            send_broker_command("subscribe", {"stream": "stream.breath.feedback_receipt"})
         for plan in provider_plans:
             if plan.get("broker_start_command") == "polar_pmd.start":
                 send_broker_command(
@@ -1237,8 +1285,13 @@ def record_broker_websocket_streams(
                 )
                 polar_started = True
             if plan.get("provider_launch") == "makepad_xr_controller_pose" and not args.no_launch_providers:
-                configure_makepad_controller_pose_provider(args, run_adb)
+                configure_makepad_controller_pose_provider(
+                    args,
+                    run_adb,
+                    enable_breath_feedback=pmb_bridge_enabled,
+                )
                 makepad_publish_enabled = True
+                makepad_breath_feedback_enabled = pmb_bridge_enabled
         deadline = time.monotonic() + float(args.duration_seconds)
         with events_jsonl.open("a", encoding="utf-8") as events_file:
             while time.monotonic() < deadline:
@@ -1257,6 +1310,20 @@ def record_broker_websocket_streams(
                             "reply": message,
                         }
                     )
+        if pmb_bridge_enabled and ws is not None:
+            pmb_bridge = run_pmb_live_processor_bridge(args, events_jsonl, out)
+            if pmb_bridge.get("status") == "pass":
+                publish_result = publish_pmb_feedback_samples(
+                    args,
+                    pmb_bridge.get("route_report") if isinstance(pmb_bridge.get("route_report"), dict) else {},
+                    send_broker_command,
+                )
+                pmb_bridge["publish"] = publish_result
+                if not publish_result.get("published"):
+                    errors.append("PMB live processor bridge produced no published feedback samples")
+                listen_for_pmb_receipts(args, ws, stream_rows, events_jsonl, broker_acks)
+            else:
+                errors.append(f"PMB live processor bridge failed: {pmb_bridge.get('error') or pmb_bridge.get('status')}")
     except Exception as ex:
         errors.append(str(ex))
     finally:
@@ -1279,6 +1346,17 @@ def record_broker_websocket_streams(
                 ],
                 allow_failure=True,
             )
+        if makepad_breath_feedback_enabled:
+            run_adb(
+                "disable-makepad-breath-feedback-subscriber",
+                adb_prefix(args) + [
+                    "shell",
+                    "setprop",
+                    "debug.rustyxr.manifold.breath.feedback.enabled",
+                    "false",
+                ],
+                allow_failure=True,
+            )
         run_adb("adb-forward-remove-broker-websocket", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
 
     ended = datetime.now(UTC)
@@ -1297,6 +1375,13 @@ def record_broker_websocket_streams(
     object_pose_events = any(
         row["stream_id"] == "stream.motion.object_pose" and row["status"] == "pass"
         for row in stream_rows.values()
+    )
+    pmb_publish = pmb_bridge.get("publish") if isinstance(pmb_bridge.get("publish"), dict) else {}
+    pmb_feedback_published = bool(pmb_publish.get("published"))
+    pmb_breath_publish_count = int(pmb_publish.get("breath_published_count") or 0)
+    pmb_feedback_publish_count = int(pmb_publish.get("feedback_published_count") or 0)
+    pmb_receipt_count = int(
+        stream_rows.get("stream.breath.feedback_receipt", {}).get("event_count") or 0
     )
     evidence = {
         "$schema": "rusty.hostess.broker_stream_recording.evidence.v1",
@@ -1321,7 +1406,22 @@ def record_broker_websocket_streams(
         "errors": errors,
         "quest_execution_performed": args.target == "quest",
         "broker_websocket_recording": True,
-        "pmb_processor_executed": False,
+        "pmb_live_processor_requested": bool(getattr(args, "pmb_live_processor", False)),
+        "pmb_live_processor_enabled": pmb_bridge_enabled,
+        "pmb_processor_executed": bool(
+            pmb_bridge_enabled
+            and pmb_bridge.get("status") == "pass"
+            and isinstance(pmb_bridge.get("route_report"), dict)
+            and pmb_bridge["route_report"].get("processor_core_executed") is True
+        ),
+        "pmb_breath_published": pmb_breath_publish_count > 0,
+        "pmb_breath_publish_count": pmb_breath_publish_count,
+        "pmb_feedback_published": pmb_feedback_published and pmb_feedback_publish_count > 0,
+        "pmb_feedback_publish_count": pmb_feedback_publish_count,
+        "pmb_feedback_receipt_count": pmb_receipt_count,
+        "pmb_processor_bridge": pmb_bridge,
+        "makepad_breath_feedback_subscriber_configured": makepad_breath_feedback_enabled,
+        "makepad_breath_feedback_subscriber_flags_owner": "hostessctl.record_values",
         "controller_provider_route_ready": has_object_pose and (makepad_publish_enabled or object_pose_events),
         "polar_provider_route_ready": any(plan.get("broker_start_command") == "polar_pmd.start" for plan in provider_plans),
         "controller_input_used": object_pose_events,
@@ -1356,6 +1456,12 @@ def broker_command_message(
         "client_id": "hostessctl.record_values",
         "app_package": "rusty-hostess",
     }
+
+
+def broker_ack_accepted(reply: dict[str, Any]) -> bool:
+    if "accepted" in reply:
+        return bool(reply.get("accepted"))
+    return bool(reply.get("ok", reply.get("success", True)))
 
 
 def connect_broker_websocket_with_retry(
@@ -1395,6 +1501,8 @@ def connect_broker_websocket_with_retry(
 def configure_makepad_controller_pose_provider(
     args: argparse.Namespace,
     run_adb: Any,
+    *,
+    enable_breath_feedback: bool = False,
 ) -> None:
     setprops = {
         "debug.rustyxr.manifold.pose.publish.enabled": "true",
@@ -1407,6 +1515,17 @@ def configure_makepad_controller_pose_provider(
         "debug.rustyxr.manifold.broker.port": str(args.broker_port),
         "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
     }
+    if enable_breath_feedback:
+        setprops.update(
+            {
+                "debug.rustyxr.manifold.breath.feedback.enabled": "true",
+                "debug.rustyxr.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+                "debug.rustyxr.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
+                "debug.rustyxr.manifold.breath.feedback.connect.timeout.ms": "5000",
+            }
+        )
+    else:
+        setprops["debug.rustyxr.manifold.breath.feedback.enabled"] = "false"
     for key, value in setprops.items():
         run_adb(
             f"setprop-{key}",
@@ -1423,6 +1542,237 @@ def configure_makepad_controller_pose_provider(
         adb_prefix(args) + ["shell", "am", "start", "-n", args.makepad_provider_activity],
         allow_failure=False,
     )
+
+
+def run_pmb_live_processor_bridge(
+    args: argparse.Namespace,
+    events_jsonl: Path,
+    capture_out: Path,
+) -> dict[str, Any]:
+    packages_root = Path(args.packages_root)
+    package_root = projected_motion_breath_package_root(packages_root)
+    route_report_path = capture_out.with_name(f"{capture_out.stem}.pmb-live-route-report.json")
+    stdout_path = capture_out.with_name(f"{capture_out.stem}.pmb-live-route.stdout.txt")
+    stderr_path = capture_out.with_name(f"{capture_out.stem}.pmb-live-route.stderr.txt")
+    command = [
+        args.cargo,
+        "run",
+        "--quiet",
+        "-p",
+        "projected-motion-breath-core",
+        "--",
+        "live-route-from-events",
+        "--package-root",
+        str(package_root),
+        "--events-jsonl",
+        str(events_jsonl),
+    ]
+    started_utc = datetime.now(UTC)
+    if not package_root.exists():
+        return {
+            "requested": True,
+            "enabled": True,
+            "status": "fail",
+            "error": f"projected-motion-breath package root not found: {package_root}",
+            "artifacts": [],
+        }
+    core_run = run_captured(command, allow_failure=True, cwd=packages_root)
+    ended_utc = datetime.now(UTC)
+    stdout_path.write_text(core_run.stdout, encoding="utf-8")
+    stderr_path.write_text(core_run.stderr, encoding="utf-8")
+    route_report, parse_error = parse_pmb_core_report(core_run.stdout)
+    if route_report is not None:
+        route_report_path.write_text(
+            json.dumps(route_report, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+    status = "pass" if core_run.returncode == 0 and route_report and route_report.get("status") == "pass" else "fail"
+    return {
+        "requested": True,
+        "enabled": True,
+        "status": status,
+        "started_at_utc": started_utc.isoformat(),
+        "ended_at_utc": ended_utc.isoformat(),
+        "duration_ms": int((ended_utc - started_utc).total_seconds() * 1000),
+        "command": redact_command(command),
+        "core_returncode": core_run.returncode,
+        "parse_error": parse_error,
+        "route_report": route_report,
+        "breath_sample_count": len(route_report.get("breath_samples", [])) if isinstance(route_report, dict) else 0,
+        "feedback_sample_count": len(route_report.get("feedback_samples", [])) if isinstance(route_report, dict) else 0,
+        "artifacts": [
+            {
+                "artifact_id": "artifact.pmb_live_processor_route_report",
+                "path": str(route_report_path),
+                "exists": route_report_path.exists(),
+            },
+            {
+                "artifact_id": "artifact.pmb_live_processor_stdout",
+                "path": str(stdout_path),
+                "exists": stdout_path.exists(),
+            },
+            {
+                "artifact_id": "artifact.pmb_live_processor_stderr",
+                "path": str(stderr_path),
+                "exists": stderr_path.exists(),
+            },
+        ],
+    }
+
+
+def publish_pmb_feedback_samples(
+    args: argparse.Namespace,
+    route_report: dict[str, Any],
+    send_broker_command: Any,
+) -> dict[str, Any]:
+    limit = max(0, int(getattr(args, "pmb_feedback_publish_limit", 0)))
+    breath_samples = select_pmb_output_samples(route_report.get("breath_samples", []), limit)
+    feedback_samples = select_pmb_output_samples(route_report.get("feedback_samples", []), limit)
+    breath_results = [
+        publish_pmb_stream_sample(
+            send_broker_command,
+            stream_id="stream.breath.volume",
+            sequence_id=int(sample.get("sequence_id") or index + 1),
+            payload={
+                "schema": "rusty.manifold.breath.volume.v1",
+                "stream_id": "stream.breath.volume",
+                "sequence_id": int(sample.get("sequence_id") or index + 1),
+                "source_id": sample.get("source_id"),
+                "input_stream_id": sample.get("input_stream_id"),
+                "normalized_stream_id": sample.get("normalized_stream_id"),
+                "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
+                "volume01": sample.get("volume01"),
+                "phase": sample.get("phase"),
+                "quality": sample.get("quality"),
+                "tracking01": sample.get("tracking01"),
+                "processor_id": "processor.projected_motion_breath.live_bridge",
+                "publisher": "hostessctl.record_values",
+            },
+        )
+        for index, sample in enumerate(breath_samples)
+    ]
+    feedback_results = [
+        publish_pmb_stream_sample(
+            send_broker_command,
+            stream_id="stream.breath.feedback_state",
+            sequence_id=int(sample.get("sequence_id") or index + 1),
+            payload={
+                "schema": "rusty.manifold.breath.feedback_state.v1",
+                "stream_id": "stream.breath.feedback_state",
+                "sequence_id": int(sample.get("sequence_id") or index + 1),
+                "source_breath_sequence_id": sample.get("source_breath_sequence_id"),
+                "source_id": sample.get("source_id"),
+                "sample_time_unix_ns": sample.get("sample_time_unix_ns"),
+                "volume01": sample.get("volume01"),
+                "phase": sample.get("phase"),
+                "quality": sample.get("quality"),
+                "processor_id": "processor.projected_motion_breath.live_bridge",
+                "publisher": "hostessctl.record_values",
+            },
+        )
+        for index, sample in enumerate(feedback_samples)
+    ]
+    return {
+        "limit": limit,
+        "breath_requested_count": len(route_report.get("breath_samples", [])),
+        "feedback_requested_count": len(route_report.get("feedback_samples", [])),
+        "breath_published_count": sum(1 for result in breath_results if result.get("status") == "pass"),
+        "feedback_published_count": sum(1 for result in feedback_results if result.get("status") == "pass"),
+        "published_count": sum(1 for result in breath_results + feedback_results if result.get("status") == "pass"),
+        "published": any(result.get("status") == "pass" for result in breath_results + feedback_results),
+        "breath_results": breath_results,
+        "feedback_results": feedback_results,
+    }
+
+
+def select_pmb_output_samples(raw_samples: Any, limit: int) -> list[dict[str, Any]]:
+    if limit <= 0 or not isinstance(raw_samples, list):
+        return []
+    by_source: dict[str, list[dict[str, Any]]] = {}
+    source_order: list[str] = []
+    for sample in raw_samples:
+        if not isinstance(sample, dict):
+            continue
+        source_id = str(sample.get("source_id") or "source.unknown")
+        if source_id not in by_source:
+            by_source[source_id] = []
+            source_order.append(source_id)
+        by_source[source_id].append(sample)
+    selected: list[dict[str, Any]] = []
+    cursor = 0
+    while len(selected) < limit and source_order:
+        progressed = False
+        for source_id in source_order:
+            source_samples = by_source[source_id]
+            if cursor < len(source_samples):
+                selected.append(source_samples[cursor])
+                progressed = True
+                if len(selected) >= limit:
+                    break
+        if not progressed:
+            break
+        cursor += 1
+    return selected
+
+
+def publish_pmb_stream_sample(
+    send_broker_command: Any,
+    *,
+    stream_id: str,
+    sequence_id: int,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    ack = send_broker_command(
+        "publish_stream_event",
+        {
+            "stream": stream_id,
+            "sequence_id": sequence_id,
+            "payload": payload,
+        },
+    )
+    return {
+        "stream_id": stream_id,
+        "sequence_id": sequence_id,
+        "status": ack.get("status"),
+        "request_id": ack.get("request_id"),
+    }
+
+
+def sample_time_unix_ns_from_sample(sample: dict[str, Any]) -> int:
+    value = sample.get("sample_time_unix_ns")
+    if isinstance(value, (int, float)):
+        return int(value)
+    sample_time_s = sample.get("sample_time_s")
+    if isinstance(sample_time_s, (int, float)):
+        return int(max(0.0, float(sample_time_s)) * 1_000_000_000)
+    return 0
+
+
+def listen_for_pmb_receipts(
+    args: argparse.Namespace,
+    ws: BrokerWebSocketClient,
+    stream_rows: dict[str, dict[str, Any]],
+    events_jsonl: Path,
+    broker_acks: list[dict[str, Any]],
+) -> None:
+    deadline = time.monotonic() + max(0.0, float(getattr(args, "pmb_receipt_listen_seconds", 0.0)))
+    with events_jsonl.open("a", encoding="utf-8") as events_file:
+        while time.monotonic() < deadline:
+            remaining = max(0.05, min(0.25, deadline - time.monotonic()))
+            message = ws.recv_json(timeout=remaining)
+            if message is None:
+                continue
+            if message.get("type") == "stream_event":
+                accept_broker_stream_event(message, stream_rows, events_jsonl, events_file=events_file)
+            else:
+                broker_acks.append(
+                    {
+                        "command": str(message.get("command") or message.get("type") or "broker-message"),
+                        "request_id": message.get("request_id"),
+                        "status": "observed",
+                        "reply": message,
+                    }
+                )
 
 
 def accept_broker_stream_event(
@@ -1453,6 +1803,7 @@ def accept_broker_stream_event(
 
 def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     streams = [stream for stream in evidence.get("streams", []) if isinstance(stream, dict)]
+    pmb_requested = evidence.get("pmb_live_processor_requested") is True
     checks = [
         recording_scorecard_check(
             "hostess.check.broker_stream_recording.schema",
@@ -1469,6 +1820,21 @@ def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]
             evidence.get("broker_websocket_recording") is True
             and evidence.get("transport", {}).get("kind") == "adb-forwarded-broker-websocket",
             "recording used the adb-forwarded broker websocket transport",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.pmb_processor_bridge",
+            not pmb_requested
+            or (
+                evidence.get("pmb_processor_executed") is True
+                and evidence.get("pmb_breath_published") is True
+                and evidence.get("pmb_feedback_published") is True
+            ),
+            "PMB live processor bridge ran and published breath output streams when requested",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.makepad_breath_feedback_receipt",
+            not pmb_requested or int(evidence.get("pmb_feedback_receipt_count") or 0) > 0,
+            "Makepad receipt stream acknowledged at least one PMB feedback sample when requested",
         ),
     ]
     errors = [check["evidence"] for check in checks if check["status"] != "pass"]
@@ -1530,6 +1896,14 @@ def build_manifold_value_recording_evidence(
                 "exists": validation_path.exists(),
             }
         )
+        if capture_evidence:
+            pmb_bridge = capture_evidence.get("pmb_processor_bridge")
+            if isinstance(pmb_bridge, dict):
+                capture_artifacts.extend(
+                    artifact
+                    for artifact in pmb_bridge.get("artifacts", [])
+                    if isinstance(artifact, dict)
+                )
     captured_streams = []
     if capture_evidence:
         captured_streams = [
@@ -1580,6 +1954,7 @@ def build_manifold_value_recording_evidence(
             "host_profile": host_profile,
             "mode": "live",
             "plan_only": bool(args.plan_only),
+            "pmb_live_processor": bool(args.pmb_live_processor),
         },
         "recording": {
             "mode": "manifold_value_recording",
@@ -1596,6 +1971,21 @@ def build_manifold_value_recording_evidence(
             "controller_input_used": controller_input_used,
             "simultaneous_multi_value_recording_supported": all_combined_supported,
             "manual_controller_trial_required": has_object_pose and not controller_input_used,
+            "pmb_live_processor_requested": bool(args.pmb_live_processor),
+            "pmb_processor_executed": bool(capture_evidence and capture_evidence.get("pmb_processor_executed")),
+            "pmb_breath_published": bool(capture_evidence and capture_evidence.get("pmb_breath_published")),
+            "pmb_breath_publish_count": int(capture_evidence.get("pmb_breath_publish_count") or 0) if capture_evidence else 0,
+            "pmb_feedback_published": bool(capture_evidence and capture_evidence.get("pmb_feedback_published")),
+            "pmb_feedback_publish_count": int(capture_evidence.get("pmb_feedback_publish_count") or 0) if capture_evidence else 0,
+            "pmb_feedback_receipt_count": int(capture_evidence.get("pmb_feedback_receipt_count") or 0) if capture_evidence else 0,
+            "makepad_breath_feedback_subscriber_configured": bool(
+                capture_evidence and capture_evidence.get("makepad_breath_feedback_subscriber_configured")
+            ),
+            "makepad_breath_feedback_subscriber_flags_owner": (
+                capture_evidence.get("makepad_breath_feedback_subscriber_flags_owner")
+                if capture_evidence
+                else None
+            ),
         },
         "provider_plans": provider_plans,
         "blocked_reasons": route_reasons,
@@ -1649,6 +2039,7 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
         for stream in captured_streams
     )
     recording_performed = recording.get("recording_performed") is True
+    pmb_requested = recording.get("pmb_live_processor_requested") is True
     controller_claim_ok = (
         (
             not has_object_pose
@@ -1733,6 +2124,19 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
             status != "pass" or all(stream_id in captured_pass_streams for stream_id in requested_streams),
             "passing recording evidence includes every requested stream",
         ),
+        recording_scorecard_check(
+            "hostess.check.manifold_value_recording.pmb_live_processor_bridge",
+            status != "pass"
+            or not pmb_requested
+            or (
+                recording.get("pmb_processor_executed") is True
+                and recording.get("pmb_breath_published") is True
+                and recording.get("pmb_feedback_published") is True
+                and int(recording.get("pmb_feedback_receipt_count") or 0) > 0
+                and recording.get("makepad_breath_feedback_subscriber_configured") is True
+            ),
+            "passing PMB bridge recording ran the processor, published breath streams, and received Makepad feedback ack",
+        ),
     ]
     errors = [
         check["evidence"]
@@ -1808,6 +2212,12 @@ def write_manifold_value_recording_host_run_evidence(
             "controller_input_used": raw.get("recording", {}).get("controller_input_used"),
             "physical_controller_input_used": raw.get("recording", {}).get("physical_controller_input_used"),
             "manual_controller_trial_required": raw.get("recording", {}).get("manual_controller_trial_required"),
+            "pmb_live_processor_requested": raw.get("recording", {}).get("pmb_live_processor_requested"),
+            "pmb_processor_executed": raw.get("recording", {}).get("pmb_processor_executed"),
+            "pmb_breath_publish_count": raw.get("recording", {}).get("pmb_breath_publish_count"),
+            "pmb_feedback_publish_count": raw.get("recording", {}).get("pmb_feedback_publish_count"),
+            "pmb_feedback_receipt_count": raw.get("recording", {}).get("pmb_feedback_receipt_count"),
+            "makepad_breath_feedback_subscriber_configured": raw.get("recording", {}).get("makepad_breath_feedback_subscriber_configured"),
         },
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",

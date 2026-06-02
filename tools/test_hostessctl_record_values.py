@@ -209,6 +209,140 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
                 },
             )
 
+    def test_controller_and_polar_pmb_bridge_fields_are_carried(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "recording" / "controller-polar-pmb-recording.json"
+            seen_broker_args: list[argparse.Namespace] = []
+
+            def fake_record_broker_streams(
+                args: argparse.Namespace,
+                provider_plans: list[dict[str, object]],
+                capture_out: Path,
+            ) -> int:
+                seen_broker_args.append(args)
+                capture_out.parent.mkdir(parents=True, exist_ok=True)
+                capture_out.write_text(
+                    json.dumps(
+                        {
+                            "$schema": "rusty.hostess.broker_stream_recording.evidence.v1",
+                            "status": "pass",
+                            "streams": [
+                                {
+                                    "stream_id": "stream.polar_h10.acc",
+                                    "broker_stream_id": "bio:polar_acc",
+                                    "status": "pass",
+                                    "sample_count": 2,
+                                    "event_count": 2,
+                                },
+                                {
+                                    "stream_id": "stream.motion.object_pose",
+                                    "broker_stream_id": "stream.motion.object_pose",
+                                    "status": "pass",
+                                    "sample_count": 2,
+                                    "event_count": 2,
+                                },
+                                {
+                                    "stream_id": "stream.breath.volume",
+                                    "broker_stream_id": "stream.breath.volume",
+                                    "status": "pass",
+                                    "sample_count": 1,
+                                    "event_count": 1,
+                                },
+                                {
+                                    "stream_id": "stream.breath.feedback_state",
+                                    "broker_stream_id": "stream.breath.feedback_state",
+                                    "status": "pass",
+                                    "sample_count": 1,
+                                    "event_count": 1,
+                                },
+                                {
+                                    "stream_id": "stream.breath.feedback_receipt",
+                                    "broker_stream_id": "stream.breath.feedback_receipt",
+                                    "status": "pass",
+                                    "sample_count": 1,
+                                    "event_count": 1,
+                                },
+                            ],
+                            "pmb_live_processor_requested": True,
+                            "pmb_live_processor_enabled": True,
+                            "pmb_processor_executed": True,
+                            "pmb_breath_published": True,
+                            "pmb_breath_publish_count": 1,
+                            "pmb_feedback_published": True,
+                            "pmb_feedback_publish_count": 1,
+                            "pmb_feedback_receipt_count": 1,
+                            "makepad_breath_feedback_subscriber_configured": True,
+                            "makepad_breath_feedback_subscriber_flags_owner": "hostessctl.record_values",
+                            "pmb_processor_bridge": {
+                                "status": "pass",
+                                "artifacts": [
+                                    {
+                                        "artifact_id": "artifact.pmb_live_processor_route_report",
+                                        "path": str(capture_out.with_name("route-report.json")),
+                                        "exists": True,
+                                    }
+                                ],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                capture_out.with_name(f"{capture_out.stem}.validation-report.json").write_text(
+                    json.dumps({"status": "pass"}),
+                    encoding="utf-8",
+                )
+                return 0
+
+            with patch.object(
+                hostessctl,
+                "record_broker_websocket_streams",
+                side_effect=fake_record_broker_streams,
+            ):
+                status = hostessctl.run_manifold_value_recording(
+                    record_args(
+                        root,
+                        out,
+                        target="quest",
+                        values=["stream.polar_h10.acc", "stream.motion.object_pose"],
+                        adb="adb",
+                        serial="quest-serial",
+                        pmb_live_processor=True,
+                    )
+                )
+
+            self.assertEqual(status, 0)
+            self.assertTrue(seen_broker_args[0].pmb_live_processor)
+            evidence = read_json(out)
+            host_run = read_json(out.with_name("controller-polar-pmb-recording.host-run-evidence.json"))
+            self.assertEqual(evidence["status"], "pass")
+            self.assertTrue(evidence["recording"]["pmb_processor_executed"])
+            self.assertTrue(evidence["recording"]["pmb_breath_published"])
+            self.assertTrue(evidence["recording"]["pmb_feedback_published"])
+            self.assertEqual(evidence["recording"]["pmb_feedback_receipt_count"], 1)
+            self.assertTrue(evidence["recording"]["makepad_breath_feedback_subscriber_configured"])
+            self.assertEqual(
+                evidence["recording"]["makepad_breath_feedback_subscriber_flags_owner"],
+                "hostessctl.record_values",
+            )
+            self.assertEqual(host_run["result_fields"]["pmb_processor_executed"], True)
+            self.assertEqual(host_run["result_fields"]["pmb_feedback_receipt_count"], 1)
+
+    def test_pmb_output_sample_selection_interleaves_sources(self) -> None:
+        samples = [
+            {"source_id": "polar", "sequence_id": 1},
+            {"source_id": "polar", "sequence_id": 2},
+            {"source_id": "controller", "sequence_id": 3},
+            {"source_id": "controller", "sequence_id": 4},
+        ]
+
+        selected = hostessctl.select_pmb_output_samples(samples, 4)
+
+        self.assertEqual(
+            [sample["sequence_id"] for sample in selected],
+            [1, 3, 2, 4],
+        )
+
 
 def record_args(
     root: Path,
@@ -220,6 +354,7 @@ def record_args(
     allow_blocked: bool = False,
     adb: str | None = None,
     serial: str | None = None,
+    pmb_live_processor: bool = False,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         target=target,
@@ -240,6 +375,10 @@ def record_args(
         makepad_pose_controller="right",
         makepad_pose_kind="grip",
         makepad_pose_sample_hz=20.0,
+        cargo="cargo",
+        pmb_live_processor=pmb_live_processor,
+        pmb_feedback_publish_limit=24,
+        pmb_receipt_listen_seconds=3.0,
         no_launch_broker=False,
         no_launch_providers=False,
         runtime_core="python-smoke",
