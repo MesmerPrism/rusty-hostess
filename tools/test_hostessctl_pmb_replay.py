@@ -577,6 +577,126 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
         self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_ACTION, command)
         self.assertIn(f"{hostessctl.ANDROID_PACKAGE}/.MainActivity", command)
 
+    def test_configure_makepad_physical_pmb_provider_applies_visual_profile(self) -> None:
+        commands: list[list[str]] = []
+
+        def fake_run(
+            command: list[str],
+            *,
+            allow_failure: bool = False,
+            cwd: Path | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            commands.append(command)
+            return subprocess.CompletedProcess(command, 0)
+
+        args = argparse.Namespace(
+            adb="adb",
+            serial="quest-serial",
+            broker_port=8765,
+            makepad_pose_controller="right",
+            makepad_pose_kind="grip",
+            makepad_pose_sample_hz=20.0,
+            makepad_package=hostessctl.MAKEPAD_ANDROID_PACKAGE,
+            makepad_activity=hostessctl.MAKEPAD_ANDROID_XR_ACTIVITY,
+            makepad_settle_seconds=0.0,
+        )
+
+        with patch.object(hostessctl, "run", side_effect=fake_run):
+            hostessctl.configure_makepad_physical_pmb_provider(args)
+
+        setprops = {
+            command[-2]: command[-1]
+            for command in commands
+            if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
+        }
+        self.assertEqual(
+            setprops["debug.rustyxr.processing.layer"],
+            "peripheral-stretch",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.camera.source.sampling.mode"],
+            "target-local-raster",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.projection.border.opacity"],
+            "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.border.opacity"],
+            "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],
+            "offset-scale",
+        )
+
+    def test_configure_makepad_controller_pose_provider_applies_visual_profile(self) -> None:
+        actions: list[tuple[str, list[str]]] = []
+
+        def fake_run_adb(
+            label: str,
+            command: list[str],
+            *,
+            allow_failure: bool = False,
+        ) -> subprocess.CompletedProcess[str]:
+            actions.append((label, command))
+            return subprocess.CompletedProcess(command, 0)
+
+        args = argparse.Namespace(
+            adb="adb",
+            serial="quest-serial",
+            broker_port=8765,
+            makepad_pose_controller="right",
+            makepad_pose_kind="grip",
+            makepad_pose_sample_hz=20.0,
+            makepad_provider_package=hostessctl.MAKEPAD_ANDROID_PACKAGE,
+            makepad_provider_activity=hostessctl.MAKEPAD_ANDROID_XR_ACTIVITY,
+        )
+
+        hostessctl.configure_makepad_controller_pose_provider(args, fake_run_adb)
+
+        setprops = {
+            command[-2]: command[-1]
+            for _label, command in actions
+            if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
+        }
+        self.assertEqual(
+            setprops["debug.rustyxr.processing.layer"],
+            "peripheral-stretch",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.camera.source.sampling.mode"],
+            "target-local-raster",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.projection.border.opacity"],
+            "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.border.opacity"],
+            "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],
+            "offset-scale",
+        )
+
     def test_validate_pmb_quest_physical_live_rejects_pc_or_simulated_authority(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

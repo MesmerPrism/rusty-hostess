@@ -89,6 +89,16 @@ real Polar/controller PMB gate; the older host-side
 `record-values --pmb-live-processor` bridge is not acceptable for this gate
 because it computes PMB on the PC.
 
+`hostessctl observe-broker-telemetry --target quest` starts the Hostess
+foreground telemetry UI as a broker-stream observer, optionally requests the
+broker Polar PMD provider, subscribes to `bio:polar_acc`, renders the existing
+live telemetry plot, and writes
+`rusty.hostess.broker_telemetry_observer.evidence.v1`. This route is the
+foreground telemetry visualization proof while preserving broker BLE authority:
+the evidence must record `hostess_role=foreground_telemetry_ui_observer`,
+`broker_transport_used=true`, `broker_connected=true`, `direct_ble_used=false`,
+`telemetry_ui_visualized=true`, and nonzero `bio:polar_acc` frame/sample counts.
+
 General Manifold value recording uses
 `rusty.hostess.manifold_value_recording.evidence.v1`.
 `hostessctl record-values --target desktop|phone|quest --value <stream-id>`

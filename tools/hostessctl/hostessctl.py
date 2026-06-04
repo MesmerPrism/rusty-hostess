@@ -21,6 +21,9 @@ sys.path.insert(0, str(REPO_ROOT))
 
 from tools.check_live_capture_evidence import package_snapshot, sha256_file  # noqa: E402
 from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
+from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
+    makepad_visual_profile_runtime_properties,
+)
 from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
@@ -44,6 +47,7 @@ ANDROID_PMB_PHYSICAL_LIVE_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB
 ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION = (
     "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND"
 )
+ANDROID_BROKER_TELEMETRY_ACTION = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY"
 ANDROID_PMB_PHYSICAL_LIVE_SERVICE = f"{ANDROID_PACKAGE}/.PmbPhysicalLiveService"
 ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
 ANDROID_REMOTE_EVIDENCE = (
@@ -90,6 +94,12 @@ ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT = (
 )
 ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.broker-publish-report.json"
+)
+ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/broker-telemetry/latest.json"
+)
+ANDROID_REMOTE_BROKER_TELEMETRY_REPORT = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/broker-telemetry/latest.broker-telemetry-report.json"
 )
 ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
 MAKEPAD_RENDER_RELATIVE = "files/hostess-t/telemetry/makepad-telemetry-render.png"
@@ -329,6 +339,24 @@ def main() -> int:
     run_pmb_physical_live_parser.add_argument("--no-launch-makepad", action="store_true")
     run_pmb_physical_live_parser.add_argument("--foreground-hostess", action="store_true")
 
+    observe_broker_telemetry = subcommands.add_parser("observe-broker-telemetry")
+    observe_broker_telemetry.add_argument("--target", choices=["quest"], default="quest")
+    observe_broker_telemetry.add_argument("--out", required=True)
+    observe_broker_telemetry.add_argument("--adb", required=True)
+    observe_broker_telemetry.add_argument("--serial", required=True)
+    observe_broker_telemetry.add_argument("--duration-seconds", type=float, default=10.0)
+    observe_broker_telemetry.add_argument("--device-address")
+    observe_broker_telemetry.add_argument("--acc-rate", type=int, default=200)
+    observe_broker_telemetry.add_argument("--scan-timeout-seconds", type=float, default=30.0)
+    observe_broker_telemetry.add_argument("--broker-package", default=BROKER_PACKAGE)
+    observe_broker_telemetry.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    observe_broker_telemetry.add_argument("--broker-port", type=int, default=BROKER_PORT)
+    observe_broker_telemetry.add_argument("--telemetry-page", choices=["raw", "modules"], default="raw")
+    observe_broker_telemetry.add_argument("--no-launch-broker", action="store_true")
+    observe_broker_telemetry.add_argument("--no-request-provider-start", action="store_true")
+    observe_broker_telemetry.add_argument("--keep-provider-running", action="store_true")
+    observe_broker_telemetry.add_argument("--render-out")
+
     run_pmb_live_route_self_test_parser = subcommands.add_parser("run-pmb-live-route-self-test")
     run_pmb_live_route_self_test_parser.add_argument("--out", required=True)
     run_pmb_live_route_self_test_parser.add_argument("--packages-root", required=True)
@@ -378,6 +406,7 @@ def main() -> int:
     render.add_argument("--input")
     render.add_argument("--name")
     render.add_argument("--page", choices=["raw", "modules"], default="raw")
+    render.add_argument("--source-evidence-path")
 
     makepad_render = subcommands.add_parser("pull-makepad-render")
     makepad_render.add_argument("--target", choices=["phone", "quest"], required=True)
@@ -424,6 +453,8 @@ def main() -> int:
         return run_pmb_quest_simulated_live(args)
     if args.command == "run-pmb-quest-physical-live":
         return run_pmb_quest_physical_live(args)
+    if args.command == "observe-broker-telemetry":
+        return observe_broker_telemetry_ui(args)
     if args.command == "run-pmb-live-route-self-test":
         return run_pmb_live_route_self_test(args)
     if args.command == "run-pmb-shell-handoff":
@@ -1125,6 +1156,140 @@ def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str)
     if args.device_address:
         command.extend(["--es", "device_address", args.device_address])
     return command
+
+
+def observe_broker_telemetry_ui(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    if args.duration_seconds <= 0:
+        raise SystemExit("--duration-seconds must be greater than zero")
+    if not getattr(args, "no_launch_broker", False):
+        grant_broker_runtime_permissions(args)
+        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.broker_activity])
+    clear_android_broker_telemetry_artifacts(args)
+    command = [
+        args.adb,
+        "-s",
+        args.serial,
+        "shell",
+        "am",
+        "start",
+        "-a",
+        ANDROID_BROKER_TELEMETRY_ACTION,
+        "-n",
+        f"{ANDROID_PACKAGE}/.MainActivity",
+        "--es",
+        "host_profile",
+        "headset",
+        "--es",
+        "broker_host",
+        "127.0.0.1",
+        "--es",
+        "broker_port",
+        str(args.broker_port),
+        "--es",
+        "duration_ms",
+        str(int(max(0.0, args.duration_seconds) * 1000.0)),
+        "--es",
+        "acc_rate_hz",
+        str(args.acc_rate),
+        "--es",
+        "scan_timeout_ms",
+        str(int(max(0.0, args.scan_timeout_seconds) * 1000.0)),
+        "--es",
+        "telemetry_page",
+        args.telemetry_page,
+        "--ez",
+        "request_provider_start",
+        "false" if args.no_request_provider_start else "true",
+        "--ez",
+        "stop_provider_on_finish",
+        "false" if args.keep_provider_running else "true",
+    ]
+    if args.device_address:
+        command.extend(["--es", "device_address", args.device_address])
+    run(command)
+    wait_seconds = (
+        max(0.0, float(args.duration_seconds))
+        + (0.0 if args.no_request_provider_start else max(0.0, float(args.scan_timeout_seconds)))
+        + 20.0
+    )
+    wait_for_android_file(args, ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE, wait_seconds)
+    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE, str(out)])
+    report_path = out.with_name(f"{out.stem}.broker-telemetry-report.json")
+    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_REPORT, str(report_path)])
+    evidence = json.loads(out.read_text(encoding="utf-8"))
+    validation_report = validate_broker_telemetry_observer_evidence(evidence)
+    validation_path = out.with_name(f"{out.stem}.validation-report.json")
+    validation_path.write_text(
+        json.dumps(validation_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if args.render_out:
+        render_args = argparse.Namespace(
+            target=args.target,
+            adb=args.adb,
+            serial=args.serial,
+            out=args.render_out,
+            input=None,
+            name=Path(args.render_out).name,
+            page=args.telemetry_page,
+            source_evidence_path="hostess-t/evidence/broker-telemetry/latest.json",
+        )
+        render_telemetry(render_args)
+    return 0 if validation_report["status"] == "pass" else 2
+
+
+def validate_broker_telemetry_observer_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    capture = evidence.get("capture", {})
+    broker_report = evidence.get("broker_report", {})
+    streams = [stream for stream in evidence.get("streams", []) if isinstance(stream, dict)]
+    polar_stream = next(
+        (stream for stream in streams if stream.get("stream_id") == "bio:polar_acc"),
+        {},
+    )
+    checks = [
+        recording_scorecard_check(
+            "hostess.check.broker_telemetry.schema",
+            evidence.get("$schema") == "rusty.hostess.broker_telemetry_observer.evidence.v1",
+            "broker telemetry observer evidence schema is supported",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_telemetry.observer_boundary",
+            capture.get("direct_ble_used") is False
+            and evidence.get("direct_ble_used") is False
+            and capture.get("hostess_role") == "foreground_telemetry_ui_observer",
+            "foreground telemetry UI observes broker streams and does not open direct BLE",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_telemetry.broker_transport",
+            capture.get("broker_transport_used") is True
+            and broker_report.get("broker_connected") is True,
+            "broker WebSocket transport was used by the foreground telemetry UI",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_telemetry.stream",
+            polar_stream.get("status") == "pass"
+            and int(polar_stream.get("sample_count") or 0) > 0
+            and int(broker_report.get("frame_count") or 0) > 0,
+            "bio:polar_acc broker stream produced frames for visualization",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_telemetry.status",
+            evidence.get("status") == "pass"
+            and broker_report.get("status") == "pass"
+            and evidence.get("telemetry_ui_visualized") is True,
+            "foreground telemetry observer run passed and visualized live telemetry",
+        ),
+    ]
+    errors = [check["evidence"] for check in checks if check["status"] != "pass"]
+    return {
+        "$schema": "rusty.hostess.broker_telemetry_observer.validation.v1",
+        "status": "pass" if not errors else "fail",
+        "evidence_status": evidence.get("status"),
+        "checks": checks,
+        "errors": errors,
+    }
 
 
 def run_manifold_value_recording(args: argparse.Namespace) -> int:
@@ -1863,6 +2028,7 @@ def configure_makepad_controller_pose_provider(
     enable_breath_feedback: bool = False,
 ) -> None:
     setprops = {
+        **makepad_visual_profile_runtime_properties(),
         "debug.rustyxr.manifold.pose.publish.enabled": "true",
         "debug.rustyxr.manifold.pose.stream": "stream.motion.object_pose",
         "debug.rustyxr.manifold.pose.source": "provider.makepad_xr.controller_pose",
@@ -1904,6 +2070,7 @@ def configure_makepad_controller_pose_provider(
 
 def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None:
     setprops = {
+        **makepad_visual_profile_runtime_properties(),
         "debug.rustyxr.manifold.pose.publish.enabled": "false",
         "debug.rustyxr.manifold.broker.host": "127.0.0.1",
         "debug.rustyxr.manifold.broker.port": str(args.broker_port),
@@ -1930,6 +2097,7 @@ def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None
 
 def configure_makepad_physical_pmb_provider(args: argparse.Namespace) -> None:
     setprops = {
+        **makepad_visual_profile_runtime_properties(),
         "debug.rustyxr.manifold.pose.publish.enabled": "true",
         "debug.rustyxr.manifold.pose.stream": "stream.motion.object_pose",
         "debug.rustyxr.manifold.pose.source": "provider.makepad_xr.controller_pose",
@@ -2815,6 +2983,9 @@ def render_telemetry(args: argparse.Namespace) -> int:
             "--es",
             "render_target",
             args.target,
+            "--es",
+            "render_source_evidence_path",
+            args.source_evidence_path or "hostess-t/evidence/live-capture/latest.json",
         ]
     )
     wait_for_android_file(args, remote_sidecar, 10.0)
@@ -2825,7 +2996,7 @@ def render_telemetry(args: argparse.Namespace) -> int:
         out,
         sidecar,
         expected_page=args.page,
-        source_evidence_path=ANDROID_REMOTE_EVIDENCE,
+        source_evidence_path=args.source_evidence_path or ANDROID_REMOTE_EVIDENCE,
         target=args.target,
     )
     return 0
@@ -3269,6 +3440,14 @@ def clear_android_pmb_physical_live_artifacts(args: argparse.Namespace) -> None:
         ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL,
         ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT,
         ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT,
+    ]:
+        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+
+
+def clear_android_broker_telemetry_artifacts(args: argparse.Namespace) -> None:
+    for remote in [
+        ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE,
+        ANDROID_REMOTE_BROKER_TELEMETRY_REPORT,
     ]:
         run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
 

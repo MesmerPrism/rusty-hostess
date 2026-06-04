@@ -114,9 +114,16 @@ broker, configures the Makepad provider, starts Polar PMD when requested,
 records for the requested duration, and reports a failed run if any selected
 stream is missing.
 
+For Quest foreground telemetry while the broker owns physical Polar PMD, use
+`observe-broker-telemetry`. It foregrounds the Hostess telemetry UI as a broker
+stream observer and must not open a direct BLE session. The older `run-live`
+direct BLE path remains a standalone diagnostic capture route, not the PMB or
+foreground telemetry authority path.
+
 ```powershell
 python tools\hostessctl\hostessctl.py record-values --target desktop --value stream.polar_h10.acc --duration-seconds 120 --packages-root <packages-root> --out <recording.json>
 python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording.json> --adb <adb> --serial <quest-serial> --device-address <polar-address> --makepad-pose-controller right --makepad-pose-kind grip --makepad-pose-sample-hz 20
+python tools\hostessctl\hostessctl.py observe-broker-telemetry --target quest --out <observer.json> --adb <adb> --serial <quest-serial> --device-address <polar-address> --render-out <telemetry.png>
 ```
 
 For visual telemetry evidence on Android-class targets, prefer the app-rendered

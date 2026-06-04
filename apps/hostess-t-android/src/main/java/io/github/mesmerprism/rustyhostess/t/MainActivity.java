@@ -56,6 +56,7 @@ public final class MainActivity extends Activity {
     private static final String ACTION_PMB_CONTROLLER_PREFLIGHT = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT";
     private static final String ACTION_PMB_SIMULATED_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE";
     private static final String ACTION_PMB_PHYSICAL_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE";
+    private static final String ACTION_BROKER_TELEMETRY = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
@@ -93,6 +94,7 @@ public final class MainActivity extends Activity {
     private final Handler handler = new Handler(Looper.getMainLooper());
     private PlatformDebugTelemetryView telemetryView;
     private CaptureRun run;
+    private BrokerTelemetryRun brokerTelemetryRun;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -133,6 +135,10 @@ public final class MainActivity extends Activity {
             writeProjectedMotionPhysicalLive(intent);
             return;
         }
+        if (ACTION_BROKER_TELEMETRY.equals(intent.getAction())) {
+            startBrokerTelemetryObserver(intent);
+            return;
+        }
         if (!ACTION_RUN.equals(intent.getAction())) {
             telemetryView.setRunState("ready", "idle", new ArrayList<>());
             return;
@@ -145,11 +151,32 @@ public final class MainActivity extends Activity {
         if (run != null) {
             run.close();
         }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+            brokerTelemetryRun = null;
+        }
         run = new CaptureRun(this, intent);
         telemetryView.resetForRun(run.mode, run.selectedModules);
         telemetryView.setPage(run.telemetryPage);
         telemetryView.setRunState("running", run.mode, run.selectedModules);
         run.start();
+    }
+
+    private void startBrokerTelemetryObserver(Intent intent) {
+        if (run != null) {
+            run.close();
+            run = null;
+        }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+        }
+        brokerTelemetryRun = new BrokerTelemetryRun(intent);
+        List<String> observerModules = new ArrayList<>();
+        observerModules.add("module.hostess.broker_telemetry_observer");
+        telemetryView.resetForRun("broker_acc", observerModules);
+        telemetryView.setPage(brokerTelemetryRun.telemetryPage);
+        telemetryView.setRunState("running", "broker_acc", observerModules);
+        brokerTelemetryRun.start();
     }
 
     private void writeSyntheticReplay(Intent intent) {
@@ -441,6 +468,24 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private static boolean booleanExtra(Intent intent, String name, boolean fallback) {
+        if (!intent.hasExtra(name) || intent.getExtras() == null) {
+            return fallback;
+        }
+        Object value = intent.getExtras().get(name);
+        if (value instanceof Boolean) {
+            return ((Boolean) value).booleanValue();
+        }
+        String text = String.valueOf(value).trim();
+        if ("true".equalsIgnoreCase(text) || "1".equals(text) || "yes".equalsIgnoreCase(text)) {
+            return true;
+        }
+        if ("false".equalsIgnoreCase(text) || "0".equals(text) || "no".equalsIgnoreCase(text)) {
+            return false;
+        }
+        return fallback;
+    }
+
     private void writeImmediateFailure(String code, String message) {
         telemetryView.setRunState("fail", "hr_rr", new ArrayList<>());
         CaptureRun failure = new CaptureRun(this, new Intent(ACTION_RUN).putExtra("mode", "hr_rr"));
@@ -457,12 +502,16 @@ public final class MainActivity extends Activity {
         telemetryView.setPage(normalizeTelemetryPage(intent.getStringExtra("render_page")));
         final String target = normalizeRenderTarget(intent.getStringExtra("render_target"));
         final String safeName = sanitizeFileName(fileName);
-        telemetryView.post(() -> renderTelemetryToFile(safeName, target, 0));
+        final String sourceEvidencePath = stringExtra(
+                intent,
+                "render_source_evidence_path",
+                "hostess-t/evidence/live-capture/latest.json");
+        telemetryView.post(() -> renderTelemetryToFile(safeName, target, sourceEvidencePath, 0));
     }
 
-    private void renderTelemetryToFile(String safeName, String target, int attempt) {
+    private void renderTelemetryToFile(String safeName, String target, String sourceEvidencePath, int attempt) {
         if ((telemetryView.getWidth() <= 0 || telemetryView.getHeight() <= 0) && attempt < 4) {
-            telemetryView.postDelayed(() -> renderTelemetryToFile(safeName, target, attempt + 1), 250L);
+            telemetryView.postDelayed(() -> renderTelemetryToFile(safeName, target, sourceEvidencePath, attempt + 1), 250L);
             return;
         }
         try {
@@ -472,7 +521,7 @@ public final class MainActivity extends Activity {
             }
             File out = new File(root, safeName);
             RenderMetadata metadata = telemetryView.writePng(out);
-            writeText(new File(root, safeName + ".json"), renderMetadataJson("pass", target, safeName, metadata, null));
+            writeText(new File(root, safeName + ".json"), renderMetadataJson("pass", target, safeName, sourceEvidencePath, metadata, null));
             telemetryView.setRenderStatus("rendered");
         } catch (IOException ex) {
             File root = new File(getExternalFilesDir(null), "hostess-t/evidence/render");
@@ -480,11 +529,201 @@ public final class MainActivity extends Activity {
                 if (!root.exists()) {
                     root.mkdirs();
                 }
-                writeText(new File(root, safeName + ".json"), renderMetadataJson("fail", target, safeName, null, ex.getMessage()));
+                writeText(new File(root, safeName + ".json"), renderMetadataJson("fail", target, safeName, sourceEvidencePath, null, ex.getMessage()));
             } catch (IOException ignored) {
                 // Keep the UI state as the fallback signal if the sidecar cannot be written.
             }
             telemetryView.setRenderStatus("render_failed");
+        }
+    }
+
+    private final class BrokerTelemetryRun {
+        final String hostProfile;
+        final String brokerHost;
+        final int brokerPort;
+        final String deviceAddress;
+        final int durationMs;
+        final int accRateHz;
+        final int scanTimeoutMs;
+        final boolean requestProviderStart;
+        final boolean stopProviderOnFinish;
+        final String telemetryPage;
+        Thread worker;
+
+        BrokerTelemetryRun(Intent intent) {
+            this.hostProfile = stringExtra(intent, "host_profile", "headset");
+            this.brokerHost = stringExtra(intent, "broker_host", "127.0.0.1");
+            this.brokerPort = intExtra(intent, "broker_port", 8765);
+            this.deviceAddress = emptyToNull(intent.getStringExtra("device_address"));
+            this.durationMs = Math.max(1000, intExtra(intent, "duration_ms", 10000));
+            this.accRateHz = Math.max(25, intExtra(intent, "acc_rate_hz", 200));
+            this.scanTimeoutMs = Math.max(1000, intExtra(intent, "scan_timeout_ms", 30000));
+            this.requestProviderStart = booleanExtra(intent, "request_provider_start", true);
+            this.stopProviderOnFinish = booleanExtra(intent, "stop_provider_on_finish", true);
+            this.telemetryPage = normalizeTelemetryPage(intent.getStringExtra("telemetry_page"));
+        }
+
+        void start() {
+            worker = new Thread(this::run, "hostess-broker-telemetry-observer");
+            worker.start();
+        }
+
+        void close() {
+            if (worker != null) {
+                worker.interrupt();
+            }
+        }
+
+        private void run() {
+            Instant startedAt = Instant.now();
+            File evidenceRoot = new File(getExternalFilesDir(null), "hostess-t/evidence/broker-telemetry");
+            try {
+                if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
+                    throw new IOException("could not create broker telemetry evidence folder");
+                }
+                PmbBrokerBridge.BrokerTelemetryResult report = PmbBrokerBridge.observePolarAccTelemetry(
+                        brokerHost,
+                        brokerPort,
+                        deviceAddress,
+                        accRateHz,
+                        scanTimeoutMs,
+                        durationMs,
+                        requestProviderStart,
+                        stopProviderOnFinish,
+                        this::acceptFrame);
+                Instant endedAt = Instant.now();
+                JSONObject reportJson = report.toJson();
+                writeText(new File(evidenceRoot, "latest.broker-telemetry-report.json"), reportJson.toString(2));
+                writeText(new File(evidenceRoot, "latest.json"), brokerTelemetryEvidence(
+                        startedAt,
+                        endedAt,
+                        reportJson,
+                        null).toString(2));
+                handler.post(() -> telemetryView.setRunState(report.status, "broker_acc", observerModules()));
+            } catch (IOException | JSONException | RuntimeException ex) {
+                Instant endedAt = Instant.now();
+                try {
+                    if (!evidenceRoot.exists()) {
+                        evidenceRoot.mkdirs();
+                    }
+                    JSONObject report = failedBrokerTelemetryReport(ex);
+                    writeText(new File(evidenceRoot, "latest.broker-telemetry-report.json"), report.toString(2));
+                    writeText(new File(evidenceRoot, "latest.json"), brokerTelemetryEvidence(
+                            startedAt,
+                            endedAt,
+                            report,
+                            ex.toString()).toString(2));
+                } catch (IOException | JSONException ignored) {
+                    // App-private evidence is the host-visible completion signal.
+                }
+                handler.post(() -> telemetryView.setRunState("fail", "broker_acc", observerModules()));
+            }
+        }
+
+        private void acceptFrame(PmbBrokerBridge.ObservedAccFrame frame) {
+            List<AccSample> samples = new ArrayList<>();
+            for (int[] sample : frame.samplesMg) {
+                if (sample != null && sample.length >= 3) {
+                    samples.add(new AccSample(sample[0], sample[1], sample[2]));
+                }
+            }
+            if (samples.isEmpty()) {
+                return;
+            }
+            PmdFrameMetric metric = new PmdFrameMetric(
+                    frame.hostTimeNs,
+                    frame.sensorTimestampNs,
+                    samples.size(),
+                    samples);
+            handler.post(() -> telemetryView.addAccFrame(metric, 0));
+        }
+
+        private List<String> observerModules() {
+            List<String> modules = new ArrayList<>();
+            modules.add("module.hostess.broker_telemetry_observer");
+            return modules;
+        }
+
+        private JSONObject brokerTelemetryEvidence(
+                Instant startedAt,
+                Instant endedAt,
+                JSONObject report,
+                String exception) throws JSONException {
+            String status = report.optString("status", "fail");
+            JSONArray streams = new JSONArray();
+            streams.put(new JSONObject()
+                    .put("stream_id", PmbBrokerBridge.EXTERNAL_STREAM_POLAR_ACC)
+                    .put("status", report.optInt("sample_count", 0) > 0 ? "pass" : "fail")
+                    .put("frame_count", report.optInt("frame_count", 0))
+                    .put("sample_count", report.optInt("sample_count", 0))
+                    .put("broker_transport_used", true)
+                    .put("direct_ble_used", false));
+            return new JSONObject()
+                    .put("$schema", "rusty.hostess.broker_telemetry_observer.evidence.v1")
+                    .put("status", status)
+                    .put("host_profile", hostProfile)
+                    .put("started_at_utc", startedAt.toString())
+                    .put("ended_at_utc", endedAt.toString())
+                    .put("software", new JSONObject()
+                            .put("origin", SOFTWARE_ORIGIN)
+                            .put("host_app", "app.rusty_hostess_t.quest")
+                            .put("host_app_version", "0.1.0"))
+                    .put("capture", new JSONObject()
+                            .put("mode", "broker_acc")
+                            .put("telemetry_page", telemetryPage)
+                            .put("selected_module_ids", new JSONArray(observerModules()))
+                            .put("source_stream_id", PmbBrokerBridge.EXTERNAL_STREAM_POLAR_ACC)
+                            .put("provider_start_requested", requestProviderStart)
+                            .put("provider_stop_requested", stopProviderOnFinish)
+                            .put("direct_ble_used", false)
+                            .put("broker_transport_used", true)
+                            .put("broker_transport_authority", "quest_broker_polar_pmd_provider")
+                            .put("hostess_role", "foreground_telemetry_ui_observer"))
+                    .put("commands", new JSONArray()
+                            .put(new JSONObject()
+                                    .put("command", "observe_broker_telemetry")
+                                    .put("status", "pass".equals(status) ? "acknowledged" : "failed")
+                                    .put("stream_id", PmbBrokerBridge.EXTERNAL_STREAM_POLAR_ACC)))
+                    .put("streams", streams)
+                    .put("broker_report", report)
+                    .put("direct_ble_used", false)
+                    .put("broker_transport_used", true)
+                    .put("telemetry_ui_visualized", report.optBoolean("telemetry_ui_visualized", false))
+                    .put("exception", exception == null ? JSONObject.NULL : exception)
+                    .put("errors", report.optJSONArray("errors") == null ? new JSONArray() : report.optJSONArray("errors"));
+        }
+
+        private JSONObject failedBrokerTelemetryReport(Exception ex) throws JSONException {
+            JSONArray errors = new JSONArray();
+            errors.put(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+            return new JSONObject()
+                    .put("schema", "rusty.hostess.broker_telemetry_observer.report.v1")
+                    .put("status", "fail")
+                    .put("broker_host", brokerHost)
+                    .put("broker_port", brokerPort)
+                    .put("broker_connected", false)
+                    .put("broker_transport_used", false)
+                    .put("broker_transport_authority", "quest_broker_polar_pmd_provider")
+                    .put("hostess_role", "foreground_telemetry_ui_observer")
+                    .put("stream_id", PmbBrokerBridge.EXTERNAL_STREAM_POLAR_ACC)
+                    .put("device_address_supplied", deviceAddress != null && !deviceAddress.isEmpty())
+                    .put("acc_rate_hz", accRateHz)
+                    .put("scan_timeout_ms", scanTimeoutMs)
+                    .put("duration_ms", durationMs)
+                    .put("provider_start_requested", requestProviderStart)
+                    .put("provider_stop_requested", stopProviderOnFinish)
+                    .put("polar_start_status", "unknown")
+                    .put("polar_stop_status", "unknown")
+                    .put("frame_count", 0)
+                    .put("sample_count", 0)
+                    .put("malformed_frame_count", 0)
+                    .put("direct_ble_used", false)
+                    .put("physical_polar_ble_used", false)
+                    .put("simulated_polar_provider_used", false)
+                    .put("telemetry_ui_visualized", false)
+                    .put("command_replies", new JSONArray())
+                    .put("observed_events", new JSONArray())
+                    .put("errors", errors);
         }
     }
 
@@ -1134,7 +1373,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static String renderMetadataJson(String status, String target, String imageName, RenderMetadata metadata, String error) {
+    private static String renderMetadataJson(String status, String target, String imageName, String sourceEvidencePath, RenderMetadata metadata, String error) {
         StringBuilder builder = new StringBuilder();
         builder.append("{\n");
         builder.append("  \"").append("$schema").append("\": \"rusty.hostess.telemetry.render_evidence.v1\",\n");
@@ -1143,7 +1382,7 @@ public final class MainActivity extends Activity {
         builder.append("  \"target\": ").append(jsonQuote(target)).append(",\n");
         builder.append("  \"render_page\": ").append(jsonQuote(metadata == null ? "unknown" : metadata.page)).append(",\n");
         builder.append("  \"image_path\": ").append(jsonQuote(imageName)).append(",\n");
-        builder.append("  \"source_evidence_path\": \"hostess-t/evidence/live-capture/latest.json\",\n");
+        builder.append("  \"source_evidence_path\": ").append(jsonQuote(sourceEvidencePath)).append(",\n");
         builder.append("  \"width\": ").append(metadata == null ? 0 : metadata.width).append(",\n");
         builder.append("  \"height\": ").append(metadata == null ? 0 : metadata.height).append(",\n");
         builder.append("  \"content_pixel_count\": ").append(metadata == null ? 0 : metadata.contentPixelCount).append(",\n");

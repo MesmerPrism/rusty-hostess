@@ -27,6 +27,7 @@
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

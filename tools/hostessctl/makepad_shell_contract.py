@@ -6,6 +6,12 @@ import time
 from pathlib import Path
 from typing import Any, Callable
 
+from tools.hostessctl.makepad_visual_profile import (
+    MAKEPAD_VISUAL_PROFILE_ID,
+    makepad_visual_profile_property_records,
+    makepad_visual_profile_runtime_properties,
+)
+
 
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
 MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
@@ -128,6 +134,8 @@ def launch_makepad_shell_contract(
     makepad_runtime_capability_receipt_pulled = False
     permission_pregrant_performed = False
     permission_grant_records: list[dict[str, Any]] = []
+    visual_profile_setprops_performed = False
+    visual_profile_property_records: list[dict[str, str]] = []
     runtime_observation_poll_performed = False
     runtime_observation_pull_count = 0
 
@@ -198,6 +206,12 @@ def launch_makepad_shell_contract(
                 adb_prefix=adb_prefix,
                 run=run,
             )
+        visual_profile_property_records = apply_makepad_visual_profile_runtime_properties(
+            args,
+            adb_prefix=adb_prefix,
+            run=run,
+        )
+        visual_profile_setprops_performed = True
         run(
             adb_prefix(args) + ["shell", "am", "force-stop", args.makepad_package],
             allow_failure=True,
@@ -285,6 +299,8 @@ def launch_makepad_shell_contract(
         legacy_rusty_xr_dependency_used=legacy_rusty_xr_dependency_used,
         permission_pregrant_performed=permission_pregrant_performed,
         permission_grant_records=permission_grant_records,
+        visual_profile_setprops_performed=visual_profile_setprops_performed,
+        visual_profile_property_records=visual_profile_property_records,
         runtime_observation_poll_performed=runtime_observation_poll_performed,
         runtime_observation_pull_count=runtime_observation_pull_count,
     )
@@ -326,6 +342,22 @@ def pregrant_makepad_shell_permissions(
                 "return_code": getattr(result, "returncode", None),
             }
         )
+    return records
+
+
+def apply_makepad_visual_profile_runtime_properties(
+    args: argparse.Namespace,
+    *,
+    adb_prefix: Callable[[argparse.Namespace], list[str]],
+    run: Callable[..., Any],
+) -> list[dict[str, str]]:
+    records = []
+    for key, value in makepad_visual_profile_runtime_properties().items():
+        run(
+            adb_prefix(args) + ["shell", "setprop", key, value],
+            allow_failure=False,
+        )
+        records.append({"key": key, "value": value})
     return records
 
 
@@ -556,6 +588,8 @@ def build_makepad_shell_contract_launch_evidence(
     legacy_rusty_xr_dependency_used: bool,
     permission_pregrant_performed: bool,
     permission_grant_records: list[dict[str, Any]],
+    visual_profile_setprops_performed: bool,
+    visual_profile_property_records: list[dict[str, str]],
     runtime_observation_poll_performed: bool,
     runtime_observation_pull_count: int,
 ) -> dict[str, Any]:
@@ -596,6 +630,29 @@ def build_makepad_shell_contract_launch_evidence(
             for record in permission_grant_records
             if isinstance(record, dict) and isinstance(record.get("permission"), str)
         ],
+        "visual_profile_runtime_profile": MAKEPAD_VISUAL_PROFILE_ID,
+        "visual_profile_setprops_performed": visual_profile_setprops_performed,
+        "visual_profile_properties": (
+            visual_profile_property_records or makepad_visual_profile_property_records()
+        ),
+        "visual_profile_processing_layer": (
+            makepad_visual_profile_runtime_properties()["debug.rustyxr.processing.layer"]
+        ),
+        "visual_profile_source_sampling_mode": (
+            makepad_visual_profile_runtime_properties()[
+                "debug.rustyxr.camera.source.sampling.mode"
+            ]
+        ),
+        "visual_profile_projection_border_policy": (
+            makepad_visual_profile_runtime_properties()[
+                "debug.rustyxr.projection.border.policy"
+            ]
+        ),
+        "visual_profile_makepad_projection_border_policy": (
+            makepad_visual_profile_runtime_properties()[
+                "debug.rustyxr.makepad.projection.border.policy"
+            ]
+        ),
         "runtime_observation_poll_performed": runtime_observation_poll_performed,
         "runtime_observation_pull_count": runtime_observation_pull_count,
         "makepad_contract_read_receipt_pulled": makepad_contract_read_receipt_pulled,
@@ -776,6 +833,32 @@ def validate_makepad_shell_contract_launch_evidence(evidence: dict[str, Any]) ->
             "Makepad shell contract launch evidence matches plan or receipt mode",
             "Makepad shell contract launch evidence does not match plan or receipt mode",
             "hostess.issue.makepad_shell_contract_launch_evidence_mode",
+        ),
+        makepad_shell_launch_check(
+            "hostess.check.makepad_shell_contract_launch_evidence.visual_profile",
+            (
+                evidence.get("status") in {"rejected", "fail"}
+                or (
+                    evidence.get("plan_only") is True
+                    and evidence.get("visual_profile_setprops_performed") is False
+                )
+                or (
+                    evidence.get("status") == "completed"
+                    and evidence.get("visual_profile_setprops_performed") is True
+                    and evidence.get("visual_profile_runtime_profile") == MAKEPAD_VISUAL_PROFILE_ID
+                    and evidence.get("visual_profile_processing_layer")
+                    == "peripheral-stretch"
+                    and evidence.get("visual_profile_source_sampling_mode")
+                    == "target-local-raster"
+                    and evidence.get("visual_profile_projection_border_policy")
+                    == "passthrough-underlay"
+                    and evidence.get("visual_profile_makepad_projection_border_policy")
+                    == "passthrough-underlay"
+                )
+            ),
+            "Makepad shell launch applies the stretch visual runtime profile when executed",
+            "Makepad shell launch is missing the stretch visual runtime profile",
+            "hostess.issue.makepad_shell_contract_launch_visual_profile",
         ),
     ]
     embedded = [entry for entry in evidence.get("checks", []) if isinstance(entry, dict)]

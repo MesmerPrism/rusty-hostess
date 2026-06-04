@@ -43,6 +43,20 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
             self.assertFalse(evidence["launch_started"])
             self.assertFalse(evidence["permission_pregrant_performed"])
             self.assertEqual(evidence["permission_grant_records"], [])
+            self.assertFalse(evidence["visual_profile_setprops_performed"])
+            self.assertEqual(evidence["visual_profile_processing_layer"], "peripheral-stretch")
+            self.assertEqual(
+                evidence["visual_profile_source_sampling_mode"],
+                "target-local-raster",
+            )
+            self.assertEqual(
+                evidence["visual_profile_projection_border_policy"],
+                "passthrough-underlay",
+            )
+            self.assertEqual(
+                evidence["visual_profile_makepad_projection_border_policy"],
+                "passthrough-underlay",
+            )
             self.assertFalse(evidence["runtime_observation_poll_performed"])
             self.assertEqual(evidence["runtime_observation_pull_count"], 0)
             self.assertFalse(evidence["makepad_runtime_capability_receipt_pulled"])
@@ -242,6 +256,20 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
             self.assertTrue(evidence["permission_pregrant_performed"])
             self.assertIn("android.permission.CAMERA", evidence["permission_grants_attempted"])
             self.assertIn("horizonos.permission.HEADSET_CAMERA", evidence["permission_grants_attempted"])
+            self.assertTrue(evidence["visual_profile_setprops_performed"])
+            self.assertEqual(evidence["visual_profile_processing_layer"], "peripheral-stretch")
+            self.assertEqual(
+                evidence["visual_profile_source_sampling_mode"],
+                "target-local-raster",
+            )
+            self.assertEqual(
+                evidence["visual_profile_projection_border_policy"],
+                "passthrough-underlay",
+            )
+            self.assertEqual(
+                evidence["visual_profile_makepad_projection_border_policy"],
+                "passthrough-underlay",
+            )
             self.assertFalse(evidence["runtime_observation_poll_performed"])
             self.assertEqual(evidence["runtime_observation_pull_count"], 1)
             self.assertEqual(
@@ -271,6 +299,35 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                     and command[-2] == hostessctl.MAKEPAD_ANDROID_PACKAGE
                     for command in seen_commands
                 )
+            )
+            setprops = {
+                command[-2]: command[-1]
+                for command in seen_commands
+                if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
+            }
+            self.assertEqual(
+                setprops["debug.rustyxr.processing.layer"],
+                "peripheral-stretch",
+            )
+            self.assertEqual(
+                setprops["debug.rustyxr.camera.source.sampling.mode"],
+                "target-local-raster",
+            )
+            self.assertEqual(
+                setprops["debug.rustyxr.projection.border.policy"],
+                "passthrough-underlay",
+            )
+            self.assertEqual(
+                setprops["debug.rustyxr.projection.border.opacity"],
+                "0.0",
+            )
+            self.assertEqual(
+                setprops["debug.rustyxr.makepad.projection.border.policy"],
+                "passthrough-underlay",
+            )
+            self.assertEqual(
+                setprops["debug.rustyxr.makepad.projection.border.opacity"],
+                "0.0",
             )
             self.assertIn(
                 "files/hostess-t/shell/makepad-shell-contract-receipt.json",

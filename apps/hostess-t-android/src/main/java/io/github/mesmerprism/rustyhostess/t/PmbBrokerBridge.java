@@ -180,6 +180,128 @@ final class PmbBrokerBridge {
         return result;
     }
 
+    static BrokerTelemetryResult observePolarAccTelemetry(
+            String host,
+            int port,
+            String deviceAddress,
+            int accRateHz,
+            int scanTimeoutMs,
+            int durationMs,
+            boolean requestProviderStart,
+            boolean stopProviderOnFinish,
+            AccFrameConsumer consumer) throws IOException, JSONException {
+        BrokerTelemetryResult result = new BrokerTelemetryResult(
+                host,
+                port,
+                deviceAddress,
+                accRateHz,
+                scanTimeoutMs,
+                durationMs,
+                requestProviderStart,
+                stopProviderOnFinish);
+        try (BrokerWebSocketClient client = BrokerWebSocketClient.open(host, port, 2500)) {
+            result.brokerConnected = true;
+            client.sendJson(new JSONObject()
+                    .put("type", "hello")
+                    .put("client_id", "app.rusty_hostess_t.quest.telemetry_observer")
+                    .put("app_package", "io.github.mesmerprism.rustyhostess.t")
+                    .put("role", "quest_broker_telemetry_ui_observer"), 1);
+            client.readJson(500);
+            telemetryCommandAndWait(client, result, "subscribe", new JSONObject()
+                    .put("stream", EXTERNAL_STREAM_POLAR_ACC)
+                    .put("receiver", "app.rusty_hostess_t.quest.telemetry_observer"), 2, consumer);
+            if (requestProviderStart) {
+                result.polarStartStatus = telemetryCommandAndWait(client, result, "polar_pmd.start", new JSONObject()
+                        .put("device_address", deviceAddress == null ? "" : deviceAddress)
+                        .put("scan_timeout_ms", scanTimeoutMs)
+                        .put("pmd_stream", "acc")
+                        .put("acc_sample_rate_hz", accRateHz)
+                        .put("high_connection_priority", true), 3, consumer);
+            }
+
+            long acquisitionDeadline = System.currentTimeMillis()
+                    + (requestProviderStart ? Math.max(0, scanTimeoutMs) : 0);
+            boolean captureWindowStarted = !requestProviderStart;
+            long captureDeadline = System.currentTimeMillis() + Math.max(0, durationMs);
+            while (true) {
+                long now = System.currentTimeMillis();
+                if (!captureWindowStarted && result.frameCount > 0) {
+                    captureWindowStarted = true;
+                    captureDeadline = now + Math.max(0, durationMs);
+                }
+                long activeDeadline = captureWindowStarted ? captureDeadline : acquisitionDeadline;
+                if (now >= activeDeadline) {
+                    break;
+                }
+                int timeout = (int) Math.max(50, Math.min(250, activeDeadline - now));
+                JSONObject message = client.readJson(timeout);
+                if (message == null) {
+                    continue;
+                }
+                result.acceptMessage(message, consumer);
+            }
+            if (requestProviderStart && stopProviderOnFinish) {
+                result.polarStopStatus = telemetryCommandAndWait(
+                        client,
+                        result,
+                        "polar_pmd.stop",
+                        new JSONObject(),
+                        4,
+                        consumer);
+            }
+        } catch (IOException | JSONException | RuntimeException ex) {
+            result.errors.put(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+            throw ex;
+        }
+        result.status = result.frameCount > 0 && result.sampleCount > 0 && result.errors.length() == 0
+                ? "pass"
+                : "fail";
+        if (result.frameCount <= 0 || result.sampleCount <= 0) {
+            result.errors.put("issue.broker_polar_acc_events_missing");
+        }
+        return result;
+    }
+
+    private static String telemetryCommandAndWait(
+            BrokerWebSocketClient client,
+            BrokerTelemetryResult result,
+            String command,
+            JSONObject params,
+            int sequence,
+            AccFrameConsumer consumer) throws IOException, JSONException {
+        String requestId = "quest-broker-telemetry-" + command.replace('.', '-') + "-" + sequence;
+        client.sendJson(new JSONObject()
+                .put("type", "command")
+                .put("schema", "rusty.xr.broker.command.v1")
+                .put("request_id", requestId)
+                .put("command", command)
+                .put("params", params)
+                .put("client_id", "app.rusty_hostess_t.quest.telemetry_observer")
+                .put("app_package", "io.github.mesmerprism.rustyhostess.t"), sequence);
+        long deadline = System.currentTimeMillis() + 1500L;
+        while (System.currentTimeMillis() < deadline) {
+            int timeout = (int) Math.max(50, Math.min(250, deadline - System.currentTimeMillis()));
+            JSONObject reply = client.readJson(timeout);
+            if (reply == null) {
+                continue;
+            }
+            if ("stream_event".equals(reply.optString("type"))) {
+                result.acceptMessage(reply, consumer);
+                continue;
+            }
+            if (requestId.equals(reply.optString("request_id"))
+                    || command.equals(reply.optString("command"))) {
+                boolean accepted = reply.has("accepted")
+                        ? reply.optBoolean("accepted")
+                        : reply.optBoolean("ok", reply.optBoolean("success", true));
+                result.commandReplies.put(reply);
+                return accepted ? "pass" : "fail";
+            }
+        }
+        result.errors.put("issue.broker_command_ack_timeout:" + command);
+        return "unknown";
+    }
+
     private static String physicalCommandAndWait(
             BrokerWebSocketClient client,
             PhysicalCaptureResult result,
@@ -549,6 +671,184 @@ final class PmbBrokerBridge {
             feedbackReceiptCount += 1;
             receiptEvents.put(message);
         }
+    }
+
+    interface AccFrameConsumer {
+        void accept(ObservedAccFrame frame);
+    }
+
+    static final class ObservedAccFrame {
+        final long hostTimeNs;
+        final long sensorTimestampNs;
+        final List<int[]> samplesMg;
+
+        ObservedAccFrame(long hostTimeNs, long sensorTimestampNs, List<int[]> samplesMg) {
+            this.hostTimeNs = hostTimeNs;
+            this.sensorTimestampNs = sensorTimestampNs;
+            this.samplesMg = samplesMg;
+        }
+    }
+
+    static final class BrokerTelemetryResult {
+        final String brokerHost;
+        final int brokerPort;
+        final String deviceAddress;
+        final int accRateHz;
+        final int scanTimeoutMs;
+        final int durationMs;
+        final boolean providerStartRequested;
+        final boolean providerStopRequested;
+        final JSONArray commandReplies = new JSONArray();
+        final JSONArray observedEvents = new JSONArray();
+        final JSONArray errors = new JSONArray();
+        String status = "pending";
+        boolean brokerConnected = false;
+        String polarStartStatus = "not_requested";
+        String polarStopStatus = "not_requested";
+        int frameCount = 0;
+        int sampleCount = 0;
+        int malformedFrameCount = 0;
+
+        BrokerTelemetryResult(
+                String brokerHost,
+                int brokerPort,
+                String deviceAddress,
+                int accRateHz,
+                int scanTimeoutMs,
+                int durationMs,
+                boolean providerStartRequested,
+                boolean providerStopRequested) {
+            this.brokerHost = brokerHost;
+            this.brokerPort = brokerPort;
+            this.deviceAddress = deviceAddress == null ? "" : deviceAddress;
+            this.accRateHz = accRateHz;
+            this.scanTimeoutMs = scanTimeoutMs;
+            this.durationMs = durationMs;
+            this.providerStartRequested = providerStartRequested;
+            this.providerStopRequested = providerStopRequested;
+        }
+
+        JSONObject toJson() throws JSONException {
+            return new JSONObject()
+                    .put("schema", "rusty.hostess.broker_telemetry_observer.report.v1")
+                    .put("status", status)
+                    .put("broker_host", brokerHost)
+                    .put("broker_port", brokerPort)
+                    .put("broker_connected", brokerConnected)
+                    .put("broker_transport_used", brokerConnected)
+                    .put("broker_transport_authority", "quest_broker_polar_pmd_provider")
+                    .put("hostess_role", "foreground_telemetry_ui_observer")
+                    .put("stream_id", EXTERNAL_STREAM_POLAR_ACC)
+                    .put("device_address_supplied", !deviceAddress.isEmpty())
+                    .put("acc_rate_hz", accRateHz)
+                    .put("scan_timeout_ms", scanTimeoutMs)
+                    .put("duration_ms", durationMs)
+                    .put("provider_start_requested", providerStartRequested)
+                    .put("provider_stop_requested", providerStopRequested)
+                    .put("polar_start_status", polarStartStatus)
+                    .put("polar_stop_status", polarStopStatus)
+                    .put("frame_count", frameCount)
+                    .put("sample_count", sampleCount)
+                    .put("malformed_frame_count", malformedFrameCount)
+                    .put("direct_ble_used", false)
+                    .put("physical_polar_ble_used", frameCount > 0)
+                    .put("simulated_polar_provider_used", false)
+                    .put("telemetry_ui_visualized", frameCount > 0 && sampleCount > 0)
+                    .put("command_replies", commandReplies)
+                    .put("observed_events", observedEvents)
+                    .put("errors", errors);
+        }
+
+        void acceptMessage(JSONObject message, AccFrameConsumer consumer) throws JSONException {
+            if (!"stream_event".equals(message.optString("type"))) {
+                return;
+            }
+            if (!EXTERNAL_STREAM_POLAR_ACC.equals(streamId(message))) {
+                return;
+            }
+            ObservedAccFrame frame = decodeObservedAccFrame(message);
+            if (observedEvents.length() < 24) {
+                observedEvents.put(message);
+            }
+            if (frame == null || frame.samplesMg.isEmpty()) {
+                malformedFrameCount += 1;
+                return;
+            }
+            frameCount += 1;
+            sampleCount += frame.samplesMg.size();
+            if (consumer != null) {
+                consumer.accept(frame);
+            }
+        }
+    }
+
+    private static ObservedAccFrame decodeObservedAccFrame(JSONObject message) {
+        JSONObject payload = message.optJSONObject("payload");
+        if (payload == null) {
+            payload = message;
+        }
+        List<int[]> samples = new ArrayList<>();
+        JSONArray samplesMg = payload.optJSONArray("samples_mg");
+        if (samplesMg != null) {
+            for (int index = 0; index < samplesMg.length(); index++) {
+                Object rawSample = samplesMg.opt(index);
+                int[] sample = decodeObservedAccSample(rawSample);
+                if (sample != null) {
+                    samples.add(sample);
+                }
+            }
+        }
+        if (samples.isEmpty()) {
+            int[] topLevel = decodeObservedAccSample(payload);
+            if (topLevel != null) {
+                samples.add(topLevel);
+            }
+        }
+        if (samples.isEmpty()) {
+            JSONObject decoded = payload.optJSONObject("decoded");
+            if (decoded != null && decoded.has("first_x_mg")) {
+                samples.add(new int[] {
+                        decoded.optInt("first_x_mg", 0),
+                        decoded.optInt("first_y_mg", 0),
+                        decoded.optInt("first_z_mg", 0)
+                });
+            }
+        }
+        if (samples.isEmpty()) {
+            return null;
+        }
+        long sensorTimestampNs = payload.optLong(
+                "sensor_timestamp_ns",
+                message.optLong("sensor_timestamp_ns", 0L));
+        return new ObservedAccFrame(System.nanoTime(), sensorTimestampNs, samples);
+    }
+
+    private static int[] decodeObservedAccSample(Object rawSample) {
+        if (rawSample instanceof JSONArray) {
+            JSONArray row = (JSONArray) rawSample;
+            if (row.length() < 3) {
+                return null;
+            }
+            return new int[] {row.optInt(0, 0), row.optInt(1, 0), row.optInt(2, 0)};
+        }
+        if (rawSample instanceof JSONObject) {
+            JSONObject row = (JSONObject) rawSample;
+            if (row.has("x_mg") || row.has("y_mg") || row.has("z_mg")) {
+                return new int[] {
+                        row.optInt("x_mg", 0),
+                        row.optInt("y_mg", 0),
+                        row.optInt("z_mg", 0)
+                };
+            }
+            if (row.has("x") || row.has("y") || row.has("z")) {
+                return new int[] {
+                        row.optInt("x", 0),
+                        row.optInt("y", 0),
+                        row.optInt("z", 0)
+                };
+            }
+        }
+        return null;
     }
 
     private static final class PublishResult {

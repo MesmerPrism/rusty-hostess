@@ -34,10 +34,14 @@ Hostess/Manifold command routes as `hostessctl`.
 
 The Android-class app shell includes a compact native Canvas telemetry view for
 phone and headset profiles, but that view is fallback/debug-only platform
-evidence plumbing. Android Java owns Activity lifecycle, BLE acquisition,
-permission UX, ADB intent/file command bridging, app-private evidence storage,
-and JNI calls into the Rust runtime. It does not own reusable panel layout,
-processor formulas, package state, graph execution, or module authority.
+evidence plumbing. Android Java owns Activity lifecycle, direct diagnostic BLE
+capture routes, permission UX, ADB intent/file command bridging, app-private
+evidence storage, and JNI calls into the Rust runtime. For Quest PMB and
+foreground telemetry, physical Polar PMD is broker-owned and Hostess observes
+broker streams or computes bounded on-Quest processor evidence; Hostess must
+not open a second BLE session for that path. It does not own reusable panel
+layout, processor formulas, package state, graph execution, broker provider
+authority, or module authority.
 
 The desktop CLI can render equivalent evidence pages from completed run
 artifacts. Rendered PNGs must include dimensions, nonblank content evidence,
