@@ -2,10 +2,17 @@ pub use makepad_widgets;
 
 use makepad_widgets::makepad_platform::makepad_micro_serde::*;
 use makepad_widgets::*;
+use shell_contract::MakepadShellContractReadReceipt;
+use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
+use shell_xr_runtime::ShellXrRuntimeState;
 use std::collections::VecDeque;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+
+mod shell_contract;
+mod shell_runtime_capabilities;
+mod shell_xr_runtime;
 
 app_main!(App);
 
@@ -126,15 +133,29 @@ script_mod! {
     }
 
     startup() do #(App::script_component(vm)){
-        ui: Root{
-            main_window := Window{
-                pass.clear_color: #xf8f8f6
-                window.inner_size: vec2(1120, 820)
-                body +: {
+        ui: XrRoot{
+            pass.clear_color: #xf8f8f6
+            window.inner_size: vec2(1120, 820)
+            camera.fov_y: 38.0
+            camera.desktop_target: vec3(0.0, -0.06, -0.72)
+            camera.distance: 1.55
+            env.gravity: 9.8
+            env.env_cube: false
+            env.depth_mesh: false
+
+            shell_panel := XrView{
+                show_in_non_xr: true
+                pos: vec3(0.0, -0.04, -0.72)
+                logical_size: vec2(1120, 820)
+                pixel_scale: 0.00034
+                dpi_factor: 2.0
+
+                SolidView{
                     width: Fill
                     height: Fill
                     flow: Down
                     spacing: 0
+                    draw_bg.color: #xf8f8f6
 
                     SolidView{
                         width: Fill
@@ -245,6 +266,8 @@ script_mod! {
                     }
                 }
             }
+
+            xr_permissions := mod.widgets.XrPermissionsFlow{}
         }
     }
 }
@@ -259,6 +282,12 @@ pub struct App {
     telemetry: RunningTelemetry,
     #[rust]
     render_export: RenderExportState,
+    #[rust]
+    shell_contract_read: MakepadShellContractReadReceipt,
+    #[rust]
+    shell_runtime_capabilities: MakepadShellRuntimeCapabilityReceipt,
+    #[rust]
+    shell_xr_runtime: ShellXrRuntimeState,
 }
 
 #[derive(Clone, Debug, Default, DeJson)]
@@ -800,6 +829,14 @@ impl MatchEvent for App {
         let loaded = load_snapshot();
         self.telemetry = RunningTelemetry::from_loaded(loaded);
         self.render_export.path = selected_render_export_path();
+        self.shell_contract_read = shell_contract::read_selected_makepad_shell_contract();
+        if let Err(error) = shell_contract::write_selected_makepad_shell_contract_read_receipt(
+            &self.shell_contract_read,
+        ) {
+            eprintln!("makepad shell contract read receipt export failed: {error}");
+        }
+        self.shell_xr_runtime = ShellXrRuntimeState::registered_xr_shell();
+        self.update_shell_runtime_capabilities();
         self.apply_snapshot_header(cx);
         self.apply_stream_panels(cx);
         self.write_render_export(true);
@@ -820,6 +857,40 @@ impl MatchEvent for App {
 }
 
 impl App {
+    fn debug_line(&self) -> String {
+        format!(
+            "{} / shell contract {} / {} / {}",
+            self.telemetry.debug_line(),
+            self.shell_contract_read.status_line(),
+            self.shell_runtime_capabilities.status_line(),
+            self.shell_xr_runtime.status_line()
+        )
+    }
+
+    fn update_shell_runtime_capabilities(&mut self) {
+        self.shell_runtime_capabilities =
+            shell_runtime_capabilities::evaluate(&self.shell_contract_read, &self.shell_xr_runtime);
+        if let Err(error) =
+            shell_runtime_capabilities::write_selected_makepad_shell_runtime_capability_receipt(
+                &self.shell_runtime_capabilities,
+            )
+        {
+            eprintln!("makepad shell runtime capability receipt export failed: {error}");
+        }
+    }
+
+    fn observe_xr_update(&mut self, cx: &mut Cx, update: &XrUpdateEvent) {
+        if self
+            .shell_xr_runtime
+            .observe_update(cx.in_xr_mode(), update)
+        {
+            self.update_shell_runtime_capabilities();
+            self.ui
+                .label(cx, ids!(debug_state))
+                .set_text(cx, &self.debug_line());
+        }
+    }
+
     fn apply_snapshot_header(&mut self, cx: &mut Cx) {
         let snapshot = &self.telemetry.snapshot;
         self.ui.label(cx, ids!(run_status)).set_text(
@@ -841,7 +912,7 @@ impl App {
             .set_text(cx, &issue_text(snapshot));
         self.ui
             .label(cx, ids!(debug_state))
-            .set_text(cx, &self.telemetry.debug_line());
+            .set_text(cx, &self.debug_line());
         self.ui.label(cx, ids!(evidence_path)).set_text(
             cx,
             &format!(
@@ -859,7 +930,7 @@ impl App {
             .set_text(cx, &self.telemetry.status_line());
         self.ui
             .label(cx, ids!(debug_state))
-            .set_text(cx, &self.telemetry.debug_line());
+            .set_text(cx, &self.debug_line());
         self.set_stream_panel(cx, ids!(stream_1), 0);
         self.set_stream_panel(cx, ids!(stream_2), 1);
         self.set_stream_panel(cx, ids!(stream_3), 2);
@@ -973,6 +1044,7 @@ impl App {
 impl AppMain for App {
     fn script_mod(vm: &mut ScriptVm) -> ScriptValue {
         crate::makepad_widgets::script_mod(vm);
+        makepad_xr::script_mod(vm);
         self::script_mod(vm)
     }
 
@@ -980,6 +1052,9 @@ impl AppMain for App {
         if matches!(event, Event::Shutdown) && !self.stream_timer.is_empty() {
             cx.stop_timer(self.stream_timer);
             self.stream_timer = Timer::empty();
+        }
+        if let Event::XrUpdate(update) = event {
+            self.observe_xr_update(cx, update);
         }
         self.match_event(cx, event);
         self.ui.handle_event(cx, event, &mut Scope::empty());
@@ -1694,7 +1769,14 @@ fn render_makepad_telemetry(
         muted,
         content_width - 40,
     );
-    canvas.draw_text_clipped(48, 98, &telemetry.status_line(), 2, accent, content_width - 40);
+    canvas.draw_text_clipped(
+        48,
+        98,
+        &telemetry.status_line(),
+        2,
+        accent,
+        content_width - 40,
+    );
 
     match layout {
         RenderTelemetryLayout::Vertical => {
@@ -1742,7 +1824,14 @@ fn draw_render_stream_card(
 ) {
     draw_card(canvas, left, top, width, height);
     let Some(state) = telemetry.series_states.get(index) else {
-        canvas.draw_text_clipped(left + 18, top + 18, "WAITING", 2, Rgb(29, 29, 27), width - 36);
+        canvas.draw_text_clipped(
+            left + 18,
+            top + 18,
+            "WAITING",
+            2,
+            Rgb(29, 29, 27),
+            width - 36,
+        );
         canvas.draw_text_clipped(
             left + 18,
             top + 46,

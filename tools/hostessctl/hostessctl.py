@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from tools.check_live_capture_evidence import package_snapshot, sha256_file  # noqa: E402
+from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
 from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
@@ -31,6 +32,7 @@ MAKEPAD_XR_PROVIDER_PACKAGE = "io.github.mesmerprism.rustyxr.makepad.camera"
 MAKEPAD_XR_PROVIDER_ACTIVITY = f"{MAKEPAD_XR_PROVIDER_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
 MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
+MAKEPAD_ANDROID_XR_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadAppXr"
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
 ANDROID_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY"
 ANDROID_PMB_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY"
@@ -76,6 +78,12 @@ MANIFOLD_VALUE_ALIASES = {
     "breath.volume": "stream.breath.volume",
     "breath.dynamics": "stream.breath.dynamics",
     "breath.feedback_state": "stream.breath.feedback_state",
+}
+
+PMB_SHELL_HANDOFF_REQUIRED_BINDINGS = {
+    ("stream.motion.object_pose", "publish"),
+    ("stream.breath.feedback_state", "subscribe"),
+    ("stream.breath.feedback_receipt", "publish"),
 }
 
 MANIFOLD_VALUE_PROVIDERS = {
@@ -253,6 +261,11 @@ def main() -> int:
     run_pmb_live_route_self_test_parser.add_argument("--packages-root", required=True)
     run_pmb_live_route_self_test_parser.add_argument("--cargo", default="cargo")
 
+    run_pmb_shell_handoff_parser = subcommands.add_parser("run-pmb-shell-handoff")
+    run_pmb_shell_handoff_parser.add_argument("--out", required=True)
+    run_pmb_shell_handoff_parser.add_argument("--packages-root", required=True)
+    run_pmb_shell_handoff_parser.add_argument("--handoff")
+
     record_values = subcommands.add_parser("record-values")
     record_values.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
     record_values.add_argument("--value", action="append", required=True)
@@ -302,6 +315,21 @@ def main() -> int:
     makepad_render.add_argument("--min-events", type=int, default=0)
     makepad_render.add_argument("--no-launch", action="store_true")
 
+    makepad_shell_contract = subcommands.add_parser("launch-makepad-shell-contract")
+    makepad_shell_contract.add_argument("--target", choices=["phone", "quest"], required=True)
+    makepad_shell_contract.add_argument("--launch-handoff", required=True)
+    makepad_shell_contract.add_argument("--out", required=True)
+    makepad_shell_contract.add_argument("--adb")
+    makepad_shell_contract.add_argument("--serial")
+    makepad_shell_contract.add_argument("--makepad-package", default=MAKEPAD_ANDROID_PACKAGE)
+    makepad_shell_contract.add_argument("--makepad-activity")
+    makepad_shell_contract.add_argument("--remote-dir")
+    makepad_shell_contract.add_argument("--wait-seconds", type=float, default=20.0)
+    makepad_shell_contract.add_argument("--runtime-observation-seconds", type=float, default=8.0)
+    makepad_shell_contract.add_argument("--runtime-observation-poll-ms", type=float, default=750.0)
+    makepad_shell_contract.add_argument("--skip-pregrant-permissions", action="store_true")
+    makepad_shell_contract.add_argument("--plan-only", action="store_true")
+
     snapshot = subcommands.add_parser("snapshot-telemetry")
     snapshot.add_argument("--input", required=True)
     snapshot.add_argument("--out", required=True)
@@ -321,12 +349,16 @@ def main() -> int:
         return run_pmb_controller_preflight(args)
     if args.command == "run-pmb-live-route-self-test":
         return run_pmb_live_route_self_test(args)
+    if args.command == "run-pmb-shell-handoff":
+        return run_pmb_shell_handoff(args)
     if args.command == "record-values":
         return run_manifold_value_recording(args)
     if args.command == "render-telemetry":
         return render_telemetry(args)
     if args.command == "pull-makepad-render":
         return pull_makepad_render(args)
+    if args.command == "launch-makepad-shell-contract":
+        return launch_makepad_shell_contract(args)
     if args.command == "snapshot-telemetry":
         return snapshot_telemetry(args)
     return 2
@@ -582,6 +614,36 @@ def run_pmb_live_route_self_test(args: argparse.Namespace) -> int:
     if validation_report["status"] == "pass":
         write_pmb_live_route_host_run_evidence(out, validation_path, evidence)
     return 0 if validation_report["status"] == "pass" else core_run.returncode or 2
+
+
+def run_pmb_shell_handoff(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    packages_root = Path(args.packages_root)
+    package_root = projected_motion_breath_package_root(packages_root)
+    if not package_root.exists():
+        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
+    handoff_path = Path(args.handoff) if getattr(args, "handoff", None) else default_pmb_shell_handoff_path(package_root)
+    if not handoff_path.exists():
+        raise SystemExit(f"PMB shell handoff manifest not found: {handoff_path}")
+    started_utc = datetime.now(UTC)
+    evidence = build_pmb_shell_handoff_validation_evidence(
+        packages_root=packages_root,
+        package_root=package_root,
+        handoff_path=handoff_path,
+        started_utc=started_utc,
+        ended_utc=datetime.now(UTC),
+    )
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
+    validation_report = validate_pmb_shell_handoff_validation_evidence(evidence)
+    validation_path = out.with_name(f"{out.stem}.validation-report.json")
+    validation_path.write_text(
+        json.dumps(validation_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if validation_report["status"] == "pass":
+        write_pmb_shell_handoff_host_run_evidence(out, validation_path, evidence)
+    return 0 if validation_report["status"] == "pass" else 2
 
 
 def run_android_capture(args: argparse.Namespace, out: Path) -> int:
@@ -1872,6 +1934,7 @@ def accept_broker_stream_event(
     *,
     events_file: Any | None = None,
 ) -> None:
+    event = with_transport_event_aliases(event)
     payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
     stream = str(event.get("stream") or event.get("stream_id") or payload.get("stream_id") or "")
     if stream not in stream_rows:
@@ -1889,6 +1952,27 @@ def accept_broker_stream_event(
     else:
         with events_jsonl.open("a", encoding="utf-8") as file:
             file.write(line + "\n")
+
+
+def with_transport_event_aliases(event: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(event)
+    payload = normalized.get("payload")
+    if isinstance(payload, dict):
+        payload = dict(payload)
+        normalized["payload"] = payload
+    else:
+        payload = {}
+
+    for old_key, new_key in (
+        ("broker_time_unix_ns", "transport_time_unix_ns"),
+        ("broker_receive_time_unix_ns", "transport_receive_time_unix_ns"),
+    ):
+        if new_key not in normalized and old_key in normalized:
+            normalized[new_key] = normalized[old_key]
+        if new_key not in payload and old_key in payload:
+            payload[new_key] = payload[old_key]
+
+    return normalized
 
 
 def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
@@ -2465,6 +2549,17 @@ def pull_makepad_render(args: argparse.Namespace) -> int:
     return 0
 
 
+def launch_makepad_shell_contract(args: argparse.Namespace) -> int:
+    return makepad_shell_contract_launcher.launch_makepad_shell_contract(
+        args,
+        adb_prefix=adb_prefix,
+        host_app_for=host_app_for,
+        run=run,
+        wait_for_android_run_as_file=wait_for_android_run_as_file,
+        pull_android_run_as_file=pull_android_run_as_file,
+        write_android_run_as_file=write_android_run_as_file,
+    )
+
 def snapshot_telemetry(args: argparse.Namespace) -> int:
     evidence_path = Path(args.input)
     snapshot = build_snapshot(
@@ -2855,6 +2950,40 @@ def pull_android_run_as_file(
     out.write_bytes(read_android_run_as_file(args, package, relative_path))
 
 
+def write_android_run_as_file(
+    args: argparse.Namespace,
+    package: str,
+    relative_path: str,
+    payload: bytes,
+) -> None:
+    result = subprocess.run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "exec-in",
+            "run-as",
+            package,
+            "sh",
+            "-c",
+            f"cat > {android_shell_quote(relative_path)}",
+        ],
+        check=False,
+        input=payload,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise SystemExit(
+            f"could not write app file {package}:{relative_path}: "
+            f"{result.stderr.decode(errors='replace').strip()}"
+        )
+
+
+def android_shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+
 def read_android_run_as_file(
     args: argparse.Namespace,
     package: str,
@@ -2989,6 +3118,34 @@ def polar_package_root(packages_root: Path) -> Path:
 def projected_motion_breath_package_root(packages_root: Path) -> Path:
     package_root = packages_root / "packages" / "projected-motion-breath"
     return package_root if package_root.exists() else packages_root
+
+
+def default_pmb_shell_handoff_path(package_root: Path) -> Path:
+    return package_root / "fixtures" / "valid" / "shell-handoff-loopback.json"
+
+
+def load_json_object(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise SystemExit(f"JSON file did not contain an object: {path}")
+    return value
+
+
+def load_json_manifest_dir(directory: Path) -> list[dict[str, Any]]:
+    if not directory.exists():
+        return []
+    return [
+        load_json_object(path)
+        for path in sorted(directory.glob("*.json"))
+    ]
+
+
+def collect_manifest_ids(manifests: list[dict[str, Any]], key: str) -> list[str]:
+    return sorted(
+        str(manifest[key])
+        for manifest in manifests
+        if manifest.get(key)
+    )
 
 
 def parse_pmb_core_report(stdout: str) -> tuple[dict[str, Any] | None, str | None]:
@@ -3481,6 +3638,310 @@ def validate_pmb_live_route_self_test_evidence(evidence: dict[str, Any]) -> dict
     }
 
 
+def build_pmb_shell_handoff_validation_evidence(
+    *,
+    packages_root: Path,
+    package_root: Path,
+    handoff_path: Path,
+    started_utc: datetime,
+    ended_utc: datetime,
+) -> dict[str, Any]:
+    package_manifest = load_json_object(package_root / "manifests" / "package.manifold.json")
+    stream_manifests = load_json_manifest_dir(package_root / "manifests" / "streams")
+    command_manifests = load_json_manifest_dir(package_root / "manifests" / "commands")
+    module_manifests = load_json_manifest_dir(package_root / "manifests" / "modules")
+    handoff = load_json_object(handoff_path)
+    exports = package_manifest.get("exports", {}) if isinstance(package_manifest.get("exports"), dict) else {}
+    exported_stream_ids = sorted(str(value) for value in exports.get("streams", []) if value)
+    exported_command_ids = sorted(str(value) for value in exports.get("commands", []) if value)
+    exported_module_ids = sorted(str(value) for value in exports.get("modules", []) if value)
+    manifest_stream_ids = collect_manifest_ids(stream_manifests, "stream_id")
+    manifest_command_ids = collect_manifest_ids(command_manifests, "command_id")
+    manifest_module_ids = collect_manifest_ids(module_manifests, "module_id")
+    feedback_sink = next(
+        (
+            manifest
+            for manifest in module_manifests
+            if manifest.get("module_id") == "module.breath.feedback_sink"
+        ),
+        {},
+    )
+    stream_bindings = [
+        binding
+        for binding in handoff.get("stream_bindings", [])
+        if isinstance(binding, dict)
+    ]
+    binding_pairs = sorted(
+        {
+            (str(binding.get("stream_id")), str(binding.get("direction")))
+            for binding in stream_bindings
+            if binding.get("stream_id") and binding.get("direction")
+        }
+    )
+    bound_stream_ids = sorted({stream_id for stream_id, _direction in binding_pairs})
+    command_ids = sorted(str(command_id) for command_id in handoff.get("command_ids", []) if command_id)
+    transport_offers = [
+        offer
+        for offer in handoff.get("transport_offers", [])
+        if isinstance(offer, dict)
+    ]
+    checks = [
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.schema",
+            handoff.get("$schema") == "rusty.manifold.shell.handoff.v1",
+            "shell handoff manifest uses the Manifold shell handoff schema",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.required_bindings",
+            PMB_SHELL_HANDOFF_REQUIRED_BINDINGS.issubset(set(binding_pairs)),
+            "shell handoff binds controller pose input, breath feedback subscription, and feedback receipt publication",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.stream_manifest_ids",
+            set(bound_stream_ids).issubset(set(manifest_stream_ids)),
+            "all shell handoff stream bindings are declared by PMB stream manifests",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.command_manifest_ids",
+            bool(command_ids) and set(command_ids).issubset(set(manifest_command_ids)),
+            "all shell handoff commands are declared by PMB command manifests",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.feedback_receipt_export",
+            "stream.breath.feedback_receipt" in exported_stream_ids,
+            "PMB package exports stream.breath.feedback_receipt for downstream shell acknowledgements",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.feedback_sink_provider",
+            "stream.breath.feedback_receipt" in feedback_sink.get("provides_streams", []),
+            "PMB feedback sink module provides stream.breath.feedback_receipt",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.transport_offer",
+            bool(transport_offers)
+            and all(
+                offer.get("transport_id")
+                and offer.get("transport")
+                and offer.get("endpoint_id")
+                for offer in transport_offers
+            ),
+            "shell handoff exposes named transport offers without requiring a live transport",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.clean_boundary",
+            True,
+            "validation used package manifests and handoff fixture only, with no legacy app, device, or runtime shell dependency",
+            "validation.pmb_shell_handoff_failed",
+        ),
+    ]
+    status = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
+    issues = [
+        {
+            "code": check["issue_codes"][0],
+            "severity": "error",
+            "message": check["evidence"],
+            "related_id": check["check_id"],
+        }
+        for check in checks
+        if check["status"] != "pass" and check.get("issue_codes")
+    ]
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.shell_handoff_validation_evidence.v1",
+        "status": status,
+        "target": "desktop",
+        "host_profile": "desktop",
+        "started_at_utc": started_utc.isoformat(),
+        "ended_at_utc": ended_utc.isoformat(),
+        "duration_ms": int((ended_utc - started_utc).total_seconds() * 1000),
+        "software": {
+            "origin": "rusty-hostess",
+            "host_app": "app.rusty_hostess_t.desktop",
+            "host_app_version": "0.1.0",
+        },
+        "package": projected_motion_package_snapshot(package_root),
+        "package_root_name": package_root.name,
+        "packages_workspace_name": packages_root.name,
+        "execution": {
+            "mode": "projected_motion_breath_shell_handoff_validation",
+            "handoff_validation_performed": True,
+            "execution_performed": True,
+            "runtime_execution_performed": False,
+            "processor_core_executed": False,
+            "desktop_execution_performed": True,
+            "platform_execution_performed": False,
+            "device_required": False,
+            "android_execution_performed": False,
+            "quest_execution_performed": False,
+            "apk_build_performed": False,
+            "openxr_runtime_used": False,
+            "adb_used": False,
+            "external_transport_used": False,
+            "broker_transport_used": False,
+            "live_sensor_used": False,
+            "downstream_shell_runtime_used": False,
+            "legacy_app_dependency_used": False,
+            "legacy_rusty_xr_repo_used": False,
+        },
+        "shell_handoff": {
+            "handoff_artifact": handoff_path.name,
+            "handoff_id": handoff.get("handoff_id"),
+            "handoff_revision": handoff.get("handoff_revision"),
+            "target_host_profile": handoff.get("target_host_profile"),
+            "shell_app_id": handoff.get("shell_app_id"),
+            "validation_slot_id": handoff.get("validation_slot_id"),
+            "expected_scorecard_id": handoff.get("expected_scorecard_id"),
+            "stream_bindings": [
+                {
+                    "stream_id": binding.get("stream_id"),
+                    "direction": binding.get("direction"),
+                    "role": binding.get("role"),
+                    "required": binding.get("required", False),
+                }
+                for binding in stream_bindings
+            ],
+            "binding_pairs": [
+                {"stream_id": stream_id, "direction": direction}
+                for stream_id, direction in binding_pairs
+            ],
+            "command_ids": command_ids,
+            "transport_offers": transport_offers,
+        },
+        "package_contract": {
+            "package_id": package_manifest.get("package_id"),
+            "exported_stream_ids": exported_stream_ids,
+            "exported_command_ids": exported_command_ids,
+            "exported_module_ids": exported_module_ids,
+            "manifest_stream_ids": manifest_stream_ids,
+            "manifest_command_ids": manifest_command_ids,
+            "manifest_module_ids": manifest_module_ids,
+            "feedback_sink_provides_streams": sorted(
+                str(stream_id)
+                for stream_id in feedback_sink.get("provides_streams", [])
+                if stream_id
+            ),
+        },
+        "commands": [
+            {
+                "command": "validate_projected_motion_breath_shell_handoff",
+                "status": "acknowledged" if status == "pass" else "rejected",
+                "runtime_path": "python.hostessctl.v1",
+            }
+        ],
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.hostess.projected_motion_breath.shell_handoff",
+            "target_id": "hostess.projected_motion_breath.shell_handoff",
+            "target_revision": 1,
+            "status": status,
+            "checks": checks,
+            "issues": issues,
+        },
+    }
+
+
+def validate_pmb_shell_handoff_validation_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
+    execution = evidence.get("execution", {})
+    shell_handoff = evidence.get("shell_handoff", {})
+    package_contract = evidence.get("package_contract", {})
+    binding_pairs = {
+        (str(binding.get("stream_id")), str(binding.get("direction")))
+        for binding in shell_handoff.get("binding_pairs", [])
+        if isinstance(binding, dict) and binding.get("stream_id") and binding.get("direction")
+    }
+    bound_stream_ids = {stream_id for stream_id, _direction in binding_pairs}
+    command_ids = set(shell_handoff.get("command_ids", []))
+    checks = [
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.schema",
+            evidence.get("$schema")
+            == "rusty.hostess.projected_motion_breath.shell_handoff_validation_evidence.v1",
+            "PMB shell handoff validation evidence schema is supported",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.status",
+            evidence.get("status") == "pass",
+            "PMB shell handoff validation evidence status passed",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.required_bindings",
+            PMB_SHELL_HANDOFF_REQUIRED_BINDINGS.issubset(binding_pairs),
+            "PMB shell handoff includes the required stream directions",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.stream_manifests",
+            bound_stream_ids.issubset(set(package_contract.get("manifest_stream_ids", []))),
+            "PMB shell handoff streams resolve to package stream manifests",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.commands",
+            bool(command_ids)
+            and command_ids.issubset(set(package_contract.get("manifest_command_ids", []))),
+            "PMB shell handoff commands resolve to package command manifests",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.feedback_receipt_export",
+            "stream.breath.feedback_receipt" in package_contract.get("exported_stream_ids", []),
+            "PMB package exports stream.breath.feedback_receipt",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.feedback_sink",
+            "stream.breath.feedback_receipt" in package_contract.get("feedback_sink_provides_streams", []),
+            "PMB feedback sink provides stream.breath.feedback_receipt",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.transport_offer",
+            bool(shell_handoff.get("transport_offers")),
+            "PMB shell handoff declares at least one named transport offer",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.clean_boundary",
+            execution.get("runtime_execution_performed") is False
+            and execution.get("platform_execution_performed") is False
+            and execution.get("device_required") is False
+            and execution.get("external_transport_used") is False
+            and execution.get("broker_transport_used") is False
+            and execution.get("downstream_shell_runtime_used") is False
+            and execution.get("legacy_app_dependency_used") is False
+            and execution.get("legacy_rusty_xr_repo_used") is False,
+            "PMB shell handoff validation avoided runtime shell, device, transport, and legacy repo dependencies",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.app_scorecard",
+            evidence.get("scorecard", {}).get("status") == "pass",
+            "PMB shell handoff validation scorecard passed",
+            "validation.pmb_shell_handoff_failed",
+        ),
+    ]
+    errors = [
+        check["evidence"]
+        for check in checks
+        if check["status"] != "pass"
+    ]
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.shell_handoff_validation.v1",
+        "status": "pass" if not errors else "fail",
+        "evidence_status": evidence.get("status"),
+        "checks": checks,
+        "errors": errors,
+    }
+
+
 def validate_pmb_android_replay_execution_evidence(
     evidence: dict[str, Any],
     *,
@@ -3834,6 +4295,93 @@ def write_pmb_live_route_host_run_evidence(
             "$schema": "rusty.manifold.validation.scorecard.v1",
             "scorecard_id": "scorecard.host_run.projected_motion_breath.live_broker_route_self_test",
             "target_id": f"host_run.run.projected_motion_breath.live_broker_route_self_test.{started_ms}",
+            "target_revision": 1,
+            "status": status,
+            "checks": checks,
+            "issues": [],
+        },
+    }
+    contract_path = raw_evidence_path.with_name(f"{raw_evidence_path.stem}.host-run-evidence.json")
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_pmb_shell_handoff_host_run_evidence(
+    raw_evidence_path: Path,
+    validation_report_path: Path,
+    raw: dict[str, Any],
+) -> None:
+    started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
+    ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
+    validation_report = json.loads(validation_report_path.read_text(encoding="utf-8"))
+    shell_handoff = raw.get("shell_handoff", {})
+    package_contract = raw.get("package_contract", {})
+    execution = raw.get("execution", {})
+    checks = [
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff_status",
+            validation_report.get("status") == "pass" and raw.get("status") == "pass",
+            "PMB shell handoff evidence and validation report passed",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff_receipt_export",
+            "stream.breath.feedback_receipt" in package_contract.get("exported_stream_ids", [])
+            and "stream.breath.feedback_receipt" in package_contract.get("feedback_sink_provides_streams", []),
+            "PMB package exports feedback receipts and the feedback sink provides them",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff_clean_boundary",
+            execution.get("runtime_execution_performed") is False
+            and execution.get("legacy_app_dependency_used") is False
+            and execution.get("legacy_rusty_xr_repo_used") is False
+            and execution.get("downstream_shell_runtime_used") is False,
+            "PMB shell handoff host-run evidence records a package-only validation boundary",
+            "validation.pmb_shell_handoff_failed",
+        ),
+    ]
+    status = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
+    contract = {
+        "$schema": "rusty.manifold.host_run.run_evidence.v1",
+        "run_id": f"host_run.run.projected_motion_breath.shell_handoff.{started_ms}",
+        "bundle_id": "host_run.bundle.projected_motion_breath.shell_handoff",
+        "validation_slot_id": "host_run.slot.projected_motion_breath.shell_handoff",
+        "host_profile": "host.desktop",
+        "app_id": "app.rusty_hostess_t.desktop",
+        "package_ids": ["package.projected_motion_breath"],
+        "module_ids": [
+            "module.motion.object_pose_provider",
+            "module.breath.projected_motion",
+            "module.breath.feedback_sink",
+        ],
+        "status": status,
+        "started_at_ms": started_ms,
+        "ended_at_ms": ended_ms,
+        "evidence_artifacts": [
+            "artifact.projected_motion_breath_shell_handoff_evidence",
+            "artifact.projected_motion_breath_shell_handoff_validation_report",
+            "artifact.host_run_evidence",
+        ],
+        "result_fields": {
+            "handoff_id": shell_handoff.get("handoff_id"),
+            "target_host_profile": shell_handoff.get("target_host_profile"),
+            "shell_app_id": shell_handoff.get("shell_app_id"),
+            "stream_bindings": shell_handoff.get("binding_pairs", []),
+            "command_ids": shell_handoff.get("command_ids", []),
+            "transport_ids": [
+                offer.get("transport_id")
+                for offer in shell_handoff.get("transport_offers", [])
+                if isinstance(offer, dict)
+            ],
+            "runtime_execution_performed": execution.get("runtime_execution_performed"),
+            "broker_transport_used": execution.get("broker_transport_used"),
+            "legacy_app_dependency_used": execution.get("legacy_app_dependency_used"),
+            "legacy_rusty_xr_repo_used": execution.get("legacy_rusty_xr_repo_used"),
+        },
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.host_run.projected_motion_breath.shell_handoff",
+            "target_id": f"host_run.run.projected_motion_breath.shell_handoff.{started_ms}",
             "target_revision": 1,
             "status": status,
             "checks": checks,

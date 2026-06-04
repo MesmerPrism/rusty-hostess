@@ -14,4 +14,5 @@ version_name = "0.1.0"
 min_sdk_version = 26
 
 [dependencies]
+makepad-xr = { path = "../../../makepad-rusty-xr/xr", version = "1.0.0" }
 makepad-widgets = { path = "../../../makepad-rusty-xr/widgets", version = "2.0.0" }

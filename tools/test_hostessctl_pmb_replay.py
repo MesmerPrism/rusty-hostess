@@ -169,6 +169,112 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             self.assertEqual(host_run["status"], "pass")
             self.assertFalse(host_run["result_fields"]["live_sensor_used"])
 
+    def test_run_pmb_shell_handoff_writes_package_only_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            out = root / "evidence" / "pmb-shell-handoff.json"
+
+            status = hostessctl.run_pmb_shell_handoff(
+                argparse.Namespace(
+                    out=str(out),
+                    packages_root=str(packages_root),
+                    handoff=None,
+                )
+            )
+
+            self.assertEqual(status, 0)
+            evidence = json.loads(out.read_text(encoding="utf-8"))
+            validation = json.loads(
+                out.with_name("pmb-shell-handoff.validation-report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            host_run = json.loads(
+                out.with_name("pmb-shell-handoff.host-run-evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(
+                evidence["$schema"],
+                "rusty.hostess.projected_motion_breath.shell_handoff_validation_evidence.v1",
+            )
+            self.assertEqual(evidence["status"], "pass")
+            self.assertFalse(evidence["execution"]["runtime_execution_performed"])
+            self.assertFalse(evidence["execution"]["broker_transport_used"])
+            self.assertFalse(evidence["execution"]["downstream_shell_runtime_used"])
+            self.assertFalse(evidence["execution"]["legacy_app_dependency_used"])
+            self.assertFalse(evidence["execution"]["legacy_rusty_xr_repo_used"])
+            binding_pairs = {
+                (binding["stream_id"], binding["direction"])
+                for binding in evidence["shell_handoff"]["binding_pairs"]
+            }
+            self.assertEqual(
+                binding_pairs,
+                {
+                    ("stream.motion.object_pose", "publish"),
+                    ("stream.breath.feedback_state", "subscribe"),
+                    ("stream.breath.feedback_receipt", "publish"),
+                },
+            )
+            self.assertIn(
+                "stream.breath.feedback_receipt",
+                evidence["package_contract"]["exported_stream_ids"],
+            )
+            self.assertIn(
+                "stream.breath.feedback_receipt",
+                evidence["package_contract"]["feedback_sink_provides_streams"],
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(host_run["status"], "pass")
+            self.assertEqual(
+                host_run["validation_slot_id"],
+                "host_run.slot.projected_motion_breath.shell_handoff",
+            )
+            self.assertFalse(host_run["result_fields"]["legacy_app_dependency_used"])
+
+    def test_pmb_shell_handoff_rejects_missing_feedback_receipt_binding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            handoff_path = package_root / "fixtures" / "valid" / "shell-handoff-loopback.json"
+            handoff = json.loads(handoff_path.read_text(encoding="utf-8"))
+            handoff["stream_bindings"] = [
+                binding
+                for binding in handoff["stream_bindings"]
+                if binding["stream_id"] != "stream.breath.feedback_receipt"
+            ]
+            damaged_handoff_path = root / "damaged-shell-handoff.json"
+            write_json(damaged_handoff_path, handoff)
+            out = root / "evidence" / "pmb-shell-handoff.json"
+
+            status = hostessctl.run_pmb_shell_handoff(
+                argparse.Namespace(
+                    out=str(out),
+                    packages_root=str(packages_root),
+                    handoff=str(damaged_handoff_path),
+                )
+            )
+
+            self.assertEqual(status, 2)
+            validation = json.loads(
+                out.with_name("pmb-shell-handoff.validation-report.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(validation["status"], "fail")
+            self.assertTrue(
+                any(
+                    check["check_id"] == "hostess.check.pmb_shell_handoff.required_bindings"
+                    and check["status"] == "fail"
+                    for check in validation["checks"]
+                )
+            )
+            self.assertFalse(out.with_name("pmb-shell-handoff.host-run-evidence.json").exists())
+
     def test_pmb_live_route_self_test_rejects_missing_receipts(self) -> None:
         evidence = {
             "$schema": "rusty.hostess.projected_motion_breath.live_broker_route_self_test_evidence.v1",
@@ -628,17 +734,111 @@ def write_projected_motion_package_tree(packages_root: Path) -> None:
     package_root = packages_root / "packages" / "projected-motion-breath"
     write_json(
         package_root / "manifests" / "package.manifold.json",
-        {"$schema": "rusty.manifold.package.manifest.v1", "package_id": "package.projected_motion_breath"},
+        {
+            "$schema": "rusty.manifold.package.manifest.v1",
+            "package_id": "package.projected_motion_breath",
+            "exports": {
+                "modules": [
+                    "module.motion.object_pose_provider",
+                    "module.breath.projected_motion",
+                    "module.breath.feedback_sink",
+                ],
+                "streams": [
+                    "stream.motion.object_pose",
+                    "stream.breath.volume",
+                    "stream.breath.feedback_state",
+                    "stream.breath.feedback_receipt",
+                ],
+                "commands": [
+                    "command.breath.set_profile",
+                    "command.breath.status",
+                ],
+            },
+        },
     )
-    for subdir, filename in [
-        ("streams", "breath-volume.json"),
-        ("modules", "projected-motion-breath.json"),
-        ("commands", "breath-set-profile.json"),
+    for filename, stream_id in [
+        ("object-pose.json", "stream.motion.object_pose"),
+        ("breath-volume.json", "stream.breath.volume"),
+        ("feedback-state.json", "stream.breath.feedback_state"),
+        ("feedback-receipt.json", "stream.breath.feedback_receipt"),
     ]:
         write_json(
-            package_root / "manifests" / subdir / filename,
-            {"id": filename.removesuffix(".json")},
+            package_root / "manifests" / "streams" / filename,
+            {"$schema": "rusty.manifold.stream.manifest.v1", "stream_id": stream_id},
         )
+    for filename, module_id, provides_streams in [
+        (
+            "object-pose-provider.json",
+            "module.motion.object_pose_provider",
+            ["stream.motion.object_pose"],
+        ),
+        (
+            "projected-motion-breath.json",
+            "module.breath.projected_motion",
+            ["stream.breath.volume"],
+        ),
+        (
+            "feedback-sink.json",
+            "module.breath.feedback_sink",
+            ["stream.breath.feedback_state", "stream.breath.feedback_receipt"],
+        ),
+    ]:
+        write_json(
+            package_root / "manifests" / "modules" / filename,
+            {
+                "$schema": "rusty.manifold.module.manifest.v1",
+                "module_id": module_id,
+                "provides_streams": provides_streams,
+            },
+        )
+    for filename, command_id in [
+        ("breath-set-profile.json", "command.breath.set_profile"),
+        ("breath-status.json", "command.breath.status"),
+    ]:
+        write_json(
+            package_root / "manifests" / "commands" / filename,
+            {"$schema": "rusty.manifold.command.descriptor.v1", "command_id": command_id},
+        )
+    write_json(
+        package_root / "fixtures" / "valid" / "shell-handoff-loopback.json",
+        {
+            "$schema": "rusty.manifold.shell.handoff.v1",
+            "handoff_id": "shell_handoff.projected_motion_breath.loopback",
+            "handoff_revision": 1,
+            "target_host_profile": "host.headset",
+            "shell_app_id": "app.downstream_shell",
+            "validation_slot_id": "host_run.slot.projected_motion_breath.live_route_loopback",
+            "stream_bindings": [
+                {
+                    "stream_id": "stream.motion.object_pose",
+                    "direction": "publish",
+                    "role": "shell.stream.controller_pose_provider",
+                    "required": True,
+                },
+                {
+                    "stream_id": "stream.breath.feedback_state",
+                    "direction": "subscribe",
+                    "role": "shell.stream.breath_feedback_receiver",
+                    "required": True,
+                },
+                {
+                    "stream_id": "stream.breath.feedback_receipt",
+                    "direction": "publish",
+                    "role": "shell.stream.breath_feedback_receipt",
+                    "required": True,
+                },
+            ],
+            "command_ids": ["command.breath.status"],
+            "transport_offers": [
+                {
+                    "transport_id": "transport.shell_loopback",
+                    "transport": "http",
+                    "endpoint_id": "endpoint.shell_loopback",
+                }
+            ],
+            "expected_scorecard_id": "scorecard.projected_motion_breath.shell_handoff_loopback",
+        },
+    )
 
 
 def write_json(path: Path, value: dict[str, object]) -> None:

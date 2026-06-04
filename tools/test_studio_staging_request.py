@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -12,6 +13,22 @@ from tools import studio_staging_request as adapter
 
 
 class StudioStagingRequestTests(unittest.TestCase):
+    def test_direct_script_help_invocation_keeps_extracted_module_imports_working(self) -> None:
+        repo_root = Path(__file__).resolve().parents[1]
+        script = repo_root / "tools" / "studio_staging_request.py"
+
+        result = subprocess.run(
+            [sys.executable, str(script), "--help"],
+            cwd=repo_root,
+            capture_output=True,
+            text=True,
+            timeout=15,
+            check=False,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("--hostess-makepad-shell-contract-receipt-out", result.stdout)
+
     def test_accepts_ready_studio_request_and_builds_ack_reject_fixtures(self) -> None:
         request = valid_request()
 
@@ -1389,6 +1406,142 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertFalse(validation["runtime_execution_performed"])
         self.assertFalse(validation["platform_execution_performed"])
 
+    def test_operator_start_preflight_accepts_required_pmb_shell_handoff_review(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+
+        receipt = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            pmb_shell_handoff_review=ready_pmb_shell_handoff_review(),
+            require_pmb_shell_handoff_review=True,
+        )
+
+        self.assertEqual(receipt["status"], adapter.APPROVED_STATUS)
+        self.assertTrue(receipt["pmb_shell_handoff_review_required"])
+        self.assertTrue(receipt["pmb_shell_handoff_review_ready"])
+        self.assertIsNone(receipt["source_pmb_shell_handoff_review_issue_code"])
+        self.assertEqual(
+            receipt["readiness_input_count"],
+            len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS) + 1,
+        )
+        self.assertEqual(
+            receipt["approved_readiness_input_count"],
+            len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS) + 1,
+        )
+        pmb_input = next(
+            item
+            for item in receipt["readiness_inputs"]
+            if item["readiness_input_id"]
+            == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        )
+        self.assertEqual(pmb_input["owner"], "rusty.studio")
+        self.assertEqual(pmb_input["readiness_status"], adapter.APPROVED_STATUS)
+        self.assertEqual(
+            pmb_input["source_pmb_shell_handoff_review_schema"],
+            adapter.STUDIO_PMB_SHELL_HANDOFF_REVIEW_SCHEMA,
+        )
+        self.assertEqual(pmb_input["source_pmb_runtime_authority"], "rusty.manifold")
+        self.assertEqual(pmb_input["source_pmb_authoring_authority"], "rusty.studio")
+        self.assertEqual(
+            pmb_input["source_pmb_platform_validation_authority"],
+            "rusty.hostess",
+        )
+        self.assertFalse(pmb_input["source_pmb_downstream_shell_runtime_used"])
+        self.assertFalse(pmb_input["source_pmb_legacy_app_dependency_used"])
+        self.assertTrue(adapter.pmb_shell_handoff_readiness_input_summary_valid(pmb_input))
+
+        validation = adapter.validate_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            receipt,
+            require_pmb_shell_handoff_review=True,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_operator_start_preflight_rejects_missing_or_blocked_required_pmb_review(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+
+        missing = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            require_pmb_shell_handoff_review=True,
+        )
+        self.assertEqual(missing["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            missing["issue_code"],
+            "hostess.issue.pmb_shell_handoff_review_missing",
+        )
+        self.assertFalse(missing["operator_start_required"])
+        self.assertFalse(missing["operator_started"])
+        self.assertFalse(missing["host_shell_started"])
+        pmb_missing_input = next(
+            item
+            for item in missing["readiness_inputs"]
+            if item["readiness_input_id"]
+            == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        )
+        self.assertEqual(pmb_missing_input["readiness_status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            pmb_missing_input["issue_code"],
+            "hostess.issue.pmb_shell_handoff_review_missing",
+        )
+        self.assertEqual(
+            adapter.validate_platform_smoke_operator_start_preflight_receipt(
+                plan,
+                approval,
+                execution_request,
+                execution_receipt,
+                gate,
+                missing,
+                require_pmb_shell_handoff_review=True,
+            )["status"],
+            "pass",
+        )
+
+        blocked_review = ready_pmb_shell_handoff_review()
+        blocked_review["status"] = "blocked"
+        blocked_review["issue_code"] = (
+            "studio.issue.projected_motion_breath_shell_handoff_required_bindings"
+        )
+        blocked = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            pmb_shell_handoff_review=blocked_review,
+        )
+        self.assertEqual(blocked["status"], adapter.REJECTED_STATUS)
+        self.assertEqual(
+            blocked["issue_code"],
+            "studio.issue.projected_motion_breath_shell_handoff_required_bindings",
+        )
+        self.assertFalse(blocked["operator_start_required"])
+        self.assertFalse(blocked["platform_execution_performed"])
+
     def test_platform_smoke_operator_start_preflight_rejection_receipt_without_execution(self) -> None:
         (
             plan,
@@ -1651,6 +1804,90 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertFalse(validation["platform_execution_performed"])
         self.assertFalse(validation["real_platform_execution_evidence_attached"])
 
+    def test_platform_smoke_execution_report_preserves_pmb_shell_handoff_gate(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+        ) = ready_platform_smoke_operator_start_chain()
+        preflight = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            pmb_shell_handoff_review=ready_pmb_shell_handoff_review(),
+            require_pmb_shell_handoff_review=True,
+        )
+
+        report = adapter.build_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+        )
+
+        self.assertEqual(report["status"], adapter.COMPLETED_STATUS)
+        self.assertTrue(report["pmb_shell_handoff_review_required"])
+        self.assertTrue(report["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            report["source_pmb_shell_handoff_review_schema"],
+            adapter.STUDIO_PMB_SHELL_HANDOFF_REVIEW_SCHEMA,
+        )
+        self.assertEqual(
+            report["source_pmb_shell_handoff_review_status"],
+            adapter.READY_STATUS,
+        )
+        self.assertIsNone(report["source_pmb_shell_handoff_review_issue_code"])
+        self.assertEqual(
+            report["source_pmb_shell_handoff_id"],
+            "shell_handoff.projected_motion_breath.loopback",
+        )
+        self.assertEqual(report["source_pmb_runtime_authority"], "rusty.manifold")
+        self.assertEqual(report["source_pmb_authoring_authority"], "rusty.studio")
+        self.assertEqual(
+            report["source_pmb_platform_validation_authority"],
+            "rusty.hostess",
+        )
+        self.assertFalse(report["source_pmb_downstream_shell_runtime_used"])
+        self.assertFalse(report["source_pmb_legacy_app_dependency_used"])
+
+        pmb_result = next(
+            item
+            for item in report["readiness_results"]
+            if item["source_readiness_input_id"]
+            == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        )
+        self.assertEqual(pmb_result["result_status"], adapter.COMPLETED_STATUS)
+        self.assertEqual(
+            pmb_result["source_pmb_shell_handoff_review_schema"],
+            adapter.STUDIO_PMB_SHELL_HANDOFF_REVIEW_SCHEMA,
+        )
+        self.assertEqual(
+            pmb_result["source_pmb_shell_handoff_review_status"],
+            adapter.READY_STATUS,
+        )
+        self.assertTrue(adapter.pmb_shell_handoff_readiness_result_summary_valid(pmb_result))
+
+        validation = adapter.validate_platform_smoke_execution_report(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            report,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
+        self.assertFalse(validation["runtime_execution_performed"])
+        self.assertFalse(validation["platform_execution_performed"])
+
     def test_platform_smoke_execution_report_rejection_without_execution(self) -> None:
         (
             plan,
@@ -1799,6 +2036,53 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_execution_report_readiness_drift",
         )
 
+        (
+            pmb_plan,
+            pmb_approval,
+            pmb_execution_request,
+            pmb_execution_receipt,
+            pmb_gate,
+        ) = ready_platform_smoke_operator_start_chain()
+        pmb_preflight = adapter.build_platform_smoke_operator_start_preflight_receipt(
+            pmb_plan,
+            pmb_approval,
+            pmb_execution_request,
+            pmb_execution_receipt,
+            pmb_gate,
+            pmb_shell_handoff_review=ready_pmb_shell_handoff_review(),
+            require_pmb_shell_handoff_review=True,
+        )
+        pmb_report = adapter.build_platform_smoke_execution_report(
+            pmb_plan,
+            pmb_approval,
+            pmb_execution_request,
+            pmb_execution_receipt,
+            pmb_gate,
+            pmb_preflight,
+        )
+        pmb_drift = copy.deepcopy(pmb_report)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_drift["readiness_results"] = [
+            item
+            for item in pmb_drift["readiness_results"]
+            if item["source_readiness_input_id"]
+            != adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        ]
+        pmb_report_validation = adapter.validate_platform_smoke_execution_report(
+            pmb_plan,
+            pmb_approval,
+            pmb_execution_request,
+            pmb_execution_receipt,
+            pmb_gate,
+            pmb_preflight,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report_validation["status"], "fail")
+        self.assertEqual(
+            pmb_report_validation["issue_code"],
+            "hostess.issue.platform_smoke_execution_report_pmb_shell_handoff_review_drift",
+        )
+
         evidence_drift = copy.deepcopy(report)
         evidence_drift["evidence_placeholders"][0]["collected"] = True
         evidence_drift["evidence_placeholders"][0]["required_evidence_kind"] = (
@@ -1922,6 +2206,62 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertFalse(validation["runtime_execution_performed"])
         self.assertFalse(validation["platform_execution_performed"])
         self.assertFalse(validation["real_platform_execution_evidence_attached"])
+
+    def test_platform_smoke_evidence_attachment_preserves_pmb_shell_handoff_gate(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_pmb_platform_smoke_evidence_attachment_chain()
+
+        self.assertTrue(attachment["pmb_shell_handoff_review_required"])
+        self.assertTrue(attachment["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            attachment["source_pmb_shell_handoff_review_schema"],
+            execution_report["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertEqual(attachment["source_pmb_runtime_authority"], "rusty.manifold")
+        self.assertEqual(attachment["source_pmb_authoring_authority"], "rusty.studio")
+        self.assertEqual(
+            attachment["source_pmb_platform_validation_authority"],
+            "rusty.hostess",
+        )
+        self.assertFalse(attachment["source_pmb_runtime_execution_performed"])
+        self.assertFalse(attachment["source_pmb_platform_execution_performed"])
+
+        pmb_attachment = next(
+            item
+            for item in attachment["readiness_evidence_attachments"]
+            if item["source_readiness_input_id"]
+            == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        )
+        self.assertEqual(pmb_attachment["attachment_status"], adapter.VALIDATED_STATUS)
+        self.assertEqual(
+            pmb_attachment["source_pmb_shell_handoff_review_schema"],
+            execution_report["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertTrue(
+            adapter.pmb_shell_handoff_readiness_result_summary_valid(pmb_attachment)
+        )
+
+        validation = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
 
     def test_platform_smoke_evidence_attachment_rejection_without_collection(self) -> None:
         (
@@ -2066,6 +2406,36 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.platform_smoke_evidence_attachment_readiness_drift",
         )
 
+    def test_platform_smoke_evidence_attachment_validation_rejects_pmb_gate_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_pmb_platform_smoke_evidence_attachment_chain()
+
+        pmb_drift = copy.deepcopy(attachment)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_report = adapter.validate_platform_smoke_evidence_attachment_receipt(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report["status"], "fail")
+        self.assertEqual(
+            pmb_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_attachment_pmb_shell_handoff_review_drift",
+        )
+
     def test_builds_platform_smoke_evidence_review_scorecard_without_collection_or_execution(self) -> None:
         (
             plan,
@@ -2152,6 +2522,66 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertFalse(validation["runtime_execution_performed"])
         self.assertFalse(validation["platform_execution_performed"])
         self.assertFalse(validation["real_platform_execution_evidence_attached"])
+
+    def test_platform_smoke_evidence_review_preserves_pmb_shell_handoff_gate(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_pmb_platform_smoke_evidence_attachment_chain()
+        review = adapter.build_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        )
+
+        self.assertTrue(review["pmb_shell_handoff_review_required"])
+        self.assertTrue(review["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            review["source_pmb_shell_handoff_review_schema"],
+            attachment["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertEqual(review["source_pmb_runtime_authority"], "rusty.manifold")
+        self.assertFalse(review["source_pmb_runtime_execution_performed"])
+        self.assertFalse(review["source_pmb_platform_execution_performed"])
+
+        pmb_row = next(
+            row
+            for row in review["readiness_review_rows"]
+            if row["source_readiness_input_id"]
+            == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+        )
+        self.assertEqual(pmb_row["review_status"], adapter.REVIEWED_STATUS)
+        self.assertEqual(
+            pmb_row["source_pmb_shell_handoff_review_schema"],
+            attachment["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertTrue(adapter.pmb_shell_handoff_readiness_result_summary_valid(pmb_row))
+
+        validation = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            review,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
 
     def test_platform_smoke_evidence_review_rejection_without_execution(self) -> None:
         (
@@ -2320,6 +2750,47 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertEqual(
             scorecard_report["issue_code"],
             "hostess.issue.platform_smoke_evidence_review_scorecard_drift",
+        )
+
+    def test_platform_smoke_evidence_review_validation_rejects_pmb_gate_drift(self) -> None:
+        (
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        ) = ready_pmb_platform_smoke_evidence_attachment_chain()
+        review = adapter.build_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+        )
+
+        pmb_drift = copy.deepcopy(review)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_report = adapter.validate_platform_smoke_evidence_review(
+            plan,
+            approval,
+            execution_request,
+            execution_receipt,
+            gate,
+            preflight,
+            execution_report,
+            attachment,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report["status"], "fail")
+        self.assertEqual(
+            pmb_report["issue_code"],
+            "hostess.issue.platform_smoke_evidence_review_pmb_shell_handoff_review_drift",
         )
 
     def test_builds_projected_motion_breath_validation_handoff_without_execution(self) -> None:
@@ -2698,6 +3169,59 @@ class StudioStagingRequestTests(unittest.TestCase):
         self.assertEqual(validation["status"], "pass")
         self.assertFalse(validation["platform_execution_performed"])
 
+    def test_operator_release_readiness_bundle_preserves_pmb_shell_handoff_gate(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+
+        bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+
+        self.assertEqual(bundle["status"], "ready")
+        self.assertTrue(bundle["operator_release_ready"])
+        self.assertTrue(bundle["pmb_shell_handoff_review_required"])
+        self.assertTrue(bundle["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            bundle["source_pmb_shell_handoff_review_schema"],
+            evidence_review["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertEqual(bundle["source_pmb_runtime_authority"], "rusty.manifold")
+        self.assertEqual(bundle["source_pmb_authoring_authority"], "rusty.studio")
+        self.assertEqual(
+            bundle["source_pmb_platform_validation_authority"],
+            "rusty.hostess",
+        )
+        self.assertFalse(bundle["source_pmb_runtime_execution_performed"])
+        self.assertFalse(bundle["source_pmb_platform_execution_performed"])
+
+        platform_artifact = next(
+            row
+            for row in bundle["schema_artifacts"]
+            if row["source_role"] == "platform_smoke_evidence_review"
+        )
+        self.assertEqual(platform_artifact["artifact_status"], adapter.READY_STATUS)
+        self.assertTrue(platform_artifact["pmb_shell_handoff_review_required"])
+        self.assertTrue(platform_artifact["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            platform_artifact["source_pmb_shell_handoff_review_schema"],
+            evidence_review["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertTrue(
+            adapter.pmb_shell_handoff_readiness_result_summary_valid(platform_artifact)
+        )
+
+        validation = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            bundle,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
+        self.assertFalse(validation["platform_execution_performed"])
+
     def test_operator_release_readiness_bundle_blocks_unready_replay_receipt(
         self,
     ) -> None:
@@ -2774,6 +3298,1229 @@ class StudioStagingRequestTests(unittest.TestCase):
             "hostess.issue.operator_release_readiness_bundle_host_shell_drift",
         )
 
+    def test_operator_release_readiness_bundle_validation_rejects_pmb_gate_drift(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+        bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+
+        pmb_drift = copy.deepcopy(bundle)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_report = adapter.validate_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report["status"], "fail")
+        self.assertEqual(
+            pmb_report["issue_code"],
+            "hostess.issue.operator_release_readiness_bundle_pmb_shell_handoff_review_drift",
+        )
+
+    def test_hostess_accepts_staging_handoff_after_release_readiness_without_copying(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+        release_bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+        staging_handoff = ready_studio_hostess_staging_handoff()
+        acceptance_manifest = ready_studio_hostess_staging_acceptance_manifest()
+
+        receipt = adapter.build_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+        )
+
+        self.assertEqual(
+            receipt["$schema"],
+            adapter.HOSTESS_STAGING_HANDOFF_ACCEPTANCE_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+        self.assertIsNone(receipt["issue_code"])
+        self.assertTrue(receipt["staging_handoff_accepted"])
+        self.assertTrue(receipt["stage_generated_shells_request_accepted"])
+        self.assertFalse(receipt["stage_generated_shells_started"])
+        self.assertFalse(receipt["copy_started"])
+        self.assertFalse(receipt["stage_started"])
+        self.assertFalse(receipt["install_started"])
+        self.assertFalse(receipt["launch_started"])
+        self.assertFalse(receipt["staging_payloads_copied"])
+        self.assertEqual(receipt["receipt_owner"], "rusty.hostess")
+        self.assertEqual(receipt["command_session_authority"], "rusty.manifold")
+        self.assertEqual(receipt["requester_role"], "rusty.studio")
+        self.assertTrue(receipt["pmb_shell_handoff_review_required"])
+        self.assertTrue(receipt["pmb_shell_handoff_review_ready"])
+        self.assertEqual(
+            receipt["source_pmb_shell_handoff_review_schema"],
+            release_bundle["source_pmb_shell_handoff_review_schema"],
+        )
+        self.assertEqual(receipt["request_count"], staging_handoff["request_count"])
+        self.assertEqual(receipt["accepted_request_count"], staging_handoff["request_count"])
+        self.assertEqual(
+            receipt["instruction_count"],
+            staging_handoff["instruction_count"],
+        )
+        self.assertEqual(
+            receipt["accepted_instruction_count"],
+            staging_handoff["instruction_count"],
+        )
+        self.assertTrue(
+            any(
+                row["route_kinds"]
+                and "hostess.stage.generated_shells" in row["route_kinds"]
+                for row in receipt["accepted_requests"]
+            )
+        )
+
+        validation = adapter.validate_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+            receipt,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_staging_handoff_acceptance_rejects_request_and_pmb_drift(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+        release_bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+        staging_handoff = ready_studio_hostess_staging_handoff()
+        acceptance_manifest = ready_studio_hostess_staging_acceptance_manifest()
+        receipt = adapter.build_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+        )
+
+        request_drift = copy.deepcopy(receipt)
+        request_drift["accepted_requests"][0]["route_kinds"] = [
+            "legacy.rusty_xr.stage.generated_shells"
+        ]
+        request_report = adapter.validate_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+            request_drift,
+        )
+        self.assertEqual(request_report["status"], "fail")
+        self.assertEqual(
+            request_report["issue_code"],
+            "hostess.issue.hostess_staging_handoff_acceptance_receipt_request_drift",
+        )
+
+        pmb_drift = copy.deepcopy(receipt)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_report = adapter.validate_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report["status"], "fail")
+        self.assertEqual(
+            pmb_report["issue_code"],
+            "hostess.issue.hostess_staging_handoff_acceptance_receipt_pmb_shell_handoff_review_drift",
+        )
+
+    def test_hostess_reviews_staging_file_plan_after_handoff_acceptance_without_copying(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+        release_bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+        staging_handoff = ready_studio_hostess_staging_handoff()
+        acceptance_manifest = ready_studio_hostess_staging_acceptance_manifest()
+        acceptance_receipt = adapter.build_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+        )
+        file_plan = ready_studio_hostess_staging_file_plan()
+
+        receipt = adapter.build_hostess_staging_file_plan_receipt(
+            acceptance_receipt,
+            file_plan,
+            staging_root="S:/Work/tmp/hostess-clean-staging",
+        )
+
+        self.assertEqual(
+            receipt["$schema"],
+            adapter.HOSTESS_STAGING_FILE_PLAN_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+        self.assertIsNone(receipt["issue_code"])
+        self.assertTrue(receipt["staging_file_plan_reviewed"])
+        self.assertTrue(receipt["copy_plan_ready"])
+        self.assertFalse(receipt["copy_started"])
+        self.assertFalse(receipt["stage_started"])
+        self.assertFalse(receipt["install_started"])
+        self.assertFalse(receipt["launch_started"])
+        self.assertFalse(receipt["staging_payloads_copied"])
+        self.assertFalse(receipt["file_copy_performed"])
+        self.assertEqual(receipt["receipt_owner"], "rusty.hostess")
+        self.assertEqual(receipt["command_session_authority"], "rusty.manifold")
+        self.assertEqual(receipt["requester_role"], "rusty.studio")
+        self.assertTrue(receipt["pmb_shell_handoff_review_required"])
+        self.assertTrue(receipt["pmb_shell_handoff_review_ready"])
+        self.assertEqual(receipt["request_count"], file_plan["request_count"])
+        self.assertEqual(
+            receipt["accepted_request_count"],
+            file_plan["request_count"],
+        )
+        self.assertEqual(receipt["file_count"], file_plan["planned_file_count"])
+        self.assertEqual(
+            receipt["accepted_file_count"],
+            file_plan["planned_file_count"],
+        )
+        self.assertTrue(
+            all(row["destination_under_request_root"] for row in receipt["staging_files"])
+        )
+        self.assertTrue(
+            all(
+                str(row["destination_absolute_path"]).startswith(
+                    "S:\\Work\\tmp\\hostess-clean-staging"
+                )
+                or str(row["destination_absolute_path"]).startswith(
+                    "S:/Work/tmp/hostess-clean-staging"
+                )
+                for row in receipt["staging_files"]
+            )
+        )
+
+        validation = adapter.validate_hostess_staging_file_plan_receipt(
+            acceptance_receipt,
+            file_plan,
+            receipt,
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(validation["pmb_shell_handoff_review_required"])
+        self.assertTrue(validation["pmb_shell_handoff_review_ready"])
+        self.assertFalse(validation["copy_started"])
+        self.assertFalse(validation["staging_payloads_copied"])
+        self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_staging_file_plan_receipt_rejects_file_and_pmb_drift(
+        self,
+    ) -> None:
+        evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+        release_bundle = adapter.build_operator_release_readiness_bundle(
+            evidence_review,
+            replay_receipt,
+        )
+        staging_handoff = ready_studio_hostess_staging_handoff()
+        acceptance_manifest = ready_studio_hostess_staging_acceptance_manifest()
+        acceptance_receipt = adapter.build_hostess_staging_handoff_acceptance_receipt(
+            release_bundle,
+            staging_handoff,
+            acceptance_manifest,
+        )
+        file_plan = ready_studio_hostess_staging_file_plan()
+        receipt = adapter.build_hostess_staging_file_plan_receipt(
+            acceptance_receipt,
+            file_plan,
+        )
+
+        file_drift = copy.deepcopy(receipt)
+        file_drift["staging_files"][0]["destination_path"] = (
+            "legacy/rusty-xr/generated-shell.json"
+        )
+        file_report = adapter.validate_hostess_staging_file_plan_receipt(
+            acceptance_receipt,
+            file_plan,
+            file_drift,
+        )
+        self.assertEqual(file_report["status"], "fail")
+        self.assertEqual(
+            file_report["issue_code"],
+            "hostess.issue.hostess_staging_file_plan_receipt_file_drift",
+        )
+
+        pmb_drift = copy.deepcopy(receipt)
+        pmb_drift["pmb_shell_handoff_review_ready"] = False
+        pmb_report = adapter.validate_hostess_staging_file_plan_receipt(
+            acceptance_receipt,
+            file_plan,
+            pmb_drift,
+        )
+        self.assertEqual(pmb_report["status"], "fail")
+        self.assertEqual(
+            pmb_report["issue_code"],
+            "hostess.issue.hostess_staging_file_plan_receipt_pmb_shell_handoff_review_drift",
+        )
+
+    def test_hostess_copies_staging_file_plan_without_launching_runtime(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            staging_handoff = ready_studio_hostess_staging_handoff()
+            acceptance_manifest = ready_studio_hostess_staging_acceptance_manifest()
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    staging_handoff,
+                    acceptance_manifest,
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(root / "clean-hostess-staging"),
+            )
+
+            copy_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                file_plan_receipt,
+                file_plan,
+            )
+
+            self.assertEqual(
+                copy_receipt["$schema"],
+                adapter.HOSTESS_STAGING_FILE_COPY_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(copy_receipt["status"], adapter.COMPLETED_STATUS)
+            self.assertIsNone(copy_receipt["issue_code"])
+            self.assertTrue(copy_receipt["file_copy_completed"])
+            self.assertTrue(copy_receipt["copy_started"])
+            self.assertTrue(copy_receipt["stage_started"])
+            self.assertTrue(copy_receipt["staging_payloads_copied"])
+            self.assertTrue(copy_receipt["schema_artifact_payloads_copied"])
+            self.assertFalse(copy_receipt["install_started"])
+            self.assertFalse(copy_receipt["launch_started"])
+            self.assertFalse(copy_receipt["runtime_execution_performed"])
+            self.assertFalse(copy_receipt["platform_execution_performed"])
+            self.assertFalse(copy_receipt["command_session_started"])
+            self.assertEqual(
+                copy_receipt["copied_file_count"],
+                file_plan_receipt["accepted_file_count"],
+            )
+            self.assertTrue(
+                all(row["destination_exists_after_copy"] for row in copy_receipt["copy_rows"])
+            )
+            self.assertTrue(
+                all(
+                    Path(row["resolved_destination_path"]).exists()
+                    for row in copy_receipt["copy_rows"]
+                )
+            )
+
+            validation = adapter.validate_hostess_staging_file_copy_receipt(
+                file_plan_receipt,
+                file_plan,
+                copy_receipt,
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["copy_started"])
+            self.assertTrue(validation["staging_payloads_copied"])
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_staging_file_copy_rejects_missing_source_or_unsafe_destination(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(root / "clean-hostess-staging"),
+            )
+
+            missing_source_plan = copy.deepcopy(file_plan)
+            missing_source_plan["requests"][0]["planned_files"][0]["source_path"] = str(
+                root / "missing-source-dir"
+            )
+            missing_source_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                missing_source_plan,
+                staging_root=str(root / "missing-source-staging"),
+            )
+            missing_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                missing_source_receipt,
+                missing_source_plan,
+            )
+            self.assertEqual(missing_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                missing_receipt["issue_code"],
+                "hostess.issue.hostess_staging_file_copy_source_missing",
+            )
+            self.assertFalse(missing_receipt["copy_started"])
+            self.assertFalse(missing_receipt["staging_payloads_copied"])
+
+            unsafe_receipt_source = copy.deepcopy(file_plan_receipt)
+            unsafe_receipt_source["staging_files"][0]["destination_path"] = (
+                "../outside-staging"
+            )
+            unsafe_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                unsafe_receipt_source,
+                file_plan,
+            )
+            self.assertEqual(unsafe_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                unsafe_receipt["issue_code"],
+                "hostess.issue.hostess_staging_file_copy_destination_unsafe",
+            )
+            unsafe_validation = adapter.validate_hostess_staging_file_copy_receipt(
+                unsafe_receipt_source,
+                file_plan,
+                unsafe_receipt,
+            )
+            self.assertEqual(unsafe_validation["status"], "pass")
+
+    def test_hostess_reviews_staged_payloads_for_downstream_shell_selection(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(root / "clean-hostess-staging"),
+            )
+            copy_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                file_plan_receipt,
+                file_plan,
+            )
+
+            manifest = adapter.build_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+            )
+
+            self.assertEqual(
+                manifest["$schema"],
+                adapter.HOSTESS_STAGED_PAYLOAD_MANIFEST_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(manifest["status"], adapter.REVIEWED_STATUS)
+            self.assertIsNone(manifest["issue_code"])
+            self.assertTrue(manifest["payload_manifest_reviewed"])
+            self.assertTrue(manifest["staged_payloads_available"])
+            self.assertTrue(manifest["downstream_shell_selection_ready"])
+            self.assertTrue(manifest["makepad_shell_selection_ready"])
+            self.assertFalse(manifest["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(manifest["downstream_shell_runtime_started"])
+            self.assertFalse(manifest["copy_started"])
+            self.assertFalse(manifest["install_started"])
+            self.assertFalse(manifest["launch_started"])
+            self.assertFalse(manifest["runtime_execution_performed"])
+            self.assertFalse(manifest["platform_execution_performed"])
+            self.assertFalse(manifest["command_session_started"])
+            self.assertEqual(manifest["payload_count"], copy_receipt["file_count"])
+            self.assertEqual(
+                manifest["reviewed_payload_count"],
+                copy_receipt["copied_file_count"],
+            )
+            self.assertGreater(manifest["target_descriptor_payload_count"], 0)
+            self.assertTrue(
+                any(
+                    row["artifact_kind"] == "shell_descriptor"
+                    and row["downstream_shell_descriptor_ready"]
+                    and row["makepad_shell_selection_candidate"]
+                    for row in manifest["payload_rows"]
+                )
+            )
+
+            validation = adapter.validate_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+                manifest,
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["downstream_shell_selection_ready"])
+            self.assertTrue(validation["makepad_shell_selection_ready"])
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_staged_payload_manifest_rejects_descriptor_runtime_and_pmb_drift(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(root / "clean-hostess-staging"),
+            )
+            copy_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                file_plan_receipt,
+                file_plan,
+            )
+            manifest = adapter.build_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+            )
+
+            descriptor_drift = copy.deepcopy(manifest)
+            descriptor_row = next(
+                row
+                for row in descriptor_drift["payload_rows"]
+                if row["artifact_kind"] == "shell_descriptor"
+                and row["target_kind"] is not None
+            )
+            descriptor_row["downstream_shell_descriptor_ready"] = False
+            descriptor_drift["makepad_shell_selection_ready"] = False
+            descriptor_report = adapter.validate_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+                descriptor_drift,
+            )
+            self.assertEqual(descriptor_report["status"], "fail")
+            self.assertEqual(
+                descriptor_report["issue_code"],
+                "hostess.issue.hostess_staged_payload_manifest_receipt_downstream_selection",
+            )
+
+            runtime_drift = copy.deepcopy(manifest)
+            runtime_drift["launch_started"] = True
+            runtime_report = adapter.validate_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+                runtime_drift,
+            )
+            self.assertEqual(runtime_report["status"], "fail")
+            self.assertEqual(
+                runtime_report["issue_code"],
+                "hostess.issue.hostess_staged_payload_manifest_receipt_runtime_started",
+            )
+
+            pmb_drift = copy.deepcopy(manifest)
+            pmb_drift["pmb_shell_handoff_review_ready"] = False
+            pmb_report = adapter.validate_hostess_staged_payload_manifest_receipt(
+                copy_receipt,
+                pmb_drift,
+            )
+            self.assertEqual(pmb_report["status"], "fail")
+            self.assertEqual(
+                pmb_report["issue_code"],
+                "hostess.issue.hostess_staged_payload_manifest_receipt_pmb_shell_handoff_review_drift",
+            )
+
+    def test_hostess_selects_downstream_manifold_shell_handoff_without_launching(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+
+            self.assertEqual(
+                selection["$schema"],
+                adapter.HOSTESS_DOWNSTREAM_SHELL_SELECTION_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(selection["status"], adapter.SELECTED_STATUS)
+            self.assertIsNone(selection["issue_code"])
+            self.assertTrue(selection["downstream_shell_selection_ready"])
+            self.assertTrue(selection["downstream_shell_descriptor_selected"])
+            self.assertTrue(selection["makepad_shell_selection_ready"])
+            self.assertTrue(selection["manifold_shell_handoff_selected"])
+            self.assertFalse(selection["makepad_shell_descriptor_selected"])
+            self.assertEqual(
+                selection["selected_artifact_kind"],
+                "manifold_shell_handoff",
+            )
+            self.assertEqual(selection["selected_target_kind"], "desktop")
+            self.assertEqual(selection["selected_graph_id"], "studio.graph.synthetic")
+            self.assertEqual(
+                selection["selected_consumer_id"],
+                "rusty-studio-desktop-shell",
+            )
+            self.assertTrue(Path(selection["selected_payload_path"]).exists())
+            self.assertFalse(selection["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(selection["downstream_shell_runtime_started"])
+            self.assertFalse(selection["copy_started"])
+            self.assertFalse(selection["install_started"])
+            self.assertFalse(selection["launch_started"])
+            self.assertFalse(selection["runtime_execution_performed"])
+            self.assertFalse(selection["platform_execution_performed"])
+            self.assertFalse(selection["command_session_started"])
+            self.assertEqual(selection["candidate_count"], 2)
+            self.assertEqual(selection["matching_candidate_count"], 2)
+            self.assertEqual(selection["selected_candidate_count"], 1)
+
+            validation = (
+                adapter.validate_hostess_downstream_shell_selection_receipt(
+                    manifest,
+                    selection,
+                )
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["manifold_shell_handoff_selected"])
+            self.assertFalse(validation["makepad_shell_descriptor_selected"])
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_intakes_manifold_shell_handoff_review_without_launching(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+
+            receipt = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                    root / "manifold-shell-handoff-review-receipt.json",
+                )
+            )
+
+            self.assertEqual(
+                receipt["$schema"],
+                adapter.HOSTESS_MANIFOLD_SHELL_HANDOFF_REVIEW_INTAKE_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(receipt["status"], adapter.REVIEWED_STATUS)
+            self.assertIsNone(receipt["issue_code"])
+            self.assertEqual(
+                receipt["source_selected_artifact_kind"],
+                "manifold_shell_handoff",
+            )
+            self.assertEqual(
+                receipt["selected_handoff_id"],
+                selected_handoff["handoff_id"],
+            )
+            self.assertEqual(
+                receipt["manifold_review_id"],
+                manifold_review["review_id"],
+            )
+            self.assertEqual(receipt["manifold_review_status"], adapter.PASS_STATUS)
+            self.assertTrue(receipt["manifold_shell_handoff_selected"])
+            self.assertFalse(receipt["makepad_shell_descriptor_selected"])
+            self.assertTrue(receipt["manifold_shell_handoff_reviewed"])
+            self.assertTrue(receipt["manifold_shell_handoff_review_ready"])
+            self.assertEqual(receipt["reviewed_stream_count"], 2)
+            self.assertEqual(receipt["reviewed_command_count"], 2)
+            self.assertEqual(receipt["reviewed_transport_count"], 1)
+            self.assertEqual(receipt["reviewed_endpoint_count"], 1)
+            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(receipt["downstream_shell_runtime_started"])
+            self.assertFalse(receipt["launch_started"])
+            self.assertFalse(receipt["runtime_execution_performed"])
+            self.assertFalse(receipt["platform_execution_performed"])
+            self.assertFalse(receipt["command_session_started"])
+            self.assertEqual(
+                receipt["next_required_action"],
+                "makepad_consume_manifold_reviewed_shell_handoff_without_launch",
+            )
+
+            validation = (
+                adapter.validate_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                    receipt,
+                )
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["manifold_shell_handoff_selected"])
+            self.assertTrue(validation["manifold_shell_handoff_review_ready"])
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_falls_back_to_downstream_shell_descriptor_without_launching(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            manifest["payload_rows"] = [
+                row
+                for row in manifest["payload_rows"]
+                if row["artifact_kind"] != "manifold_shell_handoff"
+            ]
+            reviewed_rows = [
+                row
+                for row in manifest["payload_rows"]
+                if row["payload_review_status"] == adapter.REVIEWED_STATUS
+            ]
+            manifest["payload_count"] = len(manifest["payload_rows"])
+            manifest["reviewed_payload_count"] = len(reviewed_rows)
+            manifest["descriptor_payload_count"] = sum(
+                1 for row in reviewed_rows if row["artifact_kind"] == "shell_descriptor"
+            )
+            manifest["downstream_shell_payload_count"] = sum(
+                1
+                for row in reviewed_rows
+                if row["artifact_kind"] == "shell_descriptor"
+            )
+            manifest["target_descriptor_payload_count"] = sum(
+                1
+                for row in reviewed_rows
+                if row["artifact_kind"] == "shell_descriptor"
+                and row["target_kind"] is not None
+            )
+            manifest["target_manifold_shell_handoff_payload_count"] = 0
+            manifest["shared_payload_count"] = sum(
+                1 for row in reviewed_rows if row["target_kind"] is None
+            )
+
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+
+            self.assertEqual(selection["status"], adapter.SELECTED_STATUS)
+            self.assertTrue(selection["downstream_shell_descriptor_selected"])
+            self.assertFalse(selection["manifold_shell_handoff_selected"])
+            self.assertTrue(selection["makepad_shell_descriptor_selected"])
+            self.assertEqual(selection["selected_artifact_kind"], "shell_descriptor")
+            self.assertEqual(selection["candidate_count"], 1)
+            self.assertEqual(selection["matching_candidate_count"], 1)
+
+            validation = adapter.validate_hostess_downstream_shell_selection_receipt(
+                manifest,
+                selection,
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertFalse(validation["manifold_shell_handoff_selected"])
+            self.assertTrue(validation["makepad_shell_descriptor_selected"])
+
+    def test_hostess_downstream_shell_selection_rejects_drift_and_missing_filter(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+            )
+
+            legacy_drift = copy.deepcopy(selection)
+            legacy_drift["selected_payload_path"] = "legacy/Rusty-XR/shell.json"
+            legacy_report = (
+                adapter.validate_hostess_downstream_shell_selection_receipt(
+                    manifest,
+                    legacy_drift,
+                )
+            )
+            self.assertEqual(legacy_report["status"], "fail")
+            self.assertEqual(
+                legacy_report["issue_code"],
+                "hostess.issue.hostess_downstream_shell_selection_receipt_descriptor_drift",
+            )
+
+            runtime_drift = copy.deepcopy(selection)
+            runtime_drift["launch_started"] = True
+            runtime_report = (
+                adapter.validate_hostess_downstream_shell_selection_receipt(
+                    manifest,
+                    runtime_drift,
+                )
+            )
+            self.assertEqual(runtime_report["status"], "fail")
+            self.assertEqual(
+                runtime_report["issue_code"],
+                "hostess.issue.hostess_downstream_shell_selection_receipt_runtime_started",
+            )
+
+            pmb_drift = copy.deepcopy(selection)
+            pmb_drift["pmb_shell_handoff_review_ready"] = False
+            pmb_report = (
+                adapter.validate_hostess_downstream_shell_selection_receipt(
+                    manifest,
+                    pmb_drift,
+                )
+            )
+            self.assertEqual(pmb_report["status"], "fail")
+            self.assertEqual(
+                pmb_report["issue_code"],
+                "hostess.issue.hostess_downstream_shell_selection_receipt_pmb_shell_handoff_review_drift",
+            )
+
+            missing = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="quest",
+            )
+            self.assertEqual(missing["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                missing["issue_code"],
+                "hostess.issue.hostess_downstream_shell_selection_no_candidate",
+            )
+            self.assertFalse(missing["downstream_shell_selection_ready"])
+            self.assertFalse(missing["makepad_shell_descriptor_selected"])
+            self.assertEqual(missing["matching_candidate_count"], 0)
+            missing_report = (
+                adapter.validate_hostess_downstream_shell_selection_receipt(
+                    manifest,
+                    missing,
+                )
+            )
+            self.assertEqual(missing_report["status"], "pass")
+
+    def test_hostess_manifold_shell_handoff_review_intake_rejects_descriptor_and_drift(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            reviewed = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+
+            descriptor_selection = copy.deepcopy(selection)
+            descriptor_selection["selected_artifact_kind"] = "shell_descriptor"
+            descriptor_selection["manifold_shell_handoff_selected"] = False
+            descriptor_selection["makepad_shell_descriptor_selected"] = True
+            descriptor_receipt = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    descriptor_selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+            self.assertEqual(descriptor_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                descriptor_receipt["issue_code"],
+                "hostess.issue.hostess_manifold_shell_handoff_review_intake_source_not_ready",
+            )
+            self.assertFalse(
+                descriptor_receipt["manifold_shell_handoff_review_ready"]
+            )
+
+            runtime_drift = copy.deepcopy(reviewed)
+            runtime_drift["launch_started"] = True
+            runtime_report = (
+                adapter.validate_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                    runtime_drift,
+                )
+            )
+            self.assertEqual(runtime_report["status"], "fail")
+            self.assertEqual(
+                runtime_report["issue_code"],
+                "hostess.issue.hostess_manifold_shell_handoff_review_intake_runtime_started",
+            )
+
+            review_drift = copy.deepcopy(manifold_review)
+            review_drift["handoff_id"] = "shell_handoff.other"
+            drift_receipt = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    review_drift,
+                )
+            )
+            self.assertEqual(drift_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(drift_receipt["manifold_shell_handoff_review_ready"])
+
+            linked_drift = copy.deepcopy(reviewed)
+            linked_drift["manifold_review_handoff_id"] = "shell_handoff.other"
+            linked_report = (
+                adapter.validate_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                    linked_drift,
+                )
+            )
+            self.assertEqual(linked_report["status"], "fail")
+            self.assertEqual(
+                linked_report["issue_code"],
+                "hostess.issue.hostess_manifold_shell_handoff_review_intake_review_drift",
+            )
+
+    def test_hostess_accepts_makepad_shell_contract_from_reviewed_manifold_handoff(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            intake = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+
+            receipt = adapter.build_hostess_makepad_shell_contract_receipt(
+                intake,
+                root / "hostess-manifold-shell-handoff-review-intake-receipt.json",
+            )
+
+            self.assertEqual(
+                receipt["$schema"],
+                adapter.HOSTESS_MAKEPAD_SHELL_CONTRACT_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+            self.assertIsNone(receipt["issue_code"])
+            self.assertTrue(receipt["makepad_contract_input_accepted"])
+            self.assertTrue(receipt["makepad_shell_contract_ready"])
+            self.assertFalse(receipt["descriptor_fallback_used"])
+            self.assertFalse(receipt["makepad_shell_descriptor_selected"])
+            self.assertTrue(receipt["manifold_shell_handoff_selected"])
+            self.assertTrue(receipt["manifold_shell_handoff_review_ready"])
+            self.assertEqual(
+                receipt["selected_handoff_id"],
+                intake["selected_handoff_id"],
+            )
+            self.assertEqual(
+                receipt["manifold_review_handoff_id"],
+                intake["selected_handoff_id"],
+            )
+            self.assertEqual(receipt["reviewed_stream_count"], 2)
+            self.assertEqual(receipt["reviewed_command_count"], 2)
+            self.assertEqual(receipt["reviewed_transport_count"], 1)
+            self.assertEqual(receipt["reviewed_endpoint_count"], 1)
+            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(receipt["launch_started"])
+            self.assertFalse(receipt["makepad_runtime_started"])
+            self.assertFalse(receipt["runtime_execution_performed"])
+            self.assertFalse(receipt["platform_execution_performed"])
+            self.assertFalse(receipt["command_session_started"])
+            self.assertEqual(
+                receipt["next_required_action"],
+                "makepad_read_reviewed_manifold_shell_contract_without_launch",
+            )
+
+            validation = adapter.validate_hostess_makepad_shell_contract_receipt(
+                intake,
+                receipt,
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["makepad_shell_contract_ready"])
+            self.assertFalse(validation["descriptor_fallback_used"])
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_hostess_builds_makepad_shell_launch_handoff_from_contract_without_launch(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            intake = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+            contract_path = root / "hostess-makepad-shell-contract-receipt.json"
+            contract = adapter.build_hostess_makepad_shell_contract_receipt(
+                intake,
+                root / "hostess-manifold-shell-handoff-review-intake-receipt.json",
+            )
+
+            receipt = adapter.build_hostess_makepad_shell_launch_handoff_receipt(
+                contract,
+                contract_path,
+            )
+
+            self.assertEqual(
+                receipt["$schema"],
+                adapter.HOSTESS_MAKEPAD_SHELL_LAUNCH_HANDOFF_RECEIPT_SCHEMA,
+            )
+            self.assertEqual(receipt["status"], "ready")
+            self.assertIsNone(receipt["issue_code"])
+            self.assertTrue(receipt["makepad_contract_reader_required"])
+            self.assertTrue(receipt["makepad_contract_reader_ready"])
+            self.assertTrue(receipt["makepad_launch_handoff_ready"])
+            self.assertTrue(receipt["makepad_launch_request_ready"])
+            self.assertEqual(
+                receipt["makepad_contract_reader_input_path"],
+                str(contract_path),
+            )
+            self.assertEqual(
+                receipt["expected_reader_contract_schema"],
+                adapter.HOSTESS_MAKEPAD_SHELL_CONTRACT_RECEIPT_SCHEMA,
+            )
+            self.assertFalse(receipt["descriptor_fallback_allowed"])
+            self.assertFalse(receipt["descriptor_fallback_used"])
+            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertEqual(
+                receipt["selected_handoff_id"],
+                contract["selected_handoff_id"],
+            )
+            self.assertEqual(receipt["reviewed_stream_count"], 2)
+            self.assertEqual(receipt["reviewed_command_count"], 2)
+            self.assertEqual(receipt["reviewed_transport_count"], 1)
+            self.assertEqual(receipt["reviewed_endpoint_count"], 1)
+            self.assertFalse(receipt["launch_started"])
+            self.assertFalse(receipt["makepad_runtime_started"])
+            self.assertFalse(receipt["makepad_contract_read_started"])
+            self.assertFalse(receipt["runtime_execution_performed"])
+            self.assertFalse(receipt["platform_execution_performed"])
+            self.assertFalse(receipt["command_session_started"])
+            self.assertEqual(
+                receipt["next_required_action"],
+                "hostess_launch_makepad_from_contract_after_operator_approval",
+            )
+
+            validation = (
+                adapter.validate_hostess_makepad_shell_launch_handoff_receipt(
+                    contract,
+                    receipt,
+                )
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["makepad_contract_reader_ready"])
+            self.assertTrue(validation["makepad_launch_handoff_ready"])
+            self.assertFalse(validation["descriptor_fallback_used"])
+            self.assertFalse(validation["legacy_rusty_xr_dependency_used"])
+
+    def test_hostess_makepad_shell_contract_rejects_descriptor_and_runtime_drift(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            intake = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+            accepted = adapter.build_hostess_makepad_shell_contract_receipt(intake)
+
+            descriptor_intake = copy.deepcopy(intake)
+            descriptor_intake["makepad_shell_descriptor_selected"] = True
+            descriptor_receipt = adapter.build_hostess_makepad_shell_contract_receipt(
+                descriptor_intake
+            )
+            self.assertEqual(descriptor_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                descriptor_receipt["issue_code"],
+                "hostess.issue.hostess_makepad_shell_contract_source_not_ready",
+            )
+            self.assertFalse(descriptor_receipt["makepad_shell_contract_ready"])
+            self.assertTrue(descriptor_receipt["descriptor_fallback_used"])
+
+            runtime_drift = copy.deepcopy(accepted)
+            runtime_drift["makepad_runtime_started"] = True
+            runtime_report = adapter.validate_hostess_makepad_shell_contract_receipt(
+                intake,
+                runtime_drift,
+            )
+            self.assertEqual(runtime_report["status"], "fail")
+            self.assertEqual(
+                runtime_report["issue_code"],
+                "hostess.issue.hostess_makepad_shell_contract_runtime_started",
+            )
+
+            linkage_drift = copy.deepcopy(accepted)
+            linkage_drift["selected_handoff_id"] = "shell_handoff.other"
+            linkage_report = adapter.validate_hostess_makepad_shell_contract_receipt(
+                intake,
+                linkage_drift,
+            )
+            self.assertEqual(linkage_report["status"], "fail")
+            self.assertEqual(
+                linkage_report["issue_code"],
+                "hostess.issue.hostess_makepad_shell_contract_linkage_drift",
+            )
+
+    def test_hostess_makepad_shell_launch_handoff_rejects_descriptor_and_runtime_drift(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            intake = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+            accepted = adapter.build_hostess_makepad_shell_contract_receipt(intake)
+            ready = adapter.build_hostess_makepad_shell_launch_handoff_receipt(
+                accepted
+            )
+
+            descriptor_contract = copy.deepcopy(accepted)
+            descriptor_contract["descriptor_fallback_used"] = True
+            descriptor_receipt = (
+                adapter.build_hostess_makepad_shell_launch_handoff_receipt(
+                    descriptor_contract
+                )
+            )
+            self.assertEqual(descriptor_receipt["status"], adapter.REJECTED_STATUS)
+            self.assertEqual(
+                descriptor_receipt["issue_code"],
+                "hostess.issue.hostess_makepad_shell_launch_handoff_source_not_ready",
+            )
+            self.assertFalse(descriptor_receipt["makepad_launch_handoff_ready"])
+            self.assertTrue(descriptor_receipt["descriptor_fallback_used"])
+
+            runtime_drift = copy.deepcopy(ready)
+            runtime_drift["launch_started"] = True
+            runtime_report = (
+                adapter.validate_hostess_makepad_shell_launch_handoff_receipt(
+                    accepted,
+                    runtime_drift,
+                )
+            )
+            self.assertEqual(runtime_report["status"], "fail")
+            self.assertEqual(
+                runtime_report["issue_code"],
+                "hostess.issue.hostess_makepad_shell_launch_handoff_runtime_started",
+            )
+
+            linkage_drift = copy.deepcopy(ready)
+            linkage_drift["selected_handoff_id"] = "shell_handoff.other"
+            linkage_report = (
+                adapter.validate_hostess_makepad_shell_launch_handoff_receipt(
+                    accepted,
+                    linkage_drift,
+                )
+            )
+            self.assertEqual(linkage_report["status"], "fail")
+            self.assertEqual(
+                linkage_report["issue_code"],
+                "hostess.issue.hostess_makepad_shell_launch_handoff_linkage_drift",
+            )
+
     def test_cli_writes_operator_release_readiness_bundle(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
@@ -2839,6 +4586,674 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertEqual(release_rejection["status"], "rejected")
             self.assertFalse(release_rejection["operator_release_ready"])
             self.assertFalse(release_rejection["release_payloads_copied"])
+
+    def test_cli_writes_hostess_staging_handoff_acceptance_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            release_bundle_path = root / "operator-release-readiness-bundle.json"
+            staging_handoff_path = root / "shell-hostess-staging-handoff.json"
+            acceptance_manifest_path = (
+                root / "shell-hostess-staging-acceptance-manifest.json"
+            )
+            receipt_path = root / "hostess-staging-handoff-acceptance-receipt.json"
+            rejection_path = (
+                root
+                / "hostess-staging-handoff-acceptance-receipt-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            release_bundle_path.write_text(json.dumps(release_bundle), encoding="utf-8")
+            staging_handoff_path.write_text(
+                json.dumps(ready_studio_hostess_staging_handoff()),
+                encoding="utf-8",
+            )
+            acceptance_manifest_path.write_text(
+                json.dumps(ready_studio_hostess_staging_acceptance_manifest()),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--operator-release-readiness-bundle-in",
+                    str(release_bundle_path),
+                    "--hostess-staging-handoff-in",
+                    str(staging_handoff_path),
+                    "--hostess-staging-acceptance-manifest-in",
+                    str(acceptance_manifest_path),
+                    "--hostess-staging-handoff-acceptance-receipt-out",
+                    str(receipt_path),
+                    "--hostess-staging-handoff-acceptance-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-staging-handoff-acceptance-receipt",
+                    str(receipt_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                receipt_path.with_suffix(
+                    receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+            self.assertTrue(receipt["pmb_shell_handoff_review_required"])
+            self.assertFalse(receipt["staging_payloads_copied"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["staging_handoff_accepted"])
+
+    def test_cli_writes_hostess_staging_file_plan_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            acceptance_receipt_path = (
+                root / "hostess-staging-handoff-acceptance-receipt.json"
+            )
+            file_plan_path = root / "shell-hostess-staging-file-plan.json"
+            receipt_path = root / "hostess-staging-file-plan-receipt.json"
+            rejection_path = root / "hostess-staging-file-plan-receipt-rejection.json"
+            staging_root = root / "clean-hostess-staging"
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            acceptance_receipt_path.write_text(
+                json.dumps(acceptance_receipt),
+                encoding="utf-8",
+            )
+            file_plan = ready_studio_hostess_staging_file_plan()
+            file_plan_path.write_text(json.dumps(file_plan), encoding="utf-8")
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-staging-handoff-acceptance-receipt-in",
+                    str(acceptance_receipt_path),
+                    "--hostess-staging-file-plan-in",
+                    str(file_plan_path),
+                    "--hostess-staging-root",
+                    str(staging_root),
+                    "--hostess-staging-file-plan-receipt-out",
+                    str(receipt_path),
+                    "--hostess-staging-file-plan-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-staging-file-plan-receipt",
+                    str(receipt_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                receipt_path.with_suffix(
+                    receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+            self.assertTrue(receipt["copy_plan_ready"])
+            self.assertTrue(receipt["pmb_shell_handoff_review_required"])
+            self.assertEqual(
+                receipt["accepted_file_count"],
+                file_plan["planned_file_count"],
+            )
+            self.assertFalse(receipt["copy_started"])
+            self.assertFalse(receipt["staging_payloads_copied"])
+            self.assertFalse(receipt["platform_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["copy_plan_ready"])
+
+    def test_cli_writes_hostess_staging_file_copy_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            file_plan_path = root / "shell-hostess-staging-file-plan.json"
+            file_plan_receipt_path = root / "hostess-staging-file-plan-receipt.json"
+            copy_receipt_path = root / "hostess-staging-file-copy-receipt.json"
+            rejection_path = root / "hostess-staging-file-copy-receipt-rejection.json"
+            staging_root = root / "clean-hostess-staging"
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(staging_root),
+            )
+            file_plan_path.write_text(json.dumps(file_plan), encoding="utf-8")
+            file_plan_receipt_path.write_text(
+                json.dumps(file_plan_receipt),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-staging-file-plan-in",
+                    str(file_plan_path),
+                    "--hostess-staging-file-plan-receipt-in",
+                    str(file_plan_receipt_path),
+                    "--hostess-staging-file-copy-receipt-out",
+                    str(copy_receipt_path),
+                    "--hostess-staging-file-copy-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-staging-file-copy-receipt",
+                    str(copy_receipt_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            copy_receipt = json.loads(copy_receipt_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                copy_receipt_path.with_suffix(
+                    copy_receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(copy_receipt["status"], adapter.COMPLETED_STATUS)
+            self.assertTrue(copy_receipt["file_copy_completed"])
+            self.assertEqual(
+                copy_receipt["copied_file_count"],
+                file_plan["planned_file_count"],
+            )
+            self.assertTrue(
+                all(
+                    Path(row["resolved_destination_path"]).exists()
+                    for row in copy_receipt["copy_rows"]
+                )
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["copy_started"])
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["file_copy_completed"])
+
+    def test_cli_writes_hostess_staged_payload_manifest_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            file_copy_receipt_path = root / "hostess-staging-file-copy-receipt.json"
+            manifest_path = root / "hostess-staged-payload-manifest-receipt.json"
+            rejection_path = (
+                root / "hostess-staged-payload-manifest-receipt-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+            release_bundle = adapter.build_operator_release_readiness_bundle(
+                evidence_review,
+                replay_receipt,
+            )
+            acceptance_receipt = (
+                adapter.build_hostess_staging_handoff_acceptance_receipt(
+                    release_bundle,
+                    ready_studio_hostess_staging_handoff(),
+                    ready_studio_hostess_staging_acceptance_manifest(),
+                )
+            )
+            file_plan = materialized_studio_hostess_staging_file_plan(
+                root / "source"
+            )
+            file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+                acceptance_receipt,
+                file_plan,
+                staging_root=str(root / "clean-hostess-staging"),
+            )
+            copy_receipt = adapter.build_hostess_staging_file_copy_receipt(
+                file_plan_receipt,
+                file_plan,
+            )
+            file_copy_receipt_path.write_text(
+                json.dumps(copy_receipt),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-staging-file-copy-receipt-in",
+                    str(file_copy_receipt_path),
+                    "--hostess-staged-payload-manifest-receipt-out",
+                    str(manifest_path),
+                    "--hostess-staged-payload-manifest-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-staged-payload-manifest-receipt",
+                    str(manifest_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                manifest_path.with_suffix(
+                    manifest_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(manifest["status"], adapter.REVIEWED_STATUS)
+            self.assertTrue(manifest["makepad_shell_selection_ready"])
+            self.assertGreater(manifest["target_descriptor_payload_count"], 0)
+            self.assertFalse(manifest["launch_started"])
+            self.assertFalse(manifest["runtime_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["makepad_shell_selection_ready"])
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["makepad_shell_selection_ready"])
+
+    def test_cli_writes_hostess_downstream_shell_selection_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            manifest_path = root / "hostess-staged-payload-manifest-receipt.json"
+            selection_path = root / "hostess-downstream-shell-selection-receipt.json"
+            rejection_path = (
+                root / "hostess-downstream-shell-selection-receipt-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-staged-payload-manifest-receipt-in",
+                    str(manifest_path),
+                    "--hostess-downstream-shell-selection-target-kind",
+                    "desktop",
+                    "--hostess-downstream-shell-selection-receipt-out",
+                    str(selection_path),
+                    "--hostess-downstream-shell-selection-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-downstream-shell-selection-receipt",
+                    str(selection_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            selection = json.loads(selection_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                selection_path.with_suffix(
+                    selection_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(selection["status"], adapter.SELECTED_STATUS)
+            self.assertEqual(selection["selected_target_kind"], "desktop")
+            self.assertEqual(
+                selection["selected_artifact_kind"],
+                "manifold_shell_handoff",
+            )
+            self.assertTrue(selection["manifold_shell_handoff_selected"])
+            self.assertFalse(selection["makepad_shell_descriptor_selected"])
+            self.assertTrue(Path(selection["selected_payload_path"]).exists())
+            self.assertFalse(selection["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(selection["launch_started"])
+            self.assertFalse(selection["runtime_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["manifold_shell_handoff_selected"])
+            self.assertFalse(validation["makepad_shell_descriptor_selected"])
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["manifold_shell_handoff_selected"])
+            self.assertFalse(rejection["makepad_shell_descriptor_selected"])
+
+    def test_cli_writes_hostess_manifold_shell_handoff_review_intake_receipt(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            selection_path = root / "hostess-downstream-shell-selection-receipt.json"
+            review_path = root / "manifold-shell-handoff-review-receipt.json"
+            intake_path = (
+                root / "hostess-manifold-shell-handoff-review-intake-receipt.json"
+            )
+            rejection_path = (
+                root
+                / "hostess-manifold-shell-handoff-review-intake-receipt-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            selection_path.write_text(json.dumps(selection), encoding="utf-8")
+            review_path.write_text(json.dumps(manifold_review), encoding="utf-8")
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-downstream-shell-selection-receipt-in",
+                    str(selection_path),
+                    "--manifold-shell-handoff-review-receipt-in",
+                    str(review_path),
+                    "--hostess-manifold-shell-handoff-review-intake-receipt-out",
+                    str(intake_path),
+                    "--hostess-manifold-shell-handoff-review-intake-receipt-rejection-out",
+                    str(rejection_path),
+                    "--validate-hostess-manifold-shell-handoff-review-intake-receipt",
+                    str(intake_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            receipt = json.loads(intake_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                intake_path.with_suffix(
+                    intake_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            self.assertEqual(receipt["status"], adapter.REVIEWED_STATUS)
+            self.assertTrue(receipt["manifold_shell_handoff_selected"])
+            self.assertFalse(receipt["makepad_shell_descriptor_selected"])
+            self.assertTrue(receipt["manifold_shell_handoff_review_ready"])
+            self.assertFalse(receipt["launch_started"])
+            self.assertFalse(receipt["runtime_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["manifold_shell_handoff_review_ready"])
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["manifold_shell_handoff_review_ready"])
+
+    def test_cli_writes_hostess_makepad_shell_contract_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            intake_path = (
+                root / "hostess-manifold-shell-handoff-review-intake-receipt.json"
+            )
+            receipt_path = root / "hostess-makepad-shell-contract-receipt.json"
+            rejection_path = (
+                root / "hostess-makepad-shell-contract-receipt-rejection.json"
+            )
+            launch_path = (
+                root / "hostess-makepad-shell-launch-handoff-receipt.json"
+            )
+            launch_rejection_path = (
+                root
+                / "hostess-makepad-shell-launch-handoff-receipt-rejection.json"
+            )
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            manifest = hostess_staged_payload_manifest_for_test(root)
+            selection = adapter.build_hostess_downstream_shell_selection_receipt(
+                manifest,
+                target_kind="desktop",
+                graph_id="studio.graph.synthetic",
+                consumer_id="rusty-studio-desktop-shell",
+            )
+            selected_handoff = adapter.selected_manifold_shell_handoff_from_selection(
+                selection
+            )
+            manifold_review = ready_manifold_shell_handoff_review_receipt_for_test(
+                selected_handoff
+            )
+            intake = (
+                adapter.build_hostess_manifold_shell_handoff_review_intake_receipt(
+                    selection,
+                    selected_handoff,
+                    manifold_review,
+                )
+            )
+            intake_path.write_text(json.dumps(intake), encoding="utf-8")
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--hostess-manifold-shell-handoff-review-intake-receipt-in",
+                    str(intake_path),
+                    "--hostess-makepad-shell-contract-receipt-out",
+                    str(receipt_path),
+                    "--hostess-makepad-shell-contract-receipt-rejection-out",
+                    str(rejection_path),
+                    "--hostess-makepad-shell-launch-handoff-receipt-out",
+                    str(launch_path),
+                    "--hostess-makepad-shell-launch-handoff-receipt-rejection-out",
+                    str(launch_rejection_path),
+                    "--validate-hostess-makepad-shell-contract-receipt",
+                    str(receipt_path),
+                    "--validate-hostess-makepad-shell-launch-handoff-receipt",
+                    str(launch_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                receipt_path.with_suffix(
+                    receipt_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            rejection = json.loads(rejection_path.read_text(encoding="utf-8"))
+            launch = json.loads(launch_path.read_text(encoding="utf-8"))
+            launch_validation = json.loads(
+                launch_path.with_suffix(
+                    launch_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            launch_rejection = json.loads(
+                launch_rejection_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(receipt["status"], adapter.ACCEPTED_STATUS)
+            self.assertTrue(receipt["makepad_shell_contract_ready"])
+            self.assertFalse(receipt["descriptor_fallback_used"])
+            self.assertFalse(receipt["launch_started"])
+            self.assertFalse(receipt["makepad_runtime_started"])
+            self.assertFalse(receipt["runtime_execution_performed"])
+            self.assertEqual(validation["status"], "pass")
+            self.assertTrue(validation["makepad_shell_contract_ready"])
+            self.assertEqual(rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(rejection["makepad_shell_contract_ready"])
+            self.assertEqual(launch["status"], "ready")
+            self.assertTrue(launch["makepad_contract_reader_ready"])
+            self.assertTrue(launch["makepad_launch_handoff_ready"])
+            self.assertFalse(launch["launch_started"])
+            self.assertFalse(launch["makepad_runtime_started"])
+            self.assertFalse(launch["makepad_contract_read_started"])
+            self.assertFalse(launch["runtime_execution_performed"])
+            self.assertEqual(launch_validation["status"], "pass")
+            self.assertTrue(launch_validation["makepad_launch_handoff_ready"])
+            self.assertEqual(launch_rejection["status"], adapter.REJECTED_STATUS)
+            self.assertFalse(launch_rejection["makepad_launch_handoff_ready"])
+
+    def test_cli_writes_pmb_gated_operator_start_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            pmb_review_path = root / "pmb-shell-handoff-review.json"
+            preflight_path = root / "operator-start-preflight.json"
+            request_path.write_text(json.dumps(valid_request()), encoding="utf-8")
+            pmb_review_path.write_text(
+                json.dumps(ready_pmb_shell_handoff_review()),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--pmb-shell-handoff-review-in",
+                    str(pmb_review_path),
+                    "--require-pmb-shell-handoff-review",
+                    "--platform-smoke-operator-start-preflight-out",
+                    str(preflight_path),
+                    "--validate-platform-smoke-operator-start-preflight",
+                    str(preflight_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                preflight_path.with_suffix(
+                    preflight_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(preflight["status"], "approved")
+            self.assertTrue(preflight["pmb_shell_handoff_review_required"])
+            self.assertTrue(preflight["pmb_shell_handoff_review_ready"])
+            self.assertEqual(
+                preflight["source_pmb_shell_handoff_review_path"],
+                str(pmb_review_path),
+            )
+            self.assertEqual(
+                preflight["approved_readiness_input_count"],
+                len(adapter.OPERATOR_START_READINESS_INPUT_CONTRACTS) + 1,
+            )
+            self.assertEqual(validation["status"], "pass")
+            self.assertFalse(validation["runtime_execution_performed"])
+            self.assertFalse(validation["platform_execution_performed"])
+
+    def test_cli_uses_pmb_review_path_from_studio_request(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            request_path = root / "request.json"
+            report_path = root / "report.json"
+            pmb_review_path = root / "pmb-shell-handoff-review.json"
+            preflight_path = root / "operator-start-preflight.json"
+            request = valid_request()
+            request["pmb_shell_handoff_review_required"] = True
+            request["pmb_shell_handoff_review_path"] = pmb_review_path.name
+            request["hostess_operator_start_preflight_cli_args"] = [
+                "--pmb-shell-handoff-review-in",
+                pmb_review_path.name,
+                "--require-pmb-shell-handoff-review",
+            ]
+            request_path.write_text(json.dumps(request), encoding="utf-8")
+            pmb_review_path.write_text(
+                json.dumps(ready_pmb_shell_handoff_review()),
+                encoding="utf-8",
+            )
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "studio-staging-request",
+                    "--request",
+                    str(request_path),
+                    "--report-out",
+                    str(report_path),
+                    "--platform-smoke-operator-start-preflight-out",
+                    str(preflight_path),
+                    "--validate-platform-smoke-operator-start-preflight",
+                    str(preflight_path),
+                ],
+            ):
+                self.assertEqual(adapter.main(), 0)
+
+            preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+            validation = json.loads(
+                preflight_path.with_suffix(
+                    preflight_path.suffix + ".validation.json"
+                ).read_text(encoding="utf-8")
+            )
+            self.assertEqual(preflight["status"], "approved")
+            self.assertTrue(preflight["pmb_shell_handoff_review_required"])
+            self.assertTrue(preflight["pmb_shell_handoff_review_ready"])
+            self.assertEqual(
+                preflight["source_pmb_shell_handoff_review_path"],
+                str(pmb_review_path),
+            )
+            pmb_input = next(
+                item
+                for item in preflight["readiness_inputs"]
+                if item["readiness_input_id"]
+                == adapter.PMB_SHELL_HANDOFF_REVIEW_READINESS_INPUT_ID
+            )
+            self.assertEqual(pmb_input["readiness_status"], adapter.APPROVED_STATUS)
+            self.assertEqual(validation["status"], "pass")
 
     def test_cli_writes_projected_motion_breath_validation_handoff(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -3623,6 +6038,142 @@ def ready_platform_smoke_plan() -> dict[str, object]:
     )
 
 
+def ready_pmb_shell_handoff_review() -> dict[str, object]:
+    return {
+        "$schema": adapter.STUDIO_PMB_SHELL_HANDOFF_REVIEW_SCHEMA,
+        "source_evidence_schema": "rusty.hostess.projected_motion_breath.shell_handoff_validation_evidence.v1",
+        "source_evidence_path": "target/pmb-shell-handoff.json",
+        "target_package_id": "package.projected_motion_breath",
+        "handoff_id": "shell_handoff.projected_motion_breath.loopback",
+        "target_host_profile": "host.profile.desktop",
+        "shell_app_id": "app.makepad_camera_shell",
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.review_only",
+        "runtime_authority": "rusty.manifold",
+        "authoring_authority": "rusty.studio",
+        "platform_validation_authority": "rusty.hostess",
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "broker_transport_used": False,
+        "downstream_shell_runtime_used": False,
+        "legacy_app_dependency_used": False,
+        "required_binding_count": 3,
+        "ready_required_binding_count": 3,
+        "stream_bindings": [
+            "stream.motion.object_pose:publish",
+            "stream.breath.feedback_state:subscribe",
+            "stream.breath.feedback_receipt:publish",
+        ],
+        "command_ids": ["command.breath.status", "command.breath.set_profile"],
+        "transport_ids": ["transport.localhost.tcp"],
+        "feedback_receipt_exported": True,
+        "feedback_sink_provides_receipt": True,
+        "proposal_kind": "review_shell_handoff_for_hostess_owner_execution",
+        "prohibited_actions": [
+            "start_runtime_package",
+            "open_broker_transport",
+            "launch_downstream_shell",
+        ],
+        "checks": [],
+    }
+
+
+def dotted_test_id(value: object, fallback: str) -> str:
+    text = str(value) if value is not None else fallback
+    cleaned = (
+        text.strip()
+        .replace("/", "_")
+        .replace("\\", "_")
+        .replace("-", "_")
+        .replace(" ", "_")
+    )
+    return cleaned or fallback
+
+
+def ready_manifold_shell_handoff_for_test(
+    target_kind: object = "desktop",
+    graph_id: object = "studio.graph.synthetic",
+    consumer_id: object = "rusty-studio-desktop-shell",
+) -> dict[str, object]:
+    target = dotted_test_id(target_kind, "shared")
+    graph = dotted_test_id(graph_id, "shared")
+    consumer = dotted_test_id(consumer_id, "shared_shell")
+    handoff_suffix = f"{target}.{graph}.{consumer}"
+    return {
+        "$schema": adapter.MANIFOLD_SHELL_HANDOFF_SCHEMA,
+        "handoff_id": f"shell_handoff.{handoff_suffix}",
+        "handoff_revision": 1,
+        "target_host_profile": f"host.profile.{target}",
+        "shell_app_id": f"app.{consumer}",
+        "validation_slot_id": "hostess.validation_slot.synthetic_smoke",
+        "stream_bindings": [
+            {
+                "stream_id": "stream.synthetic.wave",
+                "direction": "subscribe",
+                "role": "shell.stream.source_input",
+                "required": True,
+            },
+            {
+                "stream_id": "stream.synthetic.rms",
+                "direction": "subscribe",
+                "role": "shell.stream.derived_feedback",
+                "required": True,
+            },
+        ],
+        "command_ids": [
+            "command.module.start",
+            "command.module.stop",
+        ],
+        "transport_offers": [
+            {
+                "transport_id": f"transport.shell_handoff.{handoff_suffix}",
+                "transport": "http",
+                "endpoint_id": "endpoint.headset_loopback",
+            }
+        ],
+        "expected_scorecard_id": "scorecard.hostess.synthetic_smoke",
+    }
+
+
+def ready_manifold_shell_handoff_review_receipt_for_test(
+    handoff: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "$schema": adapter.MANIFOLD_SHELL_HANDOFF_REVIEW_RECEIPT_SCHEMA,
+        "review_id": f"manifold.shell_handoff_review.{handoff['handoff_id']}",
+        "handoff_id": handoff["handoff_id"],
+        "handoff_revision": handoff["handoff_revision"],
+        "target_host_profile": handoff["target_host_profile"],
+        "shell_app_id": handoff["shell_app_id"],
+        "validation_slot_id": handoff["validation_slot_id"],
+        "status": adapter.PASS_STATUS,
+        "issue_code": None,
+        "manifold_authority": "rusty.manifold",
+        "reviewed_stream_ids": adapter.manifold_shell_handoff_stream_ids(handoff),
+        "reviewed_command_ids": handoff["command_ids"],
+        "reviewed_transport_ids": adapter.manifold_shell_handoff_transport_ids(
+            handoff
+        ),
+        "reviewed_endpoint_ids": adapter.manifold_shell_handoff_endpoint_ids(
+            handoff
+        ),
+        "runtime_execution_performed": False,
+        "platform_execution_performed": False,
+        "launch_started": False,
+        "command_session_started": False,
+        "legacy_app_dependency_used": False,
+        "checks": [
+            {
+                "check_id": "manifold.check.shell_handoff.synthetic",
+                "status": adapter.PASS_STATUS,
+                "evidence": "synthetic Manifold shell handoff review passed",
+                "issue_code": None,
+            }
+        ],
+    }
+
+
 def ready_platform_smoke_execution_chain() -> tuple[
     dict[str, object],
     dict[str, object],
@@ -3701,6 +6252,57 @@ def ready_platform_smoke_execution_report_chain() -> tuple[
     return plan, approval, execution_request, execution_receipt, gate, preflight, report
 
 
+def ready_pmb_platform_smoke_evidence_attachment_chain() -> tuple[
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+    dict[str, object],
+]:
+    plan, approval, execution_request, execution_receipt, gate = (
+        ready_platform_smoke_operator_start_chain()
+    )
+    preflight = adapter.build_platform_smoke_operator_start_preflight_receipt(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        pmb_shell_handoff_review=ready_pmb_shell_handoff_review(),
+        require_pmb_shell_handoff_review=True,
+    )
+    report = adapter.build_platform_smoke_execution_report(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+    )
+    attachment = adapter.build_platform_smoke_evidence_attachment_receipt(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+    )
+    return (
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    )
+
+
 def ready_platform_smoke_evidence_attachment_chain() -> tuple[
     dict[str, object],
     dict[str, object],
@@ -3760,6 +6362,453 @@ def ready_operator_release_inputs() -> tuple[dict[str, object], dict[str, object
         ready_pmb_validation_handoff()
     )
     return evidence_review, replay_receipt
+
+
+def ready_pmb_operator_release_inputs() -> tuple[dict[str, object], dict[str, object]]:
+    (
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    ) = ready_pmb_platform_smoke_evidence_attachment_chain()
+    evidence_review = adapter.build_platform_smoke_evidence_review(
+        plan,
+        approval,
+        execution_request,
+        execution_receipt,
+        gate,
+        preflight,
+        report,
+        attachment,
+    )
+    replay_receipt = adapter.build_projected_motion_breath_replay_validation_receipt(
+        ready_pmb_validation_handoff()
+    )
+    return evidence_review, replay_receipt
+
+
+def ready_studio_hostess_staging_file_plan() -> dict[str, object]:
+    handoff = ready_studio_hostess_staging_handoff()
+    requests = []
+    for request in handoff["request_summaries"]:
+        destination_root = request["destination_root"]
+        target_kind = request["target_kind"]
+        graph_id = request["graph_id"]
+        consumer_id = request["consumer_id"]
+        request_id = request["request_id"]
+        request_files = [
+            {
+                "artifact_kind": "shell_bundle_dir",
+                "source_path": f"target/studio-selected-shell/{request_id}/bundle",
+                "destination_path": f"{destination_root}/bundle",
+                "target_kind": target_kind,
+                "graph_id": graph_id,
+                "consumer_id": consumer_id,
+                "route_hints": ["evidence.filesystem"],
+                "source_action_ids": [
+                    "hostess.collect_install_launch_evidence",
+                    "hostess.stage_generated_shells",
+                ],
+                "source_route_kinds": [
+                    "hostess.collect.install_launch_evidence",
+                    "hostess.stage.generated_shells",
+                ],
+            },
+            {
+                "artifact_kind": "shell_descriptor",
+                "source_path": (
+                    f"target/studio-selected-shell/{request_id}/descriptor.json"
+                ),
+                "destination_path": f"{destination_root}/descriptor/shell.json",
+                "target_kind": target_kind,
+                "graph_id": graph_id,
+                "consumer_id": consumer_id,
+                "route_hints": ["manifold.command_session_contract"],
+                "source_action_ids": [
+                    "hostess.stage_generated_shells",
+                    "manifold.review_command_session_contract",
+                ],
+                "source_route_kinds": [
+                    "hostess.stage.generated_shells",
+                    "manifold.review.command_session_contract",
+                ],
+            },
+            {
+                "artifact_kind": "manifold_shell_handoff",
+                "source_path": (
+                    f"target/studio-selected-shell/{request_id}/manifold-shell-handoff.json"
+                ),
+                "destination_path": f"{destination_root}/manifold/shell-handoff.json",
+                "target_kind": target_kind,
+                "graph_id": graph_id,
+                "consumer_id": consumer_id,
+                "route_hints": ["manifold.shell_handoff_review"],
+                "source_action_ids": [
+                    "hostess.stage_generated_shells",
+                    "manifold.review_shell_handoff",
+                ],
+                "source_route_kinds": [
+                    "hostess.stage.generated_shells",
+                    "manifold.review.shell_handoff",
+                ],
+            },
+            {
+                "artifact_kind": "install_launch_evidence_template",
+                "source_path": (
+                    f"target/studio-selected-shell/{request_id}/evidence-template.json"
+                ),
+                "destination_path": (
+                    f"{destination_root}/evidence/install-launch-template.json"
+                ),
+                "target_kind": target_kind,
+                "graph_id": graph_id,
+                "consumer_id": consumer_id,
+                "route_hints": ["hostess.install_launch_evidence"],
+                "source_action_ids": [
+                    "hostess.collect_install_launch_evidence",
+                    "hostess.stage_generated_shells",
+                ],
+                "source_route_kinds": [
+                    "hostess.collect.install_launch_evidence",
+                    "hostess.stage.generated_shells",
+                ],
+            },
+        ]
+        request_view = copy.deepcopy(request)
+        request_view["planned_files"] = request_files
+        request_view["planned_file_count"] = len(request_files)
+        requests.append(request_view)
+    return {
+        "$schema": adapter.STUDIO_HOSTESS_STAGING_FILE_PLAN_SCHEMA,
+        "source_preview_schema": "rusty.studio.shell_hostess_staging_preview_manifest.v1",
+        "preview_path": handoff["preview_path"],
+        "intake_path": handoff["intake_path"],
+        "package_path": handoff["package_path"],
+        "handoff_manifest_path": handoff["handoff_manifest_path"],
+        "selected_candidate_id": handoff["selected_candidate_id"],
+        "manifest_id": handoff["manifest_id"],
+        "project_id": handoff["project_id"],
+        "project_revision": handoff["project_revision"],
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.dry_run_only",
+        "staging_owner": "rusty.hostess",
+        "command_session_authority": "rusty.manifold",
+        "install_launch_evidence_authority": "rusty.hostess",
+        "studio_role": "authoring.export_planning",
+        "preview_group_count": 2,
+        "ready_preview_group_count": 2,
+        "blocked_preview_group_count": 0,
+        "source_artifact_count": sum(
+            request["planned_file_count"] for request in requests
+        ),
+        "planned_file_count": sum(
+            request["planned_file_count"] for request in requests
+        ),
+        "duplicate_artifact_count": 0,
+        "request_count": len(requests),
+        "ready_request_count": len(requests),
+        "blocked_request_count": 0,
+        "target_request_count": sum(
+            1 for request in requests if request["target_kind"] is not None
+        ),
+        "shared_request_count": sum(
+            1 for request in requests if request["target_kind"] is None
+        ),
+        "prohibited_actions": [
+            "stage_generated_shells",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "collect_install_launch_evidence",
+        ],
+        "requests": requests,
+    }
+
+
+def materialized_studio_hostess_staging_file_plan(source_root: Path) -> dict[str, object]:
+    file_plan = ready_studio_hostess_staging_file_plan()
+    for request in file_plan["requests"]:
+        safe_request_id = str(request["request_id"]).replace("/", "_").replace("\\", "_")
+        for index, planned_file in enumerate(request["planned_files"]):
+            artifact_kind = planned_file["artifact_kind"]
+            source_path = source_root / safe_request_id / f"{index}-{artifact_kind}"
+            if artifact_kind == "shell_bundle_dir":
+                source_path.mkdir(parents=True, exist_ok=True)
+                (source_path / "bundle-marker.txt").write_text(
+                    f"{safe_request_id}:{artifact_kind}\n",
+                    encoding="utf-8",
+                )
+            elif artifact_kind == "manifold_shell_handoff":
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+                source_path.write_text(
+                    json.dumps(
+                        ready_manifold_shell_handoff_for_test(
+                            planned_file["target_kind"],
+                            planned_file["graph_id"],
+                            planned_file["consumer_id"],
+                        )
+                    ),
+                    encoding="utf-8",
+                )
+            else:
+                source_path.parent.mkdir(parents=True, exist_ok=True)
+                source_path.write_text(
+                    f"{safe_request_id}:{artifact_kind}\n",
+                    encoding="utf-8",
+                )
+            planned_file["source_path"] = str(source_path)
+    return file_plan
+
+
+def hostess_staged_payload_manifest_for_test(root: Path) -> dict[str, object]:
+    evidence_review, replay_receipt = ready_pmb_operator_release_inputs()
+    release_bundle = adapter.build_operator_release_readiness_bundle(
+        evidence_review,
+        replay_receipt,
+    )
+    acceptance_receipt = adapter.build_hostess_staging_handoff_acceptance_receipt(
+        release_bundle,
+        ready_studio_hostess_staging_handoff(),
+        ready_studio_hostess_staging_acceptance_manifest(),
+    )
+    file_plan = materialized_studio_hostess_staging_file_plan(root / "source")
+    file_plan_receipt = adapter.build_hostess_staging_file_plan_receipt(
+        acceptance_receipt,
+        file_plan,
+        staging_root=str(root / "clean-hostess-staging"),
+    )
+    copy_receipt = adapter.build_hostess_staging_file_copy_receipt(
+        file_plan_receipt,
+        file_plan,
+    )
+    return adapter.build_hostess_staged_payload_manifest_receipt(copy_receipt)
+
+
+def ready_studio_hostess_staging_handoff() -> dict[str, object]:
+    return {
+        "$schema": adapter.STUDIO_HOSTESS_STAGING_HANDOFF_SCHEMA,
+        "source_file_plan_schema": "rusty.studio.shell_hostess_staging_file_plan.v1",
+        "file_plan_path": "target/studio-shell-handoffs/shell-hostess-staging-file-plan.json",
+        "preview_path": "target/studio-shell-handoffs/shell-hostess-staging-preview.json",
+        "intake_path": "target/studio-shell-handoffs/shell-hostess-owner-intake.json",
+        "package_path": "target/studio-shell-handoffs/shell-hostess-handoff-package.json",
+        "handoff_manifest_path": "target/studio-shell-handoffs/shell-handoffs.json",
+        "selected_candidate_id": "synthetic-ready-candidate",
+        "envelope_id": "studio.hostess_staging_handoff.studio.project.synthetic.rev1",
+        "manifest_id": "studio.shell_handoffs.studio.project.synthetic",
+        "project_id": "studio.project.synthetic",
+        "project_revision": 1,
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.handoff_only",
+        "handoff_owner": "rusty.hostess",
+        "staging_owner": "rusty.hostess",
+        "command_session_authority": "rusty.manifold",
+        "install_launch_evidence_authority": "rusty.hostess",
+        "studio_role": "authoring.export_planning",
+        "planned_file_count": 8,
+        "request_count": 2,
+        "ready_request_count": 2,
+        "blocked_request_count": 0,
+        "target_request_count": 1,
+        "shared_request_count": 1,
+        "instruction_count": 4,
+        "ready_instruction_count": 4,
+        "blocked_instruction_count": 0,
+        "provenance": {
+            "checksum_algorithm": "fnv1a64.studio_staging_file_plan.v1",
+            "plan_checksum": "synthetic-plan-checksum",
+            "source_artifact_kinds": [
+                "shell_descriptor",
+                "manifold_shell_handoff",
+                "shell_template_manifest",
+                "shell_handoff_manifest",
+            ],
+            "source_action_ids": [
+                "hostess.stage_generated_shells",
+                "manifold.review_command_session_contract",
+                "manifold.review_shell_handoff",
+                "hostess.collect_install_launch_evidence",
+            ],
+            "source_route_kinds": [
+                "hostess.stage.generated_shells",
+                "manifold.review.command_session_contract",
+                "manifold.review.shell_handoff",
+                "hostess.collect.install_launch_evidence",
+            ],
+            "target_keys": ["desktop/studio.graph.synthetic", "shared"],
+            "destination_roots": [
+                "hostess-staging/targets/desktop/studio.graph.synthetic",
+                "hostess-staging/shared",
+            ],
+        },
+        "request_summaries": [
+            {
+                "request_id": "hostess.staging_file_plan.desktop.studio.graph.synthetic",
+                "request_kind": "hostess_target_staging_file_plan",
+                "owner": "rusty.hostess",
+                "status": "ready",
+                "target_key": "desktop/studio.graph.synthetic",
+                "target_kind": "desktop",
+                "graph_id": "studio.graph.synthetic",
+                "consumer_id": "rusty-studio-desktop-shell",
+                "destination_root": "hostess-staging/targets/desktop/studio.graph.synthetic",
+                "planned_file_count": 4,
+                "route_kinds": [
+                    "hostess.collect.install_launch_evidence",
+                    "hostess.stage.generated_shells",
+                    "manifold.review.command_session_contract",
+                    "manifold.review.shell_handoff",
+                ],
+                "action_ids": [
+                    "hostess.collect_install_launch_evidence",
+                    "hostess.stage_generated_shells",
+                    "manifold.review_command_session_contract",
+                    "manifold.review_shell_handoff",
+                ],
+            },
+            {
+                "request_id": "hostess.staging_file_plan.shared",
+                "request_kind": "hostess_shared_staging_file_plan",
+                "owner": "rusty.hostess",
+                "status": "ready",
+                "target_key": "shared",
+                "target_kind": None,
+                "graph_id": None,
+                "consumer_id": None,
+                "destination_root": "hostess-staging/shared",
+                "planned_file_count": 4,
+                "route_kinds": [
+                    "hostess.collect.install_launch_evidence",
+                    "hostess.stage.generated_shells",
+                    "manifold.review.command_session_contract",
+                    "manifold.review.shell_handoff",
+                    "hostess.review.release_candidate",
+                ],
+                "action_ids": [
+                    "hostess.collect_install_launch_evidence",
+                    "hostess.stage_generated_shells",
+                    "manifold.review_command_session_contract",
+                    "manifold.review_shell_handoff",
+                    "hostess.review_release_candidate",
+                ],
+            },
+        ],
+        "owner_instructions": [
+            {
+                "instruction_id": "hostess.review_staging_handoff",
+                "owner": "rusty.hostess",
+                "status": "ready",
+                "issue_code": None,
+                "instruction_kind": "hostess_handoff_review",
+                "route_kind": "hostess.review.staging_handoff",
+                "source": "hostess_staging_handoff_envelope",
+                "next_required_action": "review_staging_handoff_outside_studio",
+                "prohibited_in_studio": True,
+                "expected_input_path": "target/studio-shell-handoffs/shell-hostess-staging-file-plan.json",
+            },
+            {
+                "instruction_id": "hostess.copy_staging_files",
+                "owner": "rusty.hostess",
+                "status": "ready",
+                "issue_code": None,
+                "instruction_kind": "hostess_file_copy_request",
+                "route_kind": "hostess.stage.files_from_plan",
+                "source": "hostess_staging_file_plan",
+                "next_required_action": "copy_stage_files_outside_studio",
+                "prohibited_in_studio": True,
+                "expected_input_path": "target/studio-shell-handoffs/shell-hostess-staging-file-plan.json",
+            },
+            {
+                "instruction_id": "manifold.review_command_session_contract",
+                "owner": "rusty.manifold",
+                "status": "ready",
+                "issue_code": None,
+                "instruction_kind": "manifold_contract_review",
+                "route_kind": "manifold.review.command_session_contract",
+                "source": "hostess_staging_file_plan",
+                "next_required_action": "review_command_session_contract_outside_studio",
+                "prohibited_in_studio": True,
+                "expected_input_path": "target/studio-shell-handoffs/shell-hostess-staging-file-plan.json",
+            },
+            {
+                "instruction_id": "manifold.review_shell_handoff",
+                "owner": "rusty.manifold",
+                "status": "ready",
+                "issue_code": None,
+                "instruction_kind": "manifold_shell_handoff_review",
+                "route_kind": "manifold.review.shell_handoff",
+                "source": "hostess_staging_file_plan",
+                "next_required_action": "review_shell_handoff_outside_studio",
+                "prohibited_in_studio": True,
+                "expected_input_path": "target/studio-shell-handoffs/shell-hostess-staging-file-plan.json",
+            },
+        ],
+        "prohibited_actions": [
+            "stage_generated_shells",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "collect_install_launch_evidence",
+        ],
+        "checks": [
+            {
+                "check_id": "studio.check.shell_hostess_staging_handoff.file_plan_ready",
+                "status": "pass",
+                "evidence": "source Hostess staging file plan is ready",
+                "issue_code": None,
+            }
+        ],
+    }
+
+
+def ready_studio_hostess_staging_acceptance_manifest() -> dict[str, object]:
+    return {
+        "$schema": adapter.STUDIO_HOSTESS_STAGING_ACCEPTANCE_MANIFEST_SCHEMA,
+        "acceptance_id": "synthetic-hostess-staging-ready",
+        "label": "Synthetic Hostess staging ready acceptance",
+        "checklist_path": "target/studio-shell-handoffs/shell-hostess-staging-acceptance-checklist.json",
+        "checklist_schema": "rusty.studio.shell_hostess_staging_acceptance_checklist.v1",
+        "envelope_id": "studio.hostess_staging_handoff.studio.project.synthetic.rev1",
+        "manifest_id": "studio.shell_handoffs.studio.project.synthetic",
+        "project_id": "studio.project.synthetic",
+        "project_revision": 1,
+        "status": "ready",
+        "issue_code": None,
+        "execution_policy": "not_executed.acceptance_check_only",
+        "checklist_owner": "rusty.hostess",
+        "handoff_owner": "rusty.hostess",
+        "staging_owner": "rusty.hostess",
+        "command_session_authority": "rusty.manifold",
+        "install_launch_evidence_authority": "rusty.hostess",
+        "studio_role": "authoring.export_planning",
+        "request_count": 2,
+        "ready_request_count": 2,
+        "blocked_request_count": 0,
+        "instruction_count": 4,
+        "ready_instruction_count": 4,
+        "blocked_instruction_count": 0,
+        "checksum_algorithm": "fnv1a64.studio_staging_file_plan.v1",
+        "plan_checksum": "synthetic-plan-checksum",
+        "ready_item_count": 6,
+        "blocked_item_count": 0,
+        "rejected_item_count": 0,
+        "prohibited_actions": [
+            "stage_generated_shells",
+            "install",
+            "launch",
+            "open_command_session",
+            "collect_device_evidence",
+            "collect_install_launch_evidence",
+        ],
+    }
 
 
 if __name__ == "__main__":

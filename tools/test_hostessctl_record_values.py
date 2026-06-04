@@ -11,6 +11,24 @@ from tools.hostessctl import hostessctl
 
 
 class HostessCtlRecordValuesTests(unittest.TestCase):
+    def test_transport_event_aliases_preserve_existing_event_fields(self) -> None:
+        event = {
+            "stream": "stream.motion.object_pose",
+            "broker_time_unix_ns": 1010,
+            "payload": {
+                "stream_id": "stream.motion.object_pose",
+                "broker_receive_time_unix_ns": 1020,
+            },
+        }
+
+        normalized = hostessctl.with_transport_event_aliases(event)
+
+        self.assertEqual(normalized["broker_time_unix_ns"], 1010)
+        self.assertEqual(normalized["transport_time_unix_ns"], 1010)
+        self.assertEqual(normalized["payload"]["broker_receive_time_unix_ns"], 1020)
+        self.assertEqual(normalized["payload"]["transport_receive_time_unix_ns"], 1020)
+        self.assertNotIn("transport_time_unix_ns", event)
+
     def test_plan_only_marks_single_supported_value_ready(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
