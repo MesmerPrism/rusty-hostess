@@ -62,6 +62,37 @@ final class PMBRuntime {
         return new JSONObject(nativeRunLiveRouteFromEvents(packageRoot, eventsJsonl));
     }
 
+    static long openLiveTransportProcessor(String packageRoot) throws JSONException, IOException {
+        if (!isAvailable()) {
+            throw new IOException("native runtime unavailable: " + loadError());
+        }
+        JSONObject report = new JSONObject(nativeOpenLiveTransportProcessor(packageRoot));
+        long handle = report.optLong("handle", 0L);
+        if (!"pass".equals(report.optString("status")) || handle == 0L) {
+            throw new IOException(report.optJSONArray("issues") == null
+                    ? "live transport processor open failed"
+                    : report.optJSONArray("issues").toString());
+        }
+        return handle;
+    }
+
+    static JSONObject pushLiveTransportEvent(
+            long handle,
+            String eventJson,
+            String selectedSourcePreference) throws JSONException, IOException {
+        if (!isAvailable()) {
+            throw new IOException("native runtime unavailable: " + loadError());
+        }
+        return new JSONObject(nativePushLiveTransportEvent(handle, eventJson, selectedSourcePreference));
+    }
+
+    static JSONObject closeLiveTransportProcessor(long handle) throws JSONException, IOException {
+        if (!isAvailable()) {
+            throw new IOException("native runtime unavailable: " + loadError());
+        }
+        return new JSONObject(nativeCloseLiveTransportProcessor(handle));
+    }
+
     private static native String nativeValidatePackage(String packageRoot);
 
     private static native String nativeRunControllerPreflight(String packageRoot);
@@ -69,4 +100,13 @@ final class PMBRuntime {
     private static native String nativeRunLiveRouteSelfTest(String packageRoot);
 
     private static native String nativeRunLiveRouteFromEvents(String packageRoot, String eventsJsonl);
+
+    private static native String nativeOpenLiveTransportProcessor(String packageRoot);
+
+    private static native String nativePushLiveTransportEvent(
+            long handle,
+            String eventJson,
+            String selectedSourcePreference);
+
+    private static native String nativeCloseLiveTransportProcessor(long handle);
 }

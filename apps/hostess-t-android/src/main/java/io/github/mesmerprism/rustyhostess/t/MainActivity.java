@@ -308,6 +308,7 @@ public final class MainActivity extends Activity {
         final String brokerHost = stringExtra(intent, "broker_host", "127.0.0.1");
         final int brokerPort = intExtra(intent, "broker_port", 8765);
         final int feedbackLimit = intExtra(intent, "feedback_publish_limit", 12);
+        final String breathSelectedSource = stringExtra(intent, "breath_selected_source", "auto");
         final int receiptListenMs = intExtra(intent, "receipt_listen_ms", 6000);
         List<String> modules = new ArrayList<>();
         modules.add("module.breath.projected_motion");
@@ -324,6 +325,7 @@ public final class MainActivity extends Activity {
                 brokerHost,
                 brokerPort,
                 feedbackLimit,
+                breathSelectedSource,
                 receiptListenMs,
                 evidenceRoot,
                 packageRoot,
@@ -336,6 +338,7 @@ public final class MainActivity extends Activity {
             String brokerHost,
             int brokerPort,
             int feedbackLimit,
+            String breathSelectedSource,
             int receiptListenMs,
             File evidenceRoot,
             File packageRoot,
@@ -353,7 +356,8 @@ public final class MainActivity extends Activity {
                         brokerHost,
                         brokerPort,
                         feedbackLimit,
-                        receiptListenMs);
+                        receiptListenMs,
+                        breathSelectedSource);
                 brokerReport = brokerResult.toJson();
             } catch (IOException | JSONException | RuntimeException brokerEx) {
                 brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, brokerEx.getMessage());
@@ -2355,9 +2359,13 @@ public final class MainActivity extends Activity {
                 .put("broker_transport_used", false)
                 .put("publish_limit", 0)
                 .put("receipt_listen_ms", 0)
+                .put("selected_source_preference", "auto")
+                .put("selected_source_effective", "unknown")
                 .put("breath_requested_count", 0)
                 .put("feedback_requested_count", 0)
                 .put("breath_published_count", 0)
+                .put("selected_breath_published_count", 0)
+                .put("selection_state_published_count", 0)
                 .put("feedback_published_count", 0)
                 .put("feedback_receipt_count", 0)
                 .put("receipt_stream_id", PmbBrokerBridge.STREAM_BREATH_FEEDBACK_RECEIPT)

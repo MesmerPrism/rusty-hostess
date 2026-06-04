@@ -162,7 +162,7 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             )
             self.assertEqual(
                 evidence["route_report_summary"]["makepad_subscription"]["stream"],
-                "stream.breath.feedback_state",
+                "stream.breath.volume.selected",
             )
             self.assertEqual(evidence["route_report_summary"]["receipt_count"], 2)
             self.assertEqual(validation["status"], "pass")
@@ -214,7 +214,7 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
                 binding_pairs,
                 {
                     ("stream.motion.object_pose", "publish"),
-                    ("stream.breath.feedback_state", "subscribe"),
+                    ("stream.breath.volume.selected", "subscribe"),
                     ("stream.breath.feedback_receipt", "publish"),
                 },
             )
@@ -296,13 +296,17 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             },
             "route_report_summary": {
                 "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
-                "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+                "output_stream_ids": [
+                    "stream.breath.volume",
+                    "stream.breath.volume.selected",
+                    "stream.breath.feedback_state",
+                ],
                 "source_route_count": 2,
                 "feedback_sample_count": 2,
                 "receipt_count": 0,
                 "makepad_subscription": {
                     "command": "subscribe",
-                    "stream": "stream.breath.feedback_state",
+                    "stream": "stream.breath.volume.selected",
                 },
             },
             "scorecard": {"status": "pass"},
@@ -749,6 +753,35 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             self.assertIn("hostess.check.pmb_quest_physical_live.quest_authority", failed_checks)
             self.assertIn("hostess.check.pmb_quest_physical_live.not_simulated", failed_checks)
 
+    def test_validate_pmb_quest_physical_live_rejects_post_capture_replay(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            package = hostessctl.projected_motion_package_snapshot(package_root)
+            evidence = ready_pmb_quest_physical_live_evidence(package)
+            broker = evidence["broker_publish_summary"]
+            broker["publish_mode"] = "post_capture_replay"
+            broker["live_publish_during_capture"] = False
+            broker["incremental_processor_used"] = False
+            broker["snapshot_replay_used"] = True
+
+            validation = hostessctl.validate_pmb_quest_physical_live_evidence(
+                evidence,
+                package_root=package_root,
+                target="quest",
+                host_profile="headset",
+            )
+
+            self.assertEqual(validation["status"], "fail")
+            failed_checks = {
+                check["check_id"]
+                for check in validation["checks"]
+                if check["status"] == "fail"
+            }
+            self.assertIn("hostess.check.pmb_quest_physical_live.makepad_receipts", failed_checks)
+
     def test_validate_pmb_controller_preflight_rejects_live_controller_claim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -860,7 +893,14 @@ def ready_pmb_live_route_report() -> dict[str, object]:
         "route_id": "route.projected_motion_breath.live_stream.polar_acc_controller_pose.self_test",
         "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
         "normalized_stream_ids": ["stream.motion.vector3", "stream.motion.object_pose"],
-        "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+        "output_stream_ids": [
+            "stream.breath.volume",
+            "stream.breath.volume.selected",
+            "stream.breath.volume.polar",
+            "stream.breath.volume.controller",
+            "stream.breath.selection_state",
+            "stream.breath.feedback_state",
+        ],
         "processor_core_executed": True,
         "runtime_execution_performed": True,
         "external_transport_used": False,
@@ -881,14 +921,14 @@ def ready_pmb_live_route_report() -> dict[str, object]:
         ],
         "receiver_subscription": {
             "command": "subscribe",
-            "stream": "stream.breath.feedback_state",
+            "stream": "stream.breath.volume.selected",
             "receiver_id": "app.downstream_camera_shell.breath_feedback",
         },
         "receiver_receipts": [
             {
                 "command": "breath_feedback.received",
                 "schema": "rusty.manifold.breath.feedback_receipt.v1",
-                "received_stream": "stream.breath.feedback_state",
+                "received_stream": "stream.breath.volume.selected",
                 "received_sequence_id": 1,
                 "receiver_id": "app.downstream_camera_shell.breath_feedback",
                 "acknowledged": True,
@@ -896,7 +936,7 @@ def ready_pmb_live_route_report() -> dict[str, object]:
             {
                 "command": "breath_feedback.received",
                 "schema": "rusty.manifold.breath.feedback_receipt.v1",
-                "received_stream": "stream.breath.feedback_state",
+                "received_stream": "stream.breath.volume.selected",
                 "received_sequence_id": 2,
                 "receiver_id": "app.downstream_camera_shell.breath_feedback",
                 "acknowledged": True,
@@ -1080,6 +1120,15 @@ def ready_pmb_quest_simulated_live_evidence(package: dict[str, object]) -> dict[
             "pmd_computed_on_pc": False,
             "processor_authority": "quest_hostess_android_app",
             "broker_transport_used": True,
+            "publish_mode": "event_driven_live_processor",
+            "live_publish_during_capture": True,
+            "incremental_processor_used": True,
+            "snapshot_replay_used": False,
+            "first_selected_publish_elapsed_ms": 1200,
+            "last_selected_publish_elapsed_ms": 1800,
+            "selected_breath_published_to_broker": True,
+            "breath_selected_source_preference": "auto",
+            "breath_selected_source_effective": "polar",
             "feedback_published_to_broker": True,
             "makepad_feedback_receipt_count": 6,
             "app_private_evidence": True,
@@ -1090,7 +1139,11 @@ def ready_pmb_quest_simulated_live_evidence(package: dict[str, object]) -> dict[
             "route_id": "route.projected_motion_breath.live_stream.polar_acc_controller_pose.self_test",
             "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
             "normalized_stream_ids": ["stream.motion.vector3", "stream.motion.object_pose"],
-            "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+            "output_stream_ids": [
+                "stream.breath.volume",
+                "stream.breath.volume.selected",
+                "stream.breath.feedback_state",
+            ],
             "source_route_count": 2,
             "breath_sample_count": 6,
             "feedback_sample_count": 6,
@@ -1107,7 +1160,20 @@ def ready_pmb_quest_simulated_live_evidence(package: dict[str, object]) -> dict[
             "status": "pass",
             "broker_transport_used": True,
             "broker_connected": True,
+            "publish_mode": "event_driven_live_processor",
+            "live_publish_during_capture": True,
+            "incremental_processor_used": True,
+            "snapshot_replay_used": False,
+            "input_event_processed_count": 32,
+            "live_processor_update_count": 32,
+            "live_processor_output_update_count": 6,
+            "first_selected_publish_elapsed_ms": 1200,
+            "last_selected_publish_elapsed_ms": 1800,
             "breath_published_count": 6,
+            "selected_breath_published_count": 6,
+            "selection_state_published_count": 1,
+            "selected_source_preference": "auto",
+            "selected_source_effective": "polar",
             "feedback_published_count": 6,
             "feedback_receipt_count": 6,
             "receipt_stream_id": "stream.breath.feedback_receipt",
@@ -1172,6 +1238,9 @@ def ready_pmb_quest_physical_live_evidence(package: dict[str, object]) -> dict[s
             "pmd_computed_on_pc": False,
             "processor_authority": "quest_hostess_android_app",
             "broker_transport_used": True,
+            "selected_breath_published_to_broker": True,
+            "breath_selected_source_preference": "auto",
+            "breath_selected_source_effective": "polar",
             "feedback_published_to_broker": True,
             "makepad_feedback_receipt_count": 6,
             "app_private_evidence": True,
@@ -1194,7 +1263,11 @@ def ready_pmb_quest_physical_live_evidence(package: dict[str, object]) -> dict[s
             "route_id": "route.projected_motion_breath.live_stream.polar_acc_controller_pose.self_test",
             "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
             "normalized_stream_ids": ["stream.motion.vector3", "stream.motion.object_pose"],
-            "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+            "output_stream_ids": [
+                "stream.breath.volume",
+                "stream.breath.volume.selected",
+                "stream.breath.feedback_state",
+            ],
             "source_route_count": 2,
             "breath_sample_count": 6,
             "feedback_sample_count": 6,
@@ -1213,7 +1286,20 @@ def ready_pmb_quest_physical_live_evidence(package: dict[str, object]) -> dict[s
             "status": "pass",
             "broker_transport_used": True,
             "broker_connected": True,
+            "publish_mode": "event_driven_live_processor",
+            "live_publish_during_capture": True,
+            "incremental_processor_used": True,
+            "snapshot_replay_used": False,
+            "input_event_processed_count": 32,
+            "live_processor_update_count": 32,
+            "live_processor_output_update_count": 6,
+            "first_selected_publish_elapsed_ms": 1200,
+            "last_selected_publish_elapsed_ms": 1800,
             "breath_published_count": 6,
+            "selected_breath_published_count": 6,
+            "selection_state_published_count": 1,
+            "selected_source_preference": "auto",
+            "selected_source_effective": "polar",
             "feedback_published_count": 6,
             "feedback_receipt_count": 6,
             "receipt_stream_id": "stream.breath.feedback_receipt",
@@ -1247,6 +1333,10 @@ def write_projected_motion_package_tree(packages_root: Path) -> None:
                 "streams": [
                     "stream.motion.object_pose",
                     "stream.breath.volume",
+                    "stream.breath.volume.selected",
+                    "stream.breath.volume.polar",
+                    "stream.breath.volume.controller",
+                    "stream.breath.selection_state",
                     "stream.breath.feedback_state",
                     "stream.breath.feedback_receipt",
                 ],
@@ -1260,6 +1350,10 @@ def write_projected_motion_package_tree(packages_root: Path) -> None:
     for filename, stream_id in [
         ("object-pose.json", "stream.motion.object_pose"),
         ("breath-volume.json", "stream.breath.volume"),
+        ("breath-volume-selected.json", "stream.breath.volume.selected"),
+        ("breath-volume-polar.json", "stream.breath.volume.polar"),
+        ("breath-volume-controller.json", "stream.breath.volume.controller"),
+        ("breath-selection-state.json", "stream.breath.selection_state"),
         ("feedback-state.json", "stream.breath.feedback_state"),
         ("feedback-receipt.json", "stream.breath.feedback_receipt"),
     ]:
@@ -1276,7 +1370,13 @@ def write_projected_motion_package_tree(packages_root: Path) -> None:
         (
             "projected-motion-breath.json",
             "module.breath.projected_motion",
-            ["stream.breath.volume"],
+            [
+                "stream.breath.volume",
+                "stream.breath.volume.selected",
+                "stream.breath.volume.polar",
+                "stream.breath.volume.controller",
+                "stream.breath.selection_state",
+            ],
         ),
         (
             "feedback-sink.json",
@@ -1317,9 +1417,9 @@ def write_projected_motion_package_tree(packages_root: Path) -> None:
                     "required": True,
                 },
                 {
-                    "stream_id": "stream.breath.feedback_state",
+                    "stream_id": "stream.breath.volume.selected",
                     "direction": "subscribe",
-                    "role": "shell.stream.breath_feedback_receiver",
+                    "role": "shell.stream.selected_breath_volume_receiver",
                     "required": True,
                 },
                 {

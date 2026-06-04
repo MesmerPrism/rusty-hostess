@@ -121,15 +121,29 @@ MANIFOLD_VALUE_ALIASES = {
     "motion.object_pose": "stream.motion.object_pose",
     "motion.vector3": "stream.motion.vector3",
     "breath.volume": "stream.breath.volume",
+    "breath.volume.selected": "stream.breath.volume.selected",
+    "breath.volume.polar": "stream.breath.volume.polar",
+    "breath.volume.controller": "stream.breath.volume.controller",
     "breath.dynamics": "stream.breath.dynamics",
     "breath.feedback_state": "stream.breath.feedback_state",
 }
 
 PMB_SHELL_HANDOFF_REQUIRED_BINDINGS = {
     ("stream.motion.object_pose", "publish"),
-    ("stream.breath.feedback_state", "subscribe"),
+    ("stream.breath.volume.selected", "subscribe"),
     ("stream.breath.feedback_receipt", "publish"),
 }
+
+PMB_BREATH_VOLUME_STREAM = "stream.breath.volume"
+PMB_BREATH_VOLUME_SELECTED_STREAM = "stream.breath.volume.selected"
+PMB_BREATH_VOLUME_POLAR_STREAM = "stream.breath.volume.polar"
+PMB_BREATH_VOLUME_CONTROLLER_STREAM = "stream.breath.volume.controller"
+PMB_BREATH_SELECTION_STATE_STREAM = "stream.breath.selection_state"
+PMB_BREATH_FEEDBACK_STATE_STREAM = "stream.breath.feedback_state"
+PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
+PMB_BREATH_SCALE_VOLUME0 = "1.0"
+PMB_BREATH_SCALE_VOLUME1 = "0.1796"
+PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.30"
 
 MANIFOLD_VALUE_PROVIDERS = {
     "stream.polar_h10.hr_rr": {
@@ -221,6 +235,42 @@ MANIFOLD_VALUE_PROVIDERS = {
         "single_value_live_route_supported": False,
         "preflight_supported": True,
         "blocked_reason": "processor output recording requires at least one bound PMB input provider",
+    },
+    "stream.breath.volume.selected": {
+        "value_id": "value.breath.volume.selected",
+        "stream_id": "stream.breath.volume.selected",
+        "provider_id": "processor.projected_motion_breath.selector",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_volume",
+        "supported_targets": ["desktop", "phone", "quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "selected breath output recording requires a bound PMB source selection route",
+    },
+    "stream.breath.volume.polar": {
+        "value_id": "value.breath.volume.polar",
+        "stream_id": "stream.breath.volume.polar",
+        "provider_id": "processor.projected_motion_breath.polar",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_volume",
+        "supported_targets": ["desktop", "phone", "quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "Polar breath output recording requires a bound Polar PMD route",
+    },
+    "stream.breath.volume.controller": {
+        "value_id": "value.breath.volume.controller",
+        "stream_id": "stream.breath.volume.controller",
+        "provider_id": "processor.projected_motion_breath.controller",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_volume",
+        "supported_targets": ["quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "Controller breath output recording requires a bound XR controller pose route",
     },
     "stream.breath.dynamics": {
         "value_id": "value.breath.dynamics",
@@ -314,6 +364,7 @@ def main() -> int:
     run_pmb_simulated_live_parser.add_argument("--makepad-activity", default=MAKEPAD_ANDROID_XR_ACTIVITY)
     run_pmb_simulated_live_parser.add_argument("--makepad-settle-seconds", type=float, default=8.0)
     run_pmb_simulated_live_parser.add_argument("--feedback-publish-limit", type=int, default=12)
+    run_pmb_simulated_live_parser.add_argument("--breath-selected-source", choices=["auto", "polar", "controller"], default="auto")
     run_pmb_simulated_live_parser.add_argument("--receipt-listen-seconds", type=float, default=6.0)
     run_pmb_simulated_live_parser.add_argument("--no-launch-broker", action="store_true")
     run_pmb_simulated_live_parser.add_argument("--no-launch-makepad", action="store_true")
@@ -339,7 +390,9 @@ def main() -> int:
     run_pmb_physical_live_parser.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
     run_pmb_physical_live_parser.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
     run_pmb_physical_live_parser.add_argument("--feedback-publish-limit", type=int, default=24)
+    run_pmb_physical_live_parser.add_argument("--breath-selected-source", choices=["auto", "polar", "controller"], default="auto")
     run_pmb_physical_live_parser.add_argument("--receipt-listen-seconds", type=float, default=6.0)
+    run_pmb_physical_live_parser.add_argument("--run-until-stopped", action="store_true")
     run_pmb_physical_live_parser.add_argument("--no-launch-broker", action="store_true")
     run_pmb_physical_live_parser.add_argument("--no-launch-makepad", action="store_true")
     run_pmb_physical_live_parser.add_argument("--foreground-hostess", action="store_true")
@@ -395,6 +448,7 @@ def main() -> int:
     record_values.add_argument("--cargo", default="cargo")
     record_values.add_argument("--pmb-live-processor", action="store_true")
     record_values.add_argument("--pmb-feedback-publish-limit", type=int, default=24)
+    record_values.add_argument("--pmb-breath-selected-source", choices=["auto", "polar", "controller"], default="auto")
     record_values.add_argument("--pmb-receipt-listen-seconds", type=float, default=3.0)
     record_values.add_argument("--no-launch-broker", action="store_true")
     record_values.add_argument("--no-launch-providers", action="store_true")
@@ -990,6 +1044,9 @@ def run_pmb_quest_simulated_live(args: argparse.Namespace) -> int:
             "feedback_publish_limit",
             str(args.feedback_publish_limit),
             "--es",
+            "breath_selected_source",
+            str(getattr(args, "breath_selected_source", "auto") or "auto"),
+            "--es",
             "receipt_listen_ms",
             str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
         ]
@@ -1048,8 +1105,10 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
     package_root = projected_motion_breath_package_root(packages_root)
     if not package_root.exists():
         raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    if args.duration_seconds <= 0:
+    if args.duration_seconds <= 0 and not getattr(args, "run_until_stopped", False):
         raise SystemExit("--duration-seconds must be greater than zero")
+    if getattr(args, "run_until_stopped", False) and getattr(args, "foreground_hostess", False):
+        raise SystemExit("--run-until-stopped requires the background Hostess service")
     host_profile = "headset"
     if not getattr(args, "no_launch_broker", False):
         grant_broker_runtime_permissions(args)
@@ -1060,6 +1119,22 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
     run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
     command = pmb_physical_live_start_command(args, host_profile)
     run(command)
+    if getattr(args, "run_until_stopped", False):
+        started = {
+            "$schema": "rusty.hostess.projected_motion_breath.physical_live_service_start.v1",
+            "status": "running",
+            "target": args.target,
+            "host_profile": host_profile,
+            "run_until_stopped": True,
+            "pmd_computed_on_quest": True,
+            "pmd_computed_on_pc": False,
+            "publish_mode": "event_driven_live_processor",
+            "selected_breath_stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+            "breath_selected_source": str(getattr(args, "breath_selected_source", "auto") or "auto"),
+            "command": command,
+        }
+        out.write_text(json.dumps(started, indent=2, sort_keys=True), encoding="utf-8")
+        return 0
     wait_seconds = (
         max(0.0, float(args.scan_timeout_seconds))
         + max(0.0, float(args.duration_seconds))
@@ -1141,7 +1216,7 @@ def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str)
         str(args.broker_port),
         "--es",
         "duration_ms",
-        str(int(max(0.0, args.duration_seconds) * 1000.0)),
+        "0" if getattr(args, "run_until_stopped", False) else str(int(max(0.0, args.duration_seconds) * 1000.0)),
         "--es",
         "acc_rate_hz",
         str(args.acc_rate),
@@ -1154,6 +1229,9 @@ def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str)
         "--es",
         "feedback_publish_limit",
         str(args.feedback_publish_limit),
+        "--es",
+        "breath_selected_source",
+        str(getattr(args, "breath_selected_source", "auto") or "auto"),
         "--es",
         "receipt_listen_ms",
         str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
@@ -1687,9 +1765,13 @@ def record_broker_websocket_streams(
 
     if pmb_bridge_enabled:
         for broker_stream_id, sample_kind in [
-            ("stream.breath.volume", "breath_volume"),
-            ("stream.breath.feedback_state", "breath_feedback_state"),
-            ("stream.breath.feedback_receipt", "breath_feedback_receipt"),
+            (PMB_BREATH_VOLUME_STREAM, "breath_volume"),
+            (PMB_BREATH_VOLUME_SELECTED_STREAM, "breath_volume_selected"),
+            (PMB_BREATH_VOLUME_POLAR_STREAM, "breath_volume_polar"),
+            (PMB_BREATH_VOLUME_CONTROLLER_STREAM, "breath_volume_controller"),
+            (PMB_BREATH_SELECTION_STATE_STREAM, "breath_selection_state"),
+            (PMB_BREATH_FEEDBACK_STATE_STREAM, "breath_feedback_state"),
+            (PMB_BREATH_FEEDBACK_RECEIPT_STREAM, "breath_feedback_receipt"),
         ]:
             stream_rows[broker_stream_id] = {
                 "stream_id": broker_stream_id,
@@ -1790,9 +1872,16 @@ def record_broker_websocket_streams(
         for stream in requested_streams:
             send_broker_command("subscribe", {"stream": stream["broker_stream_id"]})
         if pmb_bridge_enabled:
-            send_broker_command("subscribe", {"stream": "stream.breath.volume"})
-            send_broker_command("subscribe", {"stream": "stream.breath.feedback_state"})
-            send_broker_command("subscribe", {"stream": "stream.breath.feedback_receipt"})
+            for stream_id in [
+                PMB_BREATH_VOLUME_STREAM,
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_VOLUME_POLAR_STREAM,
+                PMB_BREATH_VOLUME_CONTROLLER_STREAM,
+                PMB_BREATH_SELECTION_STATE_STREAM,
+                PMB_BREATH_FEEDBACK_STATE_STREAM,
+                PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
+            ]:
+                send_broker_command("subscribe", {"stream": stream_id})
         for plan in provider_plans:
             if plan.get("broker_start_command") == "polar_pmd.start":
                 send_broker_command(
@@ -1877,10 +1966,11 @@ def record_broker_websocket_streams(
             for key in [
                 "debug.rusty.manifold.breath.feedback.enabled",
                 "debug.rustyxr.manifold.breath.feedback.enabled",
+                "debug.rustyxr.projection.target.breath.controls",
             ]:
                 run_adb(
                     f"disable-makepad-breath-feedback-subscriber-{key}",
-                    adb_prefix(args) + ["shell", "setprop", key, "false"],
+                    adb_prefix(args) + ["shell", "setprop", key, "off" if key.endswith(".controls") else "false"],
                     allow_failure=True,
                 )
         run_adb("adb-forward-remove-broker-websocket", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
@@ -1905,9 +1995,10 @@ def record_broker_websocket_streams(
     pmb_publish = pmb_bridge.get("publish") if isinstance(pmb_bridge.get("publish"), dict) else {}
     pmb_feedback_published = bool(pmb_publish.get("published"))
     pmb_breath_publish_count = int(pmb_publish.get("breath_published_count") or 0)
+    pmb_selected_breath_publish_count = int(pmb_publish.get("selected_breath_published_count") or 0)
     pmb_feedback_publish_count = int(pmb_publish.get("feedback_published_count") or 0)
     pmb_receipt_count = int(
-        stream_rows.get("stream.breath.feedback_receipt", {}).get("event_count") or 0
+        stream_rows.get(PMB_BREATH_FEEDBACK_RECEIPT_STREAM, {}).get("event_count") or 0
     )
     evidence = {
         "$schema": "rusty.hostess.broker_stream_recording.evidence.v1",
@@ -1942,6 +2033,10 @@ def record_broker_websocket_streams(
         ),
         "pmb_breath_published": pmb_breath_publish_count > 0,
         "pmb_breath_publish_count": pmb_breath_publish_count,
+        "pmb_selected_breath_published": pmb_selected_breath_publish_count > 0,
+        "pmb_selected_breath_publish_count": pmb_selected_breath_publish_count,
+        "pmb_breath_selected_source_preference": pmb_publish.get("selected_source_preference"),
+        "pmb_breath_selected_source_effective": pmb_publish.get("selected_source_effective"),
         "pmb_feedback_published": pmb_feedback_published and pmb_feedback_publish_count > 0,
         "pmb_feedback_publish_count": pmb_feedback_publish_count,
         "pmb_feedback_receipt_count": pmb_receipt_count,
@@ -2047,15 +2142,23 @@ def configure_makepad_controller_pose_provider(
         setprops.update(
             with_legacy_rustyxr_property_aliases({
                 "debug.rusty.manifold.breath.feedback.enabled": "true",
-                "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+                "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
                 "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
                 "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+                "debug.rustyxr.projection.target.breath.controls": "scale",
+                "debug.rustyxr.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+                "debug.rustyxr.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
+                "debug.rustyxr.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
+                "debug.rustyxr.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+                "debug.rustyxr.projection.target.breath.invert": "false",
+                "debug.rustyxr.projection.target.breath.min.quality": "0.0",
             })
         )
     else:
         setprops.update(
             with_legacy_rustyxr_property_aliases({
-                "debug.rusty.manifold.breath.feedback.enabled": "false"
+                "debug.rusty.manifold.breath.feedback.enabled": "false",
+                "debug.rustyxr.projection.target.breath.controls": "off",
             })
         )
     for key, value in setprops.items():
@@ -2083,9 +2186,16 @@ def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None
         "debug.rusty.manifold.broker.host": "127.0.0.1",
         "debug.rusty.manifold.broker.port": str(args.broker_port),
         "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+        "debug.rustyxr.projection.target.breath.controls": "scale",
+        "debug.rustyxr.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+        "debug.rustyxr.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
+        "debug.rustyxr.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
+        "debug.rustyxr.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+        "debug.rustyxr.projection.target.breath.invert": "false",
+        "debug.rustyxr.projection.target.breath.min.quality": "0.0",
         "debug.rusty.makepad.projection.target.joystick.controls": "offset-scale",
     })
     for key, value in setprops.items():
@@ -2115,9 +2225,16 @@ def configure_makepad_physical_pmb_provider(args: argparse.Namespace) -> None:
         "debug.rusty.manifold.broker.host": "127.0.0.1",
         "debug.rusty.manifold.broker.port": str(args.broker_port),
         "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+        "debug.rustyxr.projection.target.breath.controls": "scale",
+        "debug.rustyxr.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+        "debug.rustyxr.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
+        "debug.rustyxr.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
+        "debug.rustyxr.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+        "debug.rustyxr.projection.target.breath.invert": "false",
+        "debug.rustyxr.projection.target.breath.min.quality": "0.0",
         "debug.rusty.makepad.projection.target.joystick.controls": "offset-scale",
     })
     for key, value in setprops.items():
@@ -2312,38 +2429,83 @@ def publish_pmb_feedback_samples(
 ) -> dict[str, Any]:
     limit = max(0, int(getattr(args, "pmb_feedback_publish_limit", 0)))
     breath_samples = select_pmb_output_samples(route_report.get("breath_samples", []), limit)
+    selected_source_preference = str(getattr(args, "pmb_breath_selected_source", "auto") or "auto")
+    selected_breath_samples, selected_source_effective = select_pmb_selected_breath_samples(
+        breath_samples,
+        selected_source_preference,
+        limit,
+    )
     feedback_samples = select_pmb_output_samples(route_report.get("feedback_samples", []), limit)
-    breath_results = [
+    breath_results: list[dict[str, Any]] = []
+    for index, sample in enumerate(breath_samples):
+        sequence_id = int(sample.get("sequence_id") or index + 1)
+        breath_results.append(
+            publish_pmb_stream_sample(
+                send_broker_command,
+                stream_id=PMB_BREATH_VOLUME_STREAM,
+                sequence_id=sequence_id,
+                payload=pmb_breath_payload(sample, sequence_id, PMB_BREATH_VOLUME_STREAM),
+            )
+        )
+        source_stream_id = pmb_breath_source_stream_id(sample)
+        if source_stream_id is not None:
+            breath_results.append(
+                publish_pmb_stream_sample(
+                    send_broker_command,
+                    stream_id=source_stream_id,
+                    sequence_id=sequence_id,
+                    payload=pmb_breath_payload(sample, sequence_id, source_stream_id),
+                )
+            )
+    selected_breath_results = [
         publish_pmb_stream_sample(
             send_broker_command,
-            stream_id="stream.breath.volume",
+            stream_id=PMB_BREATH_VOLUME_SELECTED_STREAM,
             sequence_id=int(sample.get("sequence_id") or index + 1),
-            payload={
-                "schema": "rusty.manifold.breath.volume.v1",
-                "stream_id": "stream.breath.volume",
-                "sequence_id": int(sample.get("sequence_id") or index + 1),
-                "source_id": sample.get("source_id"),
-                "input_stream_id": sample.get("input_stream_id"),
-                "normalized_stream_id": sample.get("normalized_stream_id"),
-                "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
-                "volume01": sample.get("volume01"),
-                "phase": sample.get("phase"),
-                "quality": sample.get("quality"),
-                "tracking01": sample.get("tracking01"),
-                "processor_id": "processor.projected_motion_breath.live_bridge",
-                "publisher": "hostessctl.record_values",
-            },
+            payload=pmb_breath_payload(
+                sample,
+                int(sample.get("sequence_id") or index + 1),
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                selected=True,
+                selected_source_preference=selected_source_preference,
+                selected_source_effective=selected_source_effective,
+            ),
         )
-        for index, sample in enumerate(breath_samples)
+        for index, sample in enumerate(selected_breath_samples)
     ]
+    breath_results.extend(selected_breath_results)
+    selection_state_results: list[dict[str, Any]] = []
+    if limit > 0:
+        selection_state_results.append(
+            publish_pmb_stream_sample(
+                send_broker_command,
+                stream_id=PMB_BREATH_SELECTION_STATE_STREAM,
+                sequence_id=1,
+                payload={
+                    "schema": "rusty.manifold.breath.selection_state.v1",
+                    "stream_id": PMB_BREATH_SELECTION_STATE_STREAM,
+                    "sequence_id": 1,
+                    "selected_stream_id": PMB_BREATH_VOLUME_SELECTED_STREAM,
+                    "selected_source_preference": selected_source_preference,
+                    "selected_source_effective": selected_source_effective,
+                    "source_stream_ids": [
+                        PMB_BREATH_VOLUME_POLAR_STREAM,
+                        PMB_BREATH_VOLUME_CONTROLLER_STREAM,
+                    ],
+                    "selected_sample_count": len(selected_breath_samples),
+                    "publisher": "hostessctl.record_values",
+                },
+            )
+        )
+    breath_results.extend(selection_state_results)
     feedback_results = [
         publish_pmb_stream_sample(
             send_broker_command,
-            stream_id="stream.breath.feedback_state",
+            stream_id=PMB_BREATH_FEEDBACK_STATE_STREAM,
             sequence_id=int(sample.get("sequence_id") or index + 1),
             payload={
                 "schema": "rusty.manifold.breath.feedback_state.v1",
-                "stream_id": "stream.breath.feedback_state",
+                "stream_id": PMB_BREATH_FEEDBACK_STATE_STREAM,
                 "sequence_id": int(sample.get("sequence_id") or index + 1),
                 "source_breath_sequence_id": sample.get("source_breath_sequence_id"),
                 "source_id": sample.get("source_id"),
@@ -2359,15 +2521,114 @@ def publish_pmb_feedback_samples(
     ]
     return {
         "limit": limit,
+        "selected_source_preference": selected_source_preference,
+        "selected_source_effective": selected_source_effective,
         "breath_requested_count": len(route_report.get("breath_samples", [])),
         "feedback_requested_count": len(route_report.get("feedback_samples", [])),
-        "breath_published_count": sum(1 for result in breath_results if result.get("status") == "pass"),
+        "breath_published_count": sum(
+            1
+            for result in breath_results
+            if result.get("stream_id") == PMB_BREATH_VOLUME_STREAM and result.get("status") == "pass"
+        ),
+        "selected_breath_published_count": sum(
+            1
+            for result in selected_breath_results
+            if result.get("status") == "pass"
+        ),
+        "selection_state_published_count": sum(
+            1
+            for result in selection_state_results
+            if result.get("status") == "pass"
+        ),
         "feedback_published_count": sum(1 for result in feedback_results if result.get("status") == "pass"),
         "published_count": sum(1 for result in breath_results + feedback_results if result.get("status") == "pass"),
         "published": any(result.get("status") == "pass" for result in breath_results + feedback_results),
         "breath_results": breath_results,
+        "selected_breath_results": selected_breath_results,
         "feedback_results": feedback_results,
     }
+
+
+def pmb_breath_payload(
+    sample: dict[str, Any],
+    sequence_id: int,
+    stream_id: str,
+    *,
+    selected: bool = False,
+    selected_source_preference: str = "auto",
+    selected_source_effective: str = "auto",
+) -> dict[str, Any]:
+    payload = {
+        "schema": "rusty.manifold.breath.volume.v1",
+        "stream_id": stream_id,
+        "sequence_id": sequence_id,
+        "source_id": sample.get("source_id"),
+        "source_kind": pmb_breath_source_kind(sample),
+        "input_stream_id": sample.get("input_stream_id"),
+        "normalized_stream_id": sample.get("normalized_stream_id"),
+        "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
+        "volume01": sample.get("volume01"),
+        "phase": sample.get("phase"),
+        "quality": sample.get("quality"),
+        "quality01": sample.get("quality01", sample.get("tracking01", 1.0)),
+        "tracking01": sample.get("tracking01"),
+        "processor_id": "processor.projected_motion_breath.live_bridge",
+        "publisher": "hostessctl.record_values",
+    }
+    if selected:
+        payload.update(
+            {
+                "selected": True,
+                "selected_source_preference": selected_source_preference,
+                "selected_source_effective": selected_source_effective,
+            }
+        )
+    return payload
+
+
+def pmb_breath_source_kind(sample: dict[str, Any]) -> str:
+    text = " ".join(
+        str(sample.get(key) or "")
+        for key in ("source_id", "input_stream_id", "normalized_stream_id")
+    ).lower()
+    if "polar" in text or "bio:polar" in text:
+        return "polar"
+    if "controller" in text or "object_pose" in text or "motion.object" in text:
+        return "controller"
+    return "unknown"
+
+
+def pmb_breath_source_stream_id(sample: dict[str, Any]) -> str | None:
+    source_kind = pmb_breath_source_kind(sample)
+    if source_kind == "polar":
+        return PMB_BREATH_VOLUME_POLAR_STREAM
+    if source_kind == "controller":
+        return PMB_BREATH_VOLUME_CONTROLLER_STREAM
+    return None
+
+
+def select_pmb_selected_breath_samples(
+    breath_samples: list[dict[str, Any]],
+    selected_source_preference: str,
+    limit: int,
+) -> tuple[list[dict[str, Any]], str]:
+    if limit <= 0:
+        return [], selected_source_preference
+    source_kinds = [pmb_breath_source_kind(sample) for sample in breath_samples]
+    effective = selected_source_preference
+    if selected_source_preference == "auto":
+        if "polar" in source_kinds:
+            effective = "polar"
+        elif "controller" in source_kinds:
+            effective = "controller"
+        else:
+            effective = "unknown"
+    selected = [
+        sample
+        for sample in breath_samples
+        if effective == "unknown" or pmb_breath_source_kind(sample) == effective
+    ]
+    return selected[:limit], effective
 
 
 def select_pmb_output_samples(raw_samples: Any, limit: int) -> list[dict[str, Any]]:
@@ -2534,9 +2795,10 @@ def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]
             or (
                 evidence.get("pmb_processor_executed") is True
                 and evidence.get("pmb_breath_published") is True
+                and evidence.get("pmb_selected_breath_published") is True
                 and evidence.get("pmb_feedback_published") is True
             ),
-            "PMB live processor bridge ran and published breath output streams when requested",
+            "PMB live processor bridge ran and published aggregate, selected, and feedback output streams when requested",
         ),
         recording_scorecard_check(
             "hostess.check.broker_stream_recording.makepad_breath_feedback_receipt",
@@ -4007,15 +4269,22 @@ def build_pmb_live_route_self_test_evidence(
         ),
         pmb_scorecard_check(
             "validation.check.pmb_live_route_outputs",
-            {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(set(output_stream_ids)),
-            "self-test route emits breath volume and breath feedback state",
+            {
+                PMB_BREATH_VOLUME_STREAM,
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_VOLUME_POLAR_STREAM,
+                PMB_BREATH_VOLUME_CONTROLLER_STREAM,
+                PMB_BREATH_SELECTION_STATE_STREAM,
+                PMB_BREATH_FEEDBACK_STATE_STREAM,
+            }.issubset(set(output_stream_ids)),
+            "self-test route emits aggregate, selected, source-specific, selection-state, and feedback streams",
             "validation.pmb_live_route_self_test_failed",
         ),
         pmb_scorecard_check(
             "validation.check.pmb_live_route_makepad_subscription",
             subscription.get("command") == "subscribe"
-            and subscription.get("stream") == "stream.breath.feedback_state",
-            "Makepad subscription contract targets stream.breath.feedback_state",
+            and subscription.get("stream") == PMB_BREATH_VOLUME_SELECTED_STREAM,
+            "Makepad subscription contract targets the selected breath volume stream",
             "validation.pmb_live_route_self_test_failed",
         ),
         pmb_scorecard_check(
@@ -4024,12 +4293,12 @@ def build_pmb_live_route_self_test_evidence(
             and all(
                 receipt.get("command") == "breath_feedback.received"
                 and receipt.get("schema") == "rusty.manifold.breath.feedback_receipt.v1"
-                and receipt.get("received_stream") == "stream.breath.feedback_state"
+                and receipt.get("received_stream") == PMB_BREATH_VOLUME_SELECTED_STREAM
                 and receipt.get("acknowledged") is True
                 for receipt in receipts
                 if isinstance(receipt, dict)
             ),
-            "Makepad receipt contract acknowledges every feedback sample",
+            "Makepad receipt contract acknowledges selected breath samples",
             "validation.pmb_live_route_self_test_failed",
         ),
         pmb_scorecard_check(
@@ -4166,7 +4435,11 @@ def validate_pmb_live_route_self_test_evidence(evidence: dict[str, Any]) -> dict
             {"bio:polar_acc", "stream.motion.object_pose"}.issubset(
                 set(summary.get("input_stream_ids", []))
             )
-            and {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(
+            and {
+                PMB_BREATH_VOLUME_STREAM,
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_FEEDBACK_STATE_STREAM,
+            }.issubset(
                 set(summary.get("output_stream_ids", []))
             )
             and int(summary.get("source_route_count", 0)) >= 2,
@@ -4175,10 +4448,10 @@ def validate_pmb_live_route_self_test_evidence(evidence: dict[str, Any]) -> dict
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_live_route.feedback_ack",
-            subscription.get("stream") == "stream.breath.feedback_state"
+            subscription.get("stream") == PMB_BREATH_VOLUME_SELECTED_STREAM
             and int(summary.get("feedback_sample_count", 0)) > 0
             and int(summary.get("receipt_count", 0)) == int(summary.get("feedback_sample_count", -1)),
-            "PMB live route has a Makepad feedback subscription and one receipt per feedback sample",
+            "PMB live route has a Makepad selected breath subscription and one receipt per selected sample",
             "validation.pmb_live_route_self_test_failed",
         ),
         pmb_scorecard_check(
@@ -4772,7 +5045,11 @@ def validate_pmb_quest_simulated_live_evidence(
         pmb_scorecard_check(
             "hostess.check.pmb_quest_simulated_live.sources",
             {"bio:polar_acc", "stream.motion.object_pose"}.issubset(input_stream_ids)
-            and {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(output_stream_ids)
+            and {
+                PMB_BREATH_VOLUME_STREAM,
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_FEEDBACK_STATE_STREAM,
+            }.issubset(output_stream_ids)
             and int(route.get("source_route_count", 0)) >= 2
             and int(route.get("breath_sample_count", 0)) >= 6
             and int(route.get("feedback_sample_count", 0)) >= 6,
@@ -4796,17 +5073,19 @@ def validate_pmb_quest_simulated_live_evidence(
             execution.get("broker_transport_used") is True
             and execution.get("feedback_published_to_broker") is True
             and broker.get("broker_transport_used") is True
+            and int(broker.get("selected_breath_published_count", 0)) > 0
             and int(broker.get("feedback_published_count", 0)) > 0,
-            "Quest app published PMB feedback to the broker",
+            "Quest app published selected breath and PMB feedback to the broker",
             "validation.pmb_quest_simulated_live_failed",
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_simulated_live.makepad_receipts",
             int(broker.get("feedback_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1))
+            and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1))
             and int(execution.get("makepad_feedback_receipt_count", 0))
-            == int(broker.get("feedback_published_count", -1)),
-            "Makepad acknowledged every broker feedback sample",
+            == int(broker.get("selected_breath_published_count", -1)),
+            "Makepad acknowledged every broker selected breath sample",
             "validation.pmb_quest_simulated_live_failed",
         ),
         pmb_scorecard_check(
@@ -4914,7 +5193,11 @@ def validate_pmb_quest_physical_live_evidence(
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.route",
             {"bio:polar_acc", "stream.motion.object_pose"}.issubset(input_stream_ids)
-            and {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(output_stream_ids)
+            and {
+                PMB_BREATH_VOLUME_STREAM,
+                PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_FEEDBACK_STATE_STREAM,
+            }.issubset(output_stream_ids)
             and route.get("status") == "pass"
             and route.get("external_transport_used") is True
             and route.get("live_sensor_used") is True
@@ -4926,11 +5209,19 @@ def validate_pmb_quest_physical_live_evidence(
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.makepad_receipts",
-            int(broker.get("feedback_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1))
+            broker.get("publish_mode") == "event_driven_live_processor"
+            and broker.get("live_publish_during_capture") is True
+            and broker.get("incremental_processor_used") is True
+            and broker.get("snapshot_replay_used") is False
+            and int(broker.get("input_event_processed_count", 0)) > 0
+            and int(broker.get("live_processor_output_update_count", 0)) > 0
+            and int(broker.get("first_selected_publish_elapsed_ms", -1)) >= 0
+            and int(broker.get("feedback_published_count", 0)) > 0
+            and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1))
             and int(execution.get("makepad_feedback_receipt_count", 0))
-            == int(broker.get("feedback_published_count", -1)),
-            "Makepad acknowledged every broker feedback sample",
+            == int(broker.get("selected_breath_published_count", -1)),
+            "Makepad acknowledged event-driven live PMB samples while selected breath volume was published during capture",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
@@ -5407,8 +5698,9 @@ def write_pmb_quest_simulated_live_host_run_evidence(
         pmb_scorecard_check(
             "validation.check.makepad_feedback_receipts",
             int(broker.get("feedback_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1)),
-            "Makepad acknowledged every Quest-published feedback sample",
+            and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1)),
+            "Makepad acknowledged every Quest-published selected breath sample",
             "validation.pmb_quest_simulated_live_failed",
         ),
     ]
@@ -5448,6 +5740,8 @@ def write_pmb_quest_simulated_live_host_run_evidence(
             "controller_input_used": execution.get("controller_input_used"),
             "manual_controller_trial_required": execution.get("manual_controller_trial_required"),
             "input_stream_ids": route.get("input_stream_ids", []),
+            "selected_breath_published_count": broker.get("selected_breath_published_count"),
+            "selected_source_effective": broker.get("selected_source_effective"),
             "feedback_published_count": broker.get("feedback_published_count"),
             "feedback_receipt_count": broker.get("feedback_receipt_count"),
         },
@@ -5514,9 +5808,15 @@ def write_pmb_quest_physical_live_host_run_evidence(
         ),
         pmb_scorecard_check(
             "validation.check.makepad_feedback_receipts",
-            int(broker.get("feedback_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1)),
-            "Makepad acknowledged every Quest-published feedback sample",
+            broker.get("publish_mode") == "event_driven_live_processor"
+            and broker.get("live_publish_during_capture") is True
+            and broker.get("incremental_processor_used") is True
+            and broker.get("snapshot_replay_used") is False
+            and int(broker.get("first_selected_publish_elapsed_ms", -1)) >= 0
+            and int(broker.get("feedback_published_count", 0)) > 0
+            and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1)),
+            "Makepad acknowledged every Quest-published live selected breath sample",
             "validation.pmb_quest_physical_live_failed",
         ),
     ]
@@ -5560,6 +5860,14 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "polar_event_count": capture.get("polar_event_count"),
             "object_pose_event_count": capture.get("object_pose_event_count"),
             "active_tracked_connected_object_pose_count": capture.get("active_tracked_connected_object_pose_count"),
+            "selected_breath_published_count": broker.get("selected_breath_published_count"),
+            "selected_source_effective": broker.get("selected_source_effective"),
+            "publish_mode": broker.get("publish_mode"),
+            "live_publish_during_capture": broker.get("live_publish_during_capture"),
+            "incremental_processor_used": broker.get("incremental_processor_used"),
+            "snapshot_replay_used": broker.get("snapshot_replay_used"),
+            "first_selected_publish_elapsed_ms": broker.get("first_selected_publish_elapsed_ms"),
+            "last_selected_publish_elapsed_ms": broker.get("last_selected_publish_elapsed_ms"),
             "feedback_published_count": broker.get("feedback_published_count"),
             "feedback_receipt_count": broker.get("feedback_receipt_count"),
         },

@@ -6062,7 +6062,7 @@ def ready_pmb_shell_handoff_review() -> dict[str, object]:
         "ready_required_binding_count": 3,
         "stream_bindings": [
             "stream.motion.object_pose:publish",
-            "stream.breath.feedback_state:subscribe",
+            "stream.breath.volume.selected:subscribe",
             "stream.breath.feedback_receipt:publish",
         ],
         "command_ids": ["command.breath.status", "command.breath.set_profile"],

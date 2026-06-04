@@ -104,6 +104,15 @@ final class PmbPhysicalLiveEvidence {
                 .put("pmd_computed_on_pc", false)
                 .put("processor_authority", "quest_hostess_android_app")
                 .put("broker_transport_used", brokerReport.optBoolean("broker_transport_used", false))
+                .put("publish_mode", brokerReport.optString("publish_mode", "missing"))
+                .put("live_publish_during_capture", brokerReport.optBoolean("live_publish_during_capture", false))
+                .put("incremental_processor_used", brokerReport.optBoolean("incremental_processor_used", false))
+                .put("snapshot_replay_used", brokerReport.optBoolean("snapshot_replay_used", true))
+                .put("first_selected_publish_elapsed_ms", brokerReport.optLong("first_selected_publish_elapsed_ms", -1L))
+                .put("last_selected_publish_elapsed_ms", brokerReport.optLong("last_selected_publish_elapsed_ms", -1L))
+                .put("selected_breath_published_to_broker", brokerReport.optInt("selected_breath_published_count", 0) > 0)
+                .put("breath_selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
+                .put("breath_selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_to_broker", brokerReport.optInt("feedback_published_count", 0) > 0)
                 .put("makepad_feedback_receipt_count", brokerReport.optInt("feedback_receipt_count", 0))
                 .put("app_private_evidence", true);
@@ -151,7 +160,20 @@ final class PmbPhysicalLiveEvidence {
                 .put("status", brokerReport.optString("status", "missing"))
                 .put("broker_transport_used", brokerReport.optBoolean("broker_transport_used", false))
                 .put("broker_connected", brokerReport.optBoolean("broker_connected", false))
+                .put("publish_mode", brokerReport.optString("publish_mode", "missing"))
+                .put("live_publish_during_capture", brokerReport.optBoolean("live_publish_during_capture", false))
+                .put("incremental_processor_used", brokerReport.optBoolean("incremental_processor_used", false))
+                .put("snapshot_replay_used", brokerReport.optBoolean("snapshot_replay_used", true))
+                .put("input_event_processed_count", brokerReport.optInt("input_event_processed_count", 0))
+                .put("live_processor_update_count", brokerReport.optInt("live_processor_update_count", 0))
+                .put("live_processor_output_update_count", brokerReport.optInt("live_processor_output_update_count", 0))
+                .put("first_selected_publish_elapsed_ms", brokerReport.optLong("first_selected_publish_elapsed_ms", -1L))
+                .put("last_selected_publish_elapsed_ms", brokerReport.optLong("last_selected_publish_elapsed_ms", -1L))
                 .put("breath_published_count", brokerReport.optInt("breath_published_count", 0))
+                .put("selected_breath_published_count", brokerReport.optInt("selected_breath_published_count", 0))
+                .put("selection_state_published_count", brokerReport.optInt("selection_state_published_count", 0))
+                .put("selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
+                .put("selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_count", brokerReport.optInt("feedback_published_count", 0))
                 .put("feedback_receipt_count", brokerReport.optInt("feedback_receipt_count", 0))
                 .put("receipt_stream_id", brokerReport.optString("receipt_stream_id", ""));
@@ -195,9 +217,17 @@ final class PmbPhysicalLiveEvidence {
                 "PMB live route consumed broker transport events from Polar and controller streams"));
         checks.put(check("validation.check.pmb_physical_live_makepad_receipts",
                 broker != null
+                        && "event_driven_live_processor".equals(broker.optString("publish_mode"))
+                        && broker.optBoolean("live_publish_during_capture")
+                        && broker.optBoolean("incremental_processor_used")
+                        && !broker.optBoolean("snapshot_replay_used")
+                        && broker.optInt("input_event_processed_count", 0) > 0
+                        && broker.optInt("live_processor_output_update_count", 0) > 0
+                        && broker.optLong("first_selected_publish_elapsed_ms", -1L) >= 0L
+                        && broker.optInt("selected_breath_published_count", 0) > 0
                         && broker.optInt("feedback_published_count", 0) > 0
-                        && broker.optInt("feedback_receipt_count", 0) == broker.optInt("feedback_published_count", -1),
-                "Makepad feedback subscriber acknowledged every published feedback sample"));
+                        && broker.optInt("feedback_receipt_count", 0) == broker.optInt("selected_breath_published_count", -1),
+                "Makepad acknowledged selected breath samples while PMB feedback was published"));
 
         JSONArray issueObjects = new JSONArray();
         for (String error : errors) {

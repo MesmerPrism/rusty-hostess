@@ -1,5 +1,5 @@
 use jni::objects::{JClass, JString};
-use jni::sys::jstring;
+use jni::sys::{jlong, jstring};
 use jni::JNIEnv;
 use serde_json::json;
 use std::path::PathBuf;
@@ -160,6 +160,97 @@ pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nati
     }
 }
 
+#[no_mangle]
+pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nativeOpenLiveTransportProcessor(
+    mut env: JNIEnv,
+    _class: JClass,
+    package_root: JString,
+) -> jstring {
+    let result = jni_open_live_transport_processor(&mut env, package_root).unwrap_or_else(|error| {
+        json!({
+            "schema": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
+            "status": "fail",
+            "handle": 0,
+            "issues": [format!("issue.jni_bridge_failed:{error}")]
+        })
+        .to_string()
+    });
+    match env.new_string(result) {
+        Ok(output) => output.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nativePushLiveTransportEvent(
+    mut env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+    event_json: JString,
+    selected_source_preference: JString,
+) -> jstring {
+    let result = jni_push_live_transport_event(
+        &mut env,
+        handle,
+        event_json,
+        selected_source_preference,
+    )
+    .unwrap_or_else(|error| {
+        json!({
+            "schema": "rusty.manifold.projected_motion_breath.live_transport_update.v1",
+            "status": "fail",
+            "route_id": "",
+            "package_root": "",
+            "input_stream_id": "",
+            "selected_source_preference": "auto",
+            "selected_source_effective": "unknown",
+            "event_sample_count": 0,
+            "normalized_sample_count": 0,
+            "output_sample_count": 0,
+            "source_updates": [],
+            "breath_samples": [],
+            "feedback_samples": [],
+            "issues": [format!("issue.jni_bridge_failed:{error}")]
+        })
+        .to_string()
+    });
+    match env.new_string(result) {
+        Ok(output) => output.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
+#[no_mangle]
+pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nativeCloseLiveTransportProcessor(
+    env: JNIEnv,
+    _class: JClass,
+    handle: jlong,
+) -> jstring {
+    let result = jni_close_live_transport_processor(handle).unwrap_or_else(|error| {
+        json!({
+            "schema": "rusty.manifold.projected_motion_breath.live_transport_update.v1",
+            "status": "fail",
+            "route_id": "",
+            "package_root": "",
+            "input_stream_id": "",
+            "selected_source_preference": "auto",
+            "selected_source_effective": "unknown",
+            "event_sample_count": 0,
+            "normalized_sample_count": 0,
+            "output_sample_count": 0,
+            "source_updates": [],
+            "breath_samples": [],
+            "feedback_samples": [],
+            "issues": [format!("issue.jni_bridge_failed:{error}")]
+        })
+        .to_string()
+    });
+    match env.new_string(result) {
+        Ok(output) => output.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 fn jni_validate_package(env: &mut JNIEnv, package_root: JString) -> Result<String, String> {
     let package_root: String = env
         .get_string(&package_root)
@@ -201,6 +292,60 @@ fn jni_run_live_route_from_transport_events(
     )
     .map_err(|error| error.to_string())?;
     serde_json::to_string(&report).map_err(|error| error.to_string())
+}
+
+fn jni_open_live_transport_processor(
+    env: &mut JNIEnv,
+    package_root: JString,
+) -> Result<String, String> {
+    let package_root: String = env
+        .get_string(&package_root)
+        .map_err(|error| format!("package_root_jni:{error}"))?
+        .into();
+    let processor = projected_motion_breath_core::LiveTransportProcessor::open(PathBuf::from(package_root))?;
+    let handle = Box::into_raw(Box::new(processor)) as jlong;
+    Ok(json!({
+        "schema": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
+        "status": "pass",
+        "handle": handle,
+        "issues": []
+    })
+    .to_string())
+}
+
+fn jni_push_live_transport_event(
+    env: &mut JNIEnv,
+    handle: jlong,
+    event_json: JString,
+    selected_source_preference: JString,
+) -> Result<String, String> {
+    if handle == 0 {
+        return Err("live_transport_processor_handle_invalid".to_string());
+    }
+    let event_json: String = env
+        .get_string(&event_json)
+        .map_err(|error| format!("event_json_jni:{error}"))?
+        .into();
+    let selected_source_preference: String = env
+        .get_string(&selected_source_preference)
+        .map_err(|error| format!("selected_source_preference_jni:{error}"))?
+        .into();
+    let processor = unsafe {
+        &mut *(handle as *mut projected_motion_breath_core::LiveTransportProcessor)
+    };
+    let update = processor.push_transport_event_json(&event_json, &selected_source_preference);
+    serde_json::to_string(&update).map_err(|error| error.to_string())
+}
+
+fn jni_close_live_transport_processor(handle: jlong) -> Result<String, String> {
+    if handle == 0 {
+        return Err("live_transport_processor_handle_invalid".to_string());
+    }
+    let processor = unsafe {
+        Box::from_raw(handle as *mut projected_motion_breath_core::LiveTransportProcessor)
+    };
+    let update = processor.close_report();
+    serde_json::to_string(&update).map_err(|error| error.to_string())
 }
 
 fn jni_run_controller_preflight(env: &mut JNIEnv, package_root: JString) -> Result<String, String> {

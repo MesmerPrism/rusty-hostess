@@ -95,6 +95,9 @@ final class PmbSimulatedLiveEvidence {
                 .put("pmd_computed_on_pc", false)
                 .put("processor_authority", "quest_hostess_android_app")
                 .put("broker_transport_used", brokerReport.optBoolean("broker_transport_used", false))
+                .put("selected_breath_published_to_broker", brokerReport.optInt("selected_breath_published_count", 0) > 0)
+                .put("breath_selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
+                .put("breath_selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_to_broker", brokerReport.optInt("feedback_published_count", 0) > 0)
                 .put("makepad_feedback_receipt_count", brokerReport.optInt("feedback_receipt_count", 0))
                 .put("app_private_evidence", true);
@@ -127,6 +130,10 @@ final class PmbSimulatedLiveEvidence {
                 .put("broker_transport_used", brokerReport.optBoolean("broker_transport_used", false))
                 .put("broker_connected", brokerReport.optBoolean("broker_connected", false))
                 .put("breath_published_count", brokerReport.optInt("breath_published_count", 0))
+                .put("selected_breath_published_count", brokerReport.optInt("selected_breath_published_count", 0))
+                .put("selection_state_published_count", brokerReport.optInt("selection_state_published_count", 0))
+                .put("selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
+                .put("selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_count", brokerReport.optInt("feedback_published_count", 0))
                 .put("feedback_receipt_count", brokerReport.optInt("feedback_receipt_count", 0))
                 .put("receipt_stream_id", brokerReport.optString("receipt_stream_id", ""));
@@ -170,14 +177,15 @@ final class PmbSimulatedLiveEvidence {
                 "validation.check.pmb_simulated_live_broker_publish",
                 broker != null
                         && broker.optBoolean("broker_transport_used")
+                        && broker.optInt("selected_breath_published_count", 0) > 0
                         && broker.optInt("feedback_published_count", 0) > 0,
-                "Quest Android app published PMB feedback samples to the broker"));
+                "Quest Android app published selected breath and PMB feedback samples to the broker"));
         checks.put(check(
                 "validation.check.pmb_simulated_live_makepad_receipts",
                 broker != null
-                        && broker.optInt("feedback_published_count", 0) > 0
-                        && broker.optInt("feedback_receipt_count", 0) == broker.optInt("feedback_published_count", -1),
-                "Makepad feedback subscriber acknowledged every published feedback sample"));
+                        && broker.optInt("selected_breath_published_count", 0) > 0
+                        && broker.optInt("feedback_receipt_count", 0) == broker.optInt("selected_breath_published_count", -1),
+                "Makepad feedback subscriber acknowledged every selected breath sample"));
         checks.put(check(
                 "validation.check.pmb_simulated_live_non_physical_gate",
                 execution != null

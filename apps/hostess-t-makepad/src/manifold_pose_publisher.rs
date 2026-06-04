@@ -220,8 +220,7 @@ fn open_broker_websocket(config: &ManifoldPosePublisherConfig) -> Result<TcpStre
          Sec-WebSocket-Key: cnVzdHkteHItdWFrZXBhZC1wb3Nl\r\n\
          Sec-WebSocket-Version: 13\r\n\
          \r\n",
-        MANIFOLD_BROKER_EVENTS_PATH,
-        config.broker_host, config.broker_port
+        MANIFOLD_BROKER_EVENTS_PATH, config.broker_host, config.broker_port
     );
     stream
         .write_all(request.as_bytes())

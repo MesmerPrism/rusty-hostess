@@ -50,7 +50,7 @@ pub(crate) const DEFAULT_MANIFOLD_BROKER_PORT: u16 = 8765;
 pub(crate) const DEFAULT_MANIFOLD_POSE_SAMPLE_HZ: f32 = 20.0;
 pub(crate) const DEFAULT_MANIFOLD_POSE_CONNECT_TIMEOUT_MS: u32 = 250;
 pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_ENABLED: bool = false;
-pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_STREAM: &str = "stream.breath.feedback_state";
+pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_STREAM: &str = "stream.breath.volume.selected";
 pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_RECEIVER: &str =
     "app.makepad_camera_shell.breath_feedback";
 pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_CONNECT_TIMEOUT_MS: u32 = 250;
@@ -108,7 +108,7 @@ pub(crate) const PROJECTION_TARGET_SCALE_RATE_PER_SECOND: f32 = 0.45;
 pub(crate) const PROJECTION_AREA_MIN_SCALE: f32 = 0.01;
 pub(crate) const PROJECTION_AREA_MAX_SCALE: f32 = 10.00;
 pub(crate) const PROJECTION_TARGET_MIN_SCALE: f32 = 0.05;
-pub(crate) const PROJECTION_TARGET_MAX_SCALE: f32 = 1.50;
+pub(crate) const PROJECTION_TARGET_MAX_SCALE: f32 = 5.00;
 // S25 showed this diagnostic can reintroduce app-process GPU page faults on Quest.
 pub(crate) const NATIVE_VIDEO_WIDGET_SURFACE_DIAGNOSTIC: bool = false;
 pub(crate) const NATIVE_VIDEO_WIDGET_RETRY_SECONDS: f64 = 0.5;

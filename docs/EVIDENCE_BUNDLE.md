@@ -64,7 +64,7 @@ Projected-motion breath Quest physical live routing uses
 `rusty.hostess.projected_motion_breath.android_physical_live_execution_evidence.v1`.
 `hostessctl run-pmb-quest-physical-live --target quest` launches the Quest
 broker, configures the clean Makepad XR app to publish
-`stream.motion.object_pose` and receive `stream.breath.feedback_state`, then
+`stream.motion.object_pose` and receive `stream.breath.volume.selected`, then
 starts the Hostess foreground service action
 `io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND`.
 The background-service route is the default so Hostess can run the physical PMB

@@ -93,7 +93,9 @@ use makepad_widgets::makepad_platform::{
 };
 use makepad_widgets::*;
 use makepad_xr::scene::{xr_widget_world_transform, XrNode};
-use manifold_breath_feedback::{ManifoldBreathFeedbackConfig, ManifoldBreathFeedbackSubscriber};
+use manifold_breath_feedback::{
+    BreathFeedbackSample, ManifoldBreathFeedbackConfig, ManifoldBreathFeedbackSubscriber,
+};
 use manifold_pose_publisher::{
     ManifoldPosePublisher, ManifoldPosePublisherConfig, ManifoldPoseSample,
 };
@@ -128,11 +130,14 @@ static VIDEO_EVENT_RAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_UPDATE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_CONTENT_PROBE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static FRAME_ADOPTION_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+#[cfg(target_os = "android")]
+static ANDROID_XR_START_FALLBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 
 const CAMERA_PAIR_CLOSE_TIMESTAMP_NS: u64 = 25_000_000;
 const CAMERA_FRAME_STALE_THRESHOLD_MS: f64 = 100.0;
 const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
+const PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA: f32 = 0.30;
 
 script_mod! {
     use mod.pod.*
@@ -1458,6 +1463,12 @@ pub struct App {
     manifold_breath_feedback_subscriber: Option<ManifoldBreathFeedbackSubscriber>,
     #[rust]
     manifold_breath_feedback_config_marker: Option<String>,
+    #[rust]
+    projection_target_breath_scale_ready: bool,
+    #[rust]
+    projection_target_breath_last_sequence_id: u64,
+    #[rust]
+    projection_target_breath_last_log_frame: u64,
     #[rust]
     projection_target_joystick_scale_ready: bool,
     #[rust]
@@ -3165,8 +3176,11 @@ impl App {
                 1,
                 u16::MAX,
             ),
-            stream_id: hotload_text(
-                KEY_MANIFOLD_BREATH_FEEDBACK_STREAM,
+            stream_id: hotload_text_any(
+                &[
+                    KEY_MANIFOLD_BREATH_FEEDBACK_STREAM,
+                    rxrc::KEY_PROJECTION_TARGET_BREATH_STREAM,
+                ],
                 DEFAULT_MANIFOLD_BREATH_FEEDBACK_STREAM,
             ),
             receiver_id: hotload_text(
@@ -3240,6 +3254,13 @@ impl App {
         ))
     }
 
+    fn projection_target_breath_controls_enabled() -> bool {
+        makepad_projection_target_breath_controls_enabled_from_value(&hotload_text(
+            rxrc::KEY_PROJECTION_TARGET_BREATH_CONTROLS,
+            "off",
+        ))
+    }
+
     fn handle_projection_target_joystick(&mut self, cx: &mut Cx, update: &XrUpdateEvent) {
         if !Self::projection_target_joystick_controls_enabled() {
             self.projection_target_joystick_scale_ready = false;
@@ -3247,6 +3268,7 @@ impl App {
             return;
         }
 
+        let breath_controls_scale = Self::projection_target_breath_controls_enabled();
         let state = update.state.as_ref();
         let now_seconds = state.time.max(0.0);
         if !self.projection_target_joystick_scale_ready {
@@ -3314,7 +3336,7 @@ impl App {
                 }
             }
         }
-        if state.right_controller.active() {
+        if state.right_controller.active() && !breath_controls_scale {
             if let Some(next_scale) = makepad_projection_target_scale_step(
                 self.projection_target_joystick_scale,
                 state.right_controller.stick.y,
@@ -3357,7 +3379,9 @@ impl App {
         let mut tuning = self.current_horizontal_alignment_tuning();
         tuning.projection_target_offset_x_uv = self.projection_target_joystick_offset_x_uv;
         tuning.projection_target_offset_y_uv = self.projection_target_joystick_offset_y_uv;
-        tuning.projection_target_scale = self.projection_target_joystick_scale;
+        if !breath_controls_scale {
+            tuning.projection_target_scale = self.projection_target_joystick_scale;
+        }
         self.projection_target_offset_x_uv = tuning.projection_target_offset_x_uv;
         self.projection_target_offset_y_uv = tuning.projection_target_offset_y_uv;
         self.projection_target_scale = tuning.projection_target_scale;
@@ -3418,6 +3442,131 @@ impl App {
             ));
             self.manifold_breath_feedback_subscriber =
                 Some(ManifoldBreathFeedbackSubscriber::new(config));
+        }
+    }
+
+    fn handle_projection_target_breath_feedback(&mut self, cx: &mut Cx) {
+        if !Self::projection_target_breath_controls_enabled() {
+            self.projection_target_breath_scale_ready = false;
+            self.projection_target_breath_last_sequence_id = 0;
+            return;
+        }
+        let Some(sample) = self
+            .manifold_breath_feedback_subscriber
+            .as_ref()
+            .and_then(ManifoldBreathFeedbackSubscriber::latest_sample)
+        else {
+            return;
+        };
+        let min_quality = hotload_f32(
+            rxrc::KEY_PROJECTION_TARGET_BREATH_MIN_QUALITY,
+            0.0,
+            0.0,
+            1.0,
+        );
+        if sample.quality01 < min_quality as f64 {
+            return;
+        }
+        let min_scale = hotload_f32(
+            rxrc::KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
+            TARGET_PROJECTION_TARGET_SCALE,
+            PROJECTION_TARGET_MIN_SCALE,
+            PROJECTION_TARGET_MAX_SCALE,
+        );
+        let max_scale = hotload_f32(
+            rxrc::KEY_PROJECTION_TARGET_BREATH_MAX_SCALE,
+            PROJECTION_TARGET_MAX_SCALE,
+            PROJECTION_TARGET_MIN_SCALE,
+            PROJECTION_TARGET_MAX_SCALE,
+        );
+        let smoothing_alpha = hotload_f32(
+            rxrc::KEY_PROJECTION_TARGET_BREATH_SMOOTHING_ALPHA,
+            PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
+            0.0,
+            1.0,
+        );
+        let invert = hotload_bool(rxrc::KEY_PROJECTION_TARGET_BREATH_INVERT, false);
+        self.apply_projection_target_breath_sample(
+            cx,
+            sample,
+            min_scale,
+            max_scale,
+            smoothing_alpha,
+            invert,
+        );
+    }
+
+    fn apply_projection_target_breath_sample(
+        &mut self,
+        cx: &mut Cx,
+        sample: BreathFeedbackSample,
+        min_scale: f32,
+        max_scale: f32,
+        smoothing_alpha: f32,
+        invert: bool,
+    ) {
+        let was_ready = self.projection_target_breath_scale_ready;
+        let previous_sequence_id = self.projection_target_breath_last_sequence_id;
+        let is_new_sample = makepad_projection_target_breath_sample_is_new(
+            was_ready,
+            previous_sequence_id,
+            sample.sequence_id,
+        );
+        let target_scale = makepad_projection_target_breath_scale(
+            sample.volume01 as f32,
+            min_scale,
+            max_scale,
+            invert,
+        );
+        let smoothing_alpha = makepad_projection_target_breath_smoothing_alpha(smoothing_alpha);
+        let next_scale = if self.projection_target_breath_scale_ready {
+            makepad_projection_target_breath_lerp(
+                self.projection_target_scale,
+                target_scale,
+                smoothing_alpha,
+            )
+        } else {
+            target_scale
+        }
+        .clamp(PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_MAX_SCALE);
+        let changed = !was_ready || (next_scale - self.projection_target_scale).abs() > 0.0001;
+        self.projection_target_breath_scale_ready = true;
+        self.projection_target_breath_last_sequence_id = sample.sequence_id;
+        self.projection_target_joystick_scale = next_scale;
+
+        let mut tuning = self.current_horizontal_alignment_tuning();
+        if Self::projection_target_joystick_controls_enabled()
+            && self.projection_target_joystick_scale_ready
+        {
+            tuning.projection_target_offset_x_uv = self.projection_target_joystick_offset_x_uv;
+            tuning.projection_target_offset_y_uv = self.projection_target_joystick_offset_y_uv;
+        }
+        tuning.projection_target_scale = next_scale;
+        self.projection_target_offset_x_uv = tuning.projection_target_offset_x_uv;
+        self.projection_target_offset_y_uv = tuning.projection_target_offset_y_uv;
+        self.projection_target_scale = tuning.projection_target_scale;
+        let panel_bound = self.apply_horizontal_alignment_tuning_to_panel(cx, tuning);
+
+        if is_new_sample {
+            Self::emit_stereo_projection_marker(&format!(
+                "phase=projection-target-tuning status=ok source=manifold-breath-volume-selected stream={} sequenceId={} previousSequenceId={} newSample=true scaleChanged={} sourceId={} inputStreamId={} volume01={:.4} quality01={:.4} minScale={:.4} maxScale={:.4} smoothingAlpha={:.4} invert={} targetScale={:.4} projectionTargetScale={:.4} panelBound={}",
+                marker_token(&sample.stream_id),
+                sample.sequence_id,
+                previous_sequence_id,
+                changed,
+                marker_token(&sample.source_id),
+                marker_token(&sample.input_stream_id),
+                sample.volume01,
+                sample.quality01,
+                min_scale,
+                max_scale,
+                smoothing_alpha,
+                invert,
+                target_scale,
+                tuning.projection_target_scale,
+                panel_bound,
+            ));
+            self.projection_target_breath_last_log_frame = self.cadence_xr_update_count;
         }
     }
 
@@ -3951,7 +4100,14 @@ impl App {
         {
             tuning.projection_target_offset_x_uv = self.projection_target_joystick_offset_x_uv;
             tuning.projection_target_offset_y_uv = self.projection_target_joystick_offset_y_uv;
-            tuning.projection_target_scale = self.projection_target_joystick_scale;
+            if !Self::projection_target_breath_controls_enabled() {
+                tuning.projection_target_scale = self.projection_target_joystick_scale;
+            }
+        }
+        if Self::projection_target_breath_controls_enabled()
+            && self.projection_target_breath_scale_ready
+        {
+            tuning.projection_target_scale = self.projection_target_scale;
         }
         let changed = !self.horizontal_alignment_tuning_ready
             || (self.horizontal_alignment_strength - tuning.strength).abs() > 0.0001
@@ -4095,6 +4251,7 @@ impl App {
                 self.handle_manifold_breath_feedback_subscription();
                 self.handle_manifold_pose_publish(_update);
                 self.handle_projection_target_joystick(cx, _update);
+                self.handle_projection_target_breath_feedback(cx);
                 #[cfg(target_os = "android")]
                 self.update_runtime_xr_projection(_update);
                 let adopted = self.try_adopt_pending_stereo_camera_frame("xr-update");
@@ -4132,6 +4289,25 @@ impl App {
         }
 
         self.cadence_next_frame = Some(cx.new_next_frame());
+    }
+
+    #[cfg(target_os = "android")]
+    fn request_android_xr_start_fallback_once(&mut self, cx: &mut Cx, phase: &str) {
+        if ANDROID_XR_START_FALLBACK_REQUESTED.swap(true, Ordering::SeqCst) {
+            return;
+        }
+        if cx.in_xr_mode() {
+            emit_marker_line(&format!(
+                "RUSTY_XR_MAKEPAD_XR_START_FALLBACK schema=rusty.makepad.xr_start_fallback.v1 phase={} status=already_presenting directXrActivity=true",
+                phase
+            ));
+            return;
+        }
+        cx.xr_start_presenting();
+        emit_marker_line(&format!(
+            "RUSTY_XR_MAKEPAD_XR_START_FALLBACK schema=rusty.makepad.xr_start_fallback.v1 phase={} status=requested directXrActivity=true permissionFlowFallback=true",
+            phase
+        ));
     }
 
     fn record_camera_texture_update(&mut self, side: StereoEye, position_ms: u128) -> u64 {
@@ -6864,7 +7040,7 @@ mod tests {
         assert!(marker.contains("status=enabled"));
         assert!(marker.contains("enabled=true"));
         assert!(marker.contains("enabledRaw=default"));
-        assert!(marker.contains("stream=stream.breath.feedback_state"));
+        assert!(marker.contains("stream=stream.breath.volume.selected"));
         assert!(marker.contains("receiver=app.makepad_camera_shell.breath_feedback"));
         assert!(marker.contains("brokerPort=18765"));
         assert!(marker.contains("flagsOwner=hostessctl.record_values"));
@@ -7352,6 +7528,8 @@ impl MatchEvent for App {
         let config = Self::runtime_config();
         cx.xr_set_native_passthrough(makepad_native_passthrough_enabled());
         cx.xr_set_render_scale(runtime_float(&config, KEY_XR_RENDER_SCALE) as f32);
+        #[cfg(target_os = "android")]
+        self.request_android_xr_start_fallback_once(cx, "match_startup");
     }
 
     fn handle_actions(&mut self, cx: &mut Cx, actions: &Actions) {
@@ -7378,6 +7556,8 @@ impl AppMain for App {
     }
 
     fn handle_event(&mut self, cx: &mut Cx, event: &Event) {
+        #[cfg(target_os = "android")]
+        self.request_android_xr_start_fallback_once(cx, "first_event");
         self.match_event(cx, event);
         self.handle_cadence_event(cx, event);
         self.handle_paired_import_event(cx, event);
@@ -7437,6 +7617,20 @@ fn makepad_projection_target_joystick_controls_enabled_from_value(value: &str) -
     )
 }
 
+fn makepad_projection_target_breath_controls_enabled_from_value(value: &str) -> bool {
+    matches!(
+        value.trim().to_ascii_lowercase().replace('_', "-").as_str(),
+        "scale"
+            | "breath-scale"
+            | "selected-scale"
+            | "target-scale"
+            | "on"
+            | "true"
+            | "1"
+            | "enabled"
+    )
+}
+
 fn makepad_projection_target_scale() -> f32 {
     hotload_f32(
         rxrc::KEY_PROJECTION_TARGET_SCALE,
@@ -7444,6 +7638,36 @@ fn makepad_projection_target_scale() -> f32 {
         PROJECTION_TARGET_MIN_SCALE,
         PROJECTION_TARGET_MAX_SCALE,
     )
+}
+
+fn makepad_projection_target_breath_scale(
+    volume01: f32,
+    min_scale: f32,
+    max_scale: f32,
+    invert: bool,
+) -> f32 {
+    let volume01 = if invert { 1.0 - volume01 } else { volume01 }.clamp(0.0, 1.0);
+    let lower = min_scale.min(max_scale);
+    let upper = min_scale.max(max_scale);
+    (min_scale + (max_scale - min_scale) * volume01)
+        .clamp(lower, upper)
+        .clamp(PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_MAX_SCALE)
+}
+
+fn makepad_projection_target_breath_smoothing_alpha(value: f32) -> f32 {
+    value.clamp(0.0, 1.0)
+}
+
+fn makepad_projection_target_breath_lerp(current: f32, target: f32, smoothing_alpha: f32) -> f32 {
+    current + (target - current) * makepad_projection_target_breath_smoothing_alpha(smoothing_alpha)
+}
+
+fn makepad_projection_target_breath_sample_is_new(
+    scale_ready: bool,
+    previous_sequence_id: u64,
+    sequence_id: u64,
+) -> bool {
+    !scale_ready || sequence_id != previous_sequence_id
 }
 
 fn makepad_projection_target_offset_x_uv() -> f32 {
@@ -7515,6 +7739,69 @@ mod projection_target_joystick_tests {
             makepad_projection_target_joystick_controls_enabled_from_value("joystick_offset_scale")
         );
         assert!(!makepad_projection_target_joystick_controls_enabled_from_value("off"));
+    }
+
+    #[test]
+    fn breath_controls_parse_selected_scale_aliases() {
+        assert!(makepad_projection_target_breath_controls_enabled_from_value("scale"));
+        assert!(makepad_projection_target_breath_controls_enabled_from_value("selected_scale"));
+        assert!(!makepad_projection_target_breath_controls_enabled_from_value("offset-scale"));
+    }
+
+    #[test]
+    fn breath_volume_maps_default_scale_to_expanded_scale() {
+        assert_eq!(
+            makepad_projection_target_breath_scale(0.0, TARGET_PROJECTION_TARGET_SCALE, 5.0, false),
+            TARGET_PROJECTION_TARGET_SCALE
+        );
+        assert_eq!(
+            makepad_projection_target_breath_scale(1.0, TARGET_PROJECTION_TARGET_SCALE, 5.0, false),
+            5.0
+        );
+        assert_eq!(
+            makepad_projection_target_breath_scale(1.0, TARGET_PROJECTION_TARGET_SCALE, 5.0, true),
+            TARGET_PROJECTION_TARGET_SCALE
+        );
+    }
+
+    #[test]
+    fn breath_volume_maps_calibrated_scale_to_smaller_endpoint() {
+        assert_eq!(
+            makepad_projection_target_breath_scale(0.0, 1.0, 0.1796, false),
+            1.0
+        );
+        assert_eq!(
+            makepad_projection_target_breath_scale(1.0, 1.0, 0.1796, false),
+            0.1796
+        );
+        assert!(
+            (makepad_projection_target_breath_scale(0.5, 1.0, 0.1796, false) - 0.5898).abs()
+                < 0.000_01
+        );
+    }
+
+    #[test]
+    fn breath_lerp_smooths_toward_target_without_overshoot() {
+        assert!((makepad_projection_target_breath_lerp(1.0, 5.0, 0.30) - 2.2).abs() < 0.000_01);
+        assert!((makepad_projection_target_breath_lerp(5.0, 1.0, 0.30) - 3.8).abs() < 0.000_01);
+        assert_eq!(makepad_projection_target_breath_lerp(1.0, 5.0, 0.0), 1.0);
+        assert_eq!(makepad_projection_target_breath_lerp(1.0, 5.0, 1.0), 5.0);
+    }
+
+    #[test]
+    fn breath_smoothing_alpha_clamps_to_lerp_domain() {
+        assert_eq!(makepad_projection_target_breath_smoothing_alpha(-0.25), 0.0);
+        assert_eq!(makepad_projection_target_breath_smoothing_alpha(0.30), 0.30);
+        assert_eq!(makepad_projection_target_breath_smoothing_alpha(1.25), 1.0);
+    }
+
+    #[test]
+    fn breath_marker_sample_identity_tracks_new_sequences() {
+        assert!(makepad_projection_target_breath_sample_is_new(false, 0, 12));
+        assert!(!makepad_projection_target_breath_sample_is_new(
+            true, 12, 12
+        ));
+        assert!(makepad_projection_target_breath_sample_is_new(true, 12, 13));
     }
 
     #[test]

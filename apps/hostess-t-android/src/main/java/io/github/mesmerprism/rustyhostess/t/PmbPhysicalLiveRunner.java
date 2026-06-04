@@ -39,7 +39,9 @@ final class PmbPhysicalLiveRunner {
         int scanTimeoutMs = intExtra(intent, "scan_timeout_ms", 30000);
         int controllerWaitMs = intExtra(intent, "controller_wait_ms", 15000);
         int feedbackLimit = intExtra(intent, "feedback_publish_limit", 24);
+        String breathSelectedSource = stringExtra(intent, "breath_selected_source", "auto");
         int receiptListenMs = intExtra(intent, "receipt_listen_ms", 6000);
+        int livePublishIntervalMs = intExtra(intent, "live_publish_interval_ms", 1000);
         File evidenceRoot = new File(context.getExternalFilesDir(null), "hostess-t/evidence/pmb-physical-live");
         File packageRoot = new File(context.getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
         String status = "fail";
@@ -50,7 +52,7 @@ final class PmbPhysicalLiveRunner {
                 throw new IOException("could not create PMB physical live evidence folder");
             }
             File eventsJsonl = new File(evidenceRoot, "latest.transport-events.jsonl");
-            PmbBrokerBridge.PhysicalCaptureResult captureResult = PmbBrokerBridge.capturePhysicalInputs(
+            PmbBrokerBridge.PhysicalLiveResult liveResult = PmbBrokerBridge.capturePhysicalInputsAndPublishLive(
                     brokerHost,
                     brokerPort,
                     deviceAddress,
@@ -58,30 +60,19 @@ final class PmbPhysicalLiveRunner {
                     scanTimeoutMs,
                     durationMs,
                     controllerWaitMs,
-                    eventsJsonl);
-            JSONObject captureReport = captureResult.toJson();
+                    eventsJsonl,
+                    packageRoot.getAbsolutePath(),
+                    feedbackLimit,
+                    receiptListenMs,
+                    breathSelectedSource,
+                    livePublishIntervalMs);
+            JSONObject captureReport = liveResult.captureResult.toJson();
+            JSONObject brokerReport = liveResult.brokerResult.toJson();
             List<String> errors = jsonArrayStrings(captureReport.optJSONArray("errors"));
             JSONObject routeReport = "pass".equals(captureReport.optString("status"))
                     ? PMBRuntime.runLiveRouteFromEvents(packageRoot.getAbsolutePath(), eventsJsonl.getAbsolutePath())
                     : pmbFailureLiveRouteReport(packageRoot.getAbsolutePath(), "physical input capture failed");
             errors.addAll(pmbCoreErrors(routeReport));
-            JSONObject brokerReport;
-            try {
-                if ("pass".equals(routeReport.optString("status"))) {
-                    PmbBrokerBridge.Result brokerResult = PmbBrokerBridge.publishRoute(
-                            routeReport,
-                            brokerHost,
-                            brokerPort,
-                            feedbackLimit,
-                            receiptListenMs);
-                    brokerReport = brokerResult.toJson();
-                } else {
-                    brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, "physical live route failed");
-                }
-            } catch (IOException | JSONException | RuntimeException brokerEx) {
-                brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, brokerEx.getMessage());
-                errors.add(brokerEx.getMessage() == null ? brokerEx.toString() : brokerEx.getMessage());
-            }
             if (!"pass".equals(brokerReport.optString("status"))) {
                 errors.addAll(jsonArrayStrings(brokerReport.optJSONArray("errors")));
             }
@@ -279,9 +270,27 @@ final class PmbPhysicalLiveRunner {
                 .put("broker_transport_used", false)
                 .put("publish_limit", 0)
                 .put("receipt_listen_ms", 0)
+                .put("selected_source_preference", "auto")
+                .put("selected_source_effective", "unknown")
+                .put("publish_mode", "failed")
+                .put("live_publish_during_capture", false)
+                .put("incremental_processor_used", false)
+                .put("snapshot_replay_used", false)
+                .put("live_publish_interval_ms", 0)
+                .put("input_event_processed_count", 0)
+                .put("live_processor_update_count", 0)
+                .put("live_processor_output_update_count", 0)
+                .put("live_publish_attempt_count", 0)
+                .put("live_route_pass_count", 0)
+                .put("live_route_fail_count", 0)
+                .put("first_selected_publish_elapsed_ms", -1)
+                .put("last_selected_publish_elapsed_ms", -1)
+                .put("last_route_status", "missing")
                 .put("breath_requested_count", 0)
                 .put("feedback_requested_count", 0)
                 .put("breath_published_count", 0)
+                .put("selected_breath_published_count", 0)
+                .put("selection_state_published_count", 0)
                 .put("feedback_published_count", 0)
                 .put("feedback_receipt_count", 0)
                 .put("receipt_stream_id", PmbBrokerBridge.STREAM_BREATH_FEEDBACK_RECEIPT)

@@ -14,6 +14,7 @@ public final class PmbPhysicalLiveService extends Service {
 
     private static final String CHANNEL_ID = "rusty_hostess_pmb_physical_live";
     private static final int NOTIFICATION_ID = 72;
+    private Thread workerThread;
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
@@ -22,7 +23,10 @@ public final class PmbPhysicalLiveService extends Service {
             return START_NOT_STICKY;
         }
         startForegroundCompat();
-        new Thread(() -> {
+        if (workerThread != null && workerThread.isAlive()) {
+            return START_NOT_STICKY;
+        }
+        workerThread = new Thread(() -> {
             try {
                 PmbPhysicalLiveRunner.run(getApplicationContext(), intent);
             } finally {
@@ -33,8 +37,17 @@ public final class PmbPhysicalLiveService extends Service {
                 }
                 stopSelf(startId);
             }
-        }, "hostess-pmb-physical-live-service").start();
+        }, "hostess-pmb-physical-live-service");
+        workerThread.start();
         return START_NOT_STICKY;
+    }
+
+    @Override
+    public void onDestroy() {
+        if (workerThread != null) {
+            workerThread.interrupt();
+        }
+        super.onDestroy();
     }
 
     @Override

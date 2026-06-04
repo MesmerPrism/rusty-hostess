@@ -29,6 +29,10 @@ final class PmbBrokerBridge {
     static final String EXTERNAL_STREAM_POLAR_ACC = "bio:polar_acc";
     static final String STREAM_OBJECT_POSE = "stream.motion.object_pose";
     static final String STREAM_BREATH_VOLUME = "stream.breath.volume";
+    static final String STREAM_BREATH_VOLUME_SELECTED = "stream.breath.volume.selected";
+    static final String STREAM_BREATH_VOLUME_POLAR = "stream.breath.volume.polar";
+    static final String STREAM_BREATH_VOLUME_CONTROLLER = "stream.breath.volume.controller";
+    static final String STREAM_BREATH_SELECTION_STATE = "stream.breath.selection_state";
     static final String STREAM_BREATH_FEEDBACK_STATE = "stream.breath.feedback_state";
     static final String STREAM_BREATH_FEEDBACK_RECEIPT = "stream.breath.feedback_receipt";
 
@@ -115,8 +119,178 @@ final class PmbBrokerBridge {
 
     static Result publishRoute(JSONObject routeReport, String host, int port, int limit, int receiptListenMs)
             throws IOException, JSONException {
+        return publishRoute(routeReport, host, port, limit, receiptListenMs, "auto");
+    }
+
+    static PhysicalLiveResult capturePhysicalInputsAndPublishLive(
+            String host,
+            int port,
+            String deviceAddress,
+            int accRateHz,
+            int scanTimeoutMs,
+            int durationMs,
+            int controllerWaitMs,
+            File eventsJsonl,
+            String packageRoot,
+            int feedbackLimit,
+            int receiptListenMs,
+            String selectedSourcePreference,
+            int livePublishIntervalMs) throws IOException, JSONException {
+        PhysicalCaptureResult captureResult = new PhysicalCaptureResult(
+                host,
+                port,
+                deviceAddress,
+                accRateHz,
+                scanTimeoutMs,
+                durationMs,
+                controllerWaitMs,
+                eventsJsonl.getAbsolutePath());
+        Result brokerResult = new Result(host, port, feedbackLimit, receiptListenMs);
+        brokerResult.selectedSourcePreference = normalizeSelectedSourcePreference(selectedSourcePreference);
+        brokerResult.publishMode = "event_driven_live_processor";
+        brokerResult.livePublishDuringCapture = true;
+        brokerResult.incrementalProcessorUsed = true;
+        brokerResult.snapshotReplayUsed = false;
+        brokerResult.livePublishIntervalMs = 0;
+        brokerResult.clientId = "app.rusty_hostess_t.quest.pmb_physical_live";
+        brokerResult.requestIdPrefix = "quest-pmb-physical-live";
+        brokerResult.processorId = "processor.projected_motion_breath.quest_live_transport";
+        LivePublishState publishState = new LivePublishState();
+        File parent = eventsJsonl.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("could not create PMB physical live event folder");
+        }
+
+        try (BrokerWebSocketClient captureClient = BrokerWebSocketClient.open(host, port, 2500);
+                BrokerWebSocketClient publishClient = BrokerWebSocketClient.open(host, port, 2500);
+                BufferedWriter writer = new BufferedWriter(new FileWriter(eventsJsonl, false))) {
+            captureResult.brokerConnected = true;
+            brokerResult.brokerConnected = true;
+            captureClient.sendJson(new JSONObject()
+                    .put("type", "hello")
+                    .put("client_id", "app.rusty_hostess_t.quest.pmb_physical_live")
+                    .put("app_package", "io.github.mesmerprism.rustyhostess.t")
+                    .put("role", "quest_pmb_physical_live_processor"), 1);
+            captureClient.readJson(500);
+            physicalCommandAndWait(captureClient, captureResult, "subscribe", new JSONObject()
+                    .put("stream", EXTERNAL_STREAM_POLAR_ACC)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 2);
+            physicalCommandAndWait(captureClient, captureResult, "subscribe", new JSONObject()
+                    .put("stream", STREAM_BREATH_FEEDBACK_RECEIPT)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 3);
+            physicalCommandAndWait(captureClient, captureResult, "subscribe", new JSONObject()
+                    .put("stream", STREAM_OBJECT_POSE)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 4);
+
+            publishClient.sendJson(new JSONObject()
+                    .put("type", "hello")
+                    .put("client_id", brokerResult.clientId)
+                    .put("app_package", "io.github.mesmerprism.rustyhostess.t")
+                    .put("role", "quest_pmb_physical_live_publisher"), 5);
+            publishClient.readJson(500, brokerResult);
+            sendCommandAndWait(publishClient, brokerResult, "subscribe", new JSONObject()
+                    .put("stream", STREAM_BREATH_FEEDBACK_RECEIPT)
+                    .put("receiver", brokerResult.clientId), publishState.nextCommandSequence());
+            long processorHandle = PMBRuntime.openLiveTransportProcessor(packageRoot);
+
+            captureResult.polarStartStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.start", new JSONObject()
+                    .put("device_address", deviceAddress == null ? "" : deviceAddress)
+                    .put("scan_timeout_ms", scanTimeoutMs)
+                    .put("pmd_stream", "acc")
+                    .put("acc_sample_rate_hz", accRateHz)
+                    .put("high_connection_priority", true), 6);
+
+            long startedMs = System.currentTimeMillis();
+            boolean runUntilStopped = durationMs <= 0;
+            long deadline = runUntilStopped ? Long.MAX_VALUE : startedMs + Math.max(0, durationMs);
+            while ((runUntilStopped || System.currentTimeMillis() < deadline)
+                    && !Thread.currentThread().isInterrupted()) {
+                long now = System.currentTimeMillis();
+                int timeout = runUntilStopped
+                        ? 250
+                        : (int) Math.max(50, Math.min(250, deadline - now));
+                JSONObject message = captureClient.readJson(timeout);
+                if (message != null && captureResult.acceptCaptureMessage(message, writer)) {
+                    brokerResult.inputEventProcessedCount += 1;
+                    JSONObject update = PMBRuntime.pushLiveTransportEvent(
+                            processorHandle,
+                            message.toString(),
+                            brokerResult.selectedSourcePreference);
+                    publishLiveTransportUpdate(
+                            publishClient,
+                            brokerResult,
+                            update,
+                            publishState,
+                            startedMs);
+                    drainFeedbackReceipts(publishClient, brokerResult, 50);
+                }
+            }
+            writer.flush();
+            JSONObject closeUpdate = PMBRuntime.closeLiveTransportProcessor(processorHandle);
+            brokerResult.closeReport = closeUpdate;
+            captureResult.polarStopStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.stop", new JSONObject(), 7);
+
+            long receiptDeadline = System.currentTimeMillis() + Math.max(0, receiptListenMs);
+            while (System.currentTimeMillis() < receiptDeadline
+                    && brokerResult.feedbackReceiptCount < brokerResult.selectedBreathPublishedCount) {
+                int timeout = (int) Math.max(50, Math.min(250, receiptDeadline - System.currentTimeMillis()));
+                publishClient.readJson(timeout, brokerResult);
+            }
+        } catch (IOException | JSONException | RuntimeException ex) {
+            captureResult.errors.put(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+            brokerResult.errors.put(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+            throw ex;
+        }
+
+        captureResult.status = captureResult.polarEventCount > 0
+                && captureResult.activeTrackedConnectedObjectPoseCount > 0
+                && captureResult.errors.length() == 0
+                ? "pass"
+                : "fail";
+        if (captureResult.polarEventCount <= 0) {
+            captureResult.errors.put("issue.polar_acc_events_missing");
+        }
+        if (captureResult.activeTrackedConnectedObjectPoseCount <= 0) {
+            captureResult.errors.put("issue.controller_pose_active_tracked_connected_missing");
+        }
+        brokerResult.status = brokerResult.liveRoutePassCount > 0
+                && brokerResult.firstSelectedPublishElapsedMs >= 0
+                && brokerResult.selectedBreathPublishedCount > 0
+                && brokerResult.feedbackPublishedCount > 0
+                && brokerResult.feedbackReceiptCount == brokerResult.selectedBreathPublishedCount
+                ? "pass"
+                : "fail";
+        if (brokerResult.liveRoutePassCount <= 0) {
+            brokerResult.errors.put("issue.pmb_live_processor_did_not_emit_during_capture");
+        }
+        if (brokerResult.firstSelectedPublishElapsedMs < 0 || brokerResult.selectedBreathPublishedCount <= 0) {
+            brokerResult.errors.put("issue.selected_breath_volume_stream_missing_during_capture");
+        }
+        if (!"pass".equals(brokerResult.status)
+                && brokerResult.feedbackReceiptCount < brokerResult.selectedBreathPublishedCount) {
+            brokerResult.errors.put("issue.makepad_selected_breath_receipts_missing");
+        }
+        return new PhysicalLiveResult(captureResult, brokerResult);
+    }
+
+    static Result publishRoute(
+            JSONObject routeReport,
+            String host,
+            int port,
+            int limit,
+            int receiptListenMs,
+            String selectedSourcePreference)
+            throws IOException, JSONException {
         Result result = new Result(host, port, limit, receiptListenMs);
+        result.selectedSourcePreference = normalizeSelectedSourcePreference(selectedSourcePreference);
+        result.publishMode = "post_capture_replay";
+        result.livePublishDuringCapture = false;
         List<JSONObject> breathSamples = selectSamples(routeReport.optJSONArray("breath_samples"), limit);
+        List<JSONObject> selectedBreathSamples = selectSelectedBreathSamples(
+                breathSamples,
+                result.selectedSourcePreference,
+                limit);
+        result.selectedSourceEffective = effectiveSelectedSource(breathSamples, result.selectedSourcePreference);
         List<JSONObject> feedbackSamples = selectSamples(routeReport.optJSONArray("feedback_samples"), limit);
         result.breathRequestedCount = routeReport.optJSONArray("breath_samples") == null
                 ? 0
@@ -140,16 +314,55 @@ final class PmbBrokerBridge {
             int sequence = 3;
             for (int index = 0; index < breathSamples.size(); index++) {
                 JSONObject sample = breathSamples.get(index);
+                long sampleSequence = sample.optLong("sequence_id", index + 1);
                 PublishResult publish = publishStreamSample(
                         client,
                         result,
                         STREAM_BREATH_VOLUME,
-                        sample.optLong("sequence_id", index + 1),
-                        breathPayload(sample, index + 1),
+                        sampleSequence,
+                        breathPayload(sample, index + 1, STREAM_BREATH_VOLUME, false, result),
                         sequence++);
                 result.breathPublishResults.put(publish.toJson());
                 if ("pass".equals(publish.status)) {
                     result.breathPublishedCount += 1;
+                }
+                String sourceStream = breathSourceStreamId(sample);
+                if (!sourceStream.isEmpty()) {
+                    PublishResult sourcePublish = publishStreamSample(
+                            client,
+                            result,
+                            sourceStream,
+                            sampleSequence,
+                            breathPayload(sample, index + 1, sourceStream, false, result),
+                            sequence++);
+                    result.breathPublishResults.put(sourcePublish.toJson());
+                }
+            }
+            for (int index = 0; index < selectedBreathSamples.size(); index++) {
+                JSONObject sample = selectedBreathSamples.get(index);
+                PublishResult publish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_VOLUME_SELECTED,
+                        sample.optLong("sequence_id", index + 1),
+                        breathPayload(sample, index + 1, STREAM_BREATH_VOLUME_SELECTED, true, result),
+                        sequence++);
+                result.breathPublishResults.put(publish.toJson());
+                if ("pass".equals(publish.status)) {
+                    result.selectedBreathPublishedCount += 1;
+                }
+            }
+            if (limit > 0) {
+                PublishResult selectionPublish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_SELECTION_STATE,
+                        1,
+                        selectionStatePayload(result, selectedBreathSamples.size()),
+                        sequence++);
+                result.breathPublishResults.put(selectionPublish.toJson());
+                if ("pass".equals(selectionPublish.status)) {
+                    result.selectionStatePublishedCount += 1;
                 }
             }
             for (int index = 0; index < feedbackSamples.size(); index++) {
@@ -159,7 +372,7 @@ final class PmbBrokerBridge {
                         result,
                         STREAM_BREATH_FEEDBACK_STATE,
                         sample.optLong("sequence_id", index + 1),
-                        feedbackPayload(sample, index + 1),
+                        feedbackPayload(sample, index + 1, result),
                         sequence++);
                 result.feedbackPublishResults.put(publish.toJson());
                 if ("pass".equals(publish.status)) {
@@ -169,19 +382,162 @@ final class PmbBrokerBridge {
 
             long deadline = System.currentTimeMillis() + Math.max(0, receiptListenMs);
             while (System.currentTimeMillis() < deadline
-                    && result.feedbackReceiptCount < result.feedbackPublishedCount) {
+                    && result.feedbackReceiptCount < result.selectedBreathPublishedCount) {
                 int timeout = (int) Math.max(50, Math.min(250, deadline - System.currentTimeMillis()));
                 client.readJson(timeout, result);
             }
         }
-        result.status = result.feedbackPublishedCount > 0
-                && result.feedbackReceiptCount == result.feedbackPublishedCount
+        result.status = result.selectedBreathPublishedCount > 0
+                && result.feedbackPublishedCount > 0
+                && result.feedbackReceiptCount == result.selectedBreathPublishedCount
                 ? "pass"
                 : "fail";
-        if (!"pass".equals(result.status) && result.feedbackReceiptCount < result.feedbackPublishedCount) {
-            result.errors.put("issue.makepad_feedback_receipts_missing");
+        if (result.selectedBreathPublishedCount <= 0) {
+            result.errors.put("issue.selected_breath_volume_stream_missing");
+        }
+        if (!"pass".equals(result.status) && result.feedbackReceiptCount < result.selectedBreathPublishedCount) {
+            result.errors.put("issue.makepad_selected_breath_receipts_missing");
         }
         return result;
+    }
+
+    private static void publishLiveTransportUpdate(
+            BrokerWebSocketClient client,
+            Result result,
+            JSONObject update,
+            LivePublishState state,
+            long startedMs) throws IOException, JSONException {
+        result.liveProcessorUpdateCount += 1;
+        result.lastRouteStatus = update.optString("status", "missing");
+        result.selectedSourceEffective = update.optString("selected_source_effective", result.selectedSourceEffective);
+        JSONArray issues = update.optJSONArray("issues");
+        if (issues != null) {
+            for (int index = 0; index < issues.length(); index++) {
+                String issue = issues.optString(index);
+                if (issue.contains("json_invalid") || issue.contains("jni_bridge_failed")) {
+                    result.errors.put(issue);
+                }
+            }
+        }
+        JSONArray breathSamples = update.optJSONArray("breath_samples");
+        if (breathSamples == null || breathSamples.length() == 0) {
+            return;
+        }
+        result.liveProcessorOutputUpdateCount += 1;
+        result.liveRoutePassCount = result.liveProcessorOutputUpdateCount;
+        maybePublishSelectionState(client, result, state);
+
+        for (int index = 0; index < breathSamples.length(); index++) {
+            JSONObject sample = breathSamples.optJSONObject(index);
+            if (sample == null) {
+                continue;
+            }
+            result.breathRequestedCount += 1;
+            long sampleSequence = sample.optLong("sequence_id", result.breathRequestedCount);
+            PublishResult aggregatePublish = publishStreamSample(
+                    client,
+                    result,
+                    STREAM_BREATH_VOLUME,
+                    sampleSequence,
+                    breathPayload(sample, result.breathRequestedCount, STREAM_BREATH_VOLUME, false, result),
+                    state.nextCommandSequence());
+            putLimited(result.breathPublishResults, aggregatePublish.toJson(), result.retainedResultLimit());
+            if ("pass".equals(aggregatePublish.status)) {
+                result.breathPublishedCount += 1;
+            }
+            String sourceStream = breathSourceStreamId(sample);
+            if (!sourceStream.isEmpty()) {
+                PublishResult sourcePublish = publishStreamSample(
+                        client,
+                        result,
+                        sourceStream,
+                        sampleSequence,
+                        breathPayload(sample, result.breathRequestedCount, sourceStream, false, result),
+                        state.nextCommandSequence());
+                putLimited(result.breathPublishResults, sourcePublish.toJson(), result.retainedResultLimit());
+            }
+            if (!sampleMatchesSelectedSource(sample, result.selectedSourceEffective)) {
+                continue;
+            }
+            PublishResult selectedPublish = publishStreamSample(
+                    client,
+                    result,
+                    STREAM_BREATH_VOLUME_SELECTED,
+                    sampleSequence,
+                    breathPayload(sample, result.selectedBreathPublishedCount + 1, STREAM_BREATH_VOLUME_SELECTED, true, result),
+                    state.nextCommandSequence());
+            putLimited(result.breathPublishResults, selectedPublish.toJson(), result.retainedResultLimit());
+            if ("pass".equals(selectedPublish.status)) {
+                result.selectedBreathPublishedCount += 1;
+                long elapsedMs = Math.max(0L, System.currentTimeMillis() - startedMs);
+                if (result.firstSelectedPublishElapsedMs < 0L) {
+                    result.firstSelectedPublishElapsedMs = elapsedMs;
+                }
+                result.lastSelectedPublishElapsedMs = elapsedMs;
+            }
+            result.feedbackRequestedCount += 1;
+            PublishResult feedbackPublish = publishStreamSample(
+                    client,
+                    result,
+                    STREAM_BREATH_FEEDBACK_STATE,
+                    sampleSequence,
+                    feedbackPayload(sample, result.feedbackRequestedCount, result),
+                    state.nextCommandSequence());
+            putLimited(result.feedbackPublishResults, feedbackPublish.toJson(), result.retainedResultLimit());
+            if ("pass".equals(feedbackPublish.status)) {
+                result.feedbackPublishedCount += 1;
+            }
+        }
+    }
+
+    private static void maybePublishSelectionState(
+            BrokerWebSocketClient client,
+            Result result,
+            LivePublishState state) throws IOException, JSONException {
+        if (result.selectedSourceEffective == null || result.selectedSourceEffective.isEmpty()) {
+            result.selectedSourceEffective = "unknown";
+        }
+        if (state.selectionStatePublished
+                && result.selectedSourceEffective.equals(state.lastSelectedSourceEffective)) {
+            return;
+        }
+        PublishResult selectionPublish = publishStreamSample(
+                client,
+                result,
+                STREAM_BREATH_SELECTION_STATE,
+                result.selectionStatePublishedCount + 1L,
+                selectionStatePayload(result, result.selectedBreathPublishedCount),
+                state.nextCommandSequence());
+        putLimited(result.breathPublishResults, selectionPublish.toJson(), result.retainedResultLimit());
+        if ("pass".equals(selectionPublish.status)) {
+            result.selectionStatePublishedCount += 1;
+            state.selectionStatePublished = true;
+            state.lastSelectedSourceEffective = result.selectedSourceEffective;
+        }
+    }
+
+    private static void drainFeedbackReceipts(
+            BrokerWebSocketClient client,
+            Result result,
+            int maxWaitMs) throws IOException, JSONException {
+        long deadline = System.currentTimeMillis() + Math.max(0, maxWaitMs);
+        while (System.currentTimeMillis() < deadline) {
+            int timeout = (int) Math.max(25, Math.min(50, deadline - System.currentTimeMillis()));
+            if (client.readJson(timeout, result) == null) {
+                return;
+            }
+        }
+    }
+
+    private static boolean sampleMatchesSelectedSource(JSONObject sample, String selectedSourceEffective) {
+        return "polar".equals(selectedSourceEffective) && "polar".equals(breathSourceKind(sample))
+                || "controller".equals(selectedSourceEffective) && "controller".equals(breathSourceKind(sample));
+    }
+
+    private static void putLimited(JSONArray array, JSONObject value, int limit) {
+        if (limit <= 0 || array.length() < limit) {
+            array.put(value);
+        }
     }
 
     static BrokerTelemetryResult observePolarAccTelemetry(
@@ -366,14 +722,14 @@ final class PmbBrokerBridge {
             String command,
             JSONObject params,
             int sequence) throws IOException, JSONException {
-        String requestId = "quest-pmb-simulated-live-" + command.replace('.', '-') + "-" + sequence;
+        String requestId = result.requestIdPrefix + "-" + command.replace('.', '-') + "-" + sequence;
         client.sendJson(new JSONObject()
                 .put("type", "command")
                 .put("schema", MANIFOLD_COMMAND_SCHEMA)
                 .put("request_id", requestId)
                 .put("command", command)
                 .put("params", params)
-                .put("client_id", "app.rusty_hostess_t.quest.pmb_simulated_live")
+                .put("client_id", result.clientId)
                 .put("app_package", "io.github.mesmerprism.rustyhostess.t"), sequence);
         long deadline = System.currentTimeMillis() + 1500L;
         while (System.currentTimeMillis() < deadline) {
@@ -395,26 +751,55 @@ final class PmbBrokerBridge {
         return "unknown";
     }
 
-    private static JSONObject breathPayload(JSONObject sample, int fallbackSequence) throws JSONException {
+    private static JSONObject breathPayload(
+            JSONObject sample,
+            int fallbackSequence,
+            String streamId,
+            boolean selected,
+            Result result) throws JSONException {
         int sequence = (int) sample.optLong("sequence_id", fallbackSequence);
-        return new JSONObject()
+        JSONObject payload = new JSONObject()
                 .put("schema", "rusty.manifold.breath.volume.v1")
-                .put("stream_id", STREAM_BREATH_VOLUME)
+                .put("stream_id", streamId)
                 .put("sequence_id", sequence)
                 .put("source_id", sample.optString("source_id", "source.unknown"))
+                .put("source_kind", breathSourceKind(sample))
                 .put("input_stream_id", sample.optString("input_stream_id", ""))
                 .put("normalized_stream_id", sample.optString("normalized_stream_id", ""))
                 .put("sample_time_unix_ns", sampleTimeUnixNs(sample))
                 .put("volume01", sample.optDouble("volume01", 0.0))
                 .put("phase", sample.optString("phase", "unknown"))
                 .put("quality", sample.optString("quality", "unknown"))
+                .put("quality01", sample.optDouble("quality01", sample.optDouble("tracking01", 1.0)))
                 .put("tracking01", sample.optDouble("tracking01", 0.0))
-                .put("processor_id", "processor.projected_motion_breath.quest_simulated_live")
+                .put("processor_id", result.processorId)
+                .put("publisher", "app.rusty_hostess_t.quest")
+                .put("computation_authority", "quest_hostess_android_app");
+        if (selected) {
+            payload.put("selected", true)
+                    .put("selected_source_preference", result.selectedSourcePreference)
+                    .put("selected_source_effective", result.selectedSourceEffective);
+        }
+        return payload;
+    }
+
+    private static JSONObject selectionStatePayload(Result result, int selectedSampleCount) throws JSONException {
+        return new JSONObject()
+                .put("schema", "rusty.manifold.breath.selection_state.v1")
+                .put("stream_id", STREAM_BREATH_SELECTION_STATE)
+                .put("sequence_id", 1)
+                .put("selected_stream_id", STREAM_BREATH_VOLUME_SELECTED)
+                .put("selected_source_preference", result.selectedSourcePreference)
+                .put("selected_source_effective", result.selectedSourceEffective)
+                .put("source_stream_ids", new JSONArray()
+                        .put(STREAM_BREATH_VOLUME_POLAR)
+                        .put(STREAM_BREATH_VOLUME_CONTROLLER))
+                .put("selected_sample_count", selectedSampleCount)
                 .put("publisher", "app.rusty_hostess_t.quest")
                 .put("computation_authority", "quest_hostess_android_app");
     }
 
-    private static JSONObject feedbackPayload(JSONObject sample, int fallbackSequence) throws JSONException {
+    private static JSONObject feedbackPayload(JSONObject sample, int fallbackSequence, Result result) throws JSONException {
         int sequence = (int) sample.optLong("sequence_id", fallbackSequence);
         return new JSONObject()
                 .put("schema", "rusty.manifold.breath.feedback_state.v1")
@@ -426,7 +811,7 @@ final class PmbBrokerBridge {
                 .put("volume01", sample.optDouble("volume01", 0.0))
                 .put("phase", sample.optString("phase", "unknown"))
                 .put("quality", sample.optString("quality", "unknown"))
-                .put("processor_id", "processor.projected_motion_breath.quest_simulated_live")
+                .put("processor_id", result.processorId)
                 .put("publisher", "app.rusty_hostess_t.quest")
                 .put("computation_authority", "quest_hostess_android_app");
     }
@@ -437,6 +822,74 @@ final class PmbBrokerBridge {
         }
         double seconds = sample.optDouble("sample_time_s", 0.0);
         return (long) Math.max(0.0, seconds * 1_000_000_000.0);
+    }
+
+    private static String normalizeSelectedSourcePreference(String value) {
+        if ("polar".equals(value) || "controller".equals(value)) {
+            return value;
+        }
+        return "auto";
+    }
+
+    private static String effectiveSelectedSource(List<JSONObject> breathSamples, String preference) {
+        if (!"auto".equals(preference)) {
+            return preference;
+        }
+        boolean hasController = false;
+        for (JSONObject sample : breathSamples) {
+            String kind = breathSourceKind(sample);
+            if ("polar".equals(kind)) {
+                return "polar";
+            }
+            if ("controller".equals(kind)) {
+                hasController = true;
+            }
+        }
+        return hasController ? "controller" : "unknown";
+    }
+
+    private static List<JSONObject> selectSelectedBreathSamples(
+            List<JSONObject> breathSamples,
+            String preference,
+            int limit) {
+        List<JSONObject> selected = new ArrayList<>();
+        if (limit <= 0) {
+            return selected;
+        }
+        String effective = effectiveSelectedSource(breathSamples, preference);
+        for (JSONObject sample : breathSamples) {
+            if ("unknown".equals(effective) || effective.equals(breathSourceKind(sample))) {
+                selected.add(sample);
+                if (selected.size() >= limit) {
+                    break;
+                }
+            }
+        }
+        return selected;
+    }
+
+    private static String breathSourceKind(JSONObject sample) {
+        String text = (sample.optString("source_id", "") + " "
+                + sample.optString("input_stream_id", "") + " "
+                + sample.optString("normalized_stream_id", "")).toLowerCase();
+        if (text.contains("polar") || text.contains("bio:polar")) {
+            return "polar";
+        }
+        if (text.contains("controller") || text.contains("object_pose") || text.contains("motion.object")) {
+            return "controller";
+        }
+        return "unknown";
+    }
+
+    private static String breathSourceStreamId(JSONObject sample) {
+        String kind = breathSourceKind(sample);
+        if ("polar".equals(kind)) {
+            return STREAM_BREATH_VOLUME_POLAR;
+        }
+        if ("controller".equals(kind)) {
+            return STREAM_BREATH_VOLUME_CONTROLLER;
+        }
+        return "";
     }
 
     private static List<JSONObject> selectSamples(JSONArray samples, int limit) throws JSONException {
@@ -583,20 +1036,21 @@ final class PmbBrokerBridge {
             }
         }
 
-        void acceptCaptureMessage(JSONObject message, BufferedWriter writer) throws IOException, JSONException {
+        boolean acceptCaptureMessage(JSONObject message, BufferedWriter writer) throws IOException, JSONException {
             if (!"stream_event".equals(message.optString("type"))) {
-                return;
+                return false;
             }
             String stream = streamId(message);
             if (!EXTERNAL_STREAM_POLAR_ACC.equals(stream) && !STREAM_OBJECT_POSE.equals(stream)) {
-                return;
+                return false;
             }
             acceptObservedMessage(message);
             if (STREAM_OBJECT_POSE.equals(stream) && !isUsableObjectPose(message)) {
-                return;
+                return false;
             }
             writer.write(message.toString());
             writer.newLine();
+            return true;
         }
 
         private boolean isUsableObjectPose(JSONObject message) {
@@ -629,14 +1083,39 @@ final class PmbBrokerBridge {
         int breathRequestedCount = 0;
         int feedbackRequestedCount = 0;
         int breathPublishedCount = 0;
+        int selectedBreathPublishedCount = 0;
+        int selectionStatePublishedCount = 0;
         int feedbackPublishedCount = 0;
         int feedbackReceiptCount = 0;
+        String selectedSourcePreference = "auto";
+        String selectedSourceEffective = "auto";
+        String publishMode = "unknown";
+        boolean livePublishDuringCapture = false;
+        boolean incrementalProcessorUsed = false;
+        boolean snapshotReplayUsed = false;
+        int livePublishIntervalMs = 0;
+        int inputEventProcessedCount = 0;
+        int liveProcessorUpdateCount = 0;
+        int liveProcessorOutputUpdateCount = 0;
+        int liveRoutePassCount = 0;
+        int liveRouteFailCount = 0;
+        long firstSelectedPublishElapsedMs = -1L;
+        long lastSelectedPublishElapsedMs = -1L;
+        String lastRouteStatus = "missing";
+        String clientId = "app.rusty_hostess_t.quest.pmb_simulated_live";
+        String requestIdPrefix = "quest-pmb-simulated-live";
+        String processorId = "processor.projected_motion_breath.quest_simulated_live";
+        JSONObject closeReport = new JSONObject();
 
         Result(String brokerHost, int brokerPort, int publishLimit, int receiptListenMs) {
             this.brokerHost = brokerHost;
             this.brokerPort = brokerPort;
             this.publishLimit = publishLimit;
             this.receiptListenMs = receiptListenMs;
+        }
+
+        int retainedResultLimit() {
+            return Math.max(64, Math.max(1, publishLimit) * 8);
         }
 
         JSONObject toJson() throws JSONException {
@@ -649,9 +1128,27 @@ final class PmbBrokerBridge {
                     .put("broker_transport_used", brokerConnected)
                     .put("publish_limit", publishLimit)
                     .put("receipt_listen_ms", receiptListenMs)
+                    .put("selected_source_preference", selectedSourcePreference)
+                    .put("selected_source_effective", selectedSourceEffective)
+                    .put("publish_mode", publishMode)
+                    .put("live_publish_during_capture", livePublishDuringCapture)
+                    .put("incremental_processor_used", incrementalProcessorUsed)
+                    .put("snapshot_replay_used", snapshotReplayUsed)
+                    .put("live_publish_interval_ms", livePublishIntervalMs)
+                    .put("input_event_processed_count", inputEventProcessedCount)
+                    .put("live_processor_update_count", liveProcessorUpdateCount)
+                    .put("live_processor_output_update_count", liveProcessorOutputUpdateCount)
+                    .put("live_route_pass_count", liveRoutePassCount)
+                    .put("live_route_fail_count", liveRouteFailCount)
+                    .put("first_selected_publish_elapsed_ms", firstSelectedPublishElapsedMs)
+                    .put("last_selected_publish_elapsed_ms", lastSelectedPublishElapsedMs)
+                    .put("last_route_status", lastRouteStatus)
+                    .put("close_report", closeReport)
                     .put("breath_requested_count", breathRequestedCount)
                     .put("feedback_requested_count", feedbackRequestedCount)
                     .put("breath_published_count", breathPublishedCount)
+                    .put("selected_breath_published_count", selectedBreathPublishedCount)
+                    .put("selection_state_published_count", selectionStatePublishedCount)
                     .put("feedback_published_count", feedbackPublishedCount)
                     .put("feedback_receipt_count", feedbackReceiptCount)
                     .put("receipt_stream_id", STREAM_BREATH_FEEDBACK_RECEIPT)
@@ -673,7 +1170,30 @@ final class PmbBrokerBridge {
                 return;
             }
             feedbackReceiptCount += 1;
-            receiptEvents.put(message);
+            if (receiptEvents.length() < retainedResultLimit()) {
+                receiptEvents.put(message);
+            }
+        }
+    }
+
+    static final class PhysicalLiveResult {
+        final PhysicalCaptureResult captureResult;
+        final Result brokerResult;
+
+        PhysicalLiveResult(PhysicalCaptureResult captureResult, Result brokerResult) {
+            this.captureResult = captureResult;
+            this.brokerResult = brokerResult;
+        }
+    }
+
+    private static final class LivePublishState {
+        boolean selectionStatePublished = false;
+        String lastSelectedSourceEffective = "";
+        int commandSequence = 20;
+
+        int nextCommandSequence() {
+            commandSequence += 1;
+            return commandSequence;
         }
     }
 

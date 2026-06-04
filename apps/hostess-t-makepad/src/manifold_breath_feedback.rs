@@ -6,13 +6,13 @@ use std::{
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     thread,
     time::Duration,
 };
 
-pub(crate) const BREATH_FEEDBACK_STREAM_ID: &str = "stream.breath.feedback_state";
+pub(crate) const BREATH_FEEDBACK_STREAM_ID: &str = "stream.breath.volume.selected";
 pub(crate) const BREATH_FEEDBACK_RECEIVER_ID: &str = "app.makepad_camera_shell.breath_feedback";
 pub(crate) const BREATH_FEEDBACK_RECEIPT_COMMAND: &str = "breath_feedback.received";
 pub(crate) const BREATH_FEEDBACK_RECEIPT_SCHEMA: &str = "rusty.manifold.breath.feedback_receipt.v1";
@@ -52,25 +52,44 @@ pub(crate) struct BreathFeedbackSample {
     pub volume01: f64,
     pub phase: String,
     pub quality: String,
+    pub quality01: f64,
+    pub source_id: String,
+    pub input_stream_id: String,
     pub payload_hash: String,
 }
 
 pub(crate) struct ManifoldBreathFeedbackSubscriber {
     config: ManifoldBreathFeedbackConfig,
     stop: Arc<AtomicBool>,
+    latest: Arc<Mutex<Option<BreathFeedbackSample>>>,
 }
 
 impl ManifoldBreathFeedbackSubscriber {
     pub(crate) fn new(config: ManifoldBreathFeedbackConfig) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
+        let latest = Arc::new(Mutex::new(None));
         let worker_stop = stop.clone();
+        let worker_latest = latest.clone();
         let worker_config = config.clone();
-        thread::spawn(move || run_breath_feedback_worker(worker_config, worker_stop));
-        Self { config, stop }
+        thread::spawn(move || {
+            run_breath_feedback_worker(worker_config, worker_stop, worker_latest)
+        });
+        Self {
+            config,
+            stop,
+            latest,
+        }
     }
 
     pub(crate) fn config(&self) -> &ManifoldBreathFeedbackConfig {
         &self.config
+    }
+
+    pub(crate) fn latest_sample(&self) -> Option<BreathFeedbackSample> {
+        self.latest
+            .lock()
+            .ok()
+            .and_then(|sample| sample.as_ref().cloned())
     }
 }
 
@@ -125,6 +144,15 @@ pub(crate) fn parse_breath_feedback_event(
         "unknown",
     );
     let quality = first_string(&[payload.get("quality")], "unknown");
+    let quality01 = first_f64(&[
+        payload.get("quality01"),
+        payload.get("quality_01"),
+        payload.get("tracking01"),
+    ])
+    .unwrap_or(1.0)
+    .clamp(0.0, 1.0);
+    let source_id = first_string(&[payload.get("source_id")], "source.unknown");
+    let input_stream_id = first_string(&[payload.get("input_stream_id")], "");
     let sequence_id =
         first_u64(&[message.get("sequence_id"), payload.get("sequence_id")]).unwrap_or_default();
     let sample_time_unix_ns = first_i64(&[
@@ -140,6 +168,9 @@ pub(crate) fn parse_breath_feedback_event(
         volume01: volume01.clamp(0.0, 1.0),
         phase,
         quality,
+        quality01,
+        source_id,
+        input_stream_id,
         payload_hash: stable_json_hash(payload),
     })
 }
@@ -164,12 +195,19 @@ pub(crate) fn build_breath_feedback_receipt_command(
             "volume01": sample.volume01,
             "phase": sample.phase.clone(),
             "quality": sample.quality.clone(),
+            "quality01": sample.quality01,
+            "source_id": sample.source_id.clone(),
+            "input_stream_id": sample.input_stream_id.clone(),
             "payload_hash": sample.payload_hash.clone(),
         }
     })
 }
 
-fn run_breath_feedback_worker(config: ManifoldBreathFeedbackConfig, stop: Arc<AtomicBool>) {
+fn run_breath_feedback_worker(
+    config: ManifoldBreathFeedbackConfig,
+    stop: Arc<AtomicBool>,
+    latest: Arc<Mutex<Option<BreathFeedbackSample>>>,
+) {
     let mut client = BrokerWebSocketClient::new(config.clone());
     let mut receipt_sequence_id = 1_u64;
     while !stop.load(Ordering::Relaxed) {
@@ -181,6 +219,9 @@ fn run_breath_feedback_worker(config: ManifoldBreathFeedbackConfig, stop: Arc<At
         match client.recv_json() {
             Ok(Some(message)) => {
                 if let Some(sample) = parse_breath_feedback_event(&message, &config.stream_id) {
+                    if let Ok(mut latest_sample) = latest.lock() {
+                        *latest_sample = Some(sample.clone());
+                    }
                     let receipt = build_breath_feedback_receipt_command(
                         &config,
                         &sample,
@@ -290,8 +331,7 @@ fn open_broker_websocket(config: &ManifoldBreathFeedbackConfig) -> Result<TcpStr
          Sec-WebSocket-Key: cnVzdHkteHItdWFrZXBhZC1icmVhdGg=\r\n\
          Sec-WebSocket-Version: 13\r\n\
          \r\n",
-        MANIFOLD_BROKER_EVENTS_PATH,
-        config.broker_host, config.broker_port
+        MANIFOLD_BROKER_EVENTS_PATH, config.broker_host, config.broker_port
     );
     stream
         .write_all(request.as_bytes())
@@ -452,14 +492,17 @@ mod tests {
         let config = ManifoldBreathFeedbackConfig::default();
         let event = json!({
             "type": "stream_event",
-            "stream": "stream.breath.feedback_state",
+            "stream": "stream.breath.volume.selected",
             "sequence_id": 7,
             "payload": {
-                "stream_id": "stream.breath.feedback_state",
+                "stream_id": "stream.breath.volume.selected",
                 "sample_time_unix_ns": 1777900000000000000_i64,
                 "volume01": 0.62,
                 "phase": "inhale",
-                "quality": "stable"
+                "quality": "stable",
+                "quality01": 0.92,
+                "source_id": "processor.projected_motion_breath.polar",
+                "input_stream_id": "bio:polar_acc"
             }
         });
         let sample =
@@ -467,6 +510,9 @@ mod tests {
         assert_eq!(sample.sequence_id, 7);
         assert_eq!(sample.phase, "inhale");
         assert!((sample.volume01 - 0.62).abs() < 0.0001);
+        assert!((sample.quality01 - 0.92).abs() < 0.0001);
+        assert_eq!(sample.source_id, "processor.projected_motion_breath.polar");
+        assert_eq!(sample.input_stream_id, "bio:polar_acc");
 
         let receipt = build_breath_feedback_receipt_command(&config, &sample, 11);
         assert_eq!(receipt["command"], BREATH_FEEDBACK_RECEIPT_COMMAND);
