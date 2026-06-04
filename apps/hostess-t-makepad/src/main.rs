@@ -23,6 +23,7 @@ mod shell_runtime_capabilities;
 mod shell_xr_runtime;
 mod source_metadata;
 mod source_sampling;
+mod stereo_frame;
 use crate::rusty_xr_runtime_config as rxrc;
 use camera_texture_path::MakepadCameraTexturePath;
 #[cfg(target_os = "android")]
@@ -123,6 +124,7 @@ use std::{
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
+use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
 
 app_main!(App);
 
@@ -143,7 +145,6 @@ static FRAME_ADOPTION_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 #[cfg(target_os = "android")]
 static ANDROID_XR_START_FALLBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 
-const CAMERA_PAIR_CLOSE_TIMESTAMP_NS: u64 = 25_000_000;
 const CAMERA_FRAME_STALE_THRESHOLD_MS: f64 = 100.0;
 const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
@@ -6031,38 +6032,6 @@ impl MakepadCameraChoice {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum StereoEye {
-    Left,
-    Right,
-}
-
-impl StereoEye {
-    fn label(self) -> &'static str {
-        match self {
-            Self::Left => "left",
-            Self::Right => "right",
-        }
-    }
-
-    fn video_id(self) -> LiveId {
-        match self {
-            Self::Left => live_id!(rusty_xr_makepad_left_camera_import_probe),
-            Self::Right => live_id!(rusty_xr_makepad_right_camera_import_probe),
-        }
-    }
-
-    fn from_video_id(video_id: LiveId) -> Option<Self> {
-        if video_id == Self::Left.video_id() {
-            Some(Self::Left)
-        } else if video_id == Self::Right.video_id() {
-            Some(Self::Right)
-        } else {
-            None
-        }
-    }
-}
-
 #[derive(Clone, Debug)]
 struct FrameOrientationDecision {
     source_sample_y_flip: f32,
@@ -6245,154 +6214,6 @@ struct MakepadCameraYuvTextures {
 impl MakepadCameraYuvTextures {
     fn new(y: Texture, u: Texture, v: Texture) -> Self {
         Self { y, u, v }
-    }
-}
-
-#[derive(Clone)]
-struct CameraTextureFrameSample {
-    side: StereoEye,
-    yuv: VideoYuvMetadata,
-    metadata: VideoTextureUpdateMetadata,
-    texture_path: MakepadCameraTexturePath,
-    rotation_steps: f32,
-    position_ms: u128,
-    texture_update_count: u64,
-}
-
-impl CameraTextureFrameSample {
-    fn new(
-        side: StereoEye,
-        yuv: VideoYuvMetadata,
-        metadata: VideoTextureUpdateMetadata,
-        position_ms: u128,
-        texture_update_count: u64,
-        texture_path: MakepadCameraTexturePath,
-    ) -> Self {
-        Self {
-            side,
-            yuv,
-            metadata,
-            texture_path,
-            rotation_steps: yuv.rotation_steps,
-            position_ms,
-            texture_update_count,
-        }
-    }
-}
-
-#[derive(Clone)]
-struct AdoptedStereoCameraFrame {
-    adoption_id: u64,
-    left: CameraTextureFrameSample,
-    right: CameraTextureFrameSample,
-    pairing: StereoFramePairing,
-    pose: Option<XrPoseSnapshot>,
-}
-
-impl AdoptedStereoCameraFrame {
-    fn new(
-        adoption_id: u64,
-        left: CameraTextureFrameSample,
-        right: CameraTextureFrameSample,
-        pose: Option<XrPoseSnapshot>,
-    ) -> Self {
-        let pairing = StereoFramePairing::from_samples(&left, &right);
-        Self {
-            adoption_id,
-            left,
-            right,
-            pairing,
-            pose,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct StereoFramePairing {
-    status: &'static str,
-    sequence_delta: Option<i64>,
-    timestamp_delta_ns: Option<u64>,
-    close_timestamp_match: bool,
-}
-
-impl StereoFramePairing {
-    fn from_samples(left: &CameraTextureFrameSample, right: &CameraTextureFrameSample) -> Self {
-        let sequence_delta = left
-            .metadata
-            .camera_frame_sequence
-            .zip(right.metadata.camera_frame_sequence)
-            .map(|(left, right)| left as i64 - right as i64);
-        let timestamp_delta_ns = left
-            .metadata
-            .camera_timestamp_ns
-            .zip(right.metadata.camera_timestamp_ns)
-            .map(|(left, right)| left.abs_diff(right));
-        let close_timestamp_match = timestamp_delta_ns
-            .map(|delta| delta <= CAMERA_PAIR_CLOSE_TIMESTAMP_NS)
-            .unwrap_or(false);
-        let status = if sequence_delta == Some(0) {
-            "sequence-match"
-        } else if close_timestamp_match {
-            "timestamp-close"
-        } else if sequence_delta.is_some() || timestamp_delta_ns.is_some() {
-            "latest-complete-with-timing-gap"
-        } else {
-            "latest-complete-no-frame-timing"
-        };
-        Self {
-            status,
-            sequence_delta,
-            timestamp_delta_ns,
-            close_timestamp_match,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-struct XrPoseSnapshot {
-    update_count: u64,
-    predicted_display_time_ns: i64,
-    left_valid: bool,
-    right_valid: bool,
-    left_position: [f32; 3],
-    right_position: [f32; 3],
-    left_orientation: [f32; 4],
-    right_orientation: [f32; 4],
-}
-
-impl XrPoseSnapshot {
-    fn from_update(update: &XrUpdateEvent, update_count: u64) -> Self {
-        let state = update.state.as_ref();
-        let left = state.left_eye_view;
-        let right = state.right_eye_view;
-        Self {
-            update_count,
-            predicted_display_time_ns: (state.time * 1_000_000_000.0).round() as i64,
-            left_valid: left.valid,
-            right_valid: right.valid,
-            left_position: [
-                left.pose.position.x,
-                left.pose.position.y,
-                left.pose.position.z,
-            ],
-            right_position: [
-                right.pose.position.x,
-                right.pose.position.y,
-                right.pose.position.z,
-            ],
-            left_orientation: [
-                left.pose.orientation.x,
-                left.pose.orientation.y,
-                left.pose.orientation.z,
-                left.pose.orientation.w,
-            ],
-            right_orientation: [
-                right.pose.orientation.x,
-                right.pose.orientation.y,
-                right.pose.orientation.z,
-                right.pose.orientation.w,
-            ],
-        }
     }
 }
 
@@ -6979,62 +6800,6 @@ mod tests {
             runtime_xr_view_state_ready: true,
             openxr_contract: MakepadOpenXrProjectionContract::missing(),
         }
-    }
-
-    fn frame_sample(
-        side: StereoEye,
-        camera_frame_sequence: Option<u64>,
-        camera_timestamp_ns: Option<u64>,
-        texture_update_count: u64,
-    ) -> CameraTextureFrameSample {
-        let mut metadata = VideoTextureUpdateMetadata::default();
-        metadata.camera_frame_sequence = camera_frame_sequence;
-        metadata.camera_timestamp_ns = camera_timestamp_ns;
-        CameraTextureFrameSample::new(
-            side,
-            VideoYuvMetadata::disabled(),
-            metadata,
-            texture_update_count as u128,
-            texture_update_count,
-            MakepadCameraTexturePath::DirectHardwareBufferExternal,
-        )
-    }
-
-    #[test]
-    fn stereo_frame_pairing_prefers_matching_camera_sequence() {
-        let left = frame_sample(StereoEye::Left, Some(42), Some(1_000_000), 7);
-        let right = frame_sample(StereoEye::Right, Some(42), Some(8_000_000), 8);
-
-        let pairing = StereoFramePairing::from_samples(&left, &right);
-
-        assert_eq!(pairing.status, "sequence-match");
-        assert_eq!(pairing.sequence_delta, Some(0));
-        assert_eq!(pairing.timestamp_delta_ns, Some(7_000_000));
-    }
-
-    #[test]
-    fn stereo_frame_pairing_accepts_close_timestamps_when_sequences_differ() {
-        let left = frame_sample(StereoEye::Left, Some(101), Some(20_000_000), 3);
-        let right = frame_sample(StereoEye::Right, Some(102), Some(30_000_000), 4);
-
-        let pairing = StereoFramePairing::from_samples(&left, &right);
-
-        assert_eq!(pairing.status, "timestamp-close");
-        assert_eq!(pairing.sequence_delta, Some(-1));
-        assert!(pairing.close_timestamp_match);
-    }
-
-    #[test]
-    fn stereo_frame_pairing_reports_timing_gap_for_distant_frames() {
-        let left = frame_sample(StereoEye::Left, Some(101), Some(20_000_000), 3);
-        let right = frame_sample(StereoEye::Right, Some(105), Some(80_000_000), 4);
-
-        let pairing = StereoFramePairing::from_samples(&left, &right);
-
-        assert_eq!(pairing.status, "latest-complete-with-timing-gap");
-        assert_eq!(pairing.sequence_delta, Some(-4));
-        assert_eq!(pairing.timestamp_delta_ns, Some(60_000_000));
-        assert!(!pairing.close_timestamp_match);
     }
 
     #[test]
