@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -24,9 +26,19 @@
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".PmbPhysicalLiveService"
+            android:exported="true"
+            android:foregroundServiceType="dataSync">
+            <intent-filter>
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

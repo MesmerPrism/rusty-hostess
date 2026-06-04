@@ -60,6 +60,35 @@ feedback receipt counts. This autonomous route is not a physical Polar BLE or
 human controller trial; it proves the Quest-owned processor, broker, and Makepad
 feedback path with packaged simulated providers.
 
+Projected-motion breath Quest physical live routing uses
+`rusty.hostess.projected_motion_breath.android_physical_live_execution_evidence.v1`.
+`hostessctl run-pmb-quest-physical-live --target quest` launches the Quest
+broker, configures the clean Makepad XR app to publish
+`stream.motion.object_pose` and receive `stream.breath.feedback_state`, then
+starts the Hostess foreground service action
+`io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND`.
+The background-service route is the default so Hostess can run the physical PMB
+processor without foregrounding the Hostess activity or stealing focus from the
+Makepad XR app; `--foreground-hostess` remains available when an operator wants
+the Hostess telemetry/debug UI and starts the activity action
+`io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE`.
+The Hostess Android app connects to the Quest broker from the Quest, starts
+Polar PMD ACC through broker command `polar_pmd.start`, records `bio:polar_acc`
+and usable active/tracked/connected `stream.motion.object_pose` broker events
+into app-private JSONL, executes `projected-motion-breath-core
+live-route-from-events` through the Hostess PMB JNI library on Quest, publishes
+breath volume and feedback samples to the Quest broker, and requires Makepad
+feedback receipts. The evidence must record `pmd_computed_on_quest=true`,
+`pmd_computed_on_pc=false`,
+`processor_authority=quest_hostess_android_app`,
+`physical_polar_ble_used=true`, `physical_controller_input_used=true`,
+`simulated_polar_provider_used=false`, `simulated_controller_provider_used=false`,
+`synthetic_live_route=false`, `plan_only_fixture=false`, physical input counts,
+broker publish counts, and Makepad feedback receipt counts. This route is the
+real Polar/controller PMB gate; the older host-side
+`record-values --pmb-live-processor` bridge is not acceptable for this gate
+because it computes PMB on the PC.
+
 General Manifold value recording uses
 `rusty.hostess.manifold_value_recording.evidence.v1`.
 `hostessctl record-values --target desktop|phone|quest --value <stream-id>`

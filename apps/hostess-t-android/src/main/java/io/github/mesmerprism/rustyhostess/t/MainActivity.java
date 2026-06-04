@@ -55,6 +55,7 @@ public final class MainActivity extends Activity {
     private static final String ACTION_PMB_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY";
     private static final String ACTION_PMB_CONTROLLER_PREFLIGHT = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT";
     private static final String ACTION_PMB_SIMULATED_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE";
+    private static final String ACTION_PMB_PHYSICAL_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
@@ -126,6 +127,10 @@ public final class MainActivity extends Activity {
         }
         if (ACTION_PMB_SIMULATED_LIVE.equals(intent.getAction())) {
             writeProjectedMotionSimulatedLive(intent);
+            return;
+        }
+        if (ACTION_PMB_PHYSICAL_LIVE.equals(intent.getAction())) {
+            writeProjectedMotionPhysicalLive(intent);
             return;
         }
         if (!ACTION_RUN.equals(intent.getAction())) {
@@ -385,6 +390,21 @@ public final class MainActivity extends Activity {
         }
         final String finalStatus = status;
         handler.post(() -> telemetryView.setRunState(finalStatus, "pmb_simulated_live", modules));
+    }
+
+    private void writeProjectedMotionPhysicalLive(Intent intent) {
+        List<String> modules = new ArrayList<>();
+        modules.add("provider.polar_h10.ble");
+        modules.add("provider.makepad_xr.controller_pose");
+        modules.add("module.breath.projected_motion");
+        modules.add("module.breath.feedback_sink");
+        telemetryView.resetForRun("pmb_physical_live", modules);
+        telemetryView.setRunState("running", "pmb_physical_live", modules);
+        final List<String> workerModules = new ArrayList<>(modules);
+        new Thread(() -> {
+            String status = PmbPhysicalLiveRunner.run(getApplicationContext(), intent);
+            handler.post(() -> telemetryView.setRunState(status, "pmb_physical_live", workerModules));
+        }, "hostess-pmb-physical-live").start();
     }
 
     private String[] missingPermissions() {

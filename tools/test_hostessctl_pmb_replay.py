@@ -486,6 +486,125 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             self.assertFalse(host_run["result_fields"]["physical_controller_input_used"])
             self.assertTrue(host_run["result_fields"]["manual_controller_trial_required"])
 
+    def test_validate_pmb_quest_physical_live_writes_host_run_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            package = hostessctl.projected_motion_package_snapshot(package_root)
+            evidence = ready_pmb_quest_physical_live_evidence(package)
+            out = root / "evidence" / "pmb-quest-physical-live.json"
+            out.parent.mkdir(parents=True)
+            out.write_text(json.dumps(evidence), encoding="utf-8")
+            validation_path = out.with_name("pmb-quest-physical-live.validation-report.json")
+
+            validation = hostessctl.validate_pmb_quest_physical_live_evidence(
+                evidence,
+                package_root=package_root,
+                target="quest",
+                host_profile="headset",
+            )
+            validation_path.write_text(json.dumps(validation), encoding="utf-8")
+            hostessctl.write_pmb_quest_physical_live_host_run_evidence(
+                out,
+                validation_path,
+                evidence,
+                "quest",
+                "headset",
+            )
+
+            self.assertEqual(validation["status"], "pass")
+            host_run = json.loads(
+                out.with_name("pmb-quest-physical-live.host-run-evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(host_run["status"], "pass")
+            self.assertEqual(
+                host_run["validation_slot_id"],
+                "host_run.slot.projected_motion_breath.quest_physical_live",
+            )
+            self.assertTrue(host_run["result_fields"]["pmd_computed_on_quest"])
+            self.assertFalse(host_run["result_fields"]["pmd_computed_on_pc"])
+            self.assertTrue(host_run["result_fields"]["physical_polar_ble_used"])
+            self.assertTrue(host_run["result_fields"]["physical_controller_input_used"])
+            self.assertFalse(host_run["result_fields"]["simulated_polar_provider_used"])
+            self.assertFalse(host_run["result_fields"]["simulated_controller_provider_used"])
+
+    def test_pmb_quest_physical_live_defaults_to_background_service(self) -> None:
+        args = argparse.Namespace(
+            adb="adb",
+            serial="quest-serial",
+            broker_port=8765,
+            duration_seconds=25.0,
+            acc_rate=200,
+            scan_timeout_seconds=30.0,
+            controller_wait_seconds=10.0,
+            feedback_publish_limit=12,
+            receipt_listen_seconds=6.0,
+            device_address="00:11:22:33:44:55",
+            foreground_hostess=False,
+        )
+
+        command = hostessctl.pmb_physical_live_start_command(args, "headset")
+
+        self.assertIn("start-foreground-service", command)
+        self.assertNotIn("start", command[0:6])
+        self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION, command)
+        self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_SERVICE, command)
+        self.assertNotIn(f"{hostessctl.ANDROID_PACKAGE}/.MainActivity", command)
+
+    def test_pmb_quest_physical_live_foreground_override_uses_activity(self) -> None:
+        args = argparse.Namespace(
+            adb="adb",
+            serial="quest-serial",
+            broker_port=8765,
+            duration_seconds=25.0,
+            acc_rate=200,
+            scan_timeout_seconds=30.0,
+            controller_wait_seconds=10.0,
+            feedback_publish_limit=12,
+            receipt_listen_seconds=6.0,
+            device_address="00:11:22:33:44:55",
+            foreground_hostess=True,
+        )
+
+        command = hostessctl.pmb_physical_live_start_command(args, "headset")
+
+        self.assertIn("start", command)
+        self.assertNotIn("start-foreground-service", command)
+        self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_ACTION, command)
+        self.assertIn(f"{hostessctl.ANDROID_PACKAGE}/.MainActivity", command)
+
+    def test_validate_pmb_quest_physical_live_rejects_pc_or_simulated_authority(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            package = hostessctl.projected_motion_package_snapshot(package_root)
+            evidence = ready_pmb_quest_physical_live_evidence(package)
+            evidence["execution"]["pmd_computed_on_quest"] = False
+            evidence["execution"]["pmd_computed_on_pc"] = True
+            evidence["execution"]["simulated_polar_provider_used"] = True
+
+            validation = hostessctl.validate_pmb_quest_physical_live_evidence(
+                evidence,
+                package_root=package_root,
+                target="quest",
+                host_profile="headset",
+            )
+
+            self.assertEqual(validation["status"], "fail")
+            failed_checks = {
+                check["check_id"]
+                for check in validation["checks"]
+                if check["status"] == "fail"
+            }
+            self.assertIn("hostess.check.pmb_quest_physical_live.quest_authority", failed_checks)
+            self.assertIn("hostess.check.pmb_quest_physical_live.not_simulated", failed_checks)
+
     def test_validate_pmb_controller_preflight_rejects_live_controller_claim(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -854,6 +973,112 @@ def ready_pmb_quest_simulated_live_evidence(package: dict[str, object]) -> dict[
             "$schema": "rusty.manifold.validation.scorecard.v1",
             "scorecard_id": "scorecard.hostess.projected_motion_breath.android_simulated_live",
             "target_id": "hostess.projected_motion_breath.android_simulated_live",
+            "target_revision": 1,
+            "status": "pass",
+            "checks": [],
+            "issues": [],
+        },
+    }
+
+
+def ready_pmb_quest_physical_live_evidence(package: dict[str, object]) -> dict[str, object]:
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.android_physical_live_execution_evidence.v1",
+        "status": "pass",
+        "target": "quest",
+        "host_profile": "headset",
+        "started_at_utc": "2026-06-01T00:00:00+00:00",
+        "ended_at_utc": "2026-06-01T00:00:02+00:00",
+        "duration_ms": 2000,
+        "software": {
+            "origin": "rusty-hostess",
+            "host_app": "app.rusty_hostess_t.quest",
+            "host_app_version": "0.1.0",
+        },
+        "package": package,
+        "execution": {
+            "mode": "projected_motion_breath_android_quest_physical_live",
+            "runtime_path": "rust.projected_motion_breath_core.v1",
+            "input_capture_report_artifact": "latest.input-capture-report.json",
+            "events_jsonl_artifact": "latest.transport-events.jsonl",
+            "route_report_artifact": "latest.live-route-report.json",
+            "broker_publish_report_artifact": "latest.broker-publish-report.json",
+            "processor_core_executed": True,
+            "runtime_execution_performed": True,
+            "desktop_execution_performed": False,
+            "pc_processor_core_executed": False,
+            "platform_execution_performed": True,
+            "android_execution_performed": True,
+            "quest_execution_performed": True,
+            "device_required": True,
+            "apk_build_performed": False,
+            "openxr_runtime_used": True,
+            "live_sensor_used": True,
+            "physical_polar_ble_used": True,
+            "simulated_polar_provider_used": False,
+            "polar_transport_authority": "quest_broker_polar_pmd_provider",
+            "physical_controller_input_used": True,
+            "controller_input_used": True,
+            "simulated_controller_provider_used": False,
+            "controller_transport_authority": "quest_makepad_xr_controller_pose_provider",
+            "manual_polar_trial_required": False,
+            "manual_controller_trial_required": False,
+            "synthetic_live_route": False,
+            "pmd_computed_on_quest": True,
+            "pmd_computed_on_pc": False,
+            "processor_authority": "quest_hostess_android_app",
+            "broker_transport_used": True,
+            "feedback_published_to_broker": True,
+            "makepad_feedback_receipt_count": 6,
+            "app_private_evidence": True,
+        },
+        "input_capture_summary": {
+            "schema": "rusty.hostess.projected_motion_breath.quest_physical_input_capture_report.v1",
+            "status": "pass",
+            "broker_connected": True,
+            "polar_start_status": "pass",
+            "polar_stop_status": "pass",
+            "polar_event_count": 12,
+            "object_pose_event_count": 20,
+            "active_tracked_connected_object_pose_count": 18,
+            "physical_polar_ble_used": True,
+            "physical_controller_input_used": True,
+        },
+        "route_report_summary": {
+            "schema": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+            "status": "pass",
+            "route_id": "route.projected_motion_breath.live_stream.polar_acc_controller_pose.self_test",
+            "input_stream_ids": ["bio:polar_acc", "stream.motion.object_pose"],
+            "normalized_stream_ids": ["stream.motion.vector3", "stream.motion.object_pose"],
+            "output_stream_ids": ["stream.breath.volume", "stream.breath.feedback_state"],
+            "source_route_count": 2,
+            "breath_sample_count": 6,
+            "feedback_sample_count": 6,
+            "processor_core_executed": True,
+            "runtime_execution_performed": True,
+            "plan_only_fixture": False,
+            "external_transport_used": True,
+            "live_sensor_used": True,
+            "source_routes": [
+                {"source_stream_id": "bio:polar_acc"},
+                {"source_stream_id": "stream.motion.object_pose"},
+            ],
+        },
+        "broker_publish_summary": {
+            "schema": "rusty.hostess.projected_motion_breath.quest_broker_publish_report.v1",
+            "status": "pass",
+            "broker_transport_used": True,
+            "broker_connected": True,
+            "breath_published_count": 6,
+            "feedback_published_count": 6,
+            "feedback_receipt_count": 6,
+            "receipt_stream_id": "stream.breath.feedback_receipt",
+        },
+        "commands": [],
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": "scorecard.hostess.projected_motion_breath.android_physical_live",
+            "target_id": "hostess.projected_motion_breath.android_physical_live",
             "target_revision": 1,
             "status": "pass",
             "checks": [],

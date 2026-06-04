@@ -4,8 +4,11 @@ import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
 import java.io.Closeable;
+import java.io.File;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -19,11 +22,91 @@ import java.util.List;
 import java.util.Map;
 
 final class PmbBrokerBridge {
+    static final String EXTERNAL_STREAM_POLAR_ACC = "bio:polar_acc";
+    static final String STREAM_OBJECT_POSE = "stream.motion.object_pose";
     static final String STREAM_BREATH_VOLUME = "stream.breath.volume";
     static final String STREAM_BREATH_FEEDBACK_STATE = "stream.breath.feedback_state";
     static final String STREAM_BREATH_FEEDBACK_RECEIPT = "stream.breath.feedback_receipt";
 
     private PmbBrokerBridge() {
+    }
+
+    static PhysicalCaptureResult capturePhysicalInputs(
+            String host,
+            int port,
+            String deviceAddress,
+            int accRateHz,
+            int scanTimeoutMs,
+            int durationMs,
+            int controllerWaitMs,
+            File eventsJsonl) throws IOException, JSONException {
+        PhysicalCaptureResult result = new PhysicalCaptureResult(
+                host,
+                port,
+                deviceAddress,
+                accRateHz,
+                scanTimeoutMs,
+                durationMs,
+                controllerWaitMs,
+                eventsJsonl.getAbsolutePath());
+        File parent = eventsJsonl.getParentFile();
+        if (parent != null && !parent.exists() && !parent.mkdirs()) {
+            throw new IOException("could not create PMB physical live event folder");
+        }
+
+        try (BrokerWebSocketClient client = BrokerWebSocketClient.open(host, port, 2500);
+                BufferedWriter writer = new BufferedWriter(new FileWriter(eventsJsonl, false))) {
+            result.brokerConnected = true;
+            client.sendJson(new JSONObject()
+                    .put("type", "hello")
+                    .put("client_id", "app.rusty_hostess_t.quest.pmb_physical_live")
+                    .put("app_package", "io.github.mesmerprism.rustyhostess.t")
+                    .put("role", "quest_pmb_physical_live_processor"), 1);
+            client.readJson(500);
+            physicalCommandAndWait(client, result, "subscribe", new JSONObject()
+                    .put("stream", EXTERNAL_STREAM_POLAR_ACC)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 2);
+            physicalCommandAndWait(client, result, "subscribe", new JSONObject()
+                    .put("stream", STREAM_BREATH_FEEDBACK_RECEIPT)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 3);
+            physicalCommandAndWait(client, result, "subscribe", new JSONObject()
+                    .put("stream", STREAM_OBJECT_POSE)
+                    .put("receiver", "app.rusty_hostess_t.quest.pmb_physical_live"), 4);
+            result.polarStartStatus = physicalCommandAndWait(client, result, "polar_pmd.start", new JSONObject()
+                    .put("device_address", deviceAddress == null ? "" : deviceAddress)
+                    .put("scan_timeout_ms", scanTimeoutMs)
+                    .put("pmd_stream", "acc")
+                    .put("acc_sample_rate_hz", accRateHz)
+                    .put("high_connection_priority", true), 5);
+
+            long deadline = System.currentTimeMillis() + Math.max(0, durationMs);
+            while (System.currentTimeMillis() < deadline) {
+                int timeout = (int) Math.max(50, Math.min(250, deadline - System.currentTimeMillis()));
+                JSONObject message = client.readJson(timeout);
+                if (message == null) {
+                    continue;
+                }
+                result.acceptCaptureMessage(message, writer);
+            }
+            writer.flush();
+            result.polarStopStatus = physicalCommandAndWait(client, result, "polar_pmd.stop", new JSONObject(), 6);
+        } catch (IOException | JSONException | RuntimeException ex) {
+            result.errors.put(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+            throw ex;
+        }
+
+        result.status = result.polarEventCount > 0
+                && result.activeTrackedConnectedObjectPoseCount > 0
+                && result.errors.length() == 0
+                ? "pass"
+                : "fail";
+        if (result.polarEventCount <= 0) {
+            result.errors.put("issue.polar_acc_events_missing");
+        }
+        if (result.activeTrackedConnectedObjectPoseCount <= 0) {
+            result.errors.put("issue.controller_pose_active_tracked_connected_missing");
+        }
+        return result;
     }
 
     static Result publishRoute(JSONObject routeReport, String host, int port, int limit, int receiptListenMs)
@@ -95,6 +178,45 @@ final class PmbBrokerBridge {
             result.errors.put("issue.makepad_feedback_receipts_missing");
         }
         return result;
+    }
+
+    private static String physicalCommandAndWait(
+            BrokerWebSocketClient client,
+            PhysicalCaptureResult result,
+            String command,
+            JSONObject params,
+            int sequence) throws IOException, JSONException {
+        String requestId = "quest-pmb-physical-live-" + command.replace('.', '-') + "-" + sequence;
+        client.sendJson(new JSONObject()
+                .put("type", "command")
+                .put("schema", "rusty.xr.broker.command.v1")
+                .put("request_id", requestId)
+                .put("command", command)
+                .put("params", params)
+                .put("client_id", "app.rusty_hostess_t.quest.pmb_physical_live")
+                .put("app_package", "io.github.mesmerprism.rustyhostess.t"), sequence);
+        long deadline = System.currentTimeMillis() + 1500L;
+        while (System.currentTimeMillis() < deadline) {
+            int timeout = (int) Math.max(50, Math.min(250, deadline - System.currentTimeMillis()));
+            JSONObject reply = client.readJson(timeout);
+            if (reply == null) {
+                continue;
+            }
+            if ("stream_event".equals(reply.optString("type"))) {
+                result.acceptObservedMessage(reply);
+                continue;
+            }
+            if (requestId.equals(reply.optString("request_id"))
+                    || command.equals(reply.optString("command"))) {
+                boolean accepted = reply.has("accepted")
+                        ? reply.optBoolean("accepted")
+                        : reply.optBoolean("ok", reply.optBoolean("success", true));
+                result.commandReplies.put(reply);
+                return accepted ? "pass" : "fail";
+            }
+        }
+        result.errors.put("issue.broker_command_ack_timeout:" + command);
+        return "unknown";
     }
 
     private static PublishResult publishStreamSample(
@@ -230,6 +352,142 @@ final class PmbBrokerBridge {
         return selected;
     }
 
+    static final class PhysicalCaptureResult {
+        final String brokerHost;
+        final int brokerPort;
+        final String deviceAddress;
+        final int accRateHz;
+        final int scanTimeoutMs;
+        final int durationMs;
+        final int controllerWaitMs;
+        final String eventsJsonl;
+        final JSONArray commandReplies = new JSONArray();
+        final JSONArray observedEvents = new JSONArray();
+        final JSONArray errors = new JSONArray();
+        String status = "pending";
+        boolean brokerConnected = false;
+        String polarStartStatus = "not_started";
+        String polarStopStatus = "not_started";
+        int polarEventCount = 0;
+        int objectPoseEventCount = 0;
+        int activeObjectPoseCount = 0;
+        int trackedObjectPoseCount = 0;
+        int connectedObjectPoseCount = 0;
+        int activeTrackedConnectedObjectPoseCount = 0;
+
+        PhysicalCaptureResult(
+                String brokerHost,
+                int brokerPort,
+                String deviceAddress,
+                int accRateHz,
+                int scanTimeoutMs,
+                int durationMs,
+                int controllerWaitMs,
+                String eventsJsonl) {
+            this.brokerHost = brokerHost;
+            this.brokerPort = brokerPort;
+            this.deviceAddress = deviceAddress == null ? "" : deviceAddress;
+            this.accRateHz = accRateHz;
+            this.scanTimeoutMs = scanTimeoutMs;
+            this.durationMs = durationMs;
+            this.controllerWaitMs = controllerWaitMs;
+            this.eventsJsonl = eventsJsonl;
+        }
+
+        JSONObject toJson() throws JSONException {
+            return new JSONObject()
+                    .put("schema", "rusty.hostess.projected_motion_breath.quest_physical_input_capture_report.v1")
+                    .put("status", status)
+                    .put("broker_host", brokerHost)
+                    .put("broker_port", brokerPort)
+                    .put("broker_connected", brokerConnected)
+                    .put("broker_transport_used", brokerConnected)
+                    .put("events_jsonl", eventsJsonl)
+                    .put("device_address_supplied", !deviceAddress.isEmpty())
+                    .put("acc_rate_hz", accRateHz)
+                    .put("scan_timeout_ms", scanTimeoutMs)
+                    .put("duration_ms", durationMs)
+                    .put("controller_wait_ms", controllerWaitMs)
+                    .put("polar_start_status", polarStartStatus)
+                    .put("polar_stop_status", polarStopStatus)
+                    .put("polar_event_count", polarEventCount)
+                    .put("object_pose_event_count", objectPoseEventCount)
+                    .put("active_object_pose_count", activeObjectPoseCount)
+                    .put("tracked_object_pose_count", trackedObjectPoseCount)
+                    .put("connected_object_pose_count", connectedObjectPoseCount)
+                    .put("active_tracked_connected_object_pose_count", activeTrackedConnectedObjectPoseCount)
+                    .put("physical_polar_ble_used", polarEventCount > 0)
+                    .put("physical_controller_input_used", activeTrackedConnectedObjectPoseCount > 0)
+                    .put("controller_input_used", activeTrackedConnectedObjectPoseCount > 0)
+                    .put("simulated_polar_provider_used", false)
+                    .put("simulated_controller_provider_used", false)
+                    .put("command_replies", commandReplies)
+                    .put("observed_events", observedEvents)
+                    .put("errors", errors);
+        }
+
+        void acceptObservedMessage(JSONObject message) throws JSONException {
+            if (!"stream_event".equals(message.optString("type"))) {
+                return;
+            }
+            String stream = streamId(message);
+            if (EXTERNAL_STREAM_POLAR_ACC.equals(stream)) {
+                polarEventCount += 1;
+            } else if (STREAM_OBJECT_POSE.equals(stream)) {
+                objectPoseEventCount += 1;
+                JSONObject payload = message.optJSONObject("payload");
+                boolean active = payload != null && payload.optBoolean("active", false);
+                boolean tracked = payload != null && payload.optBoolean("tracked", false);
+                boolean connected = payload != null && payload.optBoolean("connected", false);
+                if (active) {
+                    activeObjectPoseCount += 1;
+                }
+                if (tracked) {
+                    trackedObjectPoseCount += 1;
+                }
+                if (connected) {
+                    connectedObjectPoseCount += 1;
+                }
+                if (active && tracked && connected) {
+                    activeTrackedConnectedObjectPoseCount += 1;
+                }
+            }
+            if (observedEvents.length() < 24) {
+                observedEvents.put(message);
+            }
+        }
+
+        void acceptCaptureMessage(JSONObject message, BufferedWriter writer) throws IOException, JSONException {
+            if (!"stream_event".equals(message.optString("type"))) {
+                return;
+            }
+            String stream = streamId(message);
+            if (!EXTERNAL_STREAM_POLAR_ACC.equals(stream) && !STREAM_OBJECT_POSE.equals(stream)) {
+                return;
+            }
+            acceptObservedMessage(message);
+            if (STREAM_OBJECT_POSE.equals(stream) && !isUsableObjectPose(message)) {
+                return;
+            }
+            writer.write(message.toString());
+            writer.newLine();
+        }
+
+        private boolean isUsableObjectPose(JSONObject message) {
+            JSONObject payload = message.optJSONObject("payload");
+            return payload != null
+                    && payload.optBoolean("active", false)
+                    && payload.optBoolean("tracked", false)
+                    && payload.optBoolean("connected", false);
+        }
+    }
+
+    private static String streamId(JSONObject message) {
+        JSONObject payload = message.optJSONObject("payload");
+        return message.optString("stream",
+                message.optString("stream_id", payload == null ? "" : payload.optString("stream_id", "")));
+    }
+
     static final class Result {
         final String brokerHost;
         final int brokerPort;
@@ -351,16 +609,14 @@ final class PmbBrokerBridge {
             output.flush();
         }
 
-        JSONObject readJson(int timeoutMs, Result result) throws IOException, JSONException {
+        JSONObject readJson(int timeoutMs) throws IOException, JSONException {
             int oldTimeout = socket.getSoTimeout();
             socket.setSoTimeout(Math.max(50, timeoutMs));
             try {
                 while (true) {
                     Frame frame = readFrame();
                     if (frame.opcode == 0x1) {
-                        JSONObject message = new JSONObject(new String(frame.payload, StandardCharsets.UTF_8));
-                        result.acceptMessage(message);
-                        return message;
+                        return new JSONObject(new String(frame.payload, StandardCharsets.UTF_8));
                     }
                     if (frame.opcode == 0x8) {
                         return null;
@@ -374,6 +630,14 @@ final class PmbBrokerBridge {
             } finally {
                 socket.setSoTimeout(oldTimeout);
             }
+        }
+
+        JSONObject readJson(int timeoutMs, Result result) throws IOException, JSONException {
+            JSONObject message = readJson(timeoutMs);
+            if (message != null) {
+                result.acceptMessage(message);
+            }
+            return message;
         }
 
         private String readHttpResponse() throws IOException {
