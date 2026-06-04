@@ -25,6 +25,7 @@ mod shell_xr_runtime;
 mod source_metadata;
 mod source_sampling;
 mod stereo_frame;
+mod texture_probe_stats;
 use crate::rusty_xr_runtime_config as rxrc;
 use camera_pair::{
     collect_makepad_camera_choices, frame_rate_token, makepad_display_left_from_right_source,
@@ -129,6 +130,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
+use texture_probe_stats::texture_plane_content_stats;
 
 app_main!(App);
 
@@ -6332,190 +6334,6 @@ mod tests {
             decision.metadata_source,
             "generated-direct-camera2-stimulus-metadata"
         );
-    }
-}
-
-#[derive(Clone, Copy)]
-struct TexturePlaneContentStats {
-    format: &'static str,
-    readable: bool,
-    data_present: bool,
-    width: usize,
-    height: usize,
-    len: usize,
-    updated: &'static str,
-    sample_count: usize,
-    min: u8,
-    max: u8,
-    mean_x1000: u32,
-    nonzero_samples: usize,
-}
-
-impl TexturePlaneContentStats {
-    fn unreadable(format: &'static str) -> Self {
-        Self {
-            format,
-            readable: false,
-            data_present: false,
-            width: 0,
-            height: 0,
-            len: 0,
-            updated: "n/a",
-            sample_count: 0,
-            min: 0,
-            max: 0,
-            mean_x1000: 0,
-            nonzero_samples: 0,
-        }
-    }
-
-    fn marker_fields(&self, prefix: &str) -> String {
-        format!(
-            "{}Format={} {}Readable={} {}DataPresent={} {}Width={} {}Height={} {}Len={} {}Updated={} {}SampleCount={} {}Min={} {}Max={} {}MeanX1000={} {}NonZeroSamples={}",
-            prefix,
-            self.format,
-            prefix,
-            self.readable,
-            prefix,
-            self.data_present,
-            prefix,
-            self.width,
-            prefix,
-            self.height,
-            prefix,
-            self.len,
-            prefix,
-            self.updated,
-            prefix,
-            self.sample_count,
-            prefix,
-            self.min,
-            prefix,
-            self.max,
-            prefix,
-            self.mean_x1000,
-            prefix,
-            self.nonzero_samples,
-        )
-    }
-}
-
-fn texture_plane_content_stats(cx: &mut Cx, texture: &Texture) -> TexturePlaneContentStats {
-    match texture.get_format(cx) {
-        TextureFormat::VecRu8 {
-            width,
-            height,
-            data,
-            updated,
-            ..
-        } => compute_u8_plane_content_stats("VecRu8", *width, *height, data.as_ref(), 1, updated),
-        TextureFormat::VecRGu8 {
-            width,
-            height,
-            data,
-            updated,
-            ..
-        } => compute_u8_plane_content_stats("VecRGu8", *width, *height, data.as_ref(), 2, updated),
-        TextureFormat::VideoYuvPlane => TexturePlaneContentStats::unreadable("VideoYuvPlane"),
-        TextureFormat::VideoExternal => TexturePlaneContentStats::unreadable("VideoExternal"),
-        TextureFormat::VideoRgbaHardwareBuffer => {
-            TexturePlaneContentStats::unreadable("VideoRgbaHardwareBuffer")
-        }
-        _ => TexturePlaneContentStats::unreadable("Other"),
-    }
-}
-
-fn compute_u8_plane_content_stats(
-    format: &'static str,
-    width: usize,
-    height: usize,
-    data: Option<&Vec<u8>>,
-    bytes_per_sample: usize,
-    updated: &TextureUpdated,
-) -> TexturePlaneContentStats {
-    let Some(data) = data else {
-        return TexturePlaneContentStats {
-            format,
-            readable: true,
-            data_present: false,
-            width,
-            height,
-            len: 0,
-            updated: texture_updated_label(updated),
-            sample_count: 0,
-            min: 0,
-            max: 0,
-            mean_x1000: 0,
-            nonzero_samples: 0,
-        };
-    };
-
-    let bytes_per_sample = bytes_per_sample.max(1);
-    let sample_len = data.len() / bytes_per_sample;
-    if sample_len == 0 {
-        return TexturePlaneContentStats {
-            format,
-            readable: true,
-            data_present: true,
-            width,
-            height,
-            len: data.len(),
-            updated: texture_updated_label(updated),
-            sample_count: 0,
-            min: 0,
-            max: 0,
-            mean_x1000: 0,
-            nonzero_samples: 0,
-        };
-    }
-
-    let step = (sample_len / 4096).max(1);
-    let mut min_value = u8::MAX;
-    let mut max_value = u8::MIN;
-    let mut sum = 0_u64;
-    let mut sample_count = 0_usize;
-    let mut nonzero_samples = 0_usize;
-
-    let mut sample_index = 0_usize;
-    while sample_index < sample_len {
-        let value = data[sample_index * bytes_per_sample];
-        min_value = min_value.min(value);
-        max_value = max_value.max(value);
-        sum += value as u64;
-        sample_count += 1;
-        if value != 0 {
-            nonzero_samples += 1;
-        }
-        sample_index = sample_index.saturating_add(step);
-    }
-
-    let mean_x1000 = if sample_count == 0 {
-        0
-    } else {
-        ((sum * 1000) / sample_count as u64) as u32
-    };
-
-    TexturePlaneContentStats {
-        format,
-        readable: true,
-        data_present: true,
-        width,
-        height,
-        len: data.len(),
-        updated: texture_updated_label(updated),
-        sample_count,
-        min: min_value,
-        max: max_value,
-        mean_x1000,
-        nonzero_samples,
-    }
-}
-
-fn texture_updated_label(updated: &TextureUpdated) -> &'static str {
-    match updated {
-        TextureUpdated::Empty => "empty",
-        TextureUpdated::Partial(_) => "partial",
-        TextureUpdated::Full => "full",
     }
 }
 
