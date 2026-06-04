@@ -610,8 +610,16 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
         }
         self.assertEqual(
+            setprops["debug.rusty.processing.layer"],
+            "peripheral-stretch",
+        )
+        self.assertEqual(
             setprops["debug.rustyxr.processing.layer"],
             "peripheral-stretch",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.projection.border.policy"],
+            "passthrough-underlay",
         )
         self.assertEqual(
             setprops["debug.rustyxr.camera.source.sampling.mode"],
@@ -632,6 +640,10 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
         self.assertEqual(
             setprops["debug.rustyxr.makepad.projection.border.opacity"],
             "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.makepad.projection.target.joystick.controls"],
+            "offset-scale",
         )
         self.assertEqual(
             setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],
@@ -669,8 +681,16 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
         }
         self.assertEqual(
+            setprops["debug.rusty.processing.layer"],
+            "peripheral-stretch",
+        )
+        self.assertEqual(
             setprops["debug.rustyxr.processing.layer"],
             "peripheral-stretch",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.projection.border.policy"],
+            "passthrough-underlay",
         )
         self.assertEqual(
             setprops["debug.rustyxr.camera.source.sampling.mode"],
@@ -691,6 +711,10 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
         self.assertEqual(
             setprops["debug.rustyxr.makepad.projection.border.opacity"],
             "0.0",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.makepad.projection.target.joystick.controls"],
+            "offset-scale",
         )
         self.assertEqual(
             setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],

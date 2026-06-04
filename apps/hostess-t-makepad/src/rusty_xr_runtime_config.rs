@@ -225,7 +225,7 @@ impl AndroidPropertyPrefix {
 
 impl Default for AndroidPropertyPrefix {
     fn default() -> Self {
-        Self("debug.rustyxr".to_string())
+        Self("debug.rusty".to_string())
     }
 }
 
@@ -1932,7 +1932,7 @@ mod tests {
         let key = RuntimeKey::new("render_scale").expect("key should be valid");
         let prefix = AndroidPropertyPrefix::default();
 
-        assert_eq!(key.android_property(&prefix), "debug.rustyxr.render.scale");
+        assert_eq!(key.android_property(&prefix), "debug.rusty.render.scale");
     }
 
     #[test]
@@ -1940,7 +1940,7 @@ mod tests {
         let key = RuntimeKey::new("render-scale").expect("key should be valid");
         let prefix = AndroidPropertyPrefix::default();
 
-        assert_eq!(key.android_property(&prefix), "debug.rustyxr.render.scale");
+        assert_eq!(key.android_property(&prefix), "debug.rusty.render.scale");
     }
 
     #[test]

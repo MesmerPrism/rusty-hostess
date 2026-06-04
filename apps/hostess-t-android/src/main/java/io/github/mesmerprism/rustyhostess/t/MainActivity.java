@@ -422,7 +422,7 @@ public final class MainActivity extends Activity {
     private void writeProjectedMotionPhysicalLive(Intent intent) {
         List<String> modules = new ArrayList<>();
         modules.add("provider.polar_h10.ble");
-        modules.add("provider.makepad_xr.controller_pose");
+        modules.add("provider.makepad.controller_pose");
         modules.add("module.breath.projected_motion");
         modules.add("module.breath.feedback_sink");
         telemetryView.resetForRun("pmb_physical_live", modules);

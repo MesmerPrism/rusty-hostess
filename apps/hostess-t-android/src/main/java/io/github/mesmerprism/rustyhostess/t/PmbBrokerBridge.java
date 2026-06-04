@@ -22,6 +22,10 @@ import java.util.List;
 import java.util.Map;
 
 final class PmbBrokerBridge {
+    static final String MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1";
+    static final String LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA = "rusty.xr.broker.command.v1";
+    static final String MANIFOLD_BROKER_EVENTS_PATH = "/manifold/v1/events";
+    static final String LEGACY_RUSTY_XR_BROKER_EVENTS_PATH = "/rustyxr/v1/events";
     static final String EXTERNAL_STREAM_POLAR_ACC = "bio:polar_acc";
     static final String STREAM_OBJECT_POSE = "stream.motion.object_pose";
     static final String STREAM_BREATH_VOLUME = "stream.breath.volume";
@@ -272,7 +276,7 @@ final class PmbBrokerBridge {
         String requestId = "quest-broker-telemetry-" + command.replace('.', '-') + "-" + sequence;
         client.sendJson(new JSONObject()
                 .put("type", "command")
-                .put("schema", "rusty.xr.broker.command.v1")
+                .put("schema", MANIFOLD_COMMAND_SCHEMA)
                 .put("request_id", requestId)
                 .put("command", command)
                 .put("params", params)
@@ -311,7 +315,7 @@ final class PmbBrokerBridge {
         String requestId = "quest-pmb-physical-live-" + command.replace('.', '-') + "-" + sequence;
         client.sendJson(new JSONObject()
                 .put("type", "command")
-                .put("schema", "rusty.xr.broker.command.v1")
+                .put("schema", MANIFOLD_COMMAND_SCHEMA)
                 .put("request_id", requestId)
                 .put("command", command)
                 .put("params", params)
@@ -365,7 +369,7 @@ final class PmbBrokerBridge {
         String requestId = "quest-pmb-simulated-live-" + command.replace('.', '-') + "-" + sequence;
         client.sendJson(new JSONObject()
                 .put("type", "command")
-                .put("schema", "rusty.xr.broker.command.v1")
+                .put("schema", MANIFOLD_COMMAND_SCHEMA)
                 .put("request_id", requestId)
                 .put("command", command)
                 .put("params", params)
@@ -886,7 +890,7 @@ final class PmbBrokerBridge {
             socket.connect(new InetSocketAddress(host, port), timeoutMs);
             socket.setSoTimeout(timeoutMs);
             BrokerWebSocketClient client = new BrokerWebSocketClient(socket);
-            String request = "GET /rustyxr/v1/events HTTP/1.1\r\n"
+            String request = "GET " + MANIFOLD_BROKER_EVENTS_PATH + " HTTP/1.1\r\n"
                     + "Host: " + host + ":" + port + "\r\n"
                     + "Upgrade: websocket\r\n"
                     + "Connection: Upgrade\r\n"

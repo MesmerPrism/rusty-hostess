@@ -1,4 +1,4 @@
-#[cfg(target_os = "android")]
+#[cfg(any(target_os = "android", test))]
 use crate::rusty_xr_runtime_config::{AndroidPropertyPrefix, RuntimeKey};
 use crate::rusty_xr_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
 
@@ -42,7 +42,7 @@ pub(crate) const DEFAULT_BROKER_H264_STEREO_PAIR_MAX_DELTA_NS: u32 = 25_000_000;
 pub(crate) const DEFAULT_MAKEPAD_DIRECT_CAMERA_HARDWARE_BUFFER_EXTERNAL: bool = true;
 pub(crate) const DEFAULT_MANIFOLD_POSE_PUBLISH_ENABLED: bool = false;
 pub(crate) const DEFAULT_MANIFOLD_POSE_STREAM: &str = "stream.motion.object_pose";
-pub(crate) const DEFAULT_MANIFOLD_POSE_SOURCE: &str = "provider.makepad_xr.controller_pose";
+pub(crate) const DEFAULT_MANIFOLD_POSE_SOURCE: &str = "provider.makepad.controller_pose";
 pub(crate) const DEFAULT_MANIFOLD_POSE_CONTROLLER: &str = "right";
 pub(crate) const DEFAULT_MANIFOLD_POSE_KIND: &str = "grip";
 pub(crate) const DEFAULT_MANIFOLD_BROKER_HOST: &str = "127.0.0.1";
@@ -525,16 +525,34 @@ fn runtime_env_key(key: &str) -> String {
     )
 }
 
-#[cfg(target_os = "android")]
-fn runtime_property_name(key: &'static str) -> String {
+#[cfg(any(target_os = "android", test))]
+fn legacy_runtime_property_name(key: &'static str) -> String {
     RuntimeKey::new(key)
         .expect("runtime config key should be valid")
-        .android_property(&AndroidPropertyPrefix::default())
+        .android_property(
+            &AndroidPropertyPrefix::new("debug.rustyxr")
+                .expect("legacy Android property prefix should be valid"),
+        )
+}
+
+#[cfg(any(target_os = "android", test))]
+pub(crate) fn runtime_property_names(key: &'static str) -> Vec<String> {
+    let primary = RuntimeKey::new(key)
+        .expect("runtime config key should be valid")
+        .android_property(&AndroidPropertyPrefix::default());
+    let legacy = legacy_runtime_property_name(key);
+    if primary == legacy {
+        vec![primary]
+    } else {
+        vec![primary, legacy]
+    }
 }
 
 #[cfg(target_os = "android")]
 pub(crate) fn runtime_property_value(key: &'static str) -> Option<String> {
-    android_system_property_value(&runtime_property_name(key))
+    runtime_property_names(key)
+        .iter()
+        .find_map(|name| android_system_property_value(name))
 }
 
 #[cfg(target_os = "android")]
@@ -585,4 +603,20 @@ pub(crate) fn marker_token(value: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn runtime_property_names_prefer_rusty_prefix_with_legacy_fallback() {
+        assert_eq!(
+            runtime_property_names(KEY_MANIFOLD_BROKER_HOST),
+            [
+                "debug.rusty.manifold.broker.host".to_string(),
+                "debug.rustyxr.manifold.broker.host".to_string(),
+            ]
+        );
+    }
 }

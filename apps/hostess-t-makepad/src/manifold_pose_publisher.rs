@@ -8,12 +8,16 @@ use std::{
 };
 
 pub(crate) const DEFAULT_MANIFOLD_POSE_STREAM: &str = "stream.motion.object_pose";
-pub(crate) const DEFAULT_MANIFOLD_POSE_SOURCE: &str = "provider.makepad_xr.controller_pose";
+pub(crate) const DEFAULT_MANIFOLD_POSE_SOURCE: &str = "provider.makepad.controller_pose";
 pub(crate) const DEFAULT_MANIFOLD_POSE_CONTROLLER: &str = "right";
 pub(crate) const DEFAULT_MANIFOLD_POSE_KIND: &str = "grip";
 pub(crate) const DEFAULT_MANIFOLD_BROKER_HOST: &str = "127.0.0.1";
 pub(crate) const DEFAULT_MANIFOLD_BROKER_PORT: u16 = 8765;
 pub(crate) const DEFAULT_MANIFOLD_POSE_SAMPLE_HZ: f32 = 20.0;
+pub(crate) const MANIFOLD_COMMAND_SCHEMA: &str = "rusty.manifold.command.envelope.v1";
+#[cfg(test)]
+const LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA: &str = "rusty.xr.broker.command.v1";
+pub(crate) const MANIFOLD_BROKER_EVENTS_PATH: &str = "/manifold/v1/events";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ManifoldPosePublisherConfig {
@@ -109,7 +113,7 @@ pub(crate) fn build_publish_stream_command(
 ) -> JsonValue {
     json!({
         "type": "command",
-        "schema": "rusty.xr.broker.command.v1",
+        "schema": MANIFOLD_COMMAND_SCHEMA,
         "request_id": format!("makepad-controller-pose-{}", sample.sequence_id),
         "command": "publish_stream_event",
         "params": {
@@ -209,13 +213,14 @@ fn open_broker_websocket(config: &ManifoldPosePublisherConfig) -> Result<TcpStre
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
     let request = format!(
-        "GET /rustyxr/v1/events HTTP/1.1\r\n\
+        "GET {} HTTP/1.1\r\n\
          Host: {}:{}\r\n\
          Upgrade: websocket\r\n\
          Connection: Upgrade\r\n\
          Sec-WebSocket-Key: cnVzdHkteHItdWFrZXBhZC1wb3Nl\r\n\
          Sec-WebSocket-Version: 13\r\n\
          \r\n",
+        MANIFOLD_BROKER_EVENTS_PATH,
         config.broker_host, config.broker_port
     );
     stream
@@ -351,6 +356,8 @@ mod tests {
         let config = ManifoldPosePublisherConfig::default();
         let command = build_publish_stream_command(&config, &sample());
         assert_eq!(command["command"], "publish_stream_event");
+        assert_eq!(command["schema"], MANIFOLD_COMMAND_SCHEMA);
+        assert_ne!(command["schema"], LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA);
         assert_eq!(command["params"]["stream"], DEFAULT_MANIFOLD_POSE_STREAM);
         assert_eq!(command["params"]["sequence_id"], 42);
     }

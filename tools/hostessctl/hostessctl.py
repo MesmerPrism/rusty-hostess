@@ -23,6 +23,7 @@ from tools.check_live_capture_evidence import package_snapshot, sha256_file  # n
 from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
 from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
     makepad_visual_profile_runtime_properties,
+    with_legacy_rustyxr_property_aliases,
 )
 from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
 
@@ -31,6 +32,10 @@ BROKER_PACKAGE = "com.example.rustyxr.broker"
 BROKER_ACTIVITY = f"{BROKER_PACKAGE}/.BrokerStartActivity"
 BROKER_PORT = 8765
 BROKER_LOCAL_FORWARD_PORT = 18765
+MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1"
+LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA = "rusty.xr.broker.command.v1"
+MANIFOLD_BROKER_EVENTS_PATH = "/manifold/v1/events"
+LEGACY_RUSTY_XR_BROKER_EVENTS_PATH = "/rustyxr/v1/events"
 MAKEPAD_XR_PROVIDER_PACKAGE = "io.github.mesmerprism.rustyxr.makepad.camera"
 MAKEPAD_XR_PROVIDER_ACTIVITY = f"{MAKEPAD_XR_PROVIDER_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
@@ -183,7 +188,7 @@ MANIFOLD_VALUE_PROVIDERS = {
         "value_id": "value.motion.object_pose",
         "stream_id": "stream.motion.object_pose",
         "broker_stream_id": "stream.motion.object_pose",
-        "provider_id": "provider.makepad_xr.controller_pose",
+        "provider_id": "provider.makepad.controller_pose",
         "provider_kind": "xr_object_pose",
         "package_id": "package.projected_motion_breath",
         "sample_kind": "object_pose",
@@ -1517,7 +1522,7 @@ class BrokerWebSocketClient:
         host: str,
         port: int,
         *,
-        path: str = "/rustyxr/v1/events",
+        path: str = MANIFOLD_BROKER_EVENTS_PATH,
         timeout: float = 5.0,
     ) -> None:
         self.host = host
@@ -1859,27 +1864,25 @@ def record_broker_websocket_streams(
                 errors.append(f"polar_pmd.stop cleanup failed: {ex}")
             ws.close()
         if makepad_publish_enabled:
-            run_adb(
-                "disable-makepad-pose-publish",
-                adb_prefix(args) + [
-                    "shell",
-                    "setprop",
-                    "debug.rustyxr.manifold.pose.publish.enabled",
-                    "false",
-                ],
-                allow_failure=True,
-            )
+            for key in [
+                "debug.rusty.manifold.pose.publish.enabled",
+                "debug.rustyxr.manifold.pose.publish.enabled",
+            ]:
+                run_adb(
+                    f"disable-makepad-pose-publish-{key}",
+                    adb_prefix(args) + ["shell", "setprop", key, "false"],
+                    allow_failure=True,
+                )
         if makepad_breath_feedback_enabled:
-            run_adb(
-                "disable-makepad-breath-feedback-subscriber",
-                adb_prefix(args) + [
-                    "shell",
-                    "setprop",
-                    "debug.rustyxr.manifold.breath.feedback.enabled",
-                    "false",
-                ],
-                allow_failure=True,
-            )
+            for key in [
+                "debug.rusty.manifold.breath.feedback.enabled",
+                "debug.rustyxr.manifold.breath.feedback.enabled",
+            ]:
+                run_adb(
+                    f"disable-makepad-breath-feedback-subscriber-{key}",
+                    adb_prefix(args) + ["shell", "setprop", key, "false"],
+                    allow_failure=True,
+                )
         run_adb("adb-forward-remove-broker-websocket", adb_prefix(args) + ["forward", "--remove", forward_spec], allow_failure=True)
 
     ended = datetime.now(UTC)
@@ -1916,7 +1919,7 @@ def record_broker_websocket_streams(
         "requested_duration_ms": int(args.duration_seconds * 1000),
         "transport": {
             "kind": "adb-forwarded-broker-websocket",
-            "websocket_url": f"ws://127.0.0.1:{args.broker_local_port}/rustyxr/v1/events",
+            "websocket_url": f"ws://127.0.0.1:{args.broker_local_port}{MANIFOLD_BROKER_EVENTS_PATH}",
             "broker_device_port": args.broker_port,
             "host_forward_port": args.broker_local_port,
             "adb_serial": args.serial,
@@ -1973,6 +1976,7 @@ def broker_command_message(
 ) -> dict[str, Any]:
     return {
         "type": "command",
+        "schema": MANIFOLD_COMMAND_SCHEMA,
         "request_id": request_id or f"hostess-record-values-{command.replace('.', '-')}",
         "command": command,
         "params": params or {},
@@ -2027,29 +2031,33 @@ def configure_makepad_controller_pose_provider(
     *,
     enable_breath_feedback: bool = False,
 ) -> None:
-    setprops = {
+    setprops = with_legacy_rustyxr_property_aliases({
         **makepad_visual_profile_runtime_properties(),
-        "debug.rustyxr.manifold.pose.publish.enabled": "true",
-        "debug.rustyxr.manifold.pose.stream": "stream.motion.object_pose",
-        "debug.rustyxr.manifold.pose.source": "provider.makepad_xr.controller_pose",
-        "debug.rustyxr.manifold.pose.controller": args.makepad_pose_controller,
-        "debug.rustyxr.manifold.pose.kind": args.makepad_pose_kind,
-        "debug.rustyxr.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
-        "debug.rustyxr.manifold.broker.host": "127.0.0.1",
-        "debug.rustyxr.manifold.broker.port": str(args.broker_port),
-        "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
-    }
+        "debug.rusty.manifold.pose.publish.enabled": "true",
+        "debug.rusty.manifold.pose.stream": "stream.motion.object_pose",
+        "debug.rusty.manifold.pose.source": "provider.makepad.controller_pose",
+        "debug.rusty.manifold.pose.controller": args.makepad_pose_controller,
+        "debug.rusty.manifold.pose.kind": args.makepad_pose_kind,
+        "debug.rusty.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
+        "debug.rusty.manifold.broker.host": "127.0.0.1",
+        "debug.rusty.manifold.broker.port": str(args.broker_port),
+        "debug.rusty.makepad.projection.target.joystick.controls": "offset-scale",
+    })
     if enable_breath_feedback:
         setprops.update(
-            {
-                "debug.rustyxr.manifold.breath.feedback.enabled": "true",
-                "debug.rustyxr.manifold.breath.feedback.stream": "stream.breath.feedback_state",
-                "debug.rustyxr.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
-                "debug.rustyxr.manifold.breath.feedback.connect.timeout.ms": "5000",
-            }
+            with_legacy_rustyxr_property_aliases({
+                "debug.rusty.manifold.breath.feedback.enabled": "true",
+                "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+                "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
+                "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+            })
         )
     else:
-        setprops["debug.rustyxr.manifold.breath.feedback.enabled"] = "false"
+        setprops.update(
+            with_legacy_rustyxr_property_aliases({
+                "debug.rusty.manifold.breath.feedback.enabled": "false"
+            })
+        )
     for key, value in setprops.items():
         run_adb(
             f"setprop-{key}",
@@ -2069,17 +2077,17 @@ def configure_makepad_controller_pose_provider(
 
 
 def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None:
-    setprops = {
+    setprops = with_legacy_rustyxr_property_aliases({
         **makepad_visual_profile_runtime_properties(),
-        "debug.rustyxr.manifold.pose.publish.enabled": "false",
-        "debug.rustyxr.manifold.broker.host": "127.0.0.1",
-        "debug.rustyxr.manifold.broker.port": str(args.broker_port),
-        "debug.rustyxr.manifold.breath.feedback.enabled": "true",
-        "debug.rustyxr.manifold.breath.feedback.stream": "stream.breath.feedback_state",
-        "debug.rustyxr.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
-        "debug.rustyxr.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
-    }
+        "debug.rusty.manifold.pose.publish.enabled": "false",
+        "debug.rusty.manifold.broker.host": "127.0.0.1",
+        "debug.rusty.manifold.broker.port": str(args.broker_port),
+        "debug.rusty.manifold.breath.feedback.enabled": "true",
+        "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+        "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
+        "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+        "debug.rusty.makepad.projection.target.joystick.controls": "offset-scale",
+    })
     for key, value in setprops.items():
         run([args.adb, "-s", args.serial, "shell", "setprop", key, value])
     for permission in [
@@ -2096,22 +2104,22 @@ def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None
 
 
 def configure_makepad_physical_pmb_provider(args: argparse.Namespace) -> None:
-    setprops = {
+    setprops = with_legacy_rustyxr_property_aliases({
         **makepad_visual_profile_runtime_properties(),
-        "debug.rustyxr.manifold.pose.publish.enabled": "true",
-        "debug.rustyxr.manifold.pose.stream": "stream.motion.object_pose",
-        "debug.rustyxr.manifold.pose.source": "provider.makepad_xr.controller_pose",
-        "debug.rustyxr.manifold.pose.controller": args.makepad_pose_controller,
-        "debug.rustyxr.manifold.pose.kind": args.makepad_pose_kind,
-        "debug.rustyxr.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
-        "debug.rustyxr.manifold.broker.host": "127.0.0.1",
-        "debug.rustyxr.manifold.broker.port": str(args.broker_port),
-        "debug.rustyxr.manifold.breath.feedback.enabled": "true",
-        "debug.rustyxr.manifold.breath.feedback.stream": "stream.breath.feedback_state",
-        "debug.rustyxr.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
-        "debug.rustyxr.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
-    }
+        "debug.rusty.manifold.pose.publish.enabled": "true",
+        "debug.rusty.manifold.pose.stream": "stream.motion.object_pose",
+        "debug.rusty.manifold.pose.source": "provider.makepad.controller_pose",
+        "debug.rusty.manifold.pose.controller": args.makepad_pose_controller,
+        "debug.rusty.manifold.pose.kind": args.makepad_pose_kind,
+        "debug.rusty.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
+        "debug.rusty.manifold.broker.host": "127.0.0.1",
+        "debug.rusty.manifold.broker.port": str(args.broker_port),
+        "debug.rusty.manifold.breath.feedback.enabled": "true",
+        "debug.rusty.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+        "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
+        "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
+        "debug.rusty.makepad.projection.target.joystick.controls": "offset-scale",
+    })
     for key, value in setprops.items():
         run([args.adb, "-s", args.serial, "shell", "setprop", key, value])
     for permission in [

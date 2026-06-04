@@ -402,6 +402,32 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
         self.assertEqual(actions[-1]["tracked_pose_events"], 1)
         self.assertEqual(actions[-1]["connected_pose_events"], 1)
 
+    def test_broker_command_message_defaults_to_manifold_envelope(self) -> None:
+        command = hostessctl.broker_command_message(
+            "subscribe",
+            {"stream": "stream.motion.object_pose"},
+            request_id="req-1",
+        )
+
+        self.assertEqual(command["schema"], hostessctl.MANIFOLD_COMMAND_SCHEMA)
+        self.assertNotEqual(command["schema"], hostessctl.LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA)
+        self.assertEqual(command["command"], "subscribe")
+        self.assertEqual(command["params"]["stream"], "stream.motion.object_pose")
+
+    def test_broker_websocket_client_defaults_to_manifold_path(self) -> None:
+        with patch("tools.hostessctl.hostessctl.socket.create_connection") as create_connection:
+            fake_socket = create_connection.return_value
+            fake_socket.recv.return_value = (
+                b"HTTP/1.1 101 Switching Protocols\r\n"
+                b"Sec-WebSocket-Accept: invalid\r\n\r\n"
+            )
+            with self.assertRaises(RuntimeError):
+                hostessctl.BrokerWebSocketClient("127.0.0.1", 8765)
+
+        request = fake_socket.sendall.call_args.args[0].decode("ascii")
+        self.assertIn(f"GET {hostessctl.MANIFOLD_BROKER_EVENTS_PATH} HTTP/1.1", request)
+        self.assertNotIn(hostessctl.LEGACY_RUSTY_XR_BROKER_EVENTS_PATH, request)
+
 
 def record_args(
     root: Path,

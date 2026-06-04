@@ -83,7 +83,7 @@ use crate::rusty_xr_camera_model::{Rect2, SourceSamplingMode, Vec2};
 use crate::rusty_xr_runtime_config::RuntimeConfig;
 use makepad_widgets::makepad_platform::{
     event::video_playback::{
-        BrokerH264VideoSource, CameraPreviewMode, TextureHandleReadyEvent, VideoSource,
+        CameraPreviewMode, ExternalH264VideoSource, TextureHandleReadyEvent, VideoSource,
         VideoTextureResourcePath, VideoTextureUpdateMetadata, VideoYuvMetadata,
     },
     permission::Permission,
@@ -2980,7 +2980,7 @@ impl App {
         }
     }
 
-    fn broker_h264_source_for_eye(eye: StereoEye) -> BrokerH264VideoSource {
+    fn broker_h264_source_for_eye(eye: StereoEye) -> ExternalH264VideoSource {
         let synthetic_projection_profile = hotload_text(
             KEY_MAKEPAD_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
             DEFAULT_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
@@ -2991,7 +2991,7 @@ impl App {
         );
         let source_sampling_mode = Self::broker_h264_source_sampling_mode();
         let decode_output_mode = Self::broker_h264_decode_output_mode();
-        BrokerH264VideoSource {
+        ExternalH264VideoSource {
             broker_host: hotload_text(KEY_MAKEPAD_BROKER_H264_HOST, DEFAULT_BROKER_H264_HOST),
             broker_port: hotload_u16(
                 KEY_MAKEPAD_BROKER_H264_BROKER_PORT,
@@ -3097,7 +3097,7 @@ impl App {
         }
     }
 
-    fn broker_h264_source() -> BrokerH264VideoSource {
+    fn broker_h264_source() -> ExternalH264VideoSource {
         Self::broker_h264_source_for_eye(StereoEye::Left)
     }
 
@@ -3460,10 +3460,10 @@ impl App {
         } else {
             &state.right_controller
         };
-        let pose = if config.pose_kind == "aim" {
-            controller.aim_pose
+        let (pose, pose_tracked) = if config.pose_kind == "aim" {
+            (controller.aim_pose, controller.aim_tracked())
         } else {
-            controller.grip_pose
+            (controller.grip_pose, controller.grip_tracked())
         };
         let position = [pose.position.x, pose.position.y, pose.position.z];
         let orientation = [
@@ -3475,7 +3475,7 @@ impl App {
         let pose_is_finite = position.iter().all(|value| value.is_finite())
             && orientation.iter().all(|value| value.is_finite());
         let active = controller.active();
-        let tracked = active && pose_is_finite;
+        let tracked = active && pose_tracked && pose_is_finite;
 
         self.manifold_pose_next_sequence_id = self.manifold_pose_next_sequence_id.saturating_add(1);
         let sequence_id = self.manifold_pose_next_sequence_id;
@@ -4984,7 +4984,7 @@ impl App {
         );
         cx.prepare_video_playback(
             side.video_id(),
-            VideoSource::BrokerH264(source),
+            VideoSource::ExternalH264(source),
             CameraPreviewMode::Texture,
             ready.handle,
             ready.texture_id,
@@ -5025,7 +5025,7 @@ impl App {
         );
         cx.prepare_video_playback(
             side.video_id(),
-            VideoSource::BrokerH264(source),
+            VideoSource::ExternalH264(source),
             CameraPreviewMode::Texture,
             0,
             texture_id,
@@ -6286,7 +6286,7 @@ struct MakepadCameraPair {
 }
 
 impl MakepadCameraPair {
-    fn from_broker_h264_source(source: &BrokerH264VideoSource) -> Self {
+    fn from_broker_h264_source(source: &ExternalH264VideoSource) -> Self {
         let width = source.preferred_width.max(1);
         let height = source.preferred_height.max(1);
         let left = MakepadCameraChoice::broker_h264("left", width, height);

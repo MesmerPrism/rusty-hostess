@@ -16,6 +16,10 @@ pub(crate) const BREATH_FEEDBACK_STREAM_ID: &str = "stream.breath.feedback_state
 pub(crate) const BREATH_FEEDBACK_RECEIVER_ID: &str = "app.makepad_camera_shell.breath_feedback";
 pub(crate) const BREATH_FEEDBACK_RECEIPT_COMMAND: &str = "breath_feedback.received";
 pub(crate) const BREATH_FEEDBACK_RECEIPT_SCHEMA: &str = "rusty.manifold.breath.feedback_receipt.v1";
+pub(crate) const MANIFOLD_COMMAND_SCHEMA: &str = "rusty.manifold.command.envelope.v1";
+#[cfg(test)]
+const LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA: &str = "rusty.xr.broker.command.v1";
+pub(crate) const MANIFOLD_BROKER_EVENTS_PATH: &str = "/manifold/v1/events";
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct ManifoldBreathFeedbackConfig {
@@ -81,7 +85,7 @@ pub(crate) fn build_breath_feedback_subscribe_command(
 ) -> JsonValue {
     json!({
         "type": "command",
-        "schema": "rusty.xr.broker.command.v1",
+        "schema": MANIFOLD_COMMAND_SCHEMA,
         "request_id": "makepad-breath-feedback-subscribe",
         "command": "subscribe",
         "params": {
@@ -147,7 +151,7 @@ pub(crate) fn build_breath_feedback_receipt_command(
 ) -> JsonValue {
     json!({
         "type": "command",
-        "schema": "rusty.xr.broker.command.v1",
+        "schema": MANIFOLD_COMMAND_SCHEMA,
         "request_id": format!("makepad-breath-feedback-receipt-{}", receipt_sequence_id),
         "command": BREATH_FEEDBACK_RECEIPT_COMMAND,
         "params": {
@@ -279,13 +283,14 @@ fn open_broker_websocket(config: &ManifoldBreathFeedbackConfig) -> Result<TcpStr
     let _ = stream.set_read_timeout(Some(timeout));
     let _ = stream.set_write_timeout(Some(timeout));
     let request = format!(
-        "GET /rustyxr/v1/events HTTP/1.1\r\n\
+        "GET {} HTTP/1.1\r\n\
          Host: {}:{}\r\n\
          Upgrade: websocket\r\n\
          Connection: Upgrade\r\n\
          Sec-WebSocket-Key: cnVzdHkteHItdWFrZXBhZC1icmVhdGg=\r\n\
          Sec-WebSocket-Version: 13\r\n\
          \r\n",
+        MANIFOLD_BROKER_EVENTS_PATH,
         config.broker_host, config.broker_port
     );
     stream
@@ -436,6 +441,8 @@ mod tests {
         };
         let command = build_breath_feedback_subscribe_command(&config);
         assert_eq!(command["command"], "subscribe");
+        assert_eq!(command["schema"], MANIFOLD_COMMAND_SCHEMA);
+        assert_ne!(command["schema"], LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA);
         assert_eq!(command["params"]["stream"], BREATH_FEEDBACK_STREAM_ID);
         assert_eq!(command["params"]["receiver"], BREATH_FEEDBACK_RECEIVER_ID);
     }
@@ -463,6 +470,8 @@ mod tests {
 
         let receipt = build_breath_feedback_receipt_command(&config, &sample, 11);
         assert_eq!(receipt["command"], BREATH_FEEDBACK_RECEIPT_COMMAND);
+        assert_eq!(receipt["schema"], MANIFOLD_COMMAND_SCHEMA);
+        assert_ne!(receipt["schema"], LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA);
         assert_eq!(receipt["params"]["schema"], BREATH_FEEDBACK_RECEIPT_SCHEMA);
         assert_eq!(
             receipt["params"]["received_stream"],
