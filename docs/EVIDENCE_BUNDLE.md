@@ -41,6 +41,25 @@ evidence must record `pmb_controller_path_preflight_passed=true`,
 `controller_input_used=false`, `human_controller_trial_performed=false`, and
 `manual_controller_trial_required=true`.
 
+Projected-motion breath Quest simulated live routing uses
+`rusty.hostess.projected_motion_breath.android_simulated_live_execution_evidence.v1`.
+`hostessctl run-pmb-quest-simulated-live --target quest` launches the Quest
+broker, starts the clean Makepad XR app with breath feedback receipt handling,
+then launches the Hostess Android action
+`io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE`. Hostess copies
+the PMB package assets into app-private storage, executes the PMB live-route
+self-test through the Hostess PMB JNI library on Quest, publishes selected
+breath volume and breath feedback samples to the Quest broker, and requires
+Makepad feedback receipts before the host accepts the run. The evidence must
+record `pmd_computed_on_quest=true`, `pmd_computed_on_pc=false`,
+`processor_authority=quest_hostess_android_app`,
+`simulated_polar_provider_used=true`,
+`simulated_controller_provider_used=true`, `physical_polar_ble_used=false`,
+`physical_controller_input_used=false`, broker publish counts, and Makepad
+feedback receipt counts. This autonomous route is not a physical Polar BLE or
+human controller trial; it proves the Quest-owned processor, broker, and Makepad
+feedback path with packaged simulated providers.
+
 General Manifold value recording uses
 `rusty.hostess.manifold_value_recording.evidence.v1`.
 `hostessctl record-values --target desktop|phone|quest --value <stream-id>`

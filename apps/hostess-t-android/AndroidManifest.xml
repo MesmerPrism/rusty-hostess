@@ -5,6 +5,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="true" />
 
@@ -21,6 +22,8 @@
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_REPLAY" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

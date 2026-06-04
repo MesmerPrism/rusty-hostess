@@ -78,6 +78,46 @@ pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nati
     }
 }
 
+#[no_mangle]
+pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nativeRunLiveRouteSelfTest(
+    mut env: JNIEnv,
+    _class: JClass,
+    package_root: JString,
+) -> jstring {
+    let result = jni_run_live_route_self_test(&mut env, package_root).unwrap_or_else(|error| {
+        json!({
+            "schema": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+            "package_root": "",
+            "status": "fail",
+            "route_id": "",
+            "input_stream_ids": [],
+            "normalized_stream_ids": [],
+            "output_stream_ids": [],
+            "processor_core_executed": false,
+            "runtime_execution_performed": false,
+            "external_transport_used": false,
+            "live_sensor_used": false,
+            "headset_execution_performed": false,
+            "plan_only": true,
+            "source_routes": [],
+            "breath_samples": [],
+            "feedback_samples": [],
+            "receiver_subscription": {
+                "command": "",
+                "stream": "",
+                "receiver_id": ""
+            },
+            "receiver_receipts": [],
+            "issues": [format!("issue.jni_bridge_failed:{error}")]
+        })
+        .to_string()
+    });
+    match env.new_string(result) {
+        Ok(output) => output.into_raw(),
+        Err(_) => std::ptr::null_mut(),
+    }
+}
+
 fn jni_validate_package(env: &mut JNIEnv, package_root: JString) -> Result<String, String> {
     let package_root: String = env
         .get_string(&package_root)
@@ -85,6 +125,17 @@ fn jni_validate_package(env: &mut JNIEnv, package_root: JString) -> Result<Strin
         .into();
     let report =
         projected_motion_breath_core::validate_package_goldens(PathBuf::from(package_root))
+            .map_err(|error| error.to_string())?;
+    serde_json::to_string(&report).map_err(|error| error.to_string())
+}
+
+fn jni_run_live_route_self_test(env: &mut JNIEnv, package_root: JString) -> Result<String, String> {
+    let package_root: String = env
+        .get_string(&package_root)
+        .map_err(|error| format!("package_root_jni:{error}"))?
+        .into();
+    let report =
+        projected_motion_breath_core::run_live_route_self_test(PathBuf::from(package_root))
             .map_err(|error| error.to_string())?;
     serde_json::to_string(&report).map_err(|error| error.to_string())
 }

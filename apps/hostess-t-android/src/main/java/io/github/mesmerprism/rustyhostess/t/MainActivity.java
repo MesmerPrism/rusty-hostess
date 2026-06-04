@@ -54,6 +54,7 @@ public final class MainActivity extends Activity {
     private static final String ACTION_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY";
     private static final String ACTION_PMB_REPLAY = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY";
     private static final String ACTION_PMB_CONTROLLER_PREFLIGHT = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT";
+    private static final String ACTION_PMB_SIMULATED_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
@@ -121,6 +122,10 @@ public final class MainActivity extends Activity {
         }
         if (ACTION_PMB_CONTROLLER_PREFLIGHT.equals(intent.getAction())) {
             writeProjectedMotionControllerPreflight(intent);
+            return;
+        }
+        if (ACTION_PMB_SIMULATED_LIVE.equals(intent.getAction())) {
+            writeProjectedMotionSimulatedLive(intent);
             return;
         }
         if (!ACTION_RUN.equals(intent.getAction())) {
@@ -265,6 +270,123 @@ public final class MainActivity extends Activity {
         }
     }
 
+    private void writeProjectedMotionSimulatedLive(Intent intent) {
+        final Instant startedAt = Instant.now();
+        final String hostProfile = normalizeHostProfile(intent.getStringExtra("host_profile"));
+        final String brokerHost = stringExtra(intent, "broker_host", "127.0.0.1");
+        final int brokerPort = intExtra(intent, "broker_port", 8765);
+        final int feedbackLimit = intExtra(intent, "feedback_publish_limit", 12);
+        final int receiptListenMs = intExtra(intent, "receipt_listen_ms", 6000);
+        List<String> modules = new ArrayList<>();
+        modules.add("module.breath.projected_motion");
+        modules.add("module.breath.dynamics");
+        modules.add("module.breath.feedback_sink");
+        telemetryView.resetForRun("pmb_simulated_live", modules);
+        telemetryView.setRunState("running", "pmb_simulated_live", modules);
+        final File evidenceRoot = new File(getExternalFilesDir(null), "hostess-t/evidence/pmb-simulated-live");
+        final File packageRoot = new File(getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
+        final List<String> workerModules = new ArrayList<>(modules);
+        new Thread(() -> runProjectedMotionSimulatedLive(
+                startedAt,
+                hostProfile,
+                brokerHost,
+                brokerPort,
+                feedbackLimit,
+                receiptListenMs,
+                evidenceRoot,
+                packageRoot,
+                workerModules), "hostess-pmb-simulated-live").start();
+    }
+
+    private void runProjectedMotionSimulatedLive(
+            Instant startedAt,
+            String hostProfile,
+            String brokerHost,
+            int brokerPort,
+            int feedbackLimit,
+            int receiptListenMs,
+            File evidenceRoot,
+            File packageRoot,
+            List<String> modules) {
+        String status = "fail";
+        try {
+            resetDirectory(packageRoot);
+            copyPmbPackageAssets(packageRoot);
+            JSONObject routeReport = PMBRuntime.runLiveRouteSelfTest(packageRoot.getAbsolutePath());
+            List<String> errors = pmbCoreErrors(routeReport);
+            JSONObject brokerReport;
+            try {
+                PmbBrokerBridge.Result brokerResult = PmbBrokerBridge.publishRoute(
+                        routeReport,
+                        brokerHost,
+                        brokerPort,
+                        feedbackLimit,
+                        receiptListenMs);
+                brokerReport = brokerResult.toJson();
+            } catch (IOException | JSONException | RuntimeException brokerEx) {
+                brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, brokerEx.getMessage());
+                errors.add(brokerEx.getMessage() == null ? brokerEx.toString() : brokerEx.getMessage());
+            }
+            if (!"pass".equals(brokerReport.optString("status"))) {
+                JSONArray brokerErrors = brokerReport.optJSONArray("errors");
+                if (brokerErrors != null) {
+                    for (int index = 0; index < brokerErrors.length(); index++) {
+                        errors.add(brokerErrors.optString(index));
+                    }
+                }
+            }
+            Instant endedAt = Instant.now();
+            status = errors.isEmpty()
+                    && "pass".equals(routeReport.optString("status"))
+                    && "pass".equals(brokerReport.optString("status"))
+                    ? "pass"
+                    : "fail";
+            if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
+                throw new IOException("could not create PMB simulated live evidence folder");
+            }
+            writeText(new File(evidenceRoot, "latest.live-route-report.json"), routeReport.toString(2));
+            writeText(new File(evidenceRoot, "latest.broker-publish-report.json"), brokerReport.toString(2));
+            JSONObject evidence = PmbSimulatedLiveEvidence.build(
+                    hostProfile,
+                    startedAt,
+                    endedAt,
+                    pmbPackageSnapshot(),
+                    routeReport,
+                    brokerReport,
+                    errors,
+                    null);
+            writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+        } catch (IOException | JSONException | RuntimeException ex) {
+            Instant endedAt = Instant.now();
+            try {
+                if (!evidenceRoot.exists()) {
+                    evidenceRoot.mkdirs();
+                }
+                JSONObject routeReport = pmbFailureLiveRouteReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                JSONObject brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, ex.getMessage());
+                writeText(new File(evidenceRoot, "latest.live-route-report.json"), routeReport.toString(2));
+                writeText(new File(evidenceRoot, "latest.broker-publish-report.json"), brokerReport.toString(2));
+                List<String> errors = new ArrayList<>();
+                errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
+                JSONObject evidence = PmbSimulatedLiveEvidence.build(
+                        hostProfile,
+                        startedAt,
+                        endedAt,
+                        pmbPackageSnapshot(),
+                        routeReport,
+                        brokerReport,
+                        errors,
+                        ex.toString());
+                writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
+            } catch (IOException | JSONException ignored) {
+                // The UI state is the fallback signal when app-private evidence cannot be written.
+            }
+            status = "fail";
+        }
+        final String finalStatus = status;
+        handler.post(() -> telemetryView.setRunState(finalStatus, "pmb_simulated_live", modules));
+    }
+
     private String[] missingPermissions() {
         List<String> missing = new ArrayList<>();
         if (android.os.Build.VERSION.SDK_INT >= 31) {
@@ -278,6 +400,25 @@ public final class MainActivity extends Activity {
             missing.add(Manifest.permission.ACCESS_FINE_LOCATION);
         }
         return missing.toArray(new String[0]);
+    }
+
+    private static String stringExtra(Intent intent, String name, String fallback) {
+        String value = intent.getStringExtra(name);
+        if (value == null || value.trim().isEmpty()) {
+            return fallback;
+        }
+        return value.trim();
+    }
+
+    private static int intExtra(Intent intent, String name, int fallback) {
+        if (!intent.hasExtra(name) || intent.getExtras() == null) {
+            return fallback;
+        }
+        try {
+            return Integer.parseInt(String.valueOf(intent.getExtras().get(name)).trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
     }
 
     private void writeImmediateFailure(String code, String message) {
@@ -1917,6 +2058,55 @@ public final class MainActivity extends Activity {
                 .put("manual_controller_trial_required", true)
                 .put("estimates", new JSONArray())
                 .put("issues", new JSONArray().put(message == null ? "issue.android_controller_preflight_failed" : message));
+    }
+
+    private static JSONObject pmbFailureLiveRouteReport(String packageRoot, String message) throws JSONException {
+        return new JSONObject()
+                .put("schema", "rusty.manifold.projected_motion_breath.live_route_report.v1")
+                .put("package_root", packageRoot)
+                .put("status", "fail")
+                .put("route_id", "")
+                .put("input_stream_ids", new JSONArray())
+                .put("normalized_stream_ids", new JSONArray())
+                .put("output_stream_ids", new JSONArray())
+                .put("processor_core_executed", false)
+                .put("runtime_execution_performed", false)
+                .put("external_transport_used", false)
+                .put("live_sensor_used", false)
+                .put("headset_execution_performed", false)
+                .put("plan_only", true)
+                .put("source_routes", new JSONArray())
+                .put("breath_samples", new JSONArray())
+                .put("feedback_samples", new JSONArray())
+                .put("receiver_subscription", new JSONObject()
+                        .put("command", "")
+                        .put("stream", "")
+                        .put("receiver_id", ""))
+                .put("receiver_receipts", new JSONArray())
+                .put("issues", new JSONArray().put(message == null ? "issue.android_simulated_live_failed" : message));
+    }
+
+    private static JSONObject pmbFailureBrokerPublishReport(String brokerHost, int brokerPort, String message) throws JSONException {
+        return new JSONObject()
+                .put("schema", "rusty.hostess.projected_motion_breath.quest_broker_publish_report.v1")
+                .put("status", "fail")
+                .put("broker_host", brokerHost)
+                .put("broker_port", brokerPort)
+                .put("broker_connected", false)
+                .put("broker_transport_used", false)
+                .put("publish_limit", 0)
+                .put("receipt_listen_ms", 0)
+                .put("breath_requested_count", 0)
+                .put("feedback_requested_count", 0)
+                .put("breath_published_count", 0)
+                .put("feedback_published_count", 0)
+                .put("feedback_receipt_count", 0)
+                .put("receipt_stream_id", PmbBrokerBridge.STREAM_BREATH_FEEDBACK_RECEIPT)
+                .put("breath_results", new JSONArray())
+                .put("feedback_results", new JSONArray())
+                .put("command_replies", new JSONArray())
+                .put("receipt_events", new JSONArray())
+                .put("errors", new JSONArray().put(message == null ? "issue.android_broker_publish_failed" : message));
     }
 
     private static JSONObject pmbScorecardCheck(String checkId, boolean passed, String evidence) throws JSONException {

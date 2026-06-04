@@ -39,6 +39,7 @@ ANDROID_PMB_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY
 ANDROID_PMB_CONTROLLER_PREFLIGHT_ACTION = (
     "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT"
 )
+ANDROID_PMB_SIMULATED_LIVE_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE"
 ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
 ANDROID_REMOTE_EVIDENCE = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.json"
@@ -60,6 +61,15 @@ ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE = (
 )
 ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-controller-preflight/latest.controller-preflight-report.json"
+)
+ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.json"
+)
+ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.live-route-report.json"
+)
+ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.broker-publish-report.json"
 )
 ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
 MAKEPAD_RENDER_RELATIVE = "files/hostess-t/telemetry/makepad-telemetry-render.png"
@@ -256,6 +266,23 @@ def main() -> int:
     run_pmb_controller_preflight_parser.add_argument("--adb", required=True)
     run_pmb_controller_preflight_parser.add_argument("--serial", required=True)
 
+    run_pmb_simulated_live_parser = subcommands.add_parser("run-pmb-quest-simulated-live")
+    run_pmb_simulated_live_parser.add_argument("--target", choices=["quest"], default="quest")
+    run_pmb_simulated_live_parser.add_argument("--out", required=True)
+    run_pmb_simulated_live_parser.add_argument("--packages-root", required=True)
+    run_pmb_simulated_live_parser.add_argument("--adb", required=True)
+    run_pmb_simulated_live_parser.add_argument("--serial", required=True)
+    run_pmb_simulated_live_parser.add_argument("--broker-package", default=BROKER_PACKAGE)
+    run_pmb_simulated_live_parser.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    run_pmb_simulated_live_parser.add_argument("--broker-port", type=int, default=BROKER_PORT)
+    run_pmb_simulated_live_parser.add_argument("--makepad-package", default=MAKEPAD_ANDROID_PACKAGE)
+    run_pmb_simulated_live_parser.add_argument("--makepad-activity", default=MAKEPAD_ANDROID_XR_ACTIVITY)
+    run_pmb_simulated_live_parser.add_argument("--makepad-settle-seconds", type=float, default=8.0)
+    run_pmb_simulated_live_parser.add_argument("--feedback-publish-limit", type=int, default=12)
+    run_pmb_simulated_live_parser.add_argument("--receipt-listen-seconds", type=float, default=6.0)
+    run_pmb_simulated_live_parser.add_argument("--no-launch-broker", action="store_true")
+    run_pmb_simulated_live_parser.add_argument("--no-launch-makepad", action="store_true")
+
     run_pmb_live_route_self_test_parser = subcommands.add_parser("run-pmb-live-route-self-test")
     run_pmb_live_route_self_test_parser.add_argument("--out", required=True)
     run_pmb_live_route_self_test_parser.add_argument("--packages-root", required=True)
@@ -347,6 +374,8 @@ def main() -> int:
         return run_pmb_replay_capture(args)
     if args.command == "run-pmb-controller-preflight":
         return run_pmb_controller_preflight(args)
+    if args.command == "run-pmb-quest-simulated-live":
+        return run_pmb_quest_simulated_live(args)
     if args.command == "run-pmb-live-route-self-test":
         return run_pmb_live_route_self_test(args)
     if args.command == "run-pmb-shell-handoff":
@@ -829,6 +858,96 @@ def run_pmb_controller_preflight(args: argparse.Namespace) -> int:
     )
     if validation_report["status"] == "pass":
         write_pmb_controller_preflight_host_run_evidence(
+            out,
+            validation_path,
+            evidence,
+            args.target,
+            host_profile,
+        )
+    return 0 if validation_report["status"] == "pass" else 2
+
+
+def run_pmb_quest_simulated_live(args: argparse.Namespace) -> int:
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    packages_root = Path(args.packages_root)
+    package_root = projected_motion_breath_package_root(packages_root)
+    if not package_root.exists():
+        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
+    host_profile = "headset"
+    if not getattr(args, "no_launch_broker", False):
+        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.broker_activity])
+    if not getattr(args, "no_launch_makepad", False):
+        configure_makepad_breath_feedback_receiver(args)
+    clear_android_pmb_simulated_live_artifacts(args)
+    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "shell",
+            "am",
+            "start",
+            "-a",
+            ANDROID_PMB_SIMULATED_LIVE_ACTION,
+            "-n",
+            f"{ANDROID_PACKAGE}/.MainActivity",
+            "--es",
+            "host_profile",
+            host_profile,
+            "--es",
+            "broker_host",
+            "127.0.0.1",
+            "--es",
+            "broker_port",
+            str(args.broker_port),
+            "--es",
+            "feedback_publish_limit",
+            str(args.feedback_publish_limit),
+            "--es",
+            "receipt_listen_ms",
+            str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
+        ]
+    )
+    wait_for_android_file(args, ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE, 45.0)
+    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE, str(out)])
+    route_report_path = out.with_name(f"{out.stem}.live-route-report.json")
+    broker_report_path = out.with_name(f"{out.stem}.broker-publish-report.json")
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "pull",
+            ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
+            str(route_report_path),
+        ]
+    )
+    run(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "pull",
+            ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
+            str(broker_report_path),
+        ]
+    )
+    evidence = json.loads(out.read_text(encoding="utf-8"))
+    validation_report = validate_pmb_quest_simulated_live_evidence(
+        evidence,
+        package_root=package_root,
+        target=args.target,
+        host_profile=host_profile,
+    )
+    validation_path = out.with_name(f"{out.stem}.validation-report.json")
+    validation_path.write_text(
+        json.dumps(validation_report, indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+    if validation_report["status"] == "pass":
+        write_pmb_quest_simulated_live_host_run_evidence(
             out,
             validation_path,
             evidence,
@@ -1611,6 +1730,32 @@ def configure_makepad_controller_pose_provider(
         adb_prefix(args) + ["shell", "am", "start", "-n", args.makepad_provider_activity],
         allow_failure=False,
     )
+
+
+def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None:
+    setprops = {
+        "debug.rustyxr.manifold.pose.publish.enabled": "false",
+        "debug.rustyxr.manifold.broker.host": "127.0.0.1",
+        "debug.rustyxr.manifold.broker.port": str(args.broker_port),
+        "debug.rustyxr.manifold.breath.feedback.enabled": "true",
+        "debug.rustyxr.manifold.breath.feedback.stream": "stream.breath.feedback_state",
+        "debug.rustyxr.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
+        "debug.rustyxr.manifold.breath.feedback.connect.timeout.ms": "5000",
+        "debug.rustyxr.makepad.projection.target.joystick.controls": "offset-scale",
+    }
+    for key, value in setprops.items():
+        run([args.adb, "-s", args.serial, "shell", "setprop", key, value])
+    for permission in [
+        "android.permission.CAMERA",
+        "horizonos.permission.HEADSET_CAMERA",
+    ]:
+        run(
+            [args.adb, "-s", args.serial, "shell", "pm", "grant", args.makepad_package, permission],
+            allow_failure=True,
+        )
+    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", args.makepad_package], allow_failure=True)
+    run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.makepad_activity])
+    time.sleep(max(0.0, float(args.makepad_settle_seconds)))
 
 
 def wait_for_makepad_controller_pose_ready(
@@ -2896,6 +3041,15 @@ def clear_android_pmb_controller_preflight_artifacts(args: argparse.Namespace) -
         run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
 
 
+def clear_android_pmb_simulated_live_artifacts(args: argparse.Namespace) -> None:
+    for remote in [
+        ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE,
+        ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
+        ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
+    ]:
+        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+
+
 def wait_for_android_evidence(args: argparse.Namespace, timeout_seconds: float) -> None:
     wait_for_android_file(args, ANDROID_REMOTE_EVIDENCE, timeout_seconds)
 
@@ -4157,6 +4311,125 @@ def validate_pmb_controller_preflight_evidence(
     }
 
 
+def validate_pmb_quest_simulated_live_evidence(
+    evidence: dict[str, Any],
+    *,
+    package_root: Path,
+    target: str,
+    host_profile: str,
+) -> dict[str, Any]:
+    execution = evidence.get("execution", {})
+    route = evidence.get("route_report_summary", {})
+    broker = evidence.get("broker_publish_summary", {})
+    package = evidence.get("package", {})
+    local_package = projected_motion_package_snapshot(package_root)
+    expected_manifest_hash = local_package.get("package_manifest_sha256")
+    actual_manifest_hash = package.get("package_manifest_sha256")
+    input_stream_ids = set(route.get("input_stream_ids", []))
+    output_stream_ids = set(route.get("output_stream_ids", []))
+    checks = [
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.schema",
+            evidence.get("$schema")
+            == "rusty.hostess.projected_motion_breath.android_simulated_live_execution_evidence.v1",
+            "PMB Quest simulated live evidence schema is supported",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.status",
+            evidence.get("status") == "pass",
+            "PMB Quest simulated live evidence status passed",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.target",
+            evidence.get("target") == target and evidence.get("host_profile") == host_profile,
+            f"PMB simulated live targeted {target}/{host_profile}",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.quest_authority",
+            execution.get("quest_execution_performed") is True
+            and execution.get("android_execution_performed") is True
+            and execution.get("platform_execution_performed") is True
+            and execution.get("pmd_computed_on_quest") is True
+            and execution.get("pmd_computed_on_pc") is False
+            and execution.get("pc_processor_core_executed") is False
+            and execution.get("processor_authority") == "quest_hostess_android_app",
+            "PMD processing authority was the Quest Android app, not the PC",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.sources",
+            {"bio:polar_acc", "stream.motion.object_pose"}.issubset(input_stream_ids)
+            and {"stream.breath.volume", "stream.breath.feedback_state"}.issubset(output_stream_ids)
+            and int(route.get("source_route_count", 0)) >= 2
+            and int(route.get("breath_sample_count", 0)) >= 6
+            and int(route.get("feedback_sample_count", 0)) >= 6,
+            "simulated Polar ACC and controller object-pose routes produced PMB outputs",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.non_physical_gate",
+            execution.get("simulated_polar_provider_used") is True
+            and execution.get("simulated_controller_provider_used") is True
+            and execution.get("physical_polar_ble_used") is False
+            and execution.get("physical_controller_input_used") is False
+            and execution.get("controller_input_used") is False
+            and execution.get("manual_polar_trial_required") is True
+            and execution.get("manual_controller_trial_required") is True,
+            "run used simulated providers and did not claim physical Polar/controller input",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.broker_feedback",
+            execution.get("broker_transport_used") is True
+            and execution.get("feedback_published_to_broker") is True
+            and broker.get("broker_transport_used") is True
+            and int(broker.get("feedback_published_count", 0)) > 0,
+            "Quest app published PMB feedback to the broker",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.makepad_receipts",
+            int(broker.get("feedback_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1))
+            and int(execution.get("makepad_feedback_receipt_count", 0))
+            == int(broker.get("feedback_published_count", -1)),
+            "Makepad acknowledged every broker feedback sample",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.package_manifest_hash",
+            bool(expected_manifest_hash)
+            and expected_manifest_hash != "unavailable"
+            and actual_manifest_hash == expected_manifest_hash,
+            "PMB Android packaged manifest hash matched the supplied package root",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_quest_simulated_live.app_scorecard",
+            evidence.get("scorecard", {}).get("status") == "pass",
+            "PMB Quest simulated live app-side scorecard passed",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+    ]
+    errors = [
+        check["evidence"]
+        for check in checks
+        if check["status"] != "pass"
+    ]
+    return {
+        "$schema": "rusty.hostess.projected_motion_breath.android_simulated_live_validation.v1",
+        "status": "pass" if not errors else "fail",
+        "target": target,
+        "host_profile": host_profile,
+        "evidence_status": evidence.get("status"),
+        "checks": checks,
+        "errors": errors,
+    }
+
+
 def write_pmb_host_run_evidence(raw_evidence_path: Path, validation_report_path: Path, raw: dict[str, Any]) -> None:
     started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
     ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
@@ -4552,6 +4825,102 @@ def write_pmb_controller_preflight_host_run_evidence(
             "$schema": "rusty.manifold.validation.scorecard.v1",
             "scorecard_id": f"scorecard.host_run.projected_motion_breath.{target}_controller_preflight",
             "target_id": f"host_run.run.projected_motion_breath.{target}_controller_preflight.{started_ms}",
+            "target_revision": 1,
+            "status": status,
+            "checks": checks,
+            "issues": [],
+        },
+    }
+    contract_path = raw_evidence_path.with_name(f"{raw_evidence_path.stem}.host-run-evidence.json")
+    contract_path.write_text(json.dumps(contract, indent=2, sort_keys=True), encoding="utf-8")
+
+
+def write_pmb_quest_simulated_live_host_run_evidence(
+    raw_evidence_path: Path,
+    validation_report_path: Path,
+    raw: dict[str, Any],
+    target: str,
+    host_profile: str,
+) -> None:
+    started_ms = iso_to_epoch_ms(raw.get("started_at_utc"))
+    ended_ms = iso_to_epoch_ms(raw.get("ended_at_utc"))
+    validation_report = json.loads(validation_report_path.read_text(encoding="utf-8"))
+    execution = raw.get("execution", {})
+    route = raw.get("route_report_summary", {})
+    broker = raw.get("broker_publish_summary", {})
+    checks = [
+        pmb_scorecard_check(
+            "validation.check.pmb_quest_simulated_live_status",
+            validation_report.get("status") == "pass" and raw.get("status") == "pass",
+            "PMB Quest simulated live evidence and validation report passed",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.quest_processor_authority",
+            execution.get("pmd_computed_on_quest") is True
+            and execution.get("pmd_computed_on_pc") is False
+            and execution.get("processor_authority") == "quest_hostess_android_app",
+            "PMD processing authority stayed on the Quest Android app",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.simulated_polar_controller_sources",
+            {"bio:polar_acc", "stream.motion.object_pose"}.issubset(set(route.get("input_stream_ids", [])))
+            and int(route.get("source_route_count", 0)) >= 2,
+            "simulated Polar ACC and controller object-pose routes ran in the PMB processor",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.makepad_feedback_receipts",
+            int(broker.get("feedback_published_count", 0)) > 0
+            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("feedback_published_count", -1)),
+            "Makepad acknowledged every Quest-published feedback sample",
+            "validation.pmb_quest_simulated_live_failed",
+        ),
+    ]
+    status = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
+    contract = {
+        "$schema": "rusty.manifold.host_run.run_evidence.v1",
+        "run_id": f"host_run.run.projected_motion_breath.{target}_simulated_live.{started_ms}",
+        "bundle_id": f"host_run.bundle.projected_motion_breath.{target}_simulated_live",
+        "validation_slot_id": f"host_run.slot.projected_motion_breath.{target}_simulated_live",
+        "host_profile": f"host.{host_profile}",
+        "app_id": host_app_for(host_profile),
+        "package_ids": ["package.projected_motion_breath"],
+        "module_ids": [
+            "module.motion.object_pose_provider",
+            "module.breath.projected_motion",
+            "module.breath.feedback_sink",
+            "app.makepad_camera_shell.breath_feedback",
+        ],
+        "status": status,
+        "started_at_ms": started_ms,
+        "ended_at_ms": ended_ms,
+        "evidence_artifacts": [
+            "artifact.projected_motion_breath_quest_simulated_live_evidence",
+            "artifact.projected_motion_breath_live_route_report",
+            "artifact.projected_motion_breath_broker_publish_report",
+            "artifact.projected_motion_breath_quest_simulated_live_validation_report",
+            "artifact.host_run_evidence",
+        ],
+        "result_fields": {
+            "pmd_computed_on_quest": execution.get("pmd_computed_on_quest"),
+            "pmd_computed_on_pc": execution.get("pmd_computed_on_pc"),
+            "processor_authority": execution.get("processor_authority"),
+            "simulated_polar_provider_used": execution.get("simulated_polar_provider_used"),
+            "simulated_controller_provider_used": execution.get("simulated_controller_provider_used"),
+            "physical_polar_ble_used": execution.get("physical_polar_ble_used"),
+            "physical_controller_input_used": execution.get("physical_controller_input_used"),
+            "controller_input_used": execution.get("controller_input_used"),
+            "manual_controller_trial_required": execution.get("manual_controller_trial_required"),
+            "input_stream_ids": route.get("input_stream_ids", []),
+            "feedback_published_count": broker.get("feedback_published_count"),
+            "feedback_receipt_count": broker.get("feedback_receipt_count"),
+        },
+        "scorecard": {
+            "$schema": "rusty.manifold.validation.scorecard.v1",
+            "scorecard_id": f"scorecard.host_run.projected_motion_breath.{target}_simulated_live",
+            "target_id": f"host_run.run.projected_motion_breath.{target}_simulated_live.{started_ms}",
             "target_revision": 1,
             "status": status,
             "checks": checks,

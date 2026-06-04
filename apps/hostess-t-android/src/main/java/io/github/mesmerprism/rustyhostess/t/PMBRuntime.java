@@ -48,7 +48,16 @@ final class PMBRuntime {
         return new JSONObject(nativeRunControllerPreflight(packageRoot));
     }
 
+    static JSONObject runLiveRouteSelfTest(String packageRoot) throws JSONException, IOException {
+        if (!isAvailable()) {
+            throw new IOException("native runtime unavailable: " + loadError());
+        }
+        return new JSONObject(nativeRunLiveRouteSelfTest(packageRoot));
+    }
+
     private static native String nativeValidatePackage(String packageRoot);
 
     private static native String nativeRunControllerPreflight(String packageRoot);
+
+    private static native String nativeRunLiveRouteSelfTest(String packageRoot);
 }

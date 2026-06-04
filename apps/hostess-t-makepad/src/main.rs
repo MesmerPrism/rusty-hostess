@@ -109,7 +109,7 @@ use source_sampling::{
 use std::{
     sync::atomic::{AtomicBool, AtomicUsize, Ordering},
     thread,
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 app_main!(App);
@@ -130,6 +130,7 @@ static TEXTURE_CONTENT_PROBE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static FRAME_ADOPTION_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 
 const CAMERA_PAIR_CLOSE_TIMESTAMP_NS: u64 = 25_000_000;
+const CAMERA_FRAME_STALE_THRESHOLD_MS: f64 = 100.0;
 const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
 
@@ -4472,6 +4473,19 @@ impl App {
             (false, false)
         };
         let xr_cpu = cx.xr_frame_cpu_breakdown();
+        let now_ns = diagnostic_now_ns();
+        let left_camera_frame_age_ms =
+            camera_frame_age_ms(self.paired_import_left_update_metadata.as_ref(), now_ns);
+        let right_camera_frame_age_ms =
+            camera_frame_age_ms(self.paired_import_right_update_metadata.as_ref(), now_ns);
+        let paired_camera_frame_age_ms =
+            optional_max_f64(left_camera_frame_age_ms, right_camera_frame_age_ms);
+        let left_camera_import_lag_ms =
+            camera_import_lag_ms(self.paired_import_left_update_metadata.as_ref());
+        let right_camera_import_lag_ms =
+            camera_import_lag_ms(self.paired_import_right_update_metadata.as_ref());
+        let paired_camera_stale =
+            paired_camera_frame_age_ms.map(|age_ms| age_ms > CAMERA_FRAME_STALE_THRESHOLD_MS);
 
         emit_marker_line(&makepad_cadence_sample_marker_line(
             MakepadCadenceSampleMarker {
@@ -4499,6 +4513,13 @@ impl App {
                 paired_texture_update_rate_hz: paired_texture_rate_hz,
                 left_last_position_ms: self.cadence_left_last_position_ms,
                 right_last_position_ms: self.cadence_right_last_position_ms,
+                left_camera_frame_age_ms,
+                right_camera_frame_age_ms,
+                paired_camera_frame_age_ms,
+                left_camera_import_lag_ms,
+                right_camera_import_lag_ms,
+                camera_stale_threshold_ms: CAMERA_FRAME_STALE_THRESHOLD_MS,
+                paired_camera_stale,
                 paired_left_right_camera_frames: paired_buffers_ready,
                 projection_mapping_ready,
                 aligned_projection,
@@ -7369,6 +7390,35 @@ fn rate_hz(count: u64, seconds: f64) -> f64 {
         0.0
     } else {
         count as f64 / seconds
+    }
+}
+
+fn diagnostic_now_ns() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_nanos().min(u64::MAX as u128) as u64)
+        .unwrap_or(0)
+}
+
+fn camera_frame_age_ms(metadata: Option<&VideoTextureUpdateMetadata>, now_ns: u64) -> Option<f64> {
+    metadata
+        .and_then(|metadata| metadata.acquire_time_ns.or(metadata.import_time_ns))
+        .and_then(|timestamp_ns| now_ns.checked_sub(timestamp_ns))
+        .map(|age_ns| age_ns as f64 / 1_000_000.0)
+}
+
+fn camera_import_lag_ms(metadata: Option<&VideoTextureUpdateMetadata>) -> Option<f64> {
+    metadata
+        .and_then(|metadata| metadata.acquire_time_ns.zip(metadata.import_time_ns))
+        .and_then(|(acquire_time_ns, import_time_ns)| import_time_ns.checked_sub(acquire_time_ns))
+        .map(|lag_ns| lag_ns as f64 / 1_000_000.0)
+}
+
+fn optional_max_f64(left: Option<f64>, right: Option<f64>) -> Option<f64> {
+    match (left, right) {
+        (Some(left), Some(right)) => Some(left.max(right)),
+        (Some(value), None) | (None, Some(value)) => Some(value),
+        (None, None) => None,
     }
 }
 
