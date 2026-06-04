@@ -34,6 +34,12 @@ const STATIC_IMPLEMENTED_CAPABILITIES: &[&str] = &[
     "host_telemetry_snapshot_viewer",
     "render_export_writer",
     "makepad_xr_root",
+    "controller_pose_manifold_publisher",
+    "manifold_broker_transport",
+    "breath_feedback_subscriber",
+    "breath_feedback_receipt_publisher",
+    "camera_hardware_buffer_import",
+    "custom_camera_projection_from_hwb",
 ];
 
 #[derive(Clone, Debug, Default)]
@@ -81,6 +87,7 @@ struct RuntimeCapabilityCheck {
 }
 
 impl MakepadShellRuntimeCapabilityReceipt {
+    #[allow(dead_code)]
     pub(crate) fn status_line(&self) -> String {
         if self.status == "incomplete" {
             let first = self
@@ -482,7 +489,7 @@ mod tests {
     use makepad_widgets::makepad_platform::makepad_micro_serde::*;
 
     #[test]
-    fn marks_xr_controller_and_hwb_projection_as_required() {
+    fn marks_static_runtime_surfaces_implemented_and_live_xr_pending() {
         let contract_read = MakepadShellContractReadReceipt::test_read_receipt();
 
         let receipt = evaluate(&contract_read, &ShellXrRuntimeState::registered_xr_shell());
@@ -509,8 +516,16 @@ mod tests {
             .missing_capabilities
             .iter()
             .any(|capability| capability == "xr_controller_pose_provider"));
-        assert!(receipt
+        assert!(!receipt
             .missing_capabilities
+            .iter()
+            .any(|capability| capability == "custom_camera_projection_from_hwb"));
+        assert!(receipt
+            .implemented_capabilities
+            .iter()
+            .any(|capability| capability == "camera_hardware_buffer_import"));
+        assert!(receipt
+            .implemented_capabilities
             .iter()
             .any(|capability| capability == "custom_camera_projection_from_hwb"));
     }
@@ -525,6 +540,10 @@ mod tests {
         assert_eq!(receipt.status, "rejected");
         assert_eq!(receipt.issue_code.as_deref(), Some(CONTRACT_UNREAD_ISSUE));
         assert!(receipt
+            .missing_capabilities
+            .iter()
+            .any(|capability| capability == "xr_session"));
+        assert!(!receipt
             .missing_capabilities
             .iter()
             .any(|capability| capability == "camera_hardware_buffer_import"));
@@ -549,7 +568,7 @@ mod tests {
         ));
         assert!(matches!(
             object.get("status"),
-            Some(JsonValue::String(value)) if value == "incomplete"
+            Some(JsonValue::String(value)) if value == "ready"
         ));
         assert!(matches!(
             object.get("target_shell_kind"),
@@ -565,8 +584,7 @@ mod tests {
         ));
         assert!(matches!(
             object.get("missing_capabilities"),
-            Some(JsonValue::Array(values))
-                if !values.iter().any(|value| matches!(value, JsonValue::String(text) if text == "xr_session"))
+            Some(JsonValue::Array(values)) if values.is_empty()
         ));
     }
 }

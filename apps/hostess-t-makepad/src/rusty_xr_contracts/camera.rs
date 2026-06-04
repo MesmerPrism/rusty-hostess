@@ -1,0 +1,2823 @@
+use super::{Eye, Pose, Vec2};
+
+/// Pixel dimensions for a frame, view, or payload.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImageSize {
+    pub width: u32,
+    pub height: u32,
+}
+
+impl ImageSize {
+    pub const fn new(width: u32, height: u32) -> Self {
+        Self { width, height }
+    }
+
+    pub const fn is_non_empty(self) -> bool {
+        self.width > 0 && self.height > 0
+    }
+}
+
+/// Stable public identifier for a logical camera source.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CameraSourceId {
+    pub label: String,
+    pub physical_id: Option<String>,
+}
+
+impl CameraSourceId {
+    pub fn new(label: impl Into<String>) -> Self {
+        Self {
+            label: label.into(),
+            physical_id: None,
+        }
+    }
+
+    pub fn with_physical_id(mut self, physical_id: impl Into<String>) -> Self {
+        self.physical_id = Some(physical_id.into());
+        self
+    }
+}
+
+/// Named pixel domain for camera metadata.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraPixelDomainKind {
+    #[default]
+    DeliveredImage,
+    ActiveArray,
+    SensorPixelArray,
+    Other,
+}
+
+/// Pixel domain for a camera frame, active array, or sensor array.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CameraPixelDomain {
+    pub kind: CameraPixelDomainKind,
+    pub size: ImageSize,
+}
+
+impl CameraPixelDomain {
+    pub const fn new(kind: CameraPixelDomainKind, size: ImageSize) -> Self {
+        Self { kind, size }
+    }
+
+    pub const fn delivered_image(size: ImageSize) -> Self {
+        Self::new(CameraPixelDomainKind::DeliveredImage, size)
+    }
+
+    pub const fn active_array(size: ImageSize) -> Self {
+        Self::new(CameraPixelDomainKind::ActiveArray, size)
+    }
+
+    pub const fn sensor_pixel_array(size: ImageSize) -> Self {
+        Self::new(CameraPixelDomainKind::SensorPixelArray, size)
+    }
+
+    pub const fn is_valid(self) -> bool {
+        self.size.is_non_empty()
+    }
+}
+
+/// Pinhole camera intrinsics in the pixel domain described by the frame metadata.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct CameraIntrinsics {
+    pub focal_length_px: Vec2,
+    pub principal_point_px: Vec2,
+    pub skew_px: f32,
+    pub image_size: ImageSize,
+}
+
+impl CameraIntrinsics {
+    pub const fn new(
+        focal_length_px: Vec2,
+        principal_point_px: Vec2,
+        image_size: ImageSize,
+    ) -> Self {
+        Self {
+            focal_length_px,
+            principal_point_px,
+            skew_px: 0.0,
+            image_size,
+        }
+    }
+
+    pub const fn with_skew_px(mut self, skew_px: f32) -> Self {
+        self.skew_px = skew_px;
+        self
+    }
+
+    pub fn is_valid(self) -> bool {
+        self.image_size.is_non_empty()
+            && self.focal_length_px.is_finite()
+            && self.principal_point_px.is_finite()
+            && self.skew_px.is_finite()
+            && self.focal_length_px.x > 0.0
+            && self.focal_length_px.y > 0.0
+    }
+}
+
+/// Camera pose relative to a named coordinate frame.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct CameraExtrinsics {
+    pub world_from_camera: Pose,
+}
+
+impl CameraExtrinsics {
+    pub const fn new(world_from_camera: Pose) -> Self {
+        Self { world_from_camera }
+    }
+
+    pub fn is_valid(self) -> bool {
+        self.world_from_camera.is_finite()
+    }
+}
+
+/// Explicit availability flags for metadata needed by camera projection.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CameraFrameMetadataFlags {
+    pub missing_intrinsics: bool,
+    pub missing_pose: bool,
+}
+
+impl CameraFrameMetadataFlags {
+    pub const fn new(missing_intrinsics: bool, missing_pose: bool) -> Self {
+        Self {
+            missing_intrinsics,
+            missing_pose,
+        }
+    }
+}
+
+/// Explicit camera-composite path tier for app shells and diagnostics.
+///
+/// This is a public routing label, not a platform implementation. The GPU
+/// buffer probe is useful for validating Camera2/HardwareBuffer availability,
+/// but it is not an aligned projection renderer.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraCompositeTier {
+    /// Synthetic OpenXR/Vulkan smoke test with no camera source.
+    Synthetic,
+    /// Camera-source enumeration and capability diagnostics; not a visible
+    /// camera-composite path.
+    SourceDiagnostics,
+    /// CPU YUV/RGBA bring-up path. It is diagnostic and not aligned.
+    #[default]
+    CpuDiagnosticFlatCopy,
+    /// Camera2/HardwareBuffer import probe. It may sample GPU buffers but does
+    /// not claim metadata-backed camera/view alignment.
+    GpuBufferProbe,
+    /// GPU-imported camera buffers with metadata-backed per-eye projection.
+    GpuProjected,
+}
+
+impl CameraCompositeTier {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Synthetic => "synthetic",
+            Self::SourceDiagnostics => "camera-source-diagnostics",
+            Self::CpuDiagnosticFlatCopy => "cpu-diagnostic-flat-copy",
+            Self::GpuBufferProbe => "gpu-buffer-probe",
+            Self::GpuProjected => "gpu-projected",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "synthetic" | "synthetic-openxr-vulkan" => Some(Self::Synthetic),
+            "camera-source-diagnostics" | "source-diagnostics" => Some(Self::SourceDiagnostics),
+            "cpu-diagnostic-flat-copy" | "diagnostic-flat-camera-copy" | "cpu-yuv" => {
+                Some(Self::CpuDiagnosticFlatCopy)
+            }
+            "gpu-buffer-probe" | "camera-gpu-buffer-probe" | "gpu-projected-probe" => {
+                Some(Self::GpuBufferProbe)
+            }
+            "gpu-projected" | "camera-stereo-gpu-composite" | "external-gpu" => {
+                Some(Self::GpuProjected)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// Generic description of a camera buffer that may be importable by a GPU API.
+///
+/// Platform adapters can fill this from Android `AHardwareBuffer`, EGL images,
+/// DMA-BUF, or another shareable camera-buffer mechanism. The core contract
+/// only records diagnostics and cache keys; it does not own native handles.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CameraGpuBufferDescriptor {
+    pub source_label: String,
+    pub size: ImageSize,
+    pub format_label: String,
+    pub native_format: Option<u64>,
+    pub usage_flags: Option<u64>,
+    pub layer_count: Option<u32>,
+    pub stride_px: Option<u32>,
+    pub buffer_id: Option<u64>,
+}
+
+impl CameraGpuBufferDescriptor {
+    pub fn new(
+        source_label: impl Into<String>,
+        size: ImageSize,
+        format_label: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_label: source_label.into(),
+            size,
+            format_label: format_label.into(),
+            native_format: None,
+            usage_flags: None,
+            layer_count: None,
+            stride_px: None,
+            buffer_id: None,
+        }
+    }
+
+    pub const fn with_native_format(mut self, native_format: u64) -> Self {
+        self.native_format = Some(native_format);
+        self
+    }
+
+    pub const fn with_usage_flags(mut self, usage_flags: u64) -> Self {
+        self.usage_flags = Some(usage_flags);
+        self
+    }
+
+    pub const fn with_layer_count(mut self, layer_count: u32) -> Self {
+        self.layer_count = Some(layer_count);
+        self
+    }
+
+    pub const fn with_stride_px(mut self, stride_px: u32) -> Self {
+        self.stride_px = Some(stride_px);
+        self
+    }
+
+    pub const fn with_buffer_id(mut self, buffer_id: u64) -> Self {
+        self.buffer_id = Some(buffer_id);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.size.is_non_empty()
+            && !self.source_label.trim().is_empty()
+            && !self.format_label.trim().is_empty()
+            && self.layer_count.map(|value| value > 0).unwrap_or(true)
+            && self.stride_px.map(|value| value > 0).unwrap_or(true)
+    }
+}
+
+/// Quarter-turn texture rotation applied to sampled camera images.
+///
+/// This is separate from Camera2 `SENSOR_ORIENTATION`: opaque GPU camera
+/// textures can arrive with an implementation-defined texture orientation even
+/// when sensor orientation metadata is zero.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraImageRotation {
+    #[default]
+    Rotate0,
+    Rotate90,
+    Rotate180,
+    Rotate270,
+}
+
+impl CameraImageRotation {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Rotate0 => "rotate0",
+            Self::Rotate90 => "rotate90",
+            Self::Rotate180 => "rotate180",
+            Self::Rotate270 => "rotate270",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "0" | "rotate0" | "none" => Some(Self::Rotate0),
+            "90" | "rotate90" => Some(Self::Rotate90),
+            "180" | "rotate180" => Some(Self::Rotate180),
+            "270" | "rotate270" => Some(Self::Rotate270),
+            _ => None,
+        }
+    }
+
+    pub const fn shader_bits(self) -> u32 {
+        match self {
+            Self::Rotate0 => 0,
+            Self::Rotate90 => 1,
+            Self::Rotate180 => 2,
+            Self::Rotate270 => 3,
+        }
+    }
+}
+
+/// Mapping from a display eye to the sampled stereo source eye.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum StereoSourceEyeMapping {
+    #[default]
+    DisplayLeftFromLeftSource,
+    DisplayLeftFromRightSource,
+}
+
+impl StereoSourceEyeMapping {
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "left-right"
+            | "display-left-from-left"
+            | "display-left-from-left-source"
+            | "displayleftfromleft"
+            | "natural"
+            | "camera50-left" => Some(Self::DisplayLeftFromLeftSource),
+            "right-left"
+            | "display-left-from-right"
+            | "display-left-from-right-source"
+            | "displayleftfromright"
+            | "swapped"
+            | "swap"
+            | "camera51-left" => Some(Self::DisplayLeftFromRightSource),
+            _ => None,
+        }
+    }
+
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::DisplayLeftFromLeftSource => "display-left-from-left-source",
+            Self::DisplayLeftFromRightSource => "display-left-from-right-source",
+        }
+    }
+
+    pub const fn swaps_display_source_eyes(self) -> bool {
+        matches!(self, Self::DisplayLeftFromRightSource)
+    }
+}
+
+/// Explicit post-projection camera texture transform.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraTextureTransform {
+    pub rotation: CameraImageRotation,
+    pub flip_x: bool,
+    pub flip_y: bool,
+    pub mirror: bool,
+    pub source_label: String,
+    pub reason: String,
+}
+
+impl CameraTextureTransform {
+    pub fn new(source_label: impl Into<String>, reason: impl Into<String>) -> Self {
+        Self {
+            rotation: CameraImageRotation::Rotate0,
+            flip_x: false,
+            flip_y: false,
+            mirror: false,
+            source_label: source_label.into(),
+            reason: reason.into(),
+        }
+    }
+
+    pub const fn with_rotation(mut self, rotation: CameraImageRotation) -> Self {
+        self.rotation = rotation;
+        self
+    }
+
+    pub const fn with_flip_x(mut self, flip_x: bool) -> Self {
+        self.flip_x = flip_x;
+        self
+    }
+
+    pub const fn with_flip_y(mut self, flip_y: bool) -> Self {
+        self.flip_y = flip_y;
+        self
+    }
+
+    pub const fn with_mirror(mut self, mirror: bool) -> Self {
+        self.mirror = mirror;
+        self
+    }
+
+    pub fn is_explicit_visual_check(&self) -> bool {
+        !self.source_label.trim().is_empty()
+            && !self.reason.trim().is_empty()
+            && self.source_label != "default"
+            && self.reason != "unspecified"
+    }
+
+    pub fn shader_flags(&self) -> u32 {
+        self.rotation.shader_bits()
+            | ((self.flip_x as u32) << 2)
+            | ((self.flip_y as u32) << 3)
+            | ((self.mirror as u32) << 4)
+    }
+
+    pub fn label(&self) -> String {
+        let mut parts = vec![self.rotation.stable_id().to_string()];
+        if self.flip_x {
+            parts.push("flipX".to_string());
+        }
+        if self.flip_y {
+            parts.push("flipY".to_string());
+        }
+        if self.mirror {
+            parts.push("mirror".to_string());
+        }
+        parts.join("+")
+    }
+
+    pub fn apply_uv(&self, uv: Vec2) -> Vec2 {
+        let mut result = match self.rotation {
+            CameraImageRotation::Rotate0 => uv,
+            CameraImageRotation::Rotate90 => Vec2::new(uv.y, 1.0 - uv.x),
+            CameraImageRotation::Rotate180 => Vec2::new(1.0 - uv.x, 1.0 - uv.y),
+            CameraImageRotation::Rotate270 => Vec2::new(1.0 - uv.y, uv.x),
+        };
+        if self.flip_x || self.mirror {
+            result.x = 1.0 - result.x;
+        }
+        if self.flip_y {
+            result.y = 1.0 - result.y;
+        }
+        result
+    }
+}
+
+impl Default for CameraTextureTransform {
+    fn default() -> Self {
+        Self::new("default", "unspecified")
+    }
+}
+
+pub const SOURCE_SAMPLING_CONTRACT_SCHEMA: &str = "rusty.xr.source-sampling-contract.v1";
+pub const CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA: &str = "rusty.xr.camera-texture-lane-contract.v1";
+
+/// Normalized UV rectangle in the source image domain.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SourceUvRect {
+    pub origin_uv: Vec2,
+    pub size_uv: Vec2,
+}
+
+impl SourceUvRect {
+    pub const FULL: Self = Self::new(Vec2::ZERO, Vec2::ONE);
+
+    pub const fn new(origin_uv: Vec2, size_uv: Vec2) -> Self {
+        Self { origin_uv, size_uv }
+    }
+
+    pub fn is_valid(self) -> bool {
+        const EPSILON: f32 = 1.0e-5;
+        self.origin_uv.is_finite()
+            && self.size_uv.is_finite()
+            && self.origin_uv.x >= -EPSILON
+            && self.origin_uv.y >= -EPSILON
+            && self.size_uv.x > 0.0
+            && self.size_uv.y > 0.0
+            && self.origin_uv.x + self.size_uv.x <= 1.0 + EPSILON
+            && self.origin_uv.y + self.size_uv.y <= 1.0 + EPSILON
+    }
+}
+
+impl Default for SourceUvRect {
+    fn default() -> Self {
+        Self::FULL
+    }
+}
+
+/// Stage where renderer source-sampling transforms are applied.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SourceSamplingTransformStage {
+    #[default]
+    None,
+    PostHomographyPreTextureSample,
+    PostHomographyPreOesSample,
+    PostHomographyPreYuvSample,
+    PostHomographyPreSourceVisibleRectThenTextureSample,
+    Other,
+}
+
+impl SourceSamplingTransformStage {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::PostHomographyPreTextureSample => "post-homography-pre-texture-sample",
+            Self::PostHomographyPreOesSample => "post-homography-pre-oes-sample",
+            Self::PostHomographyPreYuvSample => "post-homography-pre-yuv-sample",
+            Self::PostHomographyPreSourceVisibleRectThenTextureSample => {
+                "post-homography-pre-source-visible-rect-then-texture-sample"
+            }
+            Self::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "none" | "off" => Some(Self::None),
+            "post-homography-pre-texture-sample" | "post_homography_pre_texture_sample" => {
+                Some(Self::PostHomographyPreTextureSample)
+            }
+            "post-homography-pre-oes-sample" | "post_homography_pre_oes_sample" => {
+                Some(Self::PostHomographyPreOesSample)
+            }
+            "post-homography-pre-yuv-sample" | "post_homography_pre_yuv_sample" => {
+                Some(Self::PostHomographyPreYuvSample)
+            }
+            "post-homography-pre-source-visible-rect-then-texture-sample"
+            | "post_homography_pre_source_visible_rect_then_texture_sample" => {
+                Some(Self::PostHomographyPreSourceVisibleRectThenTextureSample)
+            }
+            "other" => Some(Self::Other),
+            _ => None,
+        }
+    }
+}
+
+/// Y-axis convention observed at the final sampler input.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SourceSamplerYAxis {
+    #[default]
+    RendererDefined,
+    SurfaceTextureTransformDefined,
+    ContentTopLeftYDown,
+    MakepadSamplerOriginConvention,
+    Other,
+}
+
+impl SourceSamplerYAxis {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::RendererDefined => "renderer-defined",
+            Self::SurfaceTextureTransformDefined => "surface-texture-transform-defined",
+            Self::ContentTopLeftYDown => "content-top-left-y-down",
+            Self::MakepadSamplerOriginConvention => "makepad-sampler-origin-convention",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "renderer-defined" | "renderer_defined" => Some(Self::RendererDefined),
+            "surface-texture-transform-defined" | "surface_texture_transform_defined" => {
+                Some(Self::SurfaceTextureTransformDefined)
+            }
+            "content-top-left-y-down" | "content_top_left_y_down" => {
+                Some(Self::ContentTopLeftYDown)
+            }
+            "makepad-sampler-origin-convention" | "makepad_sampler_origin_convention" => {
+                Some(Self::MakepadSamplerOriginConvention)
+            }
+            "other" => Some(Self::Other),
+            _ => None,
+        }
+    }
+}
+
+/// Backend-neutral source-sampling contract for a resolved projection path.
+///
+/// This records how content UV becomes sampler UV. It intentionally does not
+/// include a source-kind switch; projection behavior should come from source
+/// metadata and resolved rectangles/transforms.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SourceSamplingContract {
+    pub schema_version: String,
+    pub backend: String,
+    pub mode: String,
+    pub source_eye_mapping: StereoSourceEyeMapping,
+    pub content_uv_rect: SourceUvRect,
+    pub source_visible_uv_rect: SourceUvRect,
+    pub transform_stage: SourceSamplingTransformStage,
+    pub transform_label: String,
+    pub transform_owner: String,
+    pub transform_applied: bool,
+    pub output_uv_label: String,
+    pub sampler_uv_origin: String,
+    pub sampler_y_axis: SourceSamplerYAxis,
+    pub texture_transform_stage: SourceSamplingTransformStage,
+    pub texture_transform_owner: String,
+}
+
+impl SourceSamplingContract {
+    pub fn new(
+        backend: impl Into<String>,
+        mode: impl Into<String>,
+        source_eye_mapping: StereoSourceEyeMapping,
+        transform_stage: SourceSamplingTransformStage,
+    ) -> Self {
+        Self {
+            schema_version: SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string(),
+            backend: backend.into(),
+            mode: mode.into(),
+            source_eye_mapping,
+            content_uv_rect: SourceUvRect::FULL,
+            source_visible_uv_rect: SourceUvRect::FULL,
+            transform_stage,
+            transform_label: "identity".to_string(),
+            transform_owner: "renderer".to_string(),
+            transform_applied: false,
+            output_uv_label: "sampler-uv".to_string(),
+            sampler_uv_origin: "renderer-defined".to_string(),
+            sampler_y_axis: SourceSamplerYAxis::RendererDefined,
+            texture_transform_stage: SourceSamplingTransformStage::PostHomographyPreTextureSample,
+            texture_transform_owner: "renderer".to_string(),
+        }
+    }
+
+    pub const fn with_content_uv_rect(mut self, rect: SourceUvRect) -> Self {
+        self.content_uv_rect = rect;
+        self
+    }
+
+    pub const fn with_source_visible_uv_rect(mut self, rect: SourceUvRect) -> Self {
+        self.source_visible_uv_rect = rect;
+        self
+    }
+
+    pub fn with_transform(
+        mut self,
+        label: impl Into<String>,
+        owner: impl Into<String>,
+        applied: bool,
+    ) -> Self {
+        self.transform_label = label.into();
+        self.transform_owner = owner.into();
+        self.transform_applied = applied;
+        self
+    }
+
+    pub fn with_sampler(
+        mut self,
+        output_uv_label: impl Into<String>,
+        sampler_uv_origin: impl Into<String>,
+        sampler_y_axis: SourceSamplerYAxis,
+    ) -> Self {
+        self.output_uv_label = output_uv_label.into();
+        self.sampler_uv_origin = sampler_uv_origin.into();
+        self.sampler_y_axis = sampler_y_axis;
+        self
+    }
+
+    pub fn with_texture_transform(
+        mut self,
+        stage: SourceSamplingTransformStage,
+        owner: impl Into<String>,
+    ) -> Self {
+        self.texture_transform_stage = stage;
+        self.texture_transform_owner = owner.into();
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.schema_version == SOURCE_SAMPLING_CONTRACT_SCHEMA
+            && !self.backend.trim().is_empty()
+            && !self.mode.trim().is_empty()
+            && self.content_uv_rect.is_valid()
+            && self.source_visible_uv_rect.is_valid()
+            && !self.transform_label.trim().is_empty()
+            && !self.transform_owner.trim().is_empty()
+            && !self.output_uv_label.trim().is_empty()
+            && !self.sampler_uv_origin.trim().is_empty()
+            && !self.texture_transform_owner.trim().is_empty()
+    }
+}
+
+/// Canonical camera texture lane families used for cross-renderer diagnostics.
+///
+/// These names identify the resource architecture, not a specific application
+/// package or launch wrapper. Older runner/profile aliases should resolve into
+/// one of these values before producing shared summaries.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum CameraTextureLaneKind {
+    VulkanHwbDirectCamera2Raw,
+    GlesOesDirectCamera2Raw,
+    MakepadCpuYuvDirectCamera2Raw,
+    MakepadHwbExternalDirectCamera2Raw,
+    #[default]
+    Other,
+}
+
+impl CameraTextureLaneKind {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::VulkanHwbDirectCamera2Raw => "vulkan-hwb-direct-camera2-raw",
+            Self::GlesOesDirectCamera2Raw => "gles-oes-direct-camera2-raw",
+            Self::MakepadCpuYuvDirectCamera2Raw => "makepad-cpuyuv-direct-camera2-raw",
+            Self::MakepadHwbExternalDirectCamera2Raw => "makepad-hwb-external-direct-camera2-raw",
+            Self::Other => "other",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "vulkan-hwb-direct-camera2-raw" | "direct-hwb" | "hwb" => {
+                Some(Self::VulkanHwbDirectCamera2Raw)
+            }
+            "gles-oes-direct-camera2-raw" | "direct-oes" | "oes" => {
+                Some(Self::GlesOesDirectCamera2Raw)
+            }
+            "makepad-cpuyuv-direct-camera2-raw"
+            | "makepad-cpu-yuv-direct-camera2-raw"
+            | "makepad-cpu-yuv"
+            | "cpu-yuv" => Some(Self::MakepadCpuYuvDirectCamera2Raw),
+            "makepad-hwb-external-direct-camera2-raw"
+            | "makepad-hardware-buffer-external-direct-camera2-raw"
+            | "makepad-hwb-external"
+            | "hardware-buffer-external" => Some(Self::MakepadHwbExternalDirectCamera2Raw),
+            "other" => Some(Self::Other),
+            _ => None,
+        }
+    }
+}
+
+/// Source family that produced a camera texture frame.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraTextureSourceKind {
+    DirectCamera2,
+    BrokerH264,
+    Synthetic,
+    #[default]
+    Other,
+}
+
+impl CameraTextureSourceKind {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::DirectCamera2 => "direct-camera2",
+            Self::BrokerH264 => "broker-h264",
+            Self::Synthetic => "synthetic",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// Texture or upload resource shape after camera/decoder handoff.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraTextureResourceKind {
+    AndroidHardwareBufferVulkan,
+    SurfaceTextureOes,
+    CpuYuvPlaneTextures,
+    MakepadHardwareBufferExternal,
+    #[default]
+    Other,
+}
+
+impl CameraTextureResourceKind {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::AndroidHardwareBufferVulkan => "android-hardware-buffer-vulkan",
+            Self::SurfaceTextureOes => "surface-texture-oes",
+            Self::CpuYuvPlaneTextures => "cpu-yuv-plane-textures",
+            Self::MakepadHardwareBufferExternal => "makepad-hardware-buffer-external",
+            Self::Other => "other",
+        }
+    }
+}
+
+/// Shader-visible descriptor or sampler contract for the camera resource.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraTextureDescriptorShape {
+    #[default]
+    Unknown,
+    CpuYuvPlaneTextures,
+    HardwareBufferYuvPlaneTextures,
+    SampledImageAndSampler,
+    CombinedImageSampler,
+    SamplerExternalOes,
+    NotApplicable,
+}
+
+impl CameraTextureDescriptorShape {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::CpuYuvPlaneTextures => "cpu-yuv-plane-textures",
+            Self::HardwareBufferYuvPlaneTextures => "hardware-buffer-yuv-plane-textures",
+            Self::SampledImageAndSampler => "sampled-image-and-sampler",
+            Self::CombinedImageSampler => "combined-image-sampler",
+            Self::SamplerExternalOes => "sampler-external-oes",
+            Self::NotApplicable => "not-applicable",
+        }
+    }
+}
+
+/// Visual/color acceptance status is deliberately separate from resource
+/// cadence and descriptor correctness.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "kebab-case"))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraTextureColorStatus {
+    AcceptedReference,
+    Experimental,
+    DiagnosticOnly,
+    #[default]
+    Unknown,
+}
+
+impl CameraTextureColorStatus {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::AcceptedReference => "accepted-reference",
+            Self::Experimental => "experimental",
+            Self::DiagnosticOnly => "diagnostic-only",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Source-side information that all camera texture lanes should expose.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraTextureLaneSource {
+    pub source_kind: CameraTextureSourceKind,
+    pub source_label: String,
+    pub delivered_size: ImageSize,
+    pub handoff_label: String,
+    pub source_eye_mapping: StereoSourceEyeMapping,
+}
+
+impl CameraTextureLaneSource {
+    pub fn new(
+        source_kind: CameraTextureSourceKind,
+        source_label: impl Into<String>,
+        delivered_size: ImageSize,
+        handoff_label: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_kind,
+            source_label: source_label.into(),
+            delivered_size,
+            handoff_label: handoff_label.into(),
+            source_eye_mapping: StereoSourceEyeMapping::DisplayLeftFromLeftSource,
+        }
+    }
+
+    pub const fn with_source_eye_mapping(mut self, mapping: StereoSourceEyeMapping) -> Self {
+        self.source_eye_mapping = mapping;
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.delivered_size.is_non_empty()
+            && !self.source_label.trim().is_empty()
+            && !self.handoff_label.trim().is_empty()
+    }
+}
+
+/// Renderer/framework texture resource facts for one lane.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraTextureLaneResource {
+    pub resource_kind: CameraTextureResourceKind,
+    pub resource_label: String,
+    pub descriptor_shape: CameraTextureDescriptorShape,
+    pub texture_label: String,
+    pub buffer_id: Option<u64>,
+    pub import_cache_size: Option<u32>,
+    pub shader_interface_label: String,
+}
+
+impl CameraTextureLaneResource {
+    pub fn new(
+        resource_kind: CameraTextureResourceKind,
+        resource_label: impl Into<String>,
+        descriptor_shape: CameraTextureDescriptorShape,
+    ) -> Self {
+        let resource_label = resource_label.into();
+        Self {
+            resource_kind,
+            texture_label: resource_label.clone(),
+            resource_label,
+            descriptor_shape,
+            buffer_id: None,
+            import_cache_size: None,
+            shader_interface_label: descriptor_shape.stable_id().to_string(),
+        }
+    }
+
+    pub const fn with_buffer_id(mut self, buffer_id: u64) -> Self {
+        self.buffer_id = Some(buffer_id);
+        self
+    }
+
+    pub const fn with_import_cache_size(mut self, import_cache_size: u32) -> Self {
+        self.import_cache_size = Some(import_cache_size);
+        self
+    }
+
+    pub fn with_texture_label(mut self, texture_label: impl Into<String>) -> Self {
+        self.texture_label = texture_label.into();
+        self
+    }
+
+    pub fn with_shader_interface_label(mut self, label: impl Into<String>) -> Self {
+        self.shader_interface_label = label.into();
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.resource_label.trim().is_empty()
+            && !self.texture_label.trim().is_empty()
+            && !self.shader_interface_label.trim().is_empty()
+    }
+}
+
+/// Source-to-sampler transform facts that are comparable across HWB, OES, and
+/// framework-owned texture upload paths.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraTextureLaneTransform {
+    pub source_visible_uv_rect: SourceUvRect,
+    pub transform_stage: SourceSamplingTransformStage,
+    pub transform_label: String,
+    pub transform_owner: String,
+    pub oes_transform_matrix: Option<[f32; 16]>,
+    pub hwb_transform_flags: Option<u32>,
+    pub yuv_rotation_steps: Option<u32>,
+}
+
+impl CameraTextureLaneTransform {
+    pub fn new(
+        transform_stage: SourceSamplingTransformStage,
+        transform_label: impl Into<String>,
+        transform_owner: impl Into<String>,
+    ) -> Self {
+        Self {
+            source_visible_uv_rect: SourceUvRect::FULL,
+            transform_stage,
+            transform_label: transform_label.into(),
+            transform_owner: transform_owner.into(),
+            oes_transform_matrix: None,
+            hwb_transform_flags: None,
+            yuv_rotation_steps: None,
+        }
+    }
+
+    pub const fn with_source_visible_uv_rect(mut self, rect: SourceUvRect) -> Self {
+        self.source_visible_uv_rect = rect;
+        self
+    }
+
+    pub const fn with_oes_transform_matrix(mut self, matrix: [f32; 16]) -> Self {
+        self.oes_transform_matrix = Some(matrix);
+        self
+    }
+
+    pub const fn with_hwb_transform_flags(mut self, flags: u32) -> Self {
+        self.hwb_transform_flags = Some(flags);
+        self
+    }
+
+    pub const fn with_yuv_rotation_steps(mut self, steps: u32) -> Self {
+        self.yuv_rotation_steps = Some(steps);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.source_visible_uv_rect.is_valid()
+            && !self.transform_label.trim().is_empty()
+            && !self.transform_owner.trim().is_empty()
+            && self
+                .oes_transform_matrix
+                .map(|matrix| matrix.iter().all(|value| value.is_finite()))
+                .unwrap_or(true)
+            && self
+                .yuv_rotation_steps
+                .map(|steps| steps <= 3)
+                .unwrap_or(true)
+    }
+}
+
+/// Color/visual acceptance facts for a camera texture lane.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraTextureLaneColor {
+    pub color_status: CameraTextureColorStatus,
+    pub color_reference: String,
+    pub color_matrix: String,
+    pub color_range: String,
+    pub color_transfer: String,
+}
+
+impl CameraTextureLaneColor {
+    pub fn new(color_status: CameraTextureColorStatus, color_reference: impl Into<String>) -> Self {
+        Self {
+            color_status,
+            color_reference: color_reference.into(),
+            color_matrix: "unspecified".to_string(),
+            color_range: "unspecified".to_string(),
+            color_transfer: "unspecified".to_string(),
+        }
+    }
+
+    pub fn with_yuv_model(mut self, matrix: impl Into<String>, range: impl Into<String>) -> Self {
+        self.color_matrix = matrix.into();
+        self.color_range = range.into();
+        self
+    }
+
+    pub fn with_transfer(mut self, transfer: impl Into<String>) -> Self {
+        self.color_transfer = transfer.into();
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.color_reference.trim().is_empty()
+            && !self.color_matrix.trim().is_empty()
+            && !self.color_range.trim().is_empty()
+            && !self.color_transfer.trim().is_empty()
+    }
+}
+
+/// Timing identity for acquisition, upload/import, texture update, and XR
+/// submission. Clock-domain mapping is owned by the adapter.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CameraTextureLaneTiming {
+    pub camera_frame_sequence: Option<u64>,
+    pub camera_timestamp_ns: Option<i64>,
+    pub acquire_time_ns: Option<i64>,
+    pub upload_time_ns: Option<i64>,
+    pub import_time_ns: Option<i64>,
+    pub texture_update_sequence: Option<u64>,
+    pub texture_submit_sequence: Option<u64>,
+    pub xr_end_frame_time_ns: Option<i64>,
+}
+
+impl CameraTextureLaneTiming {
+    pub const fn with_camera_frame(mut self, sequence: u64, timestamp_ns: i64) -> Self {
+        self.camera_frame_sequence = Some(sequence);
+        self.camera_timestamp_ns = Some(timestamp_ns);
+        self
+    }
+
+    pub const fn with_acquire_time_ns(mut self, acquire_time_ns: i64) -> Self {
+        self.acquire_time_ns = Some(acquire_time_ns);
+        self
+    }
+
+    pub const fn with_upload_time_ns(mut self, upload_time_ns: i64) -> Self {
+        self.upload_time_ns = Some(upload_time_ns);
+        self
+    }
+
+    pub const fn with_import_time_ns(mut self, import_time_ns: i64) -> Self {
+        self.import_time_ns = Some(import_time_ns);
+        self
+    }
+
+    pub const fn with_texture_update_sequence(mut self, sequence: u64) -> Self {
+        self.texture_update_sequence = Some(sequence);
+        self
+    }
+
+    pub const fn with_texture_submit_sequence(mut self, sequence: u64) -> Self {
+        self.texture_submit_sequence = Some(sequence);
+        self
+    }
+
+    pub const fn with_xr_end_frame_time_ns(mut self, time_ns: i64) -> Self {
+        self.xr_end_frame_time_ns = Some(time_ns);
+        self
+    }
+
+    pub const fn has_frame_identity(self) -> bool {
+        self.camera_frame_sequence.is_some() || self.camera_timestamp_ns.is_some()
+    }
+
+    pub fn is_valid(self) -> bool {
+        [
+            self.camera_timestamp_ns,
+            self.acquire_time_ns,
+            self.upload_time_ns,
+            self.import_time_ns,
+            self.xr_end_frame_time_ns,
+        ]
+        .into_iter()
+        .flatten()
+        .all(|value| value >= 0)
+    }
+}
+
+/// Lifecycle and fallback policy for a camera texture lane.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraTextureLaneLifecycle {
+    pub first_frame_seen: bool,
+    pub fallback_active: bool,
+    pub fallback_reason: Option<String>,
+    pub frame_reuse_policy: String,
+    pub resource_release_policy: String,
+    pub app_focused: Option<bool>,
+}
+
+impl CameraTextureLaneLifecycle {
+    pub fn new(
+        frame_reuse_policy: impl Into<String>,
+        resource_release_policy: impl Into<String>,
+    ) -> Self {
+        Self {
+            first_frame_seen: false,
+            fallback_active: false,
+            fallback_reason: None,
+            frame_reuse_policy: frame_reuse_policy.into(),
+            resource_release_policy: resource_release_policy.into(),
+            app_focused: None,
+        }
+    }
+
+    pub const fn with_first_frame_seen(mut self, first_frame_seen: bool) -> Self {
+        self.first_frame_seen = first_frame_seen;
+        self
+    }
+
+    pub fn with_fallback(mut self, reason: impl Into<String>) -> Self {
+        self.fallback_active = true;
+        self.fallback_reason = Some(reason.into());
+        self
+    }
+
+    pub const fn with_app_focused(mut self, app_focused: bool) -> Self {
+        self.app_focused = Some(app_focused);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.frame_reuse_policy.trim().is_empty()
+            && !self.resource_release_policy.trim().is_empty()
+            && (!self.fallback_active
+                || self
+                    .fallback_reason
+                    .as_deref()
+                    .map(|reason| !reason.trim().is_empty())
+                    .unwrap_or(false))
+    }
+}
+
+/// Projection/run state needed to compare raw diagnostic lanes without
+/// reintroducing visual-effect border modes as diagnostic defaults.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraTextureLaneProjection {
+    pub projection_border_policy: String,
+    pub processing_layer: String,
+    pub projection_surface_label: String,
+    pub projection_status_label: String,
+}
+
+impl CameraTextureLaneProjection {
+    pub fn raw_diagnostic(projection_border_policy: impl Into<String>) -> Self {
+        Self {
+            projection_border_policy: projection_border_policy.into(),
+            processing_layer: "raw".to_string(),
+            projection_surface_label: "camera-projection-surface".to_string(),
+            projection_status_label: "ready".to_string(),
+        }
+    }
+
+    pub fn is_valid(&self) -> bool {
+        !self.projection_border_policy.trim().is_empty()
+            && !self.processing_layer.trim().is_empty()
+            && !self.projection_surface_label.trim().is_empty()
+            && !self.projection_status_label.trim().is_empty()
+    }
+}
+
+/// Shared lane-level contract for comparing camera texture architectures.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraTextureLaneContract {
+    pub schema_version: String,
+    pub lane_kind: CameraTextureLaneKind,
+    pub source: CameraTextureLaneSource,
+    pub resource: CameraTextureLaneResource,
+    pub transform: CameraTextureLaneTransform,
+    pub color: CameraTextureLaneColor,
+    pub timing: CameraTextureLaneTiming,
+    pub lifecycle: CameraTextureLaneLifecycle,
+    pub projection: CameraTextureLaneProjection,
+}
+
+impl CameraTextureLaneContract {
+    pub fn new(
+        lane_kind: CameraTextureLaneKind,
+        source: CameraTextureLaneSource,
+        resource: CameraTextureLaneResource,
+    ) -> Self {
+        Self {
+            schema_version: CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string(),
+            lane_kind,
+            source,
+            resource,
+            transform: CameraTextureLaneTransform::new(
+                SourceSamplingTransformStage::None,
+                "identity",
+                "adapter",
+            ),
+            color: CameraTextureLaneColor::new(CameraTextureColorStatus::Unknown, "unspecified"),
+            timing: CameraTextureLaneTiming::default(),
+            lifecycle: CameraTextureLaneLifecycle::new("latest-frame", "adapter-owned"),
+            projection: CameraTextureLaneProjection::raw_diagnostic("solid-red"),
+        }
+    }
+
+    pub fn with_transform(mut self, transform: CameraTextureLaneTransform) -> Self {
+        self.transform = transform;
+        self
+    }
+
+    pub fn with_color(mut self, color: CameraTextureLaneColor) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub const fn with_timing(mut self, timing: CameraTextureLaneTiming) -> Self {
+        self.timing = timing;
+        self
+    }
+
+    pub fn with_lifecycle(mut self, lifecycle: CameraTextureLaneLifecycle) -> Self {
+        self.lifecycle = lifecycle;
+        self
+    }
+
+    pub fn with_projection(mut self, projection: CameraTextureLaneProjection) -> Self {
+        self.projection = projection;
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.schema_version == CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
+            && self.source.is_valid()
+            && self.resource.is_valid()
+            && self.transform.is_valid()
+            && self.color.is_valid()
+            && self.timing.is_valid()
+            && self.lifecycle.is_valid()
+            && self.projection.is_valid()
+    }
+}
+
+/// Public diagnostics for deciding whether a camera frame can be projected.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CameraProjectionStatus {
+    pub requested_tier: CameraCompositeTier,
+    pub active_tier: CameraCompositeTier,
+    pub gpu_import_available: bool,
+    pub intrinsics_available: bool,
+    pub pose_available: bool,
+    pub fallback_reason: Option<String>,
+}
+
+impl CameraProjectionStatus {
+    pub fn active(requested_tier: CameraCompositeTier) -> Self {
+        Self {
+            requested_tier,
+            active_tier: requested_tier,
+            gpu_import_available: matches!(
+                requested_tier,
+                CameraCompositeTier::GpuBufferProbe | CameraCompositeTier::GpuProjected
+            ),
+            intrinsics_available: true,
+            pose_available: true,
+            fallback_reason: None,
+        }
+    }
+
+    pub fn fallback(
+        requested_tier: CameraCompositeTier,
+        active_tier: CameraCompositeTier,
+        reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            requested_tier,
+            active_tier,
+            gpu_import_available: false,
+            intrinsics_available: false,
+            pose_available: false,
+            fallback_reason: Some(reason.into()),
+        }
+    }
+
+    pub fn is_aligned_projection(&self) -> bool {
+        self.requested_tier == CameraCompositeTier::GpuProjected
+            && self.active_tier == CameraCompositeTier::GpuProjected
+            && self.gpu_import_available
+            && self.intrinsics_available
+            && self.pose_available
+            && self.fallback_reason.is_none()
+    }
+}
+
+/// Source of camera pose/extrinsics used by a projection path.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraPoseSource {
+    /// Runtime/platform metadata supplied the pose.
+    Platform,
+    /// User supplied a public calibration profile.
+    EstimatedProfile,
+    /// Pose is unavailable; aligned projection must not be claimed.
+    #[default]
+    Missing,
+}
+
+impl CameraPoseSource {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Platform => "platform",
+            Self::EstimatedProfile => "estimated-profile",
+            Self::Missing => "missing",
+        }
+    }
+}
+
+/// Public user-supplied stereo calibration shape.
+///
+/// This records generic camera pose/intrinsics overrides and coordinate
+/// convention. It intentionally carries no device-private defaults.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct StereoCameraCalibrationProfile {
+    pub label: String,
+    pub version: String,
+    pub source_label: String,
+    pub coordinate_convention: String,
+    pub pose_source: CameraPoseSource,
+    pub left_extrinsics: CameraExtrinsics,
+    pub right_extrinsics: CameraExtrinsics,
+    pub left_intrinsics: Option<CameraIntrinsics>,
+    pub right_intrinsics: Option<CameraIntrinsics>,
+    pub delivered_domain: CameraPixelDomain,
+    pub sensor_orientation_degrees: Option<i32>,
+}
+
+impl StereoCameraCalibrationProfile {
+    pub fn is_valid(&self) -> bool {
+        let orientation_valid = self
+            .sensor_orientation_degrees
+            .map(|degrees| (0..360).contains(&degrees))
+            .unwrap_or(true);
+        !self.label.trim().is_empty()
+            && !self.version.trim().is_empty()
+            && !self.source_label.trim().is_empty()
+            && !self.coordinate_convention.trim().is_empty()
+            && self.pose_source != CameraPoseSource::Missing
+            && self.left_extrinsics.is_valid()
+            && self.right_extrinsics.is_valid()
+            && self
+                .left_intrinsics
+                .map(CameraIntrinsics::is_valid)
+                .unwrap_or(true)
+            && self
+                .right_intrinsics
+                .map(CameraIntrinsics::is_valid)
+                .unwrap_or(true)
+            && self.delivered_domain.is_valid()
+            && orientation_valid
+    }
+}
+
+/// Public summary of one Camera2-like source discovered by a platform adapter.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CameraSourceDiagnostic {
+    pub camera_id: String,
+    pub physical_camera_ids: Vec<String>,
+    pub logical_multi_camera: bool,
+    pub concurrent_camera: bool,
+    pub lens_facing: Option<String>,
+    pub hardware_level: Option<String>,
+    pub sensor_orientation_degrees: Option<i32>,
+    pub active_array_size: Option<ImageSize>,
+    pub sensor_pixel_array_size: Option<ImageSize>,
+    pub private_output_sizes: Vec<ImageSize>,
+    pub yuv_output_sizes: Vec<ImageSize>,
+    pub fps_ranges: Vec<(i32, i32)>,
+    pub intrinsics_available: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub intrinsic_calibration: Option<[f32; 5]>,
+    pub distortion_available: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub distortion: Vec<f32>,
+    pub lens_pose_available: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lens_pose_translation: Option<[f32; 3]>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lens_pose_rotation: Option<[f32; 4]>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub lens_pose_reference: Option<i32>,
+}
+
+/// Public diagnostic for accepting or rejecting a stereo camera candidate.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct StereoCameraCandidateDiagnostic {
+    pub provider_kind: String,
+    pub left_camera_id: Option<String>,
+    pub right_camera_id: Option<String>,
+    pub accepted: bool,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub score: Option<i64>,
+    pub reason: String,
+}
+
+/// Full source-enumeration diagnostic payload emitted by the public Quest
+/// example and saved by companion verification.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CameraSourceDiagnosticsReport {
+    pub schema_version: String,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub requested_tier: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub selected_provider: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub fallback_reason: Option<String>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub selected_stereo_pair_score: Option<i64>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub selected_stereo_pair_reason: Option<String>,
+    pub sources: Vec<CameraSourceDiagnostic>,
+    pub stereo_candidates: Vec<StereoCameraCandidateDiagnostic>,
+}
+
+/// Metadata for one camera frame without owning the image payload.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraFrameMetadata {
+    pub source: CameraSourceId,
+    pub frame_index: u64,
+    pub delivered_size: ImageSize,
+    pub timestamp_ns: Option<u64>,
+    pub sensor_orientation_degrees: Option<i32>,
+    pub intrinsics: Option<CameraIntrinsics>,
+    pub intrinsics_domain: Option<CameraPixelDomain>,
+    pub sensor_pixel_domain: Option<CameraPixelDomain>,
+    pub extrinsics: Option<CameraExtrinsics>,
+    pub flags: CameraFrameMetadataFlags,
+}
+
+impl CameraFrameMetadata {
+    pub fn new(source: CameraSourceId, frame_index: u64, intrinsics: CameraIntrinsics) -> Self {
+        let delivered_size = intrinsics.image_size;
+        Self {
+            source,
+            frame_index,
+            delivered_size,
+            timestamp_ns: None,
+            sensor_orientation_degrees: None,
+            intrinsics: Some(intrinsics),
+            intrinsics_domain: Some(CameraPixelDomain::delivered_image(delivered_size)),
+            sensor_pixel_domain: None,
+            extrinsics: None,
+            flags: CameraFrameMetadataFlags::new(false, true),
+        }
+    }
+
+    pub fn without_intrinsics(
+        source: CameraSourceId,
+        frame_index: u64,
+        delivered_size: ImageSize,
+    ) -> Self {
+        Self {
+            source,
+            frame_index,
+            delivered_size,
+            timestamp_ns: None,
+            sensor_orientation_degrees: None,
+            intrinsics: None,
+            intrinsics_domain: None,
+            sensor_pixel_domain: None,
+            extrinsics: None,
+            flags: CameraFrameMetadataFlags::new(true, true),
+        }
+    }
+
+    pub fn with_timestamp_ns(mut self, timestamp_ns: u64) -> Self {
+        self.timestamp_ns = Some(timestamp_ns);
+        self
+    }
+
+    pub fn with_sensor_orientation_degrees(mut self, degrees: i32) -> Self {
+        self.sensor_orientation_degrees = Some(degrees);
+        self
+    }
+
+    pub fn with_intrinsics_domain(mut self, domain: CameraPixelDomain) -> Self {
+        self.intrinsics_domain = Some(domain);
+        self
+    }
+
+    pub fn with_sensor_pixel_domain(mut self, domain: CameraPixelDomain) -> Self {
+        self.sensor_pixel_domain = Some(domain);
+        self
+    }
+
+    pub fn with_extrinsics(mut self, extrinsics: CameraExtrinsics) -> Self {
+        self.extrinsics = Some(extrinsics);
+        self.flags.missing_pose = false;
+        self
+    }
+
+    pub fn has_intrinsics(&self) -> bool {
+        self.intrinsics.is_some() && !self.flags.missing_intrinsics
+    }
+
+    pub fn has_pose(&self) -> bool {
+        self.extrinsics.is_some() && !self.flags.missing_pose
+    }
+
+    pub fn has_projection_metadata(&self) -> bool {
+        self.has_intrinsics() && self.has_pose()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        let intrinsics_valid = match self.intrinsics {
+            Some(intrinsics) => intrinsics.is_valid() && !self.flags.missing_intrinsics,
+            None => self.flags.missing_intrinsics,
+        };
+        let pose_valid = match self.extrinsics {
+            Some(extrinsics) => extrinsics.is_valid() && !self.flags.missing_pose,
+            None => self.flags.missing_pose,
+        };
+        let orientation_valid = self
+            .sensor_orientation_degrees
+            .map(|degrees| (0..360).contains(&degrees))
+            .unwrap_or(true);
+
+        self.delivered_size.is_non_empty()
+            && intrinsics_valid
+            && pose_valid
+            && orientation_valid
+            && self
+                .intrinsics_domain
+                .map(CameraPixelDomain::is_valid)
+                .unwrap_or(true)
+            && self
+                .sensor_pixel_domain
+                .map(CameraPixelDomain::is_valid)
+                .unwrap_or(true)
+    }
+}
+
+/// Metadata for synchronized or near-synchronized stereo camera frames.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct StereoCameraFrameMetadata {
+    pub frame_index: u64,
+    pub left: CameraFrameMetadata,
+    pub right: CameraFrameMetadata,
+    pub midpoint_timestamp_ns: Option<u64>,
+}
+
+impl StereoCameraFrameMetadata {
+    pub fn new(frame_index: u64, left: CameraFrameMetadata, right: CameraFrameMetadata) -> Self {
+        Self {
+            frame_index,
+            left,
+            right,
+            midpoint_timestamp_ns: None,
+        }
+    }
+
+    pub fn with_midpoint_timestamp_ns(mut self, midpoint_timestamp_ns: u64) -> Self {
+        self.midpoint_timestamp_ns = Some(midpoint_timestamp_ns);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.left.is_valid() && self.right.is_valid()
+    }
+}
+
+/// Temporal smoothing mode for an app-owned custom camera projection.
+///
+/// This is only a policy label. Platform adapters still own OpenXR frame
+/// timing, camera acquisition, shader uniforms, depth acquire, and optional
+/// `XR_FB_space_warp` submission.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TemporalProjectionMode {
+    /// Submit the target projection directly.
+    #[default]
+    Off,
+    /// Clamp pose-space angular and linear changes before submission.
+    PoseDeltaClamp,
+    /// Clamp the estimated screen-space motion in pixels per display frame.
+    ScreenMotionClamp,
+    /// Use a depth witness when available, falling back to planar clamping.
+    DepthAwareClamp,
+    /// Generate planar motion vectors for an optional space-warp experiment.
+    AswPlanar,
+    /// Generate depth-aware motion vectors for an optional space-warp experiment.
+    AswDepthAware,
+}
+
+impl TemporalProjectionMode {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::PoseDeltaClamp => "pose-delta-clamp",
+            Self::ScreenMotionClamp => "screen-motion-clamp",
+            Self::DepthAwareClamp => "depth-aware-clamp",
+            Self::AswPlanar => "asw-planar",
+            Self::AswDepthAware => "asw-depth-aware",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "off" | "none" => Some(Self::Off),
+            "pose-delta-clamp" | "poseDeltaClamp" => Some(Self::PoseDeltaClamp),
+            "screen-motion-clamp" | "screenMotionClamp" => Some(Self::ScreenMotionClamp),
+            "depth-aware-clamp" | "depthAwareClamp" => Some(Self::DepthAwareClamp),
+            "asw-planar" | "spacewarp-planar" => Some(Self::AswPlanar),
+            "asw-depth-aware" | "spacewarp-depth-aware" => Some(Self::AswDepthAware),
+            _ => None,
+        }
+    }
+}
+
+/// Policy for when a newer camera frame pair becomes the visible source pair.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum CameraFrameAdoptionMode {
+    /// Adopt the newest accepted pair immediately.
+    #[default]
+    Immediate,
+    /// Hold the previous visible pair until the projection residual is small.
+    HoldUntilSmooth,
+    /// Blend the previous and next camera pair for a short fixed window.
+    ShortCrossfade,
+    /// Hold while screen-space head motion is high, adopt when it settles.
+    VelocityAware,
+}
+
+impl CameraFrameAdoptionMode {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::Immediate => "immediate",
+            Self::HoldUntilSmooth => "hold-until-smooth",
+            Self::ShortCrossfade => "short-crossfade",
+            Self::VelocityAware => "velocity-aware",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "immediate" => Some(Self::Immediate),
+            "hold-until-smooth" | "holdUntilSmooth" => Some(Self::HoldUntilSmooth),
+            "short-crossfade" | "shortCrossfade" => Some(Self::ShortCrossfade),
+            "velocity-aware" | "velocityAware" => Some(Self::VelocityAware),
+            _ => None,
+        }
+    }
+}
+
+/// Edge handling for camera UVs exposed by temporal lingering.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TemporalProjectionEdgeMode {
+    /// Leave invalid samples to the adapter's existing behavior.
+    #[default]
+    None,
+    /// Clamp invalid UVs to the nearest valid source edge.
+    Clamp,
+    /// Clamp and feather invalid regions into a soft edge.
+    ClampSoft,
+    /// Fade invalid samples toward the adapter's configured fallback color.
+    FadeInvalid,
+}
+
+impl TemporalProjectionEdgeMode {
+    pub const fn stable_id(self) -> &'static str {
+        match self {
+            Self::None => "none",
+            Self::Clamp => "clamp",
+            Self::ClampSoft => "clamp-soft",
+            Self::FadeInvalid => "fade-invalid",
+        }
+    }
+
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "none" | "off" => Some(Self::None),
+            "clamp" => Some(Self::Clamp),
+            "clamp-soft" | "clampSoft" => Some(Self::ClampSoft),
+            "fade-invalid" | "fadeInvalid" => Some(Self::FadeInvalid),
+            _ => None,
+        }
+    }
+}
+
+/// Timing stamps for one camera frame as it moves through a projection path.
+///
+/// Different adapters may not share a single clock domain for every field, so
+/// this contract records raw stamps without implying they are directly
+/// subtractable unless the adapter documents that clock mapping.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct CameraFrameTiming {
+    pub source_eye: Eye,
+    pub frame_sequence: u64,
+    pub camera_capture_time_ns: Option<i64>,
+    pub camera_frame_number: Option<i64>,
+    pub receive_time_ns: Option<i64>,
+    pub decode_output_time_ns: Option<i64>,
+    pub import_time_ns: Option<i64>,
+}
+
+impl CameraFrameTiming {
+    pub const fn new(source_eye: Eye, frame_sequence: u64) -> Self {
+        Self {
+            source_eye,
+            frame_sequence,
+            camera_capture_time_ns: None,
+            camera_frame_number: None,
+            receive_time_ns: None,
+            decode_output_time_ns: None,
+            import_time_ns: None,
+        }
+    }
+
+    pub const fn with_camera_capture_time_ns(mut self, value: i64) -> Self {
+        self.camera_capture_time_ns = Some(value);
+        self
+    }
+
+    pub const fn with_camera_frame_number(mut self, value: i64) -> Self {
+        self.camera_frame_number = Some(value);
+        self
+    }
+
+    pub const fn with_receive_time_ns(mut self, value: i64) -> Self {
+        self.receive_time_ns = Some(value);
+        self
+    }
+
+    pub const fn with_decode_output_time_ns(mut self, value: i64) -> Self {
+        self.decode_output_time_ns = Some(value);
+        self
+    }
+
+    pub const fn with_import_time_ns(mut self, value: i64) -> Self {
+        self.import_time_ns = Some(value);
+        self
+    }
+}
+
+/// Left/right camera frame timing pair used by temporal adoption policy.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct StereoCameraFramePair {
+    pub pair_sequence: u64,
+    pub left: CameraFrameTiming,
+    pub right: CameraFrameTiming,
+    pub pair_delta_ns: Option<i64>,
+    pub accepted_pair: bool,
+}
+
+impl StereoCameraFramePair {
+    pub fn new(pair_sequence: u64, left: CameraFrameTiming, right: CameraFrameTiming) -> Self {
+        let pair_delta_ns = match (left.camera_capture_time_ns, right.camera_capture_time_ns) {
+            (Some(left_ns), Some(right_ns)) => {
+                Some(left_ns.saturating_sub(right_ns).saturating_abs())
+            }
+            _ => None,
+        };
+        Self {
+            pair_sequence,
+            left,
+            right,
+            pair_delta_ns,
+            accepted_pair: false,
+        }
+    }
+
+    pub const fn with_accepted_pair(mut self, accepted_pair: bool) -> Self {
+        self.accepted_pair = accepted_pair;
+        self
+    }
+
+    pub const fn with_pair_delta_ns(mut self, pair_delta_ns: i64) -> Self {
+        self.pair_delta_ns = Some(pair_delta_ns);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.left.source_eye == Eye::Left
+            && self.right.source_eye == Eye::Right
+            && self.pair_delta_ns.map(|value| value >= 0).unwrap_or(true)
+    }
+}
+
+/// One eye's screen-to-camera projection state.
+///
+/// The required matrix is a generic 3x3 homography from display-eye screen UV
+/// into camera UV. Adapters can also report the intermediate
+/// screen-to-surface and surface-to-camera rows so Vulkan, OpenGL, and
+/// framework comparison lanes can separate projection-footprint differences
+/// from texture-transform or effect-stack differences.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct CameraProjectionState {
+    pub eye: Eye,
+    pub projection_sequence: u64,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub screen_to_surface_uv: Option<[[f32; 3]; 3]>,
+    #[cfg_attr(feature = "serde", serde(default))]
+    pub surface_to_camera_uv: Option<[[f32; 3]; 3]>,
+    pub screen_to_camera_uv: [[f32; 3]; 3],
+    pub source_frame_sequence: Option<u64>,
+    pub projection_surface_label: String,
+    pub texture_transform_label: String,
+}
+
+impl CameraProjectionState {
+    pub fn new(eye: Eye, projection_sequence: u64, screen_to_camera_uv: [[f32; 3]; 3]) -> Self {
+        Self {
+            eye,
+            projection_sequence,
+            screen_to_surface_uv: None,
+            surface_to_camera_uv: None,
+            screen_to_camera_uv,
+            source_frame_sequence: None,
+            projection_surface_label: String::new(),
+            texture_transform_label: String::new(),
+        }
+    }
+
+    pub fn with_source_frame_sequence(mut self, source_frame_sequence: u64) -> Self {
+        self.source_frame_sequence = Some(source_frame_sequence);
+        self
+    }
+
+    pub const fn with_screen_to_surface_uv(mut self, rows: [[f32; 3]; 3]) -> Self {
+        self.screen_to_surface_uv = Some(rows);
+        self
+    }
+
+    pub const fn with_surface_to_camera_uv(mut self, rows: [[f32; 3]; 3]) -> Self {
+        self.surface_to_camera_uv = Some(rows);
+        self
+    }
+
+    pub fn with_projection_surface_label(mut self, label: impl Into<String>) -> Self {
+        self.projection_surface_label = label.into();
+        self
+    }
+
+    pub fn with_texture_transform_label(mut self, label: impl Into<String>) -> Self {
+        self.texture_transform_label = label.into();
+        self
+    }
+
+    pub const fn has_projection_stage_rows(&self) -> bool {
+        self.screen_to_surface_uv.is_some() && self.surface_to_camera_uv.is_some()
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.eye != Eye::Mono
+            && homography_rows_are_valid(self.screen_to_camera_uv)
+            && self
+                .screen_to_surface_uv
+                .map(homography_rows_are_valid)
+                .unwrap_or(true)
+            && self
+                .surface_to_camera_uv
+                .map(homography_rows_are_valid)
+                .unwrap_or(true)
+    }
+}
+
+/// Physically current projection target for a camera pair and display pose.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct ProjectionTargetState {
+    pub predicted_display_time_ns: i64,
+    pub head_pose_at_display: Pose,
+    pub camera_pose_at_capture: Option<Pose>,
+    pub source_pair_sequence: Option<u64>,
+    pub left_projection: CameraProjectionState,
+    pub right_projection: CameraProjectionState,
+}
+
+impl ProjectionTargetState {
+    pub fn new(
+        predicted_display_time_ns: i64,
+        head_pose_at_display: Pose,
+        left_projection: CameraProjectionState,
+        right_projection: CameraProjectionState,
+    ) -> Self {
+        Self {
+            predicted_display_time_ns,
+            head_pose_at_display,
+            camera_pose_at_capture: None,
+            source_pair_sequence: None,
+            left_projection,
+            right_projection,
+        }
+    }
+
+    pub fn with_camera_pose_at_capture(mut self, camera_pose_at_capture: Pose) -> Self {
+        self.camera_pose_at_capture = Some(camera_pose_at_capture);
+        self
+    }
+
+    pub fn with_source_pair_sequence(mut self, source_pair_sequence: u64) -> Self {
+        self.source_pair_sequence = Some(source_pair_sequence);
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.head_pose_at_display.is_finite()
+            && self
+                .camera_pose_at_capture
+                .map(Pose::is_finite)
+                .unwrap_or(true)
+            && self.left_projection.eye == Eye::Left
+            && self.right_projection.eye == Eye::Right
+            && self.left_projection.is_valid()
+            && self.right_projection.is_valid()
+    }
+}
+
+/// Projection state actually submitted after temporal smoothing.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Debug, PartialEq)]
+pub struct VisualProjectionState {
+    pub visual_sequence: u64,
+    pub predicted_display_time_ns: i64,
+    pub source_pair_sequence: Option<u64>,
+    pub left_projection: CameraProjectionState,
+    pub right_projection: CameraProjectionState,
+    pub visual_lag_ms: f32,
+    pub residual_motion_px: f32,
+}
+
+impl VisualProjectionState {
+    pub fn new(
+        visual_sequence: u64,
+        predicted_display_time_ns: i64,
+        left_projection: CameraProjectionState,
+        right_projection: CameraProjectionState,
+    ) -> Self {
+        Self {
+            visual_sequence,
+            predicted_display_time_ns,
+            source_pair_sequence: None,
+            left_projection,
+            right_projection,
+            visual_lag_ms: 0.0,
+            residual_motion_px: 0.0,
+        }
+    }
+
+    pub fn with_source_pair_sequence(mut self, source_pair_sequence: u64) -> Self {
+        self.source_pair_sequence = Some(source_pair_sequence);
+        self
+    }
+
+    pub const fn with_visual_lag_ms(mut self, visual_lag_ms: f32) -> Self {
+        self.visual_lag_ms = visual_lag_ms;
+        self
+    }
+
+    pub const fn with_residual_motion_px(mut self, residual_motion_px: f32) -> Self {
+        self.residual_motion_px = residual_motion_px;
+        self
+    }
+
+    pub fn is_valid(&self) -> bool {
+        self.left_projection.eye == Eye::Left
+            && self.right_projection.eye == Eye::Right
+            && self.left_projection.is_valid()
+            && self.right_projection.is_valid()
+            && finite_non_negative(self.visual_lag_ms)
+            && finite_non_negative(self.residual_motion_px)
+    }
+}
+
+/// Runtime policy for app-owned temporal camera projection.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TemporalProjectionPolicy {
+    pub enabled: bool,
+    pub mode: TemporalProjectionMode,
+    pub max_screen_motion_px_per_frame: f32,
+    pub max_angular_deg_per_frame: f32,
+    pub max_linear_m_per_frame: f32,
+    pub catchup_half_life_ms: f32,
+    pub max_visual_lag_ms: f32,
+    pub max_camera_frame_age_ms: f32,
+    pub stereo_lockstep: bool,
+    pub frame_adoption_mode: CameraFrameAdoptionMode,
+    pub frame_adoption_max_jump_px: f32,
+    pub frame_adoption_max_hold_ms: f32,
+    pub crossfade_frames: u32,
+    pub edge_mode: TemporalProjectionEdgeMode,
+    pub edge_feather_px: f32,
+}
+
+impl TemporalProjectionPolicy {
+    /// Conservative starting point for a screen-motion clamp experiment.
+    pub const CONSERVATIVE_SCREEN_CLAMP: Self = Self {
+        enabled: true,
+        mode: TemporalProjectionMode::ScreenMotionClamp,
+        max_screen_motion_px_per_frame: 18.0,
+        max_angular_deg_per_frame: 1.25,
+        max_linear_m_per_frame: 0.012,
+        catchup_half_life_ms: 50.0,
+        max_visual_lag_ms: 120.0,
+        max_camera_frame_age_ms: 120.0,
+        stereo_lockstep: true,
+        frame_adoption_mode: CameraFrameAdoptionMode::HoldUntilSmooth,
+        frame_adoption_max_jump_px: 24.0,
+        frame_adoption_max_hold_ms: 80.0,
+        crossfade_frames: 3,
+        edge_mode: TemporalProjectionEdgeMode::ClampSoft,
+        edge_feather_px: 32.0,
+    };
+
+    pub const OFF: Self = Self {
+        enabled: false,
+        mode: TemporalProjectionMode::Off,
+        max_screen_motion_px_per_frame: 0.0,
+        max_angular_deg_per_frame: 0.0,
+        max_linear_m_per_frame: 0.0,
+        catchup_half_life_ms: 0.0,
+        max_visual_lag_ms: 0.0,
+        max_camera_frame_age_ms: 0.0,
+        stereo_lockstep: true,
+        frame_adoption_mode: CameraFrameAdoptionMode::Immediate,
+        frame_adoption_max_jump_px: 0.0,
+        frame_adoption_max_hold_ms: 0.0,
+        crossfade_frames: 0,
+        edge_mode: TemporalProjectionEdgeMode::None,
+        edge_feather_px: 0.0,
+    };
+
+    pub fn is_valid(self) -> bool {
+        finite_non_negative(self.max_screen_motion_px_per_frame)
+            && finite_non_negative(self.max_angular_deg_per_frame)
+            && finite_non_negative(self.max_linear_m_per_frame)
+            && finite_non_negative(self.catchup_half_life_ms)
+            && finite_non_negative(self.max_visual_lag_ms)
+            && finite_non_negative(self.max_camera_frame_age_ms)
+            && finite_non_negative(self.frame_adoption_max_jump_px)
+            && finite_non_negative(self.frame_adoption_max_hold_ms)
+            && finite_non_negative(self.edge_feather_px)
+    }
+}
+
+impl Default for TemporalProjectionPolicy {
+    fn default() -> Self {
+        Self::OFF
+    }
+}
+
+/// Scorecard-facing metrics for temporal camera projection.
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TemporalProjectionMetrics {
+    pub camera_frame_age_ms_avg: f32,
+    pub camera_frame_age_ms_p95: f32,
+    pub depth_frame_age_ms_avg: f32,
+    pub stereo_pair_delta_ms_avg: f32,
+    pub target_projection_motion_px_avg: f32,
+    pub target_projection_motion_px_p95: f32,
+    pub applied_projection_motion_px_avg: f32,
+    pub applied_projection_motion_px_p95: f32,
+    pub projection_residual_px_avg: f32,
+    pub projection_residual_px_p95: f32,
+    pub visual_lag_ms_avg: f32,
+    pub visual_lag_ms_p95: f32,
+    pub held_frame_count: u64,
+    pub held_frame_duration_ms_max: f32,
+    pub frame_crossfade_count: u64,
+    pub invalid_uv_px_percent: f32,
+    pub edge_fill_px_percent: f32,
+    pub asw_enabled_frame_count: u64,
+    pub asw_skipped_frame_count: u64,
+    pub motion_vector_max_px: f32,
+    pub motion_vector_clamped_count: u64,
+}
+
+impl TemporalProjectionMetrics {
+    pub fn is_valid(self) -> bool {
+        [
+            self.camera_frame_age_ms_avg,
+            self.camera_frame_age_ms_p95,
+            self.depth_frame_age_ms_avg,
+            self.stereo_pair_delta_ms_avg,
+            self.target_projection_motion_px_avg,
+            self.target_projection_motion_px_p95,
+            self.applied_projection_motion_px_avg,
+            self.applied_projection_motion_px_p95,
+            self.projection_residual_px_avg,
+            self.projection_residual_px_p95,
+            self.visual_lag_ms_avg,
+            self.visual_lag_ms_p95,
+            self.held_frame_duration_ms_max,
+            self.motion_vector_max_px,
+        ]
+        .into_iter()
+        .all(finite_non_negative)
+            && percent_is_valid(self.invalid_uv_px_percent)
+            && percent_is_valid(self.edge_fill_px_percent)
+    }
+}
+
+fn finite_non_negative(value: f32) -> bool {
+    value.is_finite() && value >= 0.0
+}
+
+fn homography_rows_are_valid(rows: [[f32; 3]; 3]) -> bool {
+    rows.iter().flatten().all(|value| value.is_finite())
+        && rows[2].iter().any(|value| value.abs() > f32::EPSILON)
+}
+
+fn percent_is_valid(value: f32) -> bool {
+    value.is_finite() && (0.0..=100.0).contains(&value)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn camera_intrinsics_require_positive_focal_length() {
+        let valid = CameraIntrinsics::new(
+            Vec2::new(500.0, 510.0),
+            Vec2::new(320.0, 240.0),
+            ImageSize::new(640, 480),
+        );
+        let invalid = CameraIntrinsics::new(
+            Vec2::new(0.0, 510.0),
+            Vec2::new(320.0, 240.0),
+            ImageSize::new(640, 480),
+        );
+
+        assert!(valid.is_valid());
+        assert!(!invalid.is_valid());
+    }
+
+    #[test]
+    fn camera_metadata_can_explicitly_report_missing_projection_inputs() {
+        let metadata = CameraFrameMetadata::without_intrinsics(
+            CameraSourceId::new("camera2-mono"),
+            7,
+            ImageSize::new(1280, 1280),
+        )
+        .with_timestamp_ns(123)
+        .with_sensor_orientation_degrees(90);
+
+        assert!(metadata.is_valid());
+        assert!(metadata.flags.missing_intrinsics);
+        assert!(metadata.flags.missing_pose);
+        assert!(!metadata.has_projection_metadata());
+    }
+
+    #[test]
+    fn camera_composite_tier_parses_public_profile_names() {
+        assert_eq!(
+            CameraCompositeTier::parse("synthetic"),
+            Some(CameraCompositeTier::Synthetic)
+        );
+        assert_eq!(
+            CameraCompositeTier::parse("camera-source-diagnostics"),
+            Some(CameraCompositeTier::SourceDiagnostics)
+        );
+        assert_eq!(
+            CameraCompositeTier::parse("diagnostic-flat-camera-copy"),
+            Some(CameraCompositeTier::CpuDiagnosticFlatCopy)
+        );
+        assert_eq!(
+            CameraCompositeTier::parse("camera-stereo-gpu-composite"),
+            Some(CameraCompositeTier::GpuProjected)
+        );
+        assert_eq!(
+            CameraCompositeTier::parse("camera-gpu-buffer-probe"),
+            Some(CameraCompositeTier::GpuBufferProbe)
+        );
+        assert_eq!(CameraCompositeTier::parse("private-profile"), None);
+    }
+
+    #[test]
+    fn gpu_buffer_descriptor_requires_public_shape() {
+        let descriptor = CameraGpuBufferDescriptor::new(
+            "Camera2 PRIVATE",
+            ImageSize::new(1280, 1280),
+            "AHardwareBuffer",
+        )
+        .with_native_format(35)
+        .with_usage_flags(0x100)
+        .with_layer_count(1)
+        .with_stride_px(1280)
+        .with_buffer_id(7);
+
+        assert!(descriptor.is_valid());
+        assert!(!CameraGpuBufferDescriptor::default().is_valid());
+    }
+
+    #[test]
+    fn camera_texture_transform_rotates_and_flips_uv() {
+        let transform = CameraTextureTransform::new("public-live-check", "upright camera texture")
+            .with_rotation(CameraImageRotation::Rotate180)
+            .with_flip_x(true);
+
+        assert_eq!(
+            CameraImageRotation::parse("rotate180"),
+            Some(CameraImageRotation::Rotate180)
+        );
+        assert_eq!(transform.shader_flags(), 0b0110);
+        assert_eq!(transform.label(), "rotate180+flipX");
+        let uv = transform.apply_uv(Vec2::new(0.2, 0.3));
+        assert!((uv.x - 0.2).abs() < 1.0e-6);
+        assert!((uv.y - 0.7).abs() < 1.0e-6);
+        assert!(transform.is_explicit_visual_check());
+        assert!(!CameraTextureTransform::default().is_explicit_visual_check());
+    }
+
+    #[test]
+    fn source_sampling_contract_validates_metadata_driven_shape() {
+        let contract = SourceSamplingContract::new(
+            "hwb",
+            "canvas",
+            StereoSourceEyeMapping::DisplayLeftFromLeftSource,
+            SourceSamplingTransformStage::PostHomographyPreSourceVisibleRectThenTextureSample,
+        )
+        .with_source_visible_uv_rect(SourceUvRect::new(Vec2::new(0.1, 0.2), Vec2::new(0.8, 0.7)))
+        .with_transform(
+            "sourceVisibleUvRect+textureTransform",
+            "renderer-source-metadata",
+            true,
+        )
+        .with_sampler(
+            "hardware-buffer-sampler-uv",
+            "hardware-buffer-import-convention",
+            SourceSamplerYAxis::RendererDefined,
+        )
+        .with_texture_transform(
+            SourceSamplingTransformStage::PostHomographyPreTextureSample,
+            "renderer-texture-transform",
+        );
+
+        assert!(contract.is_valid());
+        assert_eq!(
+            SourceSamplingTransformStage::parse(
+                "post_homography_pre_source_visible_rect_then_texture_sample"
+            ),
+            Some(SourceSamplingTransformStage::PostHomographyPreSourceVisibleRectThenTextureSample)
+        );
+        assert_eq!(contract.sampler_y_axis.stable_id(), "renderer-defined");
+        assert_eq!(
+            SourceSamplerYAxis::parse("content-top-left-y-down"),
+            Some(SourceSamplerYAxis::ContentTopLeftYDown)
+        );
+
+        let invalid = contract.with_source_visible_uv_rect(SourceUvRect::new(
+            Vec2::new(0.8, 0.0),
+            Vec2::new(0.4, 1.0),
+        ));
+        assert!(!invalid.is_valid());
+    }
+
+    #[test]
+    fn camera_texture_lane_names_cover_direct_and_makepad_architectures() {
+        assert_eq!(
+            CameraTextureLaneKind::parse("direct-hwb"),
+            Some(CameraTextureLaneKind::VulkanHwbDirectCamera2Raw)
+        );
+        assert_eq!(
+            CameraTextureLaneKind::parse("gles-oes-direct-camera2-raw"),
+            Some(CameraTextureLaneKind::GlesOesDirectCamera2Raw)
+        );
+        assert_eq!(
+            CameraTextureLaneKind::parse("makepad-cpu-yuv"),
+            Some(CameraTextureLaneKind::MakepadCpuYuvDirectCamera2Raw)
+        );
+        assert_eq!(
+            CameraTextureLaneKind::parse("hardware-buffer-external"),
+            Some(CameraTextureLaneKind::MakepadHwbExternalDirectCamera2Raw)
+        );
+        assert_eq!(
+            CameraTextureLaneKind::MakepadHwbExternalDirectCamera2Raw.stable_id(),
+            "makepad-hwb-external-direct-camera2-raw"
+        );
+    }
+
+    #[test]
+    fn camera_texture_lane_contracts_validate_four_architecture_shapes() {
+        let size = ImageSize::new(1280, 1280);
+        let hwb = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::VulkanHwbDirectCamera2Raw,
+            CameraTextureLaneSource::new(
+                CameraTextureSourceKind::DirectCamera2,
+                "headset-camera2",
+                size,
+                "ImageReader.PRIVATE/AHardwareBuffer",
+            ),
+            CameraTextureLaneResource::new(
+                CameraTextureResourceKind::AndroidHardwareBufferVulkan,
+                "AHardwareBuffer Vulkan import",
+                CameraTextureDescriptorShape::CombinedImageSampler,
+            )
+            .with_import_cache_size(2)
+            .with_shader_interface_label("vulkan-combined-image-sampler"),
+        )
+        .with_transform(
+            CameraTextureLaneTransform::new(
+                SourceSamplingTransformStage::PostHomographyPreSourceVisibleRectThenTextureSample,
+                "sourceVisibleUvRect+cameraTextureTransformFlags",
+                "android-media-image-crop-rect+vulkan-hwb-camera-projection-shader",
+            )
+            .with_hwb_transform_flags(0),
+        )
+        .with_color(
+            CameraTextureLaneColor::new(
+                CameraTextureColorStatus::DiagnosticOnly,
+                "android-hardware-buffer-ycbcr",
+            )
+            .with_yuv_model("runtime-ycbcr-conversion", "runtime-defined"),
+        );
+
+        let oes = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::GlesOesDirectCamera2Raw,
+            CameraTextureLaneSource::new(
+                CameraTextureSourceKind::DirectCamera2,
+                "headset-camera2",
+                size,
+                "SurfaceTexture/GL_TEXTURE_EXTERNAL_OES",
+            ),
+            CameraTextureLaneResource::new(
+                CameraTextureResourceKind::SurfaceTextureOes,
+                "SurfaceTexture external OES",
+                CameraTextureDescriptorShape::SamplerExternalOes,
+            ),
+        )
+        .with_transform(
+            CameraTextureLaneTransform::new(
+                SourceSamplingTransformStage::PostHomographyPreOesSample,
+                "SurfaceTexture transform matrix",
+                "android-surface-texture",
+            )
+            .with_oes_transform_matrix([
+                1.0, 0.0, 0.0, 0.0, //
+                0.0, 1.0, 0.0, 0.0, //
+                0.0, 0.0, 1.0, 0.0, //
+                0.0, 0.0, 0.0, 1.0,
+            ]),
+        )
+        .with_color(
+            CameraTextureLaneColor::new(
+                CameraTextureColorStatus::DiagnosticOnly,
+                "external-oes-rgb",
+            )
+            .with_transfer("srgb-to-linear"),
+        );
+
+        let makepad_cpu = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::MakepadCpuYuvDirectCamera2Raw,
+            CameraTextureLaneSource::new(
+                CameraTextureSourceKind::DirectCamera2,
+                "headset-camera2",
+                size,
+                "AImageReader CPU YUV planes",
+            ),
+            CameraTextureLaneResource::new(
+                CameraTextureResourceKind::CpuYuvPlaneTextures,
+                "Makepad R8 Y/U/V plane textures",
+                CameraTextureDescriptorShape::CpuYuvPlaneTextures,
+            ),
+        )
+        .with_transform(
+            CameraTextureLaneTransform::new(
+                SourceSamplingTransformStage::PostHomographyPreYuvSample,
+                "source_sample_uv",
+                "makepad-camera-yuv-shader",
+            )
+            .with_yuv_rotation_steps(0),
+        )
+        .with_color(
+            CameraTextureLaneColor::new(
+                CameraTextureColorStatus::AcceptedReference,
+                "android-yuv420-888-plane-order",
+            )
+            .with_yuv_model("bt601", "limited"),
+        )
+        .with_timing(
+            CameraTextureLaneTiming::default()
+                .with_camera_frame(10, 123_000)
+                .with_upload_time_ns(124_000)
+                .with_texture_update_sequence(11),
+        );
+
+        let makepad_hwb = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::MakepadHwbExternalDirectCamera2Raw,
+            CameraTextureLaneSource::new(
+                CameraTextureSourceKind::DirectCamera2,
+                "headset-camera2",
+                size,
+                "AImageReader AHardwareBuffer",
+            ),
+            CameraTextureLaneResource::new(
+                CameraTextureResourceKind::MakepadHardwareBufferExternal,
+                "Makepad Vulkan AHardwareBuffer import",
+                CameraTextureDescriptorShape::SampledImageAndSampler,
+            )
+            .with_shader_interface_label("textureSampleLevel separate texture+sampler"),
+        )
+        .with_transform(CameraTextureLaneTransform::new(
+            SourceSamplingTransformStage::PostHomographyPreTextureSample,
+            "external-hardware-buffer-sampler",
+            "makepad-vulkan-video-texture",
+        ))
+        .with_color(CameraTextureLaneColor::new(
+            CameraTextureColorStatus::Experimental,
+            "android-hardware-buffer-external-rgb",
+        ))
+        .with_lifecycle(
+            CameraTextureLaneLifecycle::new("latest-hardware-buffer", "makepad-vulkan-resource")
+                .with_first_frame_seen(true),
+        );
+
+        for contract in [hwb, oes, makepad_cpu, makepad_hwb] {
+            assert!(contract.is_valid(), "{:?}", contract.lane_kind);
+        }
+    }
+
+    #[test]
+    fn stereo_source_eye_mapping_parses_public_aliases() {
+        assert_eq!(
+            StereoSourceEyeMapping::parse("left-right"),
+            Some(StereoSourceEyeMapping::DisplayLeftFromLeftSource)
+        );
+        assert_eq!(
+            StereoSourceEyeMapping::parse("display-left-from-right-source"),
+            Some(StereoSourceEyeMapping::DisplayLeftFromRightSource)
+        );
+        assert!(StereoSourceEyeMapping::DisplayLeftFromRightSource.swaps_display_source_eyes());
+        assert_eq!(
+            StereoSourceEyeMapping::DisplayLeftFromRightSource.stable_id(),
+            "display-left-from-right-source"
+        );
+    }
+
+    #[test]
+    fn projection_status_does_not_claim_alignment_when_fallback_is_active() {
+        let active = CameraProjectionStatus::active(CameraCompositeTier::GpuProjected);
+        let fallback = CameraProjectionStatus::fallback(
+            CameraCompositeTier::GpuProjected,
+            CameraCompositeTier::CpuDiagnosticFlatCopy,
+            "missing camera pose",
+        );
+
+        assert!(active.is_aligned_projection());
+        assert!(!fallback.is_aligned_projection());
+    }
+
+    #[test]
+    fn gpu_buffer_probe_never_claims_aligned_projection() {
+        let status = CameraProjectionStatus::active(CameraCompositeTier::GpuBufferProbe);
+
+        assert!(status.gpu_import_available);
+        assert!(!status.is_aligned_projection());
+    }
+
+    #[test]
+    fn calibration_profile_requires_non_missing_pose_source() {
+        let profile = StereoCameraCalibrationProfile {
+            label: "user supplied".to_string(),
+            version: "v1".to_string(),
+            source_label: "test-profile".to_string(),
+            coordinate_convention: "right-handed head space".to_string(),
+            pose_source: CameraPoseSource::EstimatedProfile,
+            left_extrinsics: CameraExtrinsics::new(Pose::IDENTITY),
+            right_extrinsics: CameraExtrinsics::new(Pose::IDENTITY),
+            left_intrinsics: None,
+            right_intrinsics: None,
+            delivered_domain: CameraPixelDomain::delivered_image(ImageSize::new(1280, 1280)),
+            sensor_orientation_degrees: Some(0),
+        };
+        let mut missing_pose = profile.clone();
+        missing_pose.pose_source = CameraPoseSource::Missing;
+
+        assert!(profile.is_valid());
+        assert!(!missing_pose.is_valid());
+        assert_eq!(
+            CameraPoseSource::EstimatedProfile.stable_id(),
+            "estimated-profile"
+        );
+    }
+
+    #[test]
+    fn temporal_projection_policy_exposes_conservative_screen_clamp() {
+        let policy = TemporalProjectionPolicy::CONSERVATIVE_SCREEN_CLAMP;
+
+        assert!(policy.is_valid());
+        assert!(policy.enabled);
+        assert_eq!(policy.mode, TemporalProjectionMode::ScreenMotionClamp);
+        assert_eq!(
+            policy.frame_adoption_mode,
+            CameraFrameAdoptionMode::HoldUntilSmooth
+        );
+        assert_eq!(policy.edge_mode, TemporalProjectionEdgeMode::ClampSoft);
+        assert_eq!(
+            TemporalProjectionMode::parse("screen-motion-clamp"),
+            Some(TemporalProjectionMode::ScreenMotionClamp)
+        );
+        assert_eq!(
+            CameraFrameAdoptionMode::parse("short-crossfade"),
+            Some(CameraFrameAdoptionMode::ShortCrossfade)
+        );
+    }
+
+    #[test]
+    fn stereo_camera_frame_pair_requires_left_right_eye_order() {
+        let left = CameraFrameTiming::new(Eye::Left, 10).with_camera_capture_time_ns(1_000);
+        let right = CameraFrameTiming::new(Eye::Right, 11).with_camera_capture_time_ns(1_400);
+        let pair = StereoCameraFramePair::new(7, left, right).with_accepted_pair(true);
+
+        assert!(pair.is_valid());
+        assert_eq!(pair.pair_delta_ns, Some(400));
+
+        let swapped = StereoCameraFramePair::new(8, right, left);
+        assert!(!swapped.is_valid());
+    }
+
+    #[test]
+    fn projection_target_and_visual_state_validate_stereo_projection_rows() {
+        let rows = [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+        let left = CameraProjectionState::new(Eye::Left, 1, rows)
+            .with_screen_to_surface_uv(rows)
+            .with_surface_to_camera_uv(rows)
+            .with_source_frame_sequence(10)
+            .with_projection_surface_label("head-anchored-content-surface")
+            .with_texture_transform_label("rotate0");
+        let right = CameraProjectionState::new(Eye::Right, 1, rows)
+            .with_screen_to_surface_uv(rows)
+            .with_surface_to_camera_uv(rows)
+            .with_source_frame_sequence(11)
+            .with_projection_surface_label("head-anchored-content-surface")
+            .with_texture_transform_label("rotate0");
+        let target = ProjectionTargetState::new(123, Pose::IDENTITY, left.clone(), right.clone())
+            .with_source_pair_sequence(5);
+        let visual = VisualProjectionState::new(2, 123, left, right)
+            .with_source_pair_sequence(5)
+            .with_visual_lag_ms(12.0)
+            .with_residual_motion_px(4.5);
+
+        assert!(target.is_valid());
+        assert!(visual.is_valid());
+        assert!(target.left_projection.has_projection_stage_rows());
+    }
+
+    #[test]
+    fn temporal_projection_metrics_reject_invalid_percent() {
+        let valid = TemporalProjectionMetrics {
+            applied_projection_motion_px_p95: 18.0,
+            projection_residual_px_p95: 6.0,
+            invalid_uv_px_percent: 12.5,
+            edge_fill_px_percent: 8.0,
+            ..TemporalProjectionMetrics::default()
+        };
+        let invalid = TemporalProjectionMetrics {
+            invalid_uv_px_percent: 125.0,
+            ..valid
+        };
+
+        assert!(valid.is_valid());
+        assert!(!invalid.is_valid());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn camera_source_diagnostics_round_trip_with_serde() {
+        let report = CameraSourceDiagnosticsReport {
+            schema_version: "rusty.xr.camera-source-diagnostics.v1".to_string(),
+            requested_tier: Some("camera-source-diagnostics".to_string()),
+            selected_provider: Some("logical-physical".to_string()),
+            fallback_reason: Some("selected logical-physical 0a/0b".to_string()),
+            selected_stereo_pair_score: Some(42),
+            selected_stereo_pair_reason: Some("selected logical-physical 0a/0b".to_string()),
+            sources: vec![CameraSourceDiagnostic {
+                camera_id: "0".to_string(),
+                physical_camera_ids: vec!["0a".to_string(), "0b".to_string()],
+                logical_multi_camera: true,
+                concurrent_camera: false,
+                lens_facing: Some("back".to_string()),
+                hardware_level: Some("limited".to_string()),
+                sensor_orientation_degrees: Some(0),
+                active_array_size: Some(ImageSize::new(1280, 1280)),
+                sensor_pixel_array_size: Some(ImageSize::new(1280, 1280)),
+                private_output_sizes: vec![ImageSize::new(1280, 1280)],
+                yuv_output_sizes: vec![ImageSize::new(640, 480)],
+                fps_ranges: vec![(30, 60)],
+                intrinsics_available: true,
+                intrinsic_calibration: Some([500.0, 510.0, 320.0, 240.0, 0.0]),
+                distortion_available: true,
+                distortion: vec![0.01, -0.02, 0.0, 0.0, 0.0],
+                lens_pose_available: false,
+                lens_pose_translation: Some([0.03, 0.0, 0.0]),
+                lens_pose_rotation: Some([0.0, 0.0, 0.0, 1.0]),
+                lens_pose_reference: Some(1),
+            }],
+            stereo_candidates: vec![StereoCameraCandidateDiagnostic {
+                provider_kind: "logical-physical".to_string(),
+                left_camera_id: Some("0a".to_string()),
+                right_camera_id: Some("0b".to_string()),
+                accepted: true,
+                score: Some(42),
+                reason: "two physical cameras expose PRIVATE output through a logical camera"
+                    .to_string(),
+            }],
+        };
+
+        let encoded = serde_json::to_string(&report).expect("diagnostics should serialize");
+        let decoded: CameraSourceDiagnosticsReport =
+            serde_json::from_str(&encoded).expect("diagnostics should deserialize");
+
+        assert_eq!(decoded, report);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn camera_metadata_round_trips_with_serde() {
+        let intrinsics = CameraIntrinsics::new(
+            Vec2::new(500.0, 510.0),
+            Vec2::new(320.0, 240.0),
+            ImageSize::new(640, 480),
+        );
+        let metadata = CameraFrameMetadata::new(CameraSourceId::new("left"), 42, intrinsics)
+            .with_timestamp_ns(123);
+
+        let encoded = serde_json::to_string(&metadata).expect("metadata should serialize");
+        let decoded: CameraFrameMetadata =
+            serde_json::from_str(&encoded).expect("metadata should deserialize");
+
+        assert_eq!(decoded, metadata);
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn source_sampling_contract_round_trips_with_serde() {
+        let contract = SourceSamplingContract::new(
+            "oes",
+            "custom",
+            StereoSourceEyeMapping::DisplayLeftFromRightSource,
+            SourceSamplingTransformStage::PostHomographyPreOesSample,
+        )
+        .with_transform("surface-texture-transform", "android-surface-texture", true)
+        .with_sampler(
+            "oes-external-sampler-uv",
+            "android-surface-texture",
+            SourceSamplerYAxis::SurfaceTextureTransformDefined,
+        )
+        .with_texture_transform(
+            SourceSamplingTransformStage::PostHomographyPreOesSample,
+            "android-surface-texture",
+        );
+
+        let encoded = serde_json::to_string(&contract).expect("source sampling should serialize");
+        assert!(encoded.contains("\"source_eye_mapping\":\"display-left-from-right-source\""));
+        assert!(encoded.contains("\"transform_stage\":\"post-homography-pre-oes-sample\""));
+        assert!(encoded.contains("\"sampler_y_axis\":\"surface-texture-transform-defined\""));
+        let decoded: SourceSamplingContract =
+            serde_json::from_str(&encoded).expect("source sampling should deserialize");
+
+        assert_eq!(decoded, contract);
+        assert!(decoded.is_valid());
+
+        let analyzer_record = r#"{
+            "schema_version": "rusty.xr.source-sampling-contract.v1",
+            "backend": "oes",
+            "suite_root": "fixture",
+            "mode": "oes-canvas",
+            "source_eye_mapping": "display-left-from-left-source",
+            "content_uv_rect": {
+                "origin_uv": {"x": 0.0, "y": 0.0},
+                "size_uv": {"x": 1.0, "y": 1.0}
+            },
+            "source_visible_uv_rect": {
+                "origin_uv": {"x": 0.0, "y": 0.0},
+                "size_uv": {"x": 1.0, "y": 1.0}
+            },
+            "transform_stage": "post-homography-pre-oes-sample",
+            "transform_label": "identity",
+            "transform_owner": "stimulus-orientation-metadata",
+            "transform_applied": false,
+            "output_uv_label": "oes-external-sampler-uv",
+            "sampler_uv_origin": "android-surface-texture",
+            "sampler_y_axis": "content-top-left-y-down",
+            "texture_transform_stage": "post-homography-pre-oes-sample",
+            "texture_transform_owner": "android-surface-texture",
+            "status": "ready",
+            "gaps": []
+        }"#;
+        let analyzer_decoded: SourceSamplingContract = serde_json::from_str(analyzer_record)
+            .expect("analyzer record should expose Rust shape");
+        assert!(analyzer_decoded.is_valid());
+        assert_eq!(
+            analyzer_decoded.sampler_y_axis,
+            SourceSamplerYAxis::ContentTopLeftYDown
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn source_sampling_cross_backend_fixture_deserializes_as_shared_contracts() {
+        use std::collections::BTreeSet;
+
+        let fixture = include_str!(
+            "../../../tools/quest-camera-profile/fixtures/source-sampling-contracts.cross-backend.jsonl"
+        );
+        let mut backends = BTreeSet::new();
+        for (index, line) in fixture
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .enumerate()
+        {
+            let contract: SourceSamplingContract = serde_json::from_str(line)
+                .unwrap_or_else(|error| panic!("fixture line {index} should deserialize: {error}"));
+            assert!(contract.is_valid(), "fixture line {index} should be valid");
+            backends.insert(contract.backend);
+        }
+
+        assert_eq!(
+            backends,
+            BTreeSet::from(["hwb".to_string(), "makepad".to_string(), "oes".to_string()])
+        );
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn camera_texture_lane_contract_round_trips_with_serde() {
+        let contract = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::MakepadHwbExternalDirectCamera2Raw,
+            CameraTextureLaneSource::new(
+                CameraTextureSourceKind::DirectCamera2,
+                "headset-camera2",
+                ImageSize::new(1280, 1280),
+                "AImageReader AHardwareBuffer",
+            ),
+            CameraTextureLaneResource::new(
+                CameraTextureResourceKind::MakepadHardwareBufferExternal,
+                "Makepad Vulkan AHardwareBuffer import",
+                CameraTextureDescriptorShape::SampledImageAndSampler,
+            )
+            .with_shader_interface_label("textureSampleLevel separate texture+sampler"),
+        )
+        .with_color(CameraTextureLaneColor::new(
+            CameraTextureColorStatus::Experimental,
+            "android-hardware-buffer-external-rgb",
+        ));
+
+        let encoded = serde_json::to_string(&contract).expect("lane contract should serialize");
+        assert!(encoded.contains("\"lane_kind\":\"makepad-hwb-external-direct-camera2-raw\""));
+        assert!(encoded.contains("\"descriptor_shape\":\"sampled-image-and-sampler\""));
+        let decoded: CameraTextureLaneContract =
+            serde_json::from_str(&encoded).expect("lane contract should deserialize");
+
+        assert_eq!(decoded, contract);
+        assert!(decoded.is_valid());
+    }
+
+    #[cfg(feature = "serde")]
+    #[test]
+    fn temporal_projection_policy_round_trips_with_serde() {
+        let encoded = serde_json::to_string(&TemporalProjectionPolicy::CONSERVATIVE_SCREEN_CLAMP)
+            .expect("temporal policy should serialize");
+        let decoded: TemporalProjectionPolicy =
+            serde_json::from_str(&encoded).expect("temporal policy should deserialize");
+
+        assert_eq!(decoded, TemporalProjectionPolicy::CONSERVATIVE_SCREEN_CLAMP);
+    }
+}

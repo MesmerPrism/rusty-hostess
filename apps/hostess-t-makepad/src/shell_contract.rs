@@ -87,6 +87,7 @@ impl MakepadShellContractReadReceipt {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn status_line(&self) -> String {
         if self.status == "read" {
             let handoff = self
