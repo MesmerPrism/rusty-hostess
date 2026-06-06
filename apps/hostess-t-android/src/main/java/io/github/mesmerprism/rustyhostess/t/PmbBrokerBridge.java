@@ -23,9 +23,7 @@ import java.util.Map;
 
 final class PmbBrokerBridge {
     static final String MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1";
-    static final String LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA = "rusty.xr.broker.command.v1";
     static final String MANIFOLD_BROKER_EVENTS_PATH = "/manifold/v1/events";
-    static final String LEGACY_RUSTY_XR_BROKER_EVENTS_PATH = "/rustyxr/v1/events";
     static final String EXTERNAL_STREAM_POLAR_ACC = "bio:polar_acc";
     static final String STREAM_OBJECT_POSE = "stream.motion.object_pose";
     static final String STREAM_BREATH_VOLUME = "stream.breath.volume";

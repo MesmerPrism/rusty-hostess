@@ -3,7 +3,7 @@ from __future__ import annotations
 
 MAKEPAD_VISUAL_PROFILE_ID = "makepad-direct-hwb-target-inner-band-stretch"
 
-MAKEPAD_VISUAL_PROFILE_PRIMARY_RUNTIME_PROPERTIES = {
+MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES = {
     "debug.rusty.processing.layer": "peripheral-stretch",
     "debug.rusty.makepad.processing.layer": "peripheral-stretch",
     "debug.rusty.camera.source.sampling.mode": "target-local-raster",
@@ -18,7 +18,7 @@ MAKEPAD_VISUAL_PROFILE_PRIMARY_RUNTIME_PROPERTIES = {
 }
 
 
-def with_legacy_rustyxr_property_aliases(properties: dict[str, str]) -> dict[str, str]:
+def legacy_rustyxr_property_aliases(properties: dict[str, str]) -> dict[str, str]:
     aliased = dict(properties)
     for key, value in properties.items():
         if key.startswith("debug.rusty."):
@@ -27,17 +27,24 @@ def with_legacy_rustyxr_property_aliases(properties: dict[str, str]) -> dict[str
     return aliased
 
 
-MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES = with_legacy_rustyxr_property_aliases(
-    MAKEPAD_VISUAL_PROFILE_PRIMARY_RUNTIME_PROPERTIES
-)
+def makepad_visual_profile_runtime_properties(
+    *,
+    include_legacy_aliases: bool = False,
+) -> dict[str, str]:
+    properties = dict(MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES)
+    if include_legacy_aliases:
+        return legacy_rustyxr_property_aliases(properties)
+    return properties
 
 
-def makepad_visual_profile_runtime_properties() -> dict[str, str]:
-    return dict(MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES)
-
-
-def makepad_visual_profile_property_records() -> list[dict[str, str]]:
+def makepad_visual_profile_property_records(
+    *,
+    include_legacy_aliases: bool = False,
+) -> list[dict[str, str]]:
+    properties = makepad_visual_profile_runtime_properties(
+        include_legacy_aliases=include_legacy_aliases
+    )
     return [
         {"key": key, "value": value}
-        for key, value in MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES.items()
+        for key, value in properties.items()
     ]

@@ -435,7 +435,7 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
         )
 
         self.assertEqual(command["schema"], hostessctl.MANIFOLD_COMMAND_SCHEMA)
-        self.assertNotEqual(command["schema"], hostessctl.LEGACY_RUSTY_XR_BROKER_COMMAND_SCHEMA)
+        self.assertNotEqual(command["schema"], "rusty.xr.broker.command.v1")
         self.assertEqual(command["command"], "subscribe")
         self.assertEqual(command["params"]["stream"], "stream.motion.object_pose")
 
@@ -451,7 +451,7 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
 
         request = fake_socket.sendall.call_args.args[0].decode("ascii")
         self.assertIn(f"GET {hostessctl.MANIFOLD_BROKER_EVENTS_PATH} HTTP/1.1", request)
-        self.assertNotIn(hostessctl.LEGACY_RUSTY_XR_BROKER_EVENTS_PATH, request)
+        self.assertNotIn("/rustyxr/v1/events", request)
 
 
 def record_args(

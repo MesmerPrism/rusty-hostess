@@ -636,21 +636,21 @@ def build_makepad_shell_contract_launch_evidence(
             visual_profile_property_records or makepad_visual_profile_property_records()
         ),
         "visual_profile_processing_layer": (
-            makepad_visual_profile_runtime_properties()["debug.rustyxr.processing.layer"]
+            makepad_visual_profile_runtime_properties()["debug.rusty.processing.layer"]
         ),
         "visual_profile_source_sampling_mode": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rustyxr.camera.source.sampling.mode"
+                "debug.rusty.camera.source.sampling.mode"
             ]
         ),
         "visual_profile_projection_border_policy": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rustyxr.projection.border.policy"
+                "debug.rusty.projection.border.policy"
             ]
         ),
         "visual_profile_makepad_projection_border_policy": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rustyxr.makepad.projection.border.policy"
+                "debug.rusty.makepad.projection.border.policy"
             ]
         ),
         "runtime_observation_poll_performed": runtime_observation_poll_performed,

@@ -618,41 +618,34 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             "peripheral-stretch",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.processing.layer"],
-            "peripheral-stretch",
+            setprops["debug.rusty.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.camera.source.sampling.mode"],
+            "target-local-raster",
         )
         self.assertEqual(
             setprops["debug.rusty.projection.border.policy"],
             "passthrough-underlay",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.camera.source.sampling.mode"],
-            "target-local-raster",
-        )
-        self.assertEqual(
-            setprops["debug.rustyxr.projection.border.policy"],
-            "passthrough-underlay",
-        )
-        self.assertEqual(
-            setprops["debug.rustyxr.projection.border.opacity"],
+            setprops["debug.rusty.projection.border.opacity"],
             "0.0",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.border.policy"],
+            setprops["debug.rusty.makepad.projection.border.policy"],
             "passthrough-underlay",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.border.opacity"],
+            setprops["debug.rusty.makepad.projection.border.opacity"],
             "0.0",
         )
         self.assertEqual(
             setprops["debug.rusty.makepad.projection.target.joystick.controls"],
             "offset-scale",
         )
-        self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],
-            "offset-scale",
-        )
+        self.assertFalse(any(key.startswith("debug.rustyxr.") for key in setprops))
 
     def test_configure_makepad_controller_pose_provider_applies_visual_profile(self) -> None:
         actions: list[tuple[str, list[str]]] = []
@@ -689,41 +682,34 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             "peripheral-stretch",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.processing.layer"],
-            "peripheral-stretch",
+            setprops["debug.rusty.projection.border.policy"],
+            "passthrough-underlay",
+        )
+        self.assertEqual(
+            setprops["debug.rusty.camera.source.sampling.mode"],
+            "target-local-raster",
         )
         self.assertEqual(
             setprops["debug.rusty.projection.border.policy"],
             "passthrough-underlay",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.camera.source.sampling.mode"],
-            "target-local-raster",
-        )
-        self.assertEqual(
-            setprops["debug.rustyxr.projection.border.policy"],
-            "passthrough-underlay",
-        )
-        self.assertEqual(
-            setprops["debug.rustyxr.projection.border.opacity"],
+            setprops["debug.rusty.projection.border.opacity"],
             "0.0",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.border.policy"],
+            setprops["debug.rusty.makepad.projection.border.policy"],
             "passthrough-underlay",
         )
         self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.border.opacity"],
+            setprops["debug.rusty.makepad.projection.border.opacity"],
             "0.0",
         )
         self.assertEqual(
             setprops["debug.rusty.makepad.projection.target.joystick.controls"],
             "offset-scale",
         )
-        self.assertEqual(
-            setprops["debug.rustyxr.makepad.projection.target.joystick.controls"],
-            "offset-scale",
-        )
+        self.assertFalse(any(key.startswith("debug.rustyxr.") for key in setprops))
 
     def test_validate_pmb_quest_physical_live_rejects_pc_or_simulated_authority(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

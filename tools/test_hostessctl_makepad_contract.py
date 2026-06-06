@@ -306,29 +306,30 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                 if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
             }
             self.assertEqual(
-                setprops["debug.rustyxr.processing.layer"],
+                setprops["debug.rusty.processing.layer"],
                 "peripheral-stretch",
             )
             self.assertEqual(
-                setprops["debug.rustyxr.camera.source.sampling.mode"],
+                setprops["debug.rusty.camera.source.sampling.mode"],
                 "target-local-raster",
             )
             self.assertEqual(
-                setprops["debug.rustyxr.projection.border.policy"],
+                setprops["debug.rusty.projection.border.policy"],
                 "passthrough-underlay",
             )
             self.assertEqual(
-                setprops["debug.rustyxr.projection.border.opacity"],
+                setprops["debug.rusty.projection.border.opacity"],
                 "0.0",
             )
             self.assertEqual(
-                setprops["debug.rustyxr.makepad.projection.border.policy"],
+                setprops["debug.rusty.makepad.projection.border.policy"],
                 "passthrough-underlay",
             )
             self.assertEqual(
-                setprops["debug.rustyxr.makepad.projection.border.opacity"],
+                setprops["debug.rusty.makepad.projection.border.opacity"],
                 "0.0",
             )
+            self.assertFalse(any(key.startswith("debug.rustyxr.") for key in setprops))
             self.assertIn(
                 "files/hostess-t/shell/makepad-shell-contract-receipt.json",
                 written_files,

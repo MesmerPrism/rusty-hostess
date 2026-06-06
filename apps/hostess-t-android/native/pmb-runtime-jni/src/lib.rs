@@ -166,15 +166,16 @@ pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nati
     _class: JClass,
     package_root: JString,
 ) -> jstring {
-    let result = jni_open_live_transport_processor(&mut env, package_root).unwrap_or_else(|error| {
-        json!({
-            "schema": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
-            "status": "fail",
-            "handle": 0,
-            "issues": [format!("issue.jni_bridge_failed:{error}")]
-        })
-        .to_string()
-    });
+    let result =
+        jni_open_live_transport_processor(&mut env, package_root).unwrap_or_else(|error| {
+            json!({
+                "schema": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
+                "status": "fail",
+                "handle": 0,
+                "issues": [format!("issue.jni_bridge_failed:{error}")]
+            })
+            .to_string()
+        });
     match env.new_string(result) {
         Ok(output) => output.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -189,31 +190,27 @@ pub extern "system" fn Java_io_github_mesmerprism_rustyhostess_t_PMBRuntime_nati
     event_json: JString,
     selected_source_preference: JString,
 ) -> jstring {
-    let result = jni_push_live_transport_event(
-        &mut env,
-        handle,
-        event_json,
-        selected_source_preference,
-    )
-    .unwrap_or_else(|error| {
-        json!({
-            "schema": "rusty.manifold.projected_motion_breath.live_transport_update.v1",
-            "status": "fail",
-            "route_id": "",
-            "package_root": "",
-            "input_stream_id": "",
-            "selected_source_preference": "auto",
-            "selected_source_effective": "unknown",
-            "event_sample_count": 0,
-            "normalized_sample_count": 0,
-            "output_sample_count": 0,
-            "source_updates": [],
-            "breath_samples": [],
-            "feedback_samples": [],
-            "issues": [format!("issue.jni_bridge_failed:{error}")]
-        })
-        .to_string()
-    });
+    let result =
+        jni_push_live_transport_event(&mut env, handle, event_json, selected_source_preference)
+            .unwrap_or_else(|error| {
+                json!({
+                    "schema": "rusty.manifold.projected_motion_breath.live_transport_update.v1",
+                    "status": "fail",
+                    "route_id": "",
+                    "package_root": "",
+                    "input_stream_id": "",
+                    "selected_source_preference": "auto",
+                    "selected_source_effective": "unknown",
+                    "event_sample_count": 0,
+                    "normalized_sample_count": 0,
+                    "output_sample_count": 0,
+                    "source_updates": [],
+                    "breath_samples": [],
+                    "feedback_samples": [],
+                    "issues": [format!("issue.jni_bridge_failed:{error}")]
+                })
+                .to_string()
+            });
     match env.new_string(result) {
         Ok(output) => output.into_raw(),
         Err(_) => std::ptr::null_mut(),
@@ -302,7 +299,8 @@ fn jni_open_live_transport_processor(
         .get_string(&package_root)
         .map_err(|error| format!("package_root_jni:{error}"))?
         .into();
-    let processor = projected_motion_breath_core::LiveTransportProcessor::open(PathBuf::from(package_root))?;
+    let processor =
+        projected_motion_breath_core::LiveTransportProcessor::open(PathBuf::from(package_root))?;
     let handle = Box::into_raw(Box::new(processor)) as jlong;
     Ok(json!({
         "schema": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
@@ -330,9 +328,8 @@ fn jni_push_live_transport_event(
         .get_string(&selected_source_preference)
         .map_err(|error| format!("selected_source_preference_jni:{error}"))?
         .into();
-    let processor = unsafe {
-        &mut *(handle as *mut projected_motion_breath_core::LiveTransportProcessor)
-    };
+    let processor =
+        unsafe { &mut *(handle as *mut projected_motion_breath_core::LiveTransportProcessor) };
     let update = processor.push_transport_event_json(&event_json, &selected_source_preference);
     serde_json::to_string(&update).map_err(|error| error.to_string())
 }
