@@ -10,6 +10,7 @@ manifest/fixture-first.
 - Minimal host apps and scripts that consume Manifold package manifests.
 - Live package validation slots for desktop, mobile, and headset profiles.
 - Evidence JSON, validators, and build scripts for clean host tests.
+- Makepad dependencies only inside Hostess Makepad shell crates.
 
 ## Non-Scope
 
@@ -19,6 +20,8 @@ manifest/fixture-first.
 - Long-lived background services.
 - Private planning paths, device serials, personal package ids, or old project
   names in committed files.
+- Makepad dependencies in Hostess core, CLI, validators, manifests, or
+  descriptor logic.
 
 ## Validation
 
