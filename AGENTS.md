@@ -10,6 +10,12 @@ an install/test shell product lane inside that umbrella; it can collect
 evidence for Matter, Lattice, Manifold, Optics, Studio, and Quest flows without
 becoming their schema or runtime authority.
 
+Project-owned source in this repo is licensed `AGPL-3.0-or-later`. Keep
+third-party dependencies, Makepad toolkit code, generated APKs, installer
+bundles, signing material, captured evidence, device logs, platform SDKs,
+binary releases, and external tools under their own provenance and notice
+requirements; see `docs/LICENSING.md`.
+
 ## Scope
 
 - Minimal host apps and scripts that consume Manifold package manifests.
