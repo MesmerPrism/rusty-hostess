@@ -10,6 +10,9 @@ manifest/fixture-first.
 - Minimal host apps and scripts that consume Manifold package manifests.
 - Live package validation slots for desktop, mobile, and headset profiles.
 - Evidence JSON, validators, and build scripts for clean host tests.
+- Lattice evidence collection for tracked view sets, poses, spatial input
+  roles, frame-state binding, calibration, validity, confidence, and runtime
+  capabilities when a host run needs situated relation proof.
 - Makepad dependencies only inside Hostess Makepad shell crates.
 
 ## Non-Scope
@@ -20,6 +23,9 @@ manifest/fixture-first.
 - Long-lived background services.
 - Private planning paths, device serials, personal package ids, or old project
   names in committed files.
+- Lattice contract authority. Hostess can collect evidence and run adapters,
+  but generic relation schemas belong in Rusty Lattice and command/session
+  authority remains Manifold.
 - Makepad dependencies in Hostess core, CLI, validators, manifests, or
   descriptor logic.
 
