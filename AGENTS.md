@@ -5,6 +5,11 @@ Manifold packages. It is allowed to contain platform APIs and installable test
 apps. Keep `rusty-manifold` contract-first and keep `rusty-manifold-packages`
 manifest/fixture-first.
 
+Rusty Morphospace is the top-level project/platform umbrella. Hostess remains
+an install/test shell product lane inside that umbrella; it can collect
+evidence for Matter, Lattice, Manifold, Optics, Studio, and Quest flows without
+becoming their schema or runtime authority.
+
 ## Scope
 
 - Minimal host apps and scripts that consume Manifold package manifests.
