@@ -33,6 +33,7 @@ use camera_pair::{
     makepad_display_source_eye_mapping, pixel_format_label, Camera2StereoPlan, MakepadCameraPair,
 };
 use camera_texture_path::MakepadCameraTexturePath;
+use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
 #[cfg(target_os = "android")]
 use projection_geometry::broker_projection_plan_marker_fields;
 use projection_geometry::{
@@ -287,6 +288,7 @@ script_mod! {
         mesh_replay_segment1: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         mesh_replay_segment2: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         mesh_replay_segment3: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        camera_shell_feature_runtime: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         source_sample_y_flip: uniform(0.0)
         projection_content_mapping_mode: uniform(0.0)
         display_source_eye_swap: uniform(0.0)
@@ -1020,15 +1022,26 @@ script_mod! {
             return mix(with_border, vec3(1.0, 1.0, 1.0), clamp(surface_border * 0.70, 0.0, 1.0));
         }
 
-        mesh_replay_segment_mask: fn(coord: vec2f, segment: vec4f) -> float {
+        mesh_replay_segment_distance: fn(coord: vec2f, segment: vec4f) -> float {
             let start = vec2(segment.x, segment.y);
             let end = vec2(segment.z, segment.w);
             let edge = end - start;
             let edge_len2 = max(dot(edge, edge), 0.0001);
             let t = clamp(dot(coord - start, edge) / edge_len2, 0.0, 1.0);
             let nearest = start + edge * t;
-            let distance_to_edge = length(coord - nearest);
-            return 1.0 - smoothstep(0.004, 0.014, distance_to_edge);
+            return length(coord - nearest);
+        }
+
+        mesh_replay_segment_mask: fn(coord: vec2f, segment: vec4f) -> float {
+            return 1.0 - smoothstep(0.004, 0.014, self.mesh_replay_segment_distance(coord, segment));
+        }
+
+        mesh_replay_field_distance: fn(coord: vec2f) -> float {
+            let d0 = self.mesh_replay_segment_distance(coord, self.mesh_replay_segment0);
+            let d1 = self.mesh_replay_segment_distance(coord, self.mesh_replay_segment1);
+            let d2 = self.mesh_replay_segment_distance(coord, self.mesh_replay_segment2);
+            let d3 = self.mesh_replay_segment_distance(coord, self.mesh_replay_segment3);
+            return min(min(d0, d1), min(d2, d3));
         }
 
         mesh_replay_overlay_mask: fn(coord: vec2f) -> float {
@@ -1059,6 +1072,73 @@ script_mod! {
         mesh_replay_overlay_alpha: fn(alpha: float, coord: vec2f, visibility: float) -> float {
             let mask = self.mesh_replay_overlay_mask(coord) * clamp(visibility, 0.0, 1.0);
             return max(alpha, clamp(mask * self.mesh_replay_runtime.w, 0.0, 1.0));
+        }
+
+        sdf_adf_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let replay_enabled = step(0.5, self.mesh_replay_runtime.x);
+            let mode = floor(self.camera_shell_feature_runtime.y + 0.5);
+            let sdf_active =
+                step(0.5, mode) * (1.0 - step(1.5, mode)) +
+                step(2.5, mode);
+            let adf_active =
+                step(1.5, mode) * (1.0 - step(2.5, mode)) +
+                step(2.5, mode);
+            let active = replay_enabled * clamp(visibility, 0.0, 1.0);
+            let distance_to_replay = self.mesh_replay_field_distance(coord);
+            let near_replay = 1.0 - smoothstep(0.02, 0.25, distance_to_replay);
+            let phase = fract(self.mesh_replay_runtime.y);
+            let sdf_ring = 0.5 + 0.5 * sin(distance_to_replay * 52.0 - phase * 6.28318530718);
+            let sdf_mask = active * sdf_active * near_replay * (0.25 + 0.55 * sdf_ring);
+
+            let adaptive_cells = mix(8.0, 22.0, near_replay);
+            let grid_x = abs(fract(coord.x * adaptive_cells) - 0.5);
+            let grid_y = abs(fract(coord.y * adaptive_cells) - 0.5);
+            let grid_line = 1.0 - step(0.045, min(grid_x, grid_y));
+            let adf_mask = active * adf_active * near_replay * grid_line;
+
+            let sdf_rgb = mix(rgb, vec3(0.03, 0.74, 0.92), clamp(sdf_mask * 0.35, 0.0, 0.35));
+            return mix(sdf_rgb, vec3(0.94, 0.64, 0.08), clamp(adf_mask * 0.30, 0.0, 0.30));
+        }
+
+        collision_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let enabled =
+                step(0.5, self.camera_shell_feature_runtime.x) *
+                step(0.5, self.mesh_replay_runtime.x) *
+                clamp(visibility, 0.0, 1.0);
+            let probe_distance = length(coord - vec2(0.5, 0.5));
+            let probe_mask = 1.0 - smoothstep(0.075, 0.120, probe_distance);
+            let replay_contact =
+                1.0 - smoothstep(0.016, 0.050, self.mesh_replay_field_distance(coord));
+            let collision_mask = enabled * probe_mask * replay_contact;
+            return mix(rgb, vec3(1.0, 0.10, 0.04), clamp(collision_mask * 0.68, 0.0, 0.68));
+        }
+
+        particle_mask: fn(coord: vec2f) -> float {
+            let phase = self.mesh_replay_runtime.y * 6.28318530718;
+            let p0 = vec2(0.50 + 0.28 * cos(phase), 0.50 + 0.18 * sin(phase * 1.23));
+            let p1 = vec2(0.50 + 0.22 * cos(phase + 2.09), 0.50 + 0.25 * sin(phase * 0.91 + 0.50));
+            let p2 = vec2(0.50 + 0.18 * cos(phase * 1.41 + 4.18), 0.50 + 0.29 * sin(phase + 1.30));
+            let p3 = vec2(0.50 + 0.31 * cos(phase * 0.73 + 1.10), 0.50 + 0.15 * sin(phase * 1.67 + 2.80));
+            let m0 = 1.0 - smoothstep(0.012, 0.028, length(coord - p0));
+            let m1 = 1.0 - smoothstep(0.010, 0.024, length(coord - p1));
+            let m2 = 1.0 - smoothstep(0.010, 0.024, length(coord - p2));
+            let m3 = 1.0 - smoothstep(0.012, 0.030, length(coord - p3));
+            return clamp(max(max(m0, m1), max(m2, m3)), 0.0, 1.0);
+        }
+
+        particles_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let enabled =
+                step(0.5, self.camera_shell_feature_runtime.z) *
+                clamp(visibility, 0.0, 1.0);
+            let mask = enabled * self.particle_mask(coord);
+            return mix(rgb, vec3(0.96, 0.92, 0.30), clamp(mask * 0.74, 0.0, 0.74));
+        }
+
+        camera_shell_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let field_rgb = self.sdf_adf_overlay_rgb(rgb, coord, visibility);
+            let particle_rgb = self.particles_overlay_rgb(field_rgb, coord, visibility);
+            let collision_rgb = self.collision_overlay_rgb(particle_rgb, coord, visibility);
+            return self.mesh_replay_overlay_rgb(collision_rgb, coord, visibility);
         }
 
         pixel: fn() {
@@ -1185,13 +1265,13 @@ script_mod! {
             if self.camera_ready <= 0.5 {
                 let waiting = vec3(0.015, 0.020, 0.024);
                 let guided_waiting = mix(waiting, vec3(1.0, 0.98, 0.84), proof_guide);
-                let replay_waiting = self.mesh_replay_overlay_rgb(guided_waiting, full_view_uv, 1.0);
+                let replay_waiting = self.camera_shell_overlay_rgb(guided_waiting, full_view_uv, 1.0);
                 return vec4(replay_waiting.x, replay_waiting.y, replay_waiting.z, 1.0);
             }
             if self.suppress_live_camera_sampling > 0.5 {
                 let armed = vec3(0.015, 0.18, 0.08);
                 let guided_armed = mix(armed, vec3(1.0, 0.98, 0.84), proof_guide);
-                let replay_armed = self.mesh_replay_overlay_rgb(guided_armed, full_view_uv, 1.0);
+                let replay_armed = self.camera_shell_overlay_rgb(guided_armed, full_view_uv, 1.0);
                 return vec4(replay_armed.x, replay_armed.y, replay_armed.z, 1.0);
             }
             if self.projection_area_diagnostic > 0.5 {
@@ -1202,7 +1282,7 @@ script_mod! {
                     projection_valid
                 );
                 let guided_diagnostic = mix(diagnostic_rgb, vec3(1.0, 0.98, 0.84), proof_guide);
-                let replay_diagnostic = self.mesh_replay_overlay_rgb(
+                let replay_diagnostic = self.camera_shell_overlay_rgb(
                     guided_diagnostic,
                     projection_area_content_uv,
                     projection_area_mask
@@ -1262,7 +1342,7 @@ script_mod! {
                     projection_area_content_uv,
                     projection_area_mask
                 );
-                let replay_window = self.mesh_replay_overlay_rgb(
+                let replay_window = self.camera_shell_overlay_rgb(
                     guided_window,
                     projection_area_content_uv,
                     projection_area_mask
@@ -1278,7 +1358,7 @@ script_mod! {
             let direct_rgb =
                 self.sample_or_solid_camera_rgb(live_sample_uv, eye_selector) * mix(0.12, 1.0, live_projection_valid);
             let guided_direct = mix(direct_rgb, vec3(1.0, 0.98, 0.84), proof_guide);
-            let replay_direct = self.mesh_replay_overlay_rgb(guided_direct, full_view_uv, 1.0);
+            let replay_direct = self.camera_shell_overlay_rgb(guided_direct, full_view_uv, 1.0);
             return vec4(replay_direct.x, replay_direct.y, replay_direct.z, 1.0);
         }
 
@@ -1307,6 +1387,7 @@ script_mod! {
             mesh_replay_segment1: vec4(0.0, 0.0, 0.0, 0.0)
             mesh_replay_segment2: vec4(0.0, 0.0, 0.0, 0.0)
             mesh_replay_segment3: vec4(0.0, 0.0, 0.0, 0.0)
+            camera_shell_feature_runtime: vec4(0.0, 0.0, 0.0, 0.0)
             depth_clip: 0.0
         }
     }
@@ -1379,6 +1460,8 @@ pub struct App {
     shell_xr_runtime: ShellXrRuntimeState,
     #[rust]
     mesh_replay_runtime: Option<MeshReplayRuntime>,
+    #[rust]
+    camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
     #[rust]
     mesh_replay_effective_settings_path: Option<String>,
     #[rust]
@@ -1736,6 +1819,8 @@ pub struct DrawMakepadStereoCameraPanel {
     pub mesh_replay_segment2: Vec4f,
     #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
     pub mesh_replay_segment3: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub camera_shell_feature_runtime: Vec4f,
     #[rust(1.0_f32)]
     pub source_sample_y_flip: f32,
     #[rust(0.0_f32)]
@@ -2050,7 +2135,12 @@ impl MakepadStereoCameraPanel {
             .set_uniform_on_area(cx, id, &values);
     }
 
-    fn set_mesh_replay_uniforms(&mut self, cx: &mut Cx, uniforms: MeshReplayUniforms) {
+    fn set_mesh_replay_uniforms(
+        &mut self,
+        cx: &mut Cx,
+        uniforms: MeshReplayUniforms,
+        feature_uniforms: MakepadCameraShellFeatureUniforms,
+    ) {
         let runtime = Vec4f {
             x: uniforms.enabled,
             y: uniforms.phase,
@@ -2061,18 +2151,26 @@ impl MakepadStereoCameraPanel {
         let segment1 = mesh_replay_segment_vec4(uniforms.segments[1]);
         let segment2 = mesh_replay_segment_vec4(uniforms.segments[2]);
         let segment3 = mesh_replay_segment_vec4(uniforms.segments[3]);
+        let feature_runtime = Vec4f {
+            x: feature_uniforms.collision_enabled,
+            y: feature_uniforms.sdf_adf_overlay_mode,
+            z: feature_uniforms.particles_enabled,
+            w: 0.0,
+        };
 
         self.draw_panel.mesh_replay_runtime = runtime;
         self.draw_panel.mesh_replay_segment0 = segment0;
         self.draw_panel.mesh_replay_segment1 = segment1;
         self.draw_panel.mesh_replay_segment2 = segment2;
         self.draw_panel.mesh_replay_segment3 = segment3;
+        self.draw_panel.camera_shell_feature_runtime = feature_runtime;
 
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_runtime), runtime);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment0), segment0);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment1), segment1);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment2), segment2);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment3), segment3);
+        self.set_panel_uniform_vec4f(cx, live_id!(camera_shell_feature_runtime), feature_runtime);
         self.draw_panel.draw_vars.redraw(cx);
         self.node.redraw(cx);
     }
@@ -3046,6 +3144,7 @@ impl App {
             return false;
         }
 
+        let runtime_ready = selection.runtime.is_some();
         let marker_line = if selection.runtime.is_none() {
             Some(selection.marker_line(phase))
         } else {
@@ -3056,10 +3155,14 @@ impl App {
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
             selection.source_modified_ns.is_some();
+        self.camera_shell_feature_uniforms = selection.feature_uniforms;
         self.mesh_replay_runtime = selection.runtime;
 
         if let Some(marker_line) = marker_line {
             emit_marker_line(&marker_line);
+        }
+        if runtime_ready {
+            emit_marker_line(&self.camera_shell_feature_uniform_marker_line(phase));
         }
         if let Some(runtime) = self.mesh_replay_runtime.as_mut() {
             runtime.step(0.0);
@@ -3068,6 +3171,23 @@ impl App {
             }
         }
         true
+    }
+
+    fn camera_shell_feature_uniform_marker_line(&self, phase: &str) -> String {
+        format!(
+            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} sourcePath={}",
+            marker_token(phase),
+            self.camera_shell_feature_uniforms.collision_enabled >= 0.5,
+            marker_token(camera_shell_sdf_adf_mode_token(
+                self.camera_shell_feature_uniforms.sdf_adf_overlay_mode,
+            )),
+            self.camera_shell_feature_uniforms.particles_enabled >= 0.5,
+            marker_token(
+                self.mesh_replay_effective_settings_path
+                    .as_deref()
+                    .unwrap_or("none")
+            ),
+        )
     }
 
     fn current_mesh_replay_effective_settings_modified_ns(&self) -> Option<u128> {
@@ -4444,19 +4564,20 @@ impl App {
         for line in marker_lines {
             emit_marker_line(&line);
         }
-        self.apply_mesh_replay_uniforms_to_panel(cx, uniforms);
+        self.apply_mesh_replay_uniforms_to_panel(cx, uniforms, self.camera_shell_feature_uniforms);
     }
 
     fn apply_mesh_replay_uniforms_to_panel(
         &mut self,
         cx: &mut Cx,
         uniforms: MeshReplayUniforms,
+        feature_uniforms: MakepadCameraShellFeatureUniforms,
     ) -> bool {
         let panel_ref = self.ui.widget(cx, ids!(camera_projection_panel));
         let Some(mut panel) = panel_ref.borrow_mut::<MakepadStereoCameraPanel>() else {
             return false;
         };
-        panel.set_mesh_replay_uniforms(cx, uniforms);
+        panel.set_mesh_replay_uniforms(cx, uniforms, feature_uniforms);
         true
     }
 
@@ -6681,5 +6802,17 @@ fn mesh_replay_segment_vec4(segment: [f32; 4]) -> Vec4f {
         y: segment[1],
         z: segment[2],
         w: segment[3],
+    }
+}
+
+fn camera_shell_sdf_adf_mode_token(mode: f32) -> &'static str {
+    if mode >= 2.5 {
+        "combined"
+    } else if mode >= 1.5 {
+        "adf"
+    } else if mode >= 0.5 {
+        "sdf"
+    } else {
+        "off"
     }
 }

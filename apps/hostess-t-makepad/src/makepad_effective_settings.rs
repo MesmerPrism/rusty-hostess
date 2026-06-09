@@ -1,7 +1,7 @@
 use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
 use rusty_quest_makepad_camera_shell::{
-    mesh_replay_runtime_from_effective_settings_json, CameraShellEffectiveConfig,
+    camera_shell_runtime_bundle_from_effective_settings_json, CameraShellEffectiveConfig,
     MeshReplayRuntime, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::Value;
@@ -54,6 +54,28 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     receipt_written: bool,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub(crate) struct MakepadCameraShellFeatureUniforms {
+    pub(crate) collision_enabled: f32,
+    pub(crate) sdf_adf_overlay_mode: f32,
+    pub(crate) particles_enabled: f32,
+}
+
+impl MakepadCameraShellFeatureUniforms {
+    fn from_effective_config(config: &CameraShellEffectiveConfig) -> Self {
+        Self {
+            collision_enabled: if config.collision_enabled { 1.0 } else { 0.0 },
+            sdf_adf_overlay_mode: match config.sdf_adf_overlay_mode.as_str() {
+                "sdf" => 1.0,
+                "adf" => 2.0,
+                "combined" => 3.0,
+                _ => 0.0,
+            },
+            particles_enabled: if config.particles_enabled { 1.0 } else { 0.0 },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) status: String,
@@ -61,6 +83,7 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) issue_evidence: Option<String>,
     pub(crate) source_effective_settings_path: Option<String>,
     pub(crate) source_modified_ns: Option<u128>,
+    pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
 }
 
@@ -202,6 +225,7 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             issue_evidence: Some("No Makepad effective-settings path was configured".to_string()),
             source_effective_settings_path: None,
             source_modified_ns: None,
+            feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
         };
     };
@@ -219,25 +243,32 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 issue_evidence: Some(format!("read failed: {error}")),
                 source_effective_settings_path: Some(path.display().to_string()),
                 source_modified_ns,
+                feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
             };
         }
     };
-    match mesh_replay_runtime_from_effective_settings_json(&text) {
-        Ok(runtime) => MakepadMeshReplayRuntimeSelection {
-            status: "ready".to_string(),
-            issue_code: None,
-            issue_evidence: None,
-            source_effective_settings_path: Some(path.display().to_string()),
-            source_modified_ns,
-            runtime: Some(runtime),
-        },
+    match camera_shell_runtime_bundle_from_effective_settings_json(&text) {
+        Ok(bundle) => {
+            let feature_uniforms =
+                MakepadCameraShellFeatureUniforms::from_effective_config(&bundle.effective_config);
+            MakepadMeshReplayRuntimeSelection {
+                status: "ready".to_string(),
+                issue_code: None,
+                issue_evidence: None,
+                source_effective_settings_path: Some(path.display().to_string()),
+                source_modified_ns,
+                feature_uniforms,
+                runtime: Some(bundle.mesh_replay_runtime),
+            }
+        }
         Err(error) => MakepadMeshReplayRuntimeSelection {
             status: "rejected".to_string(),
             issue_code: Some(PARSE_ISSUE.to_string()),
             issue_evidence: Some(error.to_string()),
             source_effective_settings_path: Some(path.display().to_string()),
             source_modified_ns,
+            feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
         },
     }
@@ -519,6 +550,10 @@ mod tests {
         assert!(selection.issue_code.is_none());
         assert!(selection.source_modified_ns.is_some());
         assert!(selection.settings_identity_changed_from(None, None));
+        assert_eq!(
+            selection.feature_uniforms,
+            MakepadCameraShellFeatureUniforms::default()
+        );
         let runtime = selection.runtime.as_mut().expect("runtime selected");
         let first = runtime.step(0.0);
         assert!(first.enabled);
@@ -527,6 +562,33 @@ mod tests {
         assert!(marker.contains("schema=rusty.quest.makepad.mesh_replay.v1"));
         assert!(marker.contains("source=public-synthetic-hand-sequence"));
         assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn builds_feature_uniforms_from_canonical_effective_settings() {
+        let features_enabled = EFFECTIVE_SETTINGS_FIXTURE
+            .replace(
+                "\"setting_id\": \"makepad.collision.enabled\",\n      \"value\": false",
+                "\"setting_id\": \"makepad.collision.enabled\",\n      \"value\": true",
+            )
+            .replace("\"value\": \"off\"", "\"value\": \"combined\"")
+            .replace(
+                "\"setting_id\": \"makepad.particles.enabled\",\n      \"value\": false",
+                "\"setting_id\": \"makepad.particles.enabled\",\n      \"value\": true",
+            );
+        let path = write_temp_json("effective-settings-feature-uniforms", &features_enabled);
+
+        let selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(
+            selection.feature_uniforms,
+            MakepadCameraShellFeatureUniforms {
+                collision_enabled: 1.0,
+                sdf_adf_overlay_mode: 3.0,
+                particles_enabled: 1.0,
+            }
+        );
+        assert!(selection.runtime.is_some());
     }
 
     #[test]
