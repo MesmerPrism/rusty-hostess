@@ -23,6 +23,7 @@ serde = ["dep:serde"]
 makepad-xr = { path = "../../../makepad-morphospace/xr", version = "1.0.0" }
 makepad-widgets = { path = "../../../makepad-morphospace/widgets", version = "2.0.0" }
 rusty-makepad-settings = { path = "../../../rusty-makepad/crates/rusty-makepad-settings" }
+rusty-quest-makepad-camera-shell = { path = "../../../rusty-quest-makepad/crates/rusty-quest-makepad-camera-shell" }
 serde = { version = "1", features = ["derive"], optional = true }
 serde_json = "1"
 

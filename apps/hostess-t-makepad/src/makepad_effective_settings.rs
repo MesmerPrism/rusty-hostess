@@ -1,5 +1,6 @@
 use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
+use rusty_quest_makepad_camera_shell::CameraShellReplayConfig;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -10,10 +11,7 @@ const NOT_CONFIGURED_ISSUE: &str = "hostess.issue.makepad_effective_settings_not
 const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
 const SCHEMA_ISSUE: &str = "hostess.issue.makepad_effective_settings_schema";
-const MESH_REPLAY_ENABLED: &str = "makepad.mesh_replay.enabled";
-const MESH_REPLAY_SOURCE: &str = "makepad.mesh_replay.source";
-const MESH_REPLAY_SPEED: &str = "makepad.mesh_replay.speed";
-const MESH_REPLAY_OPACITY: &str = "makepad.mesh_replay.opacity";
+const MESH_REPLAY_ADAPTER: &str = "rusty-quest-makepad-camera-shell";
 
 #[cfg(target_os = "android")]
 const ANDROID_INTERNAL_SETTINGS_ROOT: &str =
@@ -37,6 +35,9 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     setting_count: usize,
     canonical_effective_settings_consumed: bool,
     mesh_replay_settings_present: bool,
+    mesh_replay_adapter: Option<String>,
+    mesh_replay_adapter_status: Option<String>,
+    mesh_replay_adapter_error: Option<String>,
     mesh_replay_enabled: Option<bool>,
     mesh_replay_source: Option<String>,
     mesh_replay_speed: Option<f64>,
@@ -48,7 +49,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -62,6 +63,9 @@ impl MakepadEffectiveSettingsReceipt {
             self.setting_count,
             self.canonical_effective_settings_consumed,
             self.mesh_replay_settings_present,
+            marker_option(self.mesh_replay_adapter.as_deref()),
+            marker_option(self.mesh_replay_adapter_status.as_deref()),
+            marker_option(self.mesh_replay_adapter_error.as_deref()),
             self.mesh_replay_enabled
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "none".to_string()),
@@ -88,6 +92,9 @@ impl MakepadEffectiveSettingsReceipt {
             "setting_count": self.setting_count,
             "canonical_effective_settings_consumed": self.canonical_effective_settings_consumed,
             "mesh_replay_settings_present": self.mesh_replay_settings_present,
+            "mesh_replay_adapter": self.mesh_replay_adapter,
+            "mesh_replay_adapter_status": self.mesh_replay_adapter_status,
+            "mesh_replay_adapter_error": self.mesh_replay_adapter_error,
             "mesh_replay_enabled": self.mesh_replay_enabled,
             "mesh_replay_source": self.mesh_replay_source,
             "mesh_replay_speed": self.mesh_replay_speed,
@@ -127,7 +134,7 @@ pub(crate) fn read_makepad_effective_settings_from_path(
             &format!("unsupported schema {}", report.schema),
         );
     }
-    ready_receipt(path, report)
+    ready_receipt(path, report, &text)
 }
 
 pub(crate) fn write_selected_makepad_effective_settings_receipt(
@@ -149,15 +156,40 @@ pub(crate) fn write_selected_makepad_effective_settings_receipt(
     Ok(Some(path))
 }
 
-fn ready_receipt(path: &Path, report: EffectiveSettingsReport) -> MakepadEffectiveSettingsReceipt {
-    let mesh_replay_enabled = bool_setting(&report, MESH_REPLAY_ENABLED);
-    let mesh_replay_source = string_setting(&report, MESH_REPLAY_SOURCE);
-    let mesh_replay_speed = number_setting(&report, MESH_REPLAY_SPEED);
-    let mesh_replay_opacity = number_setting(&report, MESH_REPLAY_OPACITY);
-    let mesh_replay_settings_present = mesh_replay_enabled.is_some()
-        && mesh_replay_source.is_some()
-        && mesh_replay_speed.is_some()
-        && mesh_replay_opacity.is_some();
+fn ready_receipt(
+    path: &Path,
+    report: EffectiveSettingsReport,
+    raw_json: &str,
+) -> MakepadEffectiveSettingsReceipt {
+    let mesh_replay_adapter = Some(MESH_REPLAY_ADAPTER.to_string());
+    let (
+        mesh_replay_adapter_status,
+        mesh_replay_adapter_error,
+        mesh_replay_settings_present,
+        mesh_replay_enabled,
+        mesh_replay_source,
+        mesh_replay_speed,
+        mesh_replay_opacity,
+    ) = match CameraShellReplayConfig::from_effective_settings_json(raw_json) {
+        Ok(config) => (
+            Some("ready".to_string()),
+            None,
+            true,
+            Some(config.enabled),
+            Some(config.source),
+            Some(f64::from(config.speed)),
+            Some(f64::from(config.opacity)),
+        ),
+        Err(error) => (
+            Some("rejected".to_string()),
+            Some(error.to_string()),
+            false,
+            None,
+            None,
+            None,
+            None,
+        ),
+    };
 
     MakepadEffectiveSettingsReceipt {
         status: "ready".to_string(),
@@ -173,6 +205,9 @@ fn ready_receipt(path: &Path, report: EffectiveSettingsReport) -> MakepadEffecti
         setting_count: report.settings.len(),
         canonical_effective_settings_consumed: true,
         mesh_replay_settings_present,
+        mesh_replay_adapter,
+        mesh_replay_adapter_status,
+        mesh_replay_adapter_error,
         mesh_replay_enabled,
         mesh_replay_source,
         mesh_replay_speed,
@@ -271,32 +306,6 @@ fn default_effective_settings_receipt_output_path() -> Option<PathBuf> {
     None
 }
 
-fn bool_setting(report: &EffectiveSettingsReport, setting_id: &str) -> Option<bool> {
-    setting_value(report, setting_id).and_then(Value::as_bool)
-}
-
-fn string_setting(report: &EffectiveSettingsReport, setting_id: &str) -> Option<String> {
-    setting_value(report, setting_id)
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_string)
-}
-
-fn number_setting(report: &EffectiveSettingsReport, setting_id: &str) -> Option<f64> {
-    setting_value(report, setting_id)
-        .and_then(Value::as_f64)
-        .filter(|value| value.is_finite())
-}
-
-fn setting_value<'a>(report: &'a EffectiveSettingsReport, setting_id: &str) -> Option<&'a Value> {
-    report
-        .settings
-        .iter()
-        .find(|setting| setting.setting_id == setting_id)
-        .map(|setting| &setting.value)
-}
-
 fn marker_option(value: Option<&str>) -> String {
     value
         .map(marker_token)
@@ -313,6 +322,7 @@ fn marker_f64(value: Option<f64>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusty_quest_makepad_camera_shell::CAMERA_SHELL_APP_ID;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const EFFECTIVE_SETTINGS_FIXTURE: &str = include_str!(
@@ -328,6 +338,12 @@ mod tests {
         assert_eq!(receipt.status, "ready");
         assert!(receipt.canonical_effective_settings_consumed);
         assert!(receipt.mesh_replay_settings_present);
+        assert_eq!(
+            receipt.mesh_replay_adapter.as_deref(),
+            Some(MESH_REPLAY_ADAPTER)
+        );
+        assert_eq!(receipt.mesh_replay_adapter_status.as_deref(), Some("ready"));
+        assert_eq!(receipt.source_app_id.as_deref(), Some(CAMERA_SHELL_APP_ID));
         assert_eq!(receipt.mesh_replay_enabled, Some(true));
         assert_eq!(
             receipt.mesh_replay_source.as_deref(),
@@ -341,8 +357,32 @@ mod tests {
         assert!(marker.contains("schema=rusty.hostess.makepad_effective_settings_receipt.v1"));
         assert!(marker.contains("canonicalEffectiveSettingsConsumed=true"));
         assert!(marker.contains("meshReplaySettingsPresent=true"));
+        assert!(marker.contains("meshReplayAdapter=rusty-quest-makepad-camera-shell"));
+        assert!(marker.contains("meshReplayAdapterStatus=ready"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn records_mesh_replay_adapter_rejection_without_legacy_fallback() {
+        let different_app = EFFECTIVE_SETTINGS_FIXTURE
+            .replace(CAMERA_SHELL_APP_ID, "rusty-quest-makepad.other-shell");
+        let path = write_temp_json("wrong-effective-settings-app", &different_app);
+
+        let receipt = read_makepad_effective_settings_from_path(&path);
+
+        assert_eq!(receipt.status, "ready");
+        assert!(receipt.canonical_effective_settings_consumed);
+        assert!(!receipt.mesh_replay_settings_present);
+        assert_eq!(
+            receipt.mesh_replay_adapter_status.as_deref(),
+            Some("rejected")
+        );
+        assert!(receipt
+            .mesh_replay_adapter_error
+            .as_deref()
+            .is_some_and(|error| error.contains("unexpected effective-settings app id")));
+        assert!(!receipt.legacy_settings_fallback_used);
     }
 
     #[test]

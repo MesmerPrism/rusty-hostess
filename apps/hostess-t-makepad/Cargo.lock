@@ -271,6 +271,7 @@ dependencies = [
  "makepad-xr",
  "ndk-sys",
  "rusty-makepad-settings",
+ "rusty-quest-makepad-camera-shell",
  "serde",
  "serde_json",
 ]
@@ -986,10 +987,43 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "08d43f7aa6b08d49f382cde6a7982047c3426db949b1424bc4b7ec9ae12c6ce2"
 
 [[package]]
+name = "rusty-lattice-model"
+version = "0.1.0"
+source = "git+https://github.com/MesmerPrism/rusty-lattice.git?rev=1279dfd88c15b54d53500218186acbeb81ebf61a#1279dfd88c15b54d53500218186acbeb81ebf61a"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "rusty-makepad-settings"
 version = "0.1.0"
 dependencies = [
  "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "rusty-optics-model"
+version = "0.1.0"
+source = "git+https://github.com/MesmerPrism/rusty-optics.git?rev=55e340e6698c993f2de81d7bbb650697906a4846#55e340e6698c993f2de81d7bbb650697906a4846"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rusty-quest-makepad-camera-shell"
+version = "0.1.0"
+dependencies = [
+ "rusty-lattice-model",
+ "rusty-optics-model",
+ "rusty-quest-makepad-mesh-replay",
+ "serde_json",
+]
+
+[[package]]
+name = "rusty-quest-makepad-mesh-replay"
+version = "0.1.0"
+dependencies = [
  "serde_json",
 ]
 

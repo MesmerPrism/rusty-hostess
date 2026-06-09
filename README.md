@@ -102,7 +102,9 @@ instead of adding another local resolver.
 `--makepad-effective-settings <path>`, `HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS`, or
 `RUSTY_MAKEPAD_EFFECTIVE_SETTINGS`. The app emits
 `RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS` receipt evidence and can write the
-receipt with `--makepad-effective-settings-receipt-out <path>`.
+receipt with `--makepad-effective-settings-receipt-out <path>`. Mesh replay
+settings are interpreted through the active `rusty-quest-makepad-camera-shell`
+adapter instead of a Hostess-local parser.
 
 Live evidence, including runtime processor-module metrics, is validated with:
 
