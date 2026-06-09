@@ -58,6 +58,62 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
             self.assertEqual(validation["status"], "pass")
             self.assertEqual(host_run["status"], "ready")
 
+    def test_broker_identity_defaults_to_manifold_package(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "recording" / "broker-default-plan.json"
+
+            status = hostessctl.run_manifold_value_recording(
+                record_args(
+                    root,
+                    out,
+                    target="quest",
+                    values=["stream.polar_h10.acc"],
+                    plan_only=True,
+                )
+            )
+
+            self.assertEqual(status, 0)
+            self.assertEqual(hostessctl.BROKER_PACKAGE, hostessctl.MANIFOLD_BROKER_PACKAGE)
+            self.assertNotEqual(hostessctl.BROKER_PACKAGE, hostessctl.LEGACY_REFERENCE_BROKER_PACKAGE)
+            self.assertNotIn("rustyxr", hostessctl.BROKER_PACKAGE)
+            evidence = read_json(out)
+            host_run = read_json(out.with_name("broker-default-plan.host-run-evidence.json"))
+            identity = evidence["request"]["broker_identity"]
+            self.assertEqual(identity["package_name"], hostessctl.MANIFOLD_BROKER_PACKAGE)
+            self.assertEqual(identity["activity"], hostessctl.MANIFOLD_BROKER_ACTIVITY)
+            self.assertTrue(identity["default_selected"])
+            self.assertFalse(identity["legacy_reference_package"])
+            self.assertFalse(evidence["recording"]["legacy_reference_broker_selected"])
+            self.assertFalse(evidence["recording"]["legacy_reference_broker_used"])
+            self.assertEqual(host_run["result_fields"]["broker_identity"]["package_name"], hostessctl.MANIFOLD_BROKER_PACKAGE)
+
+    def test_legacy_reference_broker_override_is_explicit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            out = root / "recording" / "legacy-reference-broker-plan.json"
+
+            status = hostessctl.run_manifold_value_recording(
+                record_args(
+                    root,
+                    out,
+                    target="quest",
+                    values=["stream.polar_h10.acc"],
+                    plan_only=True,
+                    broker_package=hostessctl.LEGACY_REFERENCE_BROKER_PACKAGE,
+                )
+            )
+
+            self.assertEqual(status, 0)
+            evidence = read_json(out)
+            identity = evidence["request"]["broker_identity"]
+            self.assertEqual(identity["package_name"], hostessctl.LEGACY_REFERENCE_BROKER_PACKAGE)
+            self.assertEqual(identity["activity"], hostessctl.LEGACY_REFERENCE_BROKER_ACTIVITY)
+            self.assertFalse(identity["default_selected"])
+            self.assertTrue(identity["legacy_reference_package"])
+            self.assertTrue(evidence["recording"]["legacy_reference_broker_selected"])
+            self.assertFalse(evidence["recording"]["legacy_reference_broker_used"])
+
     def test_controller_and_polar_plan_is_ready_without_claiming_controller_input(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -465,6 +521,8 @@ def record_args(
     adb: str | None = None,
     serial: str | None = None,
     pmb_live_processor: bool = False,
+    broker_package: str | None = None,
+    broker_activity: str | None = None,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         target=target,
@@ -476,8 +534,8 @@ def record_args(
         adb=adb,
         serial=serial,
         acc_rate=200,
-        broker_package=hostessctl.BROKER_PACKAGE,
-        broker_activity=hostessctl.BROKER_ACTIVITY,
+        broker_package=broker_package or hostessctl.BROKER_PACKAGE,
+        broker_activity=broker_activity,
         broker_port=hostessctl.BROKER_PORT,
         broker_local_port=hostessctl.BROKER_LOCAL_FORWARD_PORT,
         makepad_provider_package=hostessctl.MAKEPAD_PROVIDER_PACKAGE,

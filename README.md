@@ -149,6 +149,14 @@ broker, configures the Makepad provider, starts Polar PMD when requested,
 records for the requested duration, and reports a failed run if any selected
 stream is missing.
 
+Broker-backed routes default to the Morphospace Manifold Android broker
+identity `io.github.mesmerprism.rustymanifold.broker/.BrokerStartActivity`.
+The old public Rusty-XR broker package is not the active default; use
+`--broker-package com.example.rustyxr.broker` only as an explicit
+legacy-reference override. Hostess writes `rusty.hostess.manifold_broker_identity.v1`
+metadata into broker-backed evidence so a run can be traced to the selected
+package and whether a legacy-reference package was selected or used.
+
 For Quest foreground telemetry while the broker owns physical Polar PMD, use
 `observe-broker-telemetry`. It foregrounds the Hostess telemetry UI as a broker
 stream observer and must not open a direct BLE session. The older `run-live`

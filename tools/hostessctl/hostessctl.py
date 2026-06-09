@@ -27,8 +27,12 @@ from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
 from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
 
 ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
-BROKER_PACKAGE = "com.example.rustyxr.broker"
-BROKER_ACTIVITY = f"{BROKER_PACKAGE}/.BrokerStartActivity"
+MANIFOLD_BROKER_PACKAGE = "io.github.mesmerprism.rustymanifold.broker"
+MANIFOLD_BROKER_ACTIVITY = f"{MANIFOLD_BROKER_PACKAGE}/.BrokerStartActivity"
+LEGACY_REFERENCE_BROKER_PACKAGE = "com.example.rustyxr.broker"
+LEGACY_REFERENCE_BROKER_ACTIVITY = f"{LEGACY_REFERENCE_BROKER_PACKAGE}/.BrokerStartActivity"
+BROKER_PACKAGE = MANIFOLD_BROKER_PACKAGE
+BROKER_ACTIVITY = MANIFOLD_BROKER_ACTIVITY
 BROKER_PORT = 8765
 BROKER_LOCAL_FORWARD_PORT = 18765
 MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1"
@@ -141,6 +145,48 @@ PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
 PMB_BREATH_SCALE_VOLUME0 = "1.0"
 PMB_BREATH_SCALE_VOLUME1 = "0.1796"
 PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.30"
+
+
+def broker_activity_for_package(package_name: str) -> str:
+    return f"{package_name}/.BrokerStartActivity"
+
+
+def selected_broker_package(args: argparse.Namespace) -> str:
+    return str(getattr(args, "broker_package", None) or BROKER_PACKAGE)
+
+
+def selected_broker_activity(args: argparse.Namespace) -> str:
+    activity = getattr(args, "broker_activity", None)
+    if activity:
+        return str(activity)
+    return broker_activity_for_package(selected_broker_package(args))
+
+
+def broker_identity(args: argparse.Namespace) -> dict[str, Any]:
+    package_name = selected_broker_package(args)
+    activity = selected_broker_activity(args)
+    legacy_reference = package_name == LEGACY_REFERENCE_BROKER_PACKAGE
+    return {
+        "$schema": "rusty.hostess.manifold_broker_identity.v1",
+        "authority": "rusty.manifold",
+        "profile_id": (
+            "broker.profile.legacy_reference_rusty_xr"
+            if legacy_reference
+            else "broker.profile.rusty_manifold_android"
+        ),
+        "package_name": package_name,
+        "activity": activity,
+        "default_selected": package_name == BROKER_PACKAGE and activity == BROKER_ACTIVITY,
+        "legacy_reference_package": legacy_reference,
+        "legacy_reference_allowed": legacy_reference,
+    }
+
+
+def attach_broker_identity(evidence: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    annotated = dict(evidence)
+    annotated["broker_identity"] = broker_identity(args)
+    return annotated
+
 
 MANIFOLD_VALUE_PROVIDERS = {
     "stream.polar_h10.hr_rr": {
@@ -355,7 +401,7 @@ def main() -> int:
     run_pmb_simulated_live_parser.add_argument("--adb", required=True)
     run_pmb_simulated_live_parser.add_argument("--serial", required=True)
     run_pmb_simulated_live_parser.add_argument("--broker-package", default=BROKER_PACKAGE)
-    run_pmb_simulated_live_parser.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    run_pmb_simulated_live_parser.add_argument("--broker-activity")
     run_pmb_simulated_live_parser.add_argument("--broker-port", type=int, default=BROKER_PORT)
     run_pmb_simulated_live_parser.add_argument("--makepad-package", default=MAKEPAD_ANDROID_PACKAGE)
     run_pmb_simulated_live_parser.add_argument("--makepad-activity", default=MAKEPAD_ANDROID_XR_ACTIVITY)
@@ -378,7 +424,7 @@ def main() -> int:
     run_pmb_physical_live_parser.add_argument("--scan-timeout-seconds", type=float, default=30.0)
     run_pmb_physical_live_parser.add_argument("--controller-wait-seconds", type=float, default=15.0)
     run_pmb_physical_live_parser.add_argument("--broker-package", default=BROKER_PACKAGE)
-    run_pmb_physical_live_parser.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    run_pmb_physical_live_parser.add_argument("--broker-activity")
     run_pmb_physical_live_parser.add_argument("--broker-port", type=int, default=BROKER_PORT)
     run_pmb_physical_live_parser.add_argument("--makepad-package", default=MAKEPAD_ANDROID_PACKAGE)
     run_pmb_physical_live_parser.add_argument("--makepad-activity", default=MAKEPAD_ANDROID_XR_ACTIVITY)
@@ -404,7 +450,7 @@ def main() -> int:
     observe_broker_telemetry.add_argument("--acc-rate", type=int, default=200)
     observe_broker_telemetry.add_argument("--scan-timeout-seconds", type=float, default=30.0)
     observe_broker_telemetry.add_argument("--broker-package", default=BROKER_PACKAGE)
-    observe_broker_telemetry.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    observe_broker_telemetry.add_argument("--broker-activity")
     observe_broker_telemetry.add_argument("--broker-port", type=int, default=BROKER_PORT)
     observe_broker_telemetry.add_argument("--telemetry-page", choices=["raw", "modules"], default="raw")
     observe_broker_telemetry.add_argument("--no-launch-broker", action="store_true")
@@ -433,7 +479,7 @@ def main() -> int:
     record_values.add_argument("--serial")
     record_values.add_argument("--acc-rate", type=int, default=200)
     record_values.add_argument("--broker-package", default=BROKER_PACKAGE)
-    record_values.add_argument("--broker-activity", default=BROKER_ACTIVITY)
+    record_values.add_argument("--broker-activity")
     record_values.add_argument("--broker-port", type=int, default=BROKER_PORT)
     record_values.add_argument("--broker-local-port", type=int, default=BROKER_LOCAL_FORWARD_PORT)
     record_values.add_argument("--makepad-provider-package", default=MAKEPAD_PROVIDER_PACKAGE)
@@ -1011,7 +1057,7 @@ def run_pmb_quest_simulated_live(args: argparse.Namespace) -> int:
         raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
     host_profile = "headset"
     if not getattr(args, "no_launch_broker", False):
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.broker_activity])
+        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
     if not getattr(args, "no_launch_makepad", False):
         configure_makepad_breath_feedback_receiver(args)
     clear_android_pmb_simulated_live_artifacts(args)
@@ -1072,7 +1118,8 @@ def run_pmb_quest_simulated_live(args: argparse.Namespace) -> int:
             str(broker_report_path),
         ]
     )
-    evidence = json.loads(out.read_text(encoding="utf-8"))
+    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
     validation_report = validate_pmb_quest_simulated_live_evidence(
         evidence,
         package_root=package_root,
@@ -1109,7 +1156,7 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
     host_profile = "headset"
     if not getattr(args, "no_launch_broker", False):
         grant_broker_runtime_permissions(args)
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.broker_activity])
+        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
     if not getattr(args, "no_launch_makepad", False):
         configure_makepad_physical_pmb_provider(args)
     clear_android_pmb_physical_live_artifacts(args)
@@ -1128,6 +1175,7 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
             "publish_mode": "event_driven_live_processor",
             "selected_breath_stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
             "breath_selected_source": str(getattr(args, "breath_selected_source", "auto") or "auto"),
+            "broker_identity": broker_identity(args),
             "command": command,
         }
         out.write_text(json.dumps(started, indent=2, sort_keys=True), encoding="utf-8")
@@ -1151,7 +1199,8 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
         (ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT, broker_report_path),
     ]:
         run([args.adb, "-s", args.serial, "pull", remote, str(local)])
-    evidence = json.loads(out.read_text(encoding="utf-8"))
+    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
     validation_report = validate_pmb_quest_physical_live_evidence(
         evidence,
         package_root=package_root,
@@ -1245,7 +1294,7 @@ def observe_broker_telemetry_ui(args: argparse.Namespace) -> int:
         raise SystemExit("--duration-seconds must be greater than zero")
     if not getattr(args, "no_launch_broker", False):
         grant_broker_runtime_permissions(args)
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.broker_activity])
+        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
     clear_android_broker_telemetry_artifacts(args)
     command = [
         args.adb,
@@ -1298,7 +1347,8 @@ def observe_broker_telemetry_ui(args: argparse.Namespace) -> int:
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE, str(out)])
     report_path = out.with_name(f"{out.stem}.broker-telemetry-report.json")
     run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_REPORT, str(report_path)])
-    evidence = json.loads(out.read_text(encoding="utf-8"))
+    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
+    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
     validation_report = validate_broker_telemetry_observer_evidence(evidence)
     validation_path = out.with_name(f"{out.stem}.validation-report.json")
     validation_path.write_text(
@@ -1842,7 +1892,7 @@ def record_broker_websocket_streams(
         if not args.no_launch_broker:
             run_adb(
                 "launch-broker",
-                adb_prefix(args) + ["shell", "am", "start", "-n", args.broker_activity],
+                adb_prefix(args) + ["shell", "am", "start", "-n", selected_broker_activity(args)],
                 allow_failure=False,
             )
         run_adb(
@@ -2007,6 +2057,7 @@ def record_broker_websocket_streams(
             "broker_device_port": args.broker_port,
             "host_forward_port": args.broker_local_port,
             "adb_serial": args.serial,
+            "broker_identity": broker_identity(args),
         },
         "provider_actions": provider_actions,
         "broker_acks": broker_acks,
@@ -2247,7 +2298,7 @@ def grant_broker_runtime_permissions(args: argparse.Namespace) -> None:
         "android.permission.BLUETOOTH_CONNECT",
     ]:
         run(
-            [args.adb, "-s", args.serial, "shell", "pm", "grant", args.broker_package, permission],
+            [args.adb, "-s", args.serial, "shell", "pm", "grant", selected_broker_package(args), permission],
             allow_failure=True,
         )
 
@@ -2761,6 +2812,7 @@ def with_transport_event_aliases(event: dict[str, Any]) -> dict[str, Any]:
 def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]) -> dict[str, Any]:
     streams = [stream for stream in evidence.get("streams", []) if isinstance(stream, dict)]
     pmb_requested = evidence.get("pmb_live_processor_requested") is True
+    broker_identity_record = evidence.get("transport", {}).get("broker_identity", {})
     checks = [
         recording_scorecard_check(
             "hostess.check.broker_stream_recording.schema",
@@ -2777,6 +2829,13 @@ def validate_broker_websocket_stream_recording_evidence(evidence: dict[str, Any]
             evidence.get("broker_websocket_recording") is True
             and evidence.get("transport", {}).get("kind") == "adb-forwarded-broker-websocket",
             "recording used the adb-forwarded broker websocket transport",
+        ),
+        recording_scorecard_check(
+            "hostess.check.broker_stream_recording.broker_identity",
+            isinstance(broker_identity_record, dict)
+            and broker_identity_record.get("authority") == "rusty.manifold"
+            and bool(broker_identity_record.get("package_name")),
+            "broker stream recording records the selected Manifold broker identity",
         ),
         recording_scorecard_check(
             "hostess.check.broker_stream_recording.pmb_processor_bridge",
@@ -2890,6 +2949,7 @@ def build_manifold_value_recording_evidence(
         for plan in provider_plans
     )
     controller_input_used = bool(recording_performed and object_pose_captured)
+    selected_identity = broker_identity(args)
     return {
         "$schema": "rusty.hostess.manifold_value_recording.evidence.v1",
         "status": status,
@@ -2913,6 +2973,7 @@ def build_manifold_value_recording_evidence(
             "mode": "live",
             "plan_only": bool(args.plan_only),
             "pmb_live_processor": bool(args.pmb_live_processor),
+            "broker_identity": selected_identity,
         },
         "recording": {
             "mode": "manifold_value_recording",
@@ -2936,6 +2997,10 @@ def build_manifold_value_recording_evidence(
             "pmb_feedback_published": bool(capture_evidence and capture_evidence.get("pmb_feedback_published")),
             "pmb_feedback_publish_count": int(capture_evidence.get("pmb_feedback_publish_count") or 0) if capture_evidence else 0,
             "pmb_feedback_receipt_count": int(capture_evidence.get("pmb_feedback_receipt_count") or 0) if capture_evidence else 0,
+            "legacy_reference_broker_selected": bool(selected_identity.get("legacy_reference_package")),
+            "legacy_reference_broker_used": bool(
+                recording_performed and selected_identity.get("legacy_reference_package")
+            ),
             "makepad_breath_feedback_subscriber_configured": bool(
                 capture_evidence and capture_evidence.get("makepad_breath_feedback_subscriber_configured")
             ),
@@ -3029,6 +3094,7 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
         str(value)
         for value in request.get("requested_value_ids", [])
     ]
+    request_broker_identity = request.get("broker_identity", {})
     captured_pass_streams = {
         str(stream.get("stream_id"))
         for stream in captured_streams
@@ -3066,6 +3132,13 @@ def validate_manifold_value_recording_evidence(evidence: dict[str, Any]) -> dict
             "hostess.check.manifold_value_recording.status",
             status in {"pass", "ready", "blocked", "fail"},
             f"recording evidence status is {status}",
+        ),
+        recording_scorecard_check(
+            "hostess.check.manifold_value_recording.broker_identity",
+            isinstance(request_broker_identity, dict)
+            and request_broker_identity.get("authority") == "rusty.manifold"
+            and bool(request_broker_identity.get("package_name")),
+            "recording request records a Manifold broker identity",
         ),
         recording_scorecard_check(
             "hostess.check.manifold_value_recording.pass_requires_capture",
@@ -3175,6 +3248,9 @@ def write_manifold_value_recording_host_run_evidence(
             "pmb_breath_publish_count": raw.get("recording", {}).get("pmb_breath_publish_count"),
             "pmb_feedback_publish_count": raw.get("recording", {}).get("pmb_feedback_publish_count"),
             "pmb_feedback_receipt_count": raw.get("recording", {}).get("pmb_feedback_receipt_count"),
+            "broker_identity": raw.get("request", {}).get("broker_identity"),
+            "legacy_reference_broker_selected": raw.get("recording", {}).get("legacy_reference_broker_selected"),
+            "legacy_reference_broker_used": raw.get("recording", {}).get("legacy_reference_broker_used"),
             "makepad_breath_feedback_subscriber_configured": raw.get("recording", {}).get("makepad_breath_feedback_subscriber_configured"),
         },
         "scorecard": {
