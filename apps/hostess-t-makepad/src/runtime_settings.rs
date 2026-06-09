@@ -1,6 +1,6 @@
 #[cfg(any(target_os = "android", test))]
-use crate::rusty_xr_runtime_config::{AndroidPropertyPrefix, RuntimeKey};
-use crate::rusty_xr_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
+use crate::makepad_runtime_config::{AndroidPropertyPrefix, RuntimeKey};
+use crate::makepad_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
 
 pub(crate) const DEFAULT_PROFILE: &str = "makepad-stereo-projection-pair-probe";
 pub(crate) const DEFAULT_TRANSPORT: &str = "makepad-direct-hwb-target-inner-band-stretch";
@@ -95,8 +95,8 @@ pub(crate) const FRAME_RASTER_TOP_LEFT_Y_DOWN: &str = "top-left-origin-y-down";
 pub(crate) const FRAME_RASTER_BOTTOM_LEFT_Y_UP: &str = "bottom-left-origin-y-up";
 pub(crate) const IDENTITY_SURFACE_TO_CAMERA_HOMOGRAPHY: [[f32; 3]; 3] =
     [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
-pub(crate) const MAKEPAD_BRANCH: &str = "rusty-xr/android-libstd-packaging";
-pub(crate) const MAKEPAD_REV: &str = "f5b0c6f1b";
+pub(crate) const MAKEPAD_BRANCH: &str = "dev";
+pub(crate) const MAKEPAD_REV: &str = "407caacaa";
 pub(crate) const DEFAULT_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING: &str = "display-left-from-left-source";
 pub(crate) const PAIRED_IMPORT_DELAY_SECONDS: f64 = 6.0;
 pub(crate) const PAIRED_IMPORT_RETRY_SECONDS: f64 = 1.0;

@@ -1,10 +1,10 @@
+use crate::makepad_runtime_config as makepad_config;
 use crate::runtime_settings::{
     hotload_f32, PROJECTION_TARGET_JOYSTICK_DEADZONE, PROJECTION_TARGET_MAX_SCALE,
     PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_OFFSET_RATE_UV_PER_SECOND,
     PROJECTION_TARGET_SCALE_RATE_PER_SECOND, TARGET_PROJECTION_TARGET_OFFSET_X_UV,
     TARGET_PROJECTION_TARGET_OFFSET_Y_UV, TARGET_PROJECTION_TARGET_SCALE,
 };
-use crate::rusty_xr_runtime_config as rxrc;
 
 pub(crate) const PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA: f32 = 0.30;
 
@@ -39,7 +39,7 @@ pub(crate) fn makepad_projection_target_breath_controls_enabled_from_value(value
 
 pub(crate) fn makepad_projection_target_scale() -> f32 {
     hotload_f32(
-        rxrc::KEY_PROJECTION_TARGET_SCALE,
+        makepad_config::KEY_PROJECTION_TARGET_SCALE,
         TARGET_PROJECTION_TARGET_SCALE,
         PROJECTION_TARGET_MIN_SCALE,
         PROJECTION_TARGET_MAX_SCALE,
@@ -82,7 +82,7 @@ pub(crate) fn makepad_projection_target_breath_sample_is_new(
 
 pub(crate) fn makepad_projection_target_offset_x_uv() -> f32 {
     hotload_f32(
-        rxrc::KEY_PROJECTION_TARGET_OFFSET_X_UV,
+        makepad_config::KEY_PROJECTION_TARGET_OFFSET_X_UV,
         TARGET_PROJECTION_TARGET_OFFSET_X_UV,
         -0.5,
         0.5,
@@ -91,7 +91,7 @@ pub(crate) fn makepad_projection_target_offset_x_uv() -> f32 {
 
 pub(crate) fn makepad_projection_target_offset_y_uv() -> f32 {
     hotload_f32(
-        rxrc::KEY_PROJECTION_TARGET_OFFSET_Y_UV,
+        makepad_config::KEY_PROJECTION_TARGET_OFFSET_Y_UV,
         TARGET_PROJECTION_TARGET_OFFSET_Y_UV,
         -0.5,
         0.5,

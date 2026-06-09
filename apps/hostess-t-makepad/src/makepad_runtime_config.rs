@@ -1,4 +1,4 @@
-//! Runtime configuration helpers for Rusty XR.
+//! Makepad runtime configuration helpers.
 //!
 //! This crate models generic launch/runtime settings. Downstream apps can map
 //! their private environment variables, Android properties, or config files
@@ -8,7 +8,7 @@
 //! serialize these public settings.
 //!
 //! ```
-//! use rusty_xr_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
+//! use makepad_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
 //!
 //! let mut config = RuntimeConfig::new();
 //! config

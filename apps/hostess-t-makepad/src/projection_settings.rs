@@ -1,4 +1,4 @@
-use crate::rusty_xr_runtime_config as rxrc;
+use crate::makepad_runtime_config as makepad_config;
 
 use super::*;
 
@@ -236,7 +236,10 @@ pub(crate) enum MakepadProcessingLayer {
 impl MakepadProcessingLayer {
     pub(crate) fn current() -> Self {
         let value = hotload_text_any(
-            &[rxrc::KEY_PROCESSING_LAYER, KEY_MAKEPAD_PROCESSING_LAYER],
+            &[
+                makepad_config::KEY_PROCESSING_LAYER,
+                KEY_MAKEPAD_PROCESSING_LAYER,
+            ],
             "raw",
         );
         Self::from_stable_id(&value)
@@ -290,7 +293,7 @@ pub(crate) enum MakepadPeripheralStretchMode {
 
 impl MakepadPeripheralStretchMode {
     pub(crate) fn current() -> Self {
-        let value = hotload_text(rxrc::KEY_PERIPHERAL_STRETCH_MODE, "edge-stretch");
+        let value = hotload_text(makepad_config::KEY_PERIPHERAL_STRETCH_MODE, "edge-stretch");
         Self::from_stable_id(&value)
     }
 
@@ -321,7 +324,10 @@ pub(crate) enum MakepadPeripheralStretchBlendMode {
 
 impl MakepadPeripheralStretchBlendMode {
     pub(crate) fn current() -> Self {
-        let value = hotload_text(rxrc::KEY_PERIPHERAL_STRETCH_BLEND_MODE, "target-inner-band");
+        let value = hotload_text(
+            makepad_config::KEY_PERIPHERAL_STRETCH_BLEND_MODE,
+            "target-inner-band",
+        );
         Self::from_stable_id(&value)
     }
 
@@ -362,7 +368,10 @@ pub(crate) enum MakepadPeripheralStretchCornerMode {
 
 impl MakepadPeripheralStretchCornerMode {
     pub(crate) fn current() -> Self {
-        let value = hotload_text(rxrc::KEY_PERIPHERAL_STRETCH_CORNER_MODE, "target-footprint");
+        let value = hotload_text(
+            makepad_config::KEY_PERIPHERAL_STRETCH_CORNER_MODE,
+            "target-footprint",
+        );
         Self::from_stable_id(&value)
     }
 
@@ -394,7 +403,7 @@ pub(crate) enum MakepadPeripheralStretchDebug {
 
 impl MakepadPeripheralStretchDebug {
     pub(crate) fn current() -> Self {
-        let value = hotload_text(rxrc::KEY_PERIPHERAL_STRETCH_DEBUG, "off");
+        let value = hotload_text(makepad_config::KEY_PERIPHERAL_STRETCH_DEBUG, "off");
         Self::from_stable_id(&value)
     }
 
@@ -466,7 +475,7 @@ impl MakepadPeripheralStretchConfig {
     pub(crate) fn current() -> Self {
         let defaults = Self::default();
         let edge_inset_uv = hotload_f32(
-            rxrc::KEY_PERIPHERAL_STRETCH_EDGE_INSET_UV,
+            makepad_config::KEY_PERIPHERAL_STRETCH_EDGE_INSET_UV,
             defaults.edge_inset_uv,
             0.0,
             0.49,
@@ -474,32 +483,32 @@ impl MakepadPeripheralStretchConfig {
         Self {
             mode: MakepadPeripheralStretchMode::current(),
             core_scale: hotload_f32(
-                rxrc::KEY_PERIPHERAL_STRETCH_CORE_SCALE,
+                makepad_config::KEY_PERIPHERAL_STRETCH_CORE_SCALE,
                 defaults.core_scale,
                 0.05,
                 1.0,
             ),
             edge_inset_uv,
             max_inset_uv: hotload_f32(
-                rxrc::KEY_PERIPHERAL_STRETCH_MAX_INSET_UV,
+                makepad_config::KEY_PERIPHERAL_STRETCH_MAX_INSET_UV,
                 defaults.max_inset_uv,
                 edge_inset_uv,
                 0.49,
             ),
             curve: hotload_f32(
-                rxrc::KEY_PERIPHERAL_STRETCH_CURVE,
+                makepad_config::KEY_PERIPHERAL_STRETCH_CURVE,
                 defaults.curve,
                 0.25,
                 6.0,
             ),
             inner_blend_uv: hotload_f32(
-                rxrc::KEY_PERIPHERAL_STRETCH_INNER_BLEND_UV,
+                makepad_config::KEY_PERIPHERAL_STRETCH_INNER_BLEND_UV,
                 defaults.inner_blend_uv,
                 0.0,
                 0.25,
             ),
             blend_curve: hotload_f32(
-                rxrc::KEY_PERIPHERAL_STRETCH_BLEND_CURVE,
+                makepad_config::KEY_PERIPHERAL_STRETCH_BLEND_CURVE,
                 defaults.blend_curve,
                 0.25,
                 6.0,
@@ -619,7 +628,10 @@ impl MakepadProjectionSampleMode {
 
 pub(crate) fn makepad_blur_radius_px() -> f32 {
     hotload_f32_any(
-        &[rxrc::KEY_CAMERA_BLUR_RADIUS_PX, KEY_MAKEPAD_BLUR_RADIUS_PX],
+        &[
+            makepad_config::KEY_CAMERA_BLUR_RADIUS_PX,
+            KEY_MAKEPAD_BLUR_RADIUS_PX,
+        ],
         2.0,
         0.0,
         16.0,
@@ -722,7 +734,7 @@ pub(crate) fn makepad_current_source_color_contract_fields() -> String {
 pub(crate) fn makepad_projection_depth_meters() -> f32 {
     if makepad_projection_runtime_resolution_enabled() {
         return makepad_current_projection_runtime_float(
-            rxrc::KEY_PROJECTION_DEPTH_METERS,
+            makepad_config::KEY_PROJECTION_DEPTH_METERS,
             TARGET_PROJECTION_DEPTH_METERS,
             0.05,
             10.0,
@@ -757,7 +769,7 @@ pub(crate) fn makepad_camera_projection_mode_is_world_canvas() -> bool {
 pub(crate) fn makepad_projection_preview_fov_y_degrees() -> f32 {
     if makepad_projection_runtime_resolution_enabled() {
         return makepad_current_projection_runtime_float(
-            rxrc::KEY_CAMERA_PREVIEW_FOV_Y_DEGREES,
+            makepad_config::KEY_CAMERA_PREVIEW_FOV_Y_DEGREES,
             TARGET_PROJECTION_PREVIEW_FOV_Y_DEGREES,
             1.0,
             175.0,
@@ -778,7 +790,7 @@ fn makepad_legacy_projection_preview_fov_y_degrees() -> f32 {
 pub(crate) fn makepad_projection_preview_offset_y_meters() -> f32 {
     if makepad_projection_runtime_resolution_enabled() {
         return makepad_current_projection_runtime_float(
-            rxrc::KEY_CAMERA_PREVIEW_OFFSET_Y_METERS,
+            makepad_config::KEY_CAMERA_PREVIEW_OFFSET_Y_METERS,
             TARGET_PROJECTION_PREVIEW_OFFSET_Y_METERS,
             -2.0,
             2.0,
@@ -799,7 +811,7 @@ fn makepad_legacy_projection_preview_offset_y_meters() -> f32 {
 pub(crate) fn makepad_projection_raw_overscan() -> f32 {
     if makepad_projection_runtime_resolution_enabled() {
         return makepad_current_projection_runtime_float(
-            rxrc::KEY_CAMERA_RAW_OVERLAY_OVERSCAN,
+            makepad_config::KEY_CAMERA_RAW_OVERLAY_OVERSCAN,
             TARGET_PROJECTION_RAW_OVERSCAN,
             1.0,
             16.0,

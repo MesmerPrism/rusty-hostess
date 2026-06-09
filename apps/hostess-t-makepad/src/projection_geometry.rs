@@ -2224,7 +2224,7 @@ pub(crate) fn makepad_projection_target_marker_fields() -> String {
         projection_area_corner_radius_uv,
         marker_token(&hotload_text_any(
             &[
-                crate::rusty_xr_runtime_config::KEY_PROJECTION_TARGET_JOYSTICK_CONTROLS,
+                crate::makepad_runtime_config::KEY_PROJECTION_TARGET_JOYSTICK_CONTROLS,
                 KEY_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS,
             ],
             DEFAULT_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS,

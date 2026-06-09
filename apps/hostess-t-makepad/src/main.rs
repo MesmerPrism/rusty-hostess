@@ -6,6 +6,8 @@ mod acamera_sys;
 mod android_camera_probe;
 mod camera_pair;
 mod camera_texture_path;
+#[allow(dead_code, unused_imports)]
+mod makepad_runtime_config;
 mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod projection_geometry;
@@ -17,8 +19,6 @@ mod runtime_settings;
 mod rusty_xr_camera_model;
 #[allow(dead_code, unused_imports)]
 mod rusty_xr_contracts;
-#[allow(dead_code, unused_imports)]
-mod rusty_xr_runtime_config;
 mod shell_contract;
 mod shell_runtime_capabilities;
 mod shell_xr_runtime;
@@ -26,7 +26,7 @@ mod source_metadata;
 mod source_sampling;
 mod stereo_frame;
 mod texture_probe_stats;
-use crate::rusty_xr_runtime_config as rxrc;
+use crate::makepad_runtime_config as makepad_config;
 use camera_pair::{
     collect_makepad_camera_choices, frame_rate_token, makepad_display_left_from_right_source,
     makepad_display_source_eye_mapping, pixel_format_label, Camera2StereoPlan, MakepadCameraPair,
@@ -86,8 +86,8 @@ use source_metadata::{
     MakepadTargetScreenFootprintPair,
 };
 
+use crate::makepad_runtime_config::RuntimeConfig;
 use crate::rusty_xr_camera_model::{Rect2, SourceSamplingMode, Vec2};
-use crate::rusty_xr_runtime_config::RuntimeConfig;
 use makepad_widgets::makepad_platform::{
     event::video_playback::{
         CameraPreviewMode, ExternalH264VideoSource, TextureHandleReadyEvent, VideoSource,
@@ -3195,7 +3195,7 @@ impl App {
             stream_id: hotload_text_any(
                 &[
                     KEY_MANIFOLD_BREATH_FEEDBACK_STREAM,
-                    rxrc::KEY_PROJECTION_TARGET_BREATH_STREAM,
+                    makepad_config::KEY_PROJECTION_TARGET_BREATH_STREAM,
                 ],
                 DEFAULT_MANIFOLD_BREATH_FEEDBACK_STREAM,
             ),
@@ -3263,7 +3263,7 @@ impl App {
     fn projection_target_joystick_controls_enabled() -> bool {
         makepad_projection_target_joystick_controls_enabled_from_value(&hotload_text_any(
             &[
-                rxrc::KEY_PROJECTION_TARGET_JOYSTICK_CONTROLS,
+                makepad_config::KEY_PROJECTION_TARGET_JOYSTICK_CONTROLS,
                 KEY_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS,
             ],
             DEFAULT_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS,
@@ -3272,7 +3272,7 @@ impl App {
 
     fn projection_target_breath_controls_enabled() -> bool {
         makepad_projection_target_breath_controls_enabled_from_value(&hotload_text(
-            rxrc::KEY_PROJECTION_TARGET_BREATH_CONTROLS,
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_CONTROLS,
             "off",
         ))
     }
@@ -3475,7 +3475,7 @@ impl App {
             return;
         };
         let min_quality = hotload_f32(
-            rxrc::KEY_PROJECTION_TARGET_BREATH_MIN_QUALITY,
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_MIN_QUALITY,
             0.0,
             0.0,
             1.0,
@@ -3484,24 +3484,24 @@ impl App {
             return;
         }
         let min_scale = hotload_f32(
-            rxrc::KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
             TARGET_PROJECTION_TARGET_SCALE,
             PROJECTION_TARGET_MIN_SCALE,
             PROJECTION_TARGET_MAX_SCALE,
         );
         let max_scale = hotload_f32(
-            rxrc::KEY_PROJECTION_TARGET_BREATH_MAX_SCALE,
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_MAX_SCALE,
             PROJECTION_TARGET_MAX_SCALE,
             PROJECTION_TARGET_MIN_SCALE,
             PROJECTION_TARGET_MAX_SCALE,
         );
         let smoothing_alpha = hotload_f32(
-            rxrc::KEY_PROJECTION_TARGET_BREATH_SMOOTHING_ALPHA,
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_SMOOTHING_ALPHA,
             PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
             0.0,
             1.0,
         );
-        let invert = hotload_bool(rxrc::KEY_PROJECTION_TARGET_BREATH_INVERT, false);
+        let invert = hotload_bool(makepad_config::KEY_PROJECTION_TARGET_BREATH_INVERT, false);
         self.apply_projection_target_breath_sample(
             cx,
             sample,
