@@ -73,7 +73,7 @@ fn makepad_projection_runtime_env_config() -> makepad_config::RuntimeConfig {
         .filter_map(|alias| {
             std::env::var(alias.alias)
                 .ok()
-                .map(|value| (alias.alias, value))
+                .map(|value| (alias.alias.to_string(), value))
         })
         .collect::<Vec<_>>();
     makepad_projection_runtime_alias_config(
@@ -85,16 +85,23 @@ fn makepad_projection_runtime_env_config() -> makepad_config::RuntimeConfig {
 fn makepad_projection_runtime_android_property_config(
     status: makepad_config::RuntimeKeyAliasStatus,
 ) -> makepad_config::RuntimeConfig {
-    let values = makepad_config::PROJECTION_RUNTIME_KEY_ALIASES
+    let mut values = Vec::new();
+    for alias in makepad_config::PROJECTION_RUNTIME_KEY_ALIASES
         .iter()
         .filter(|alias| {
             alias.source == makepad_config::RuntimeKeyAliasSource::AndroidProperty
                 && alias.status == status
         })
-        .filter_map(|alias| {
-            android_system_property_value(alias.alias).map(|value| (alias.alias, value))
-        })
-        .collect::<Vec<_>>();
+    {
+        if let Some(value) = android_system_property_value(alias.alias) {
+            values.push((alias.alias.to_string(), value));
+        }
+        if let Some(active_alias) = makepad_config::quest_makepad_property_alias(alias.alias) {
+            if let Some(value) = android_system_property_value(&active_alias) {
+                values.push((active_alias, value));
+            }
+        }
+    }
     makepad_projection_runtime_alias_config(
         makepad_config::RuntimeConfigSource::AndroidProperty,
         values,
@@ -103,13 +110,14 @@ fn makepad_projection_runtime_android_property_config(
 
 fn makepad_projection_runtime_alias_config(
     source: makepad_config::RuntimeConfigSource,
-    values: Vec<(&'static str, String)>,
+    values: Vec<(String, String)>,
 ) -> makepad_config::RuntimeConfig {
     let mut config = makepad_config::RuntimeConfig::new();
     for (key, value) in values {
-        let Ok(parsed) =
-            makepad_config::parse_projection_runtime_pairs(source.clone(), [(key, value.as_str())])
-        else {
+        let Ok(parsed) = makepad_config::parse_projection_runtime_pairs(
+            source.clone(),
+            [(key.as_str(), value.as_str())],
+        ) else {
             continue;
         };
         for setting in parsed.config.iter() {

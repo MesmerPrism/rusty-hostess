@@ -8,6 +8,9 @@ from typing import Any, Callable
 
 from tools.hostessctl.makepad_visual_profile import (
     MAKEPAD_VISUAL_PROFILE_ID,
+    VISUAL_PROFILE_PROCESSING_LAYER_PROPERTY,
+    VISUAL_PROFILE_PROJECTION_BORDER_POLICY_PROPERTY,
+    VISUAL_PROFILE_SOURCE_SAMPLING_MODE_PROPERTY,
     makepad_visual_profile_property_records,
     makepad_visual_profile_runtime_properties,
 )
@@ -636,21 +639,21 @@ def build_makepad_shell_contract_launch_evidence(
             visual_profile_property_records or makepad_visual_profile_property_records()
         ),
         "visual_profile_processing_layer": (
-            makepad_visual_profile_runtime_properties()["debug.rusty.processing.layer"]
+            makepad_visual_profile_runtime_properties()[VISUAL_PROFILE_PROCESSING_LAYER_PROPERTY]
         ),
         "visual_profile_source_sampling_mode": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rusty.camera.source.sampling.mode"
+                VISUAL_PROFILE_SOURCE_SAMPLING_MODE_PROPERTY
             ]
         ),
         "visual_profile_projection_border_policy": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rusty.projection.border.policy"
+                VISUAL_PROFILE_PROJECTION_BORDER_POLICY_PROPERTY
             ]
         ),
         "visual_profile_makepad_projection_border_policy": (
             makepad_visual_profile_runtime_properties()[
-                "debug.rusty.makepad.projection.border.policy"
+                VISUAL_PROFILE_PROJECTION_BORDER_POLICY_PROPERTY
             ]
         ),
         "runtime_observation_poll_performed": runtime_observation_poll_performed,

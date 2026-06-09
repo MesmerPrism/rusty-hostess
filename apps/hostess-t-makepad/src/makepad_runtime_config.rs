@@ -1334,6 +1334,12 @@ pub fn projection_runtime_key_alias(alias: &str) -> Option<&'static RuntimeKeyAl
         .find(|definition| definition.alias == alias)
 }
 
+pub fn quest_makepad_property_alias(alias: &str) -> Option<String> {
+    alias
+        .strip_prefix("debug.rusty.")
+        .map(|suffix| format!("debug.rustyquest.makepad.{suffix}"))
+}
+
 pub fn resolve_projection_runtime_key(
     input: &str,
 ) -> Result<RuntimeKeyAliasRecord, RuntimeConfigError> {
@@ -1347,8 +1353,17 @@ pub fn resolve_projection_runtime_key(
         });
     }
 
-    let alias = projection_runtime_key_alias(input)
-        .ok_or_else(|| RuntimeConfigError::UnknownRuntimeKeyAlias(input.to_string()))?;
+    let alias = if let Some(alias) = projection_runtime_key_alias(input) {
+        alias
+    } else if let Some(suffix) = input.strip_prefix("debug.rustyquest.makepad.") {
+        let legacy_alias = format!("debug.rusty.{suffix}");
+        projection_runtime_key_alias(&legacy_alias)
+            .ok_or_else(|| RuntimeConfigError::UnknownRuntimeKeyAlias(input.to_string()))?
+    } else {
+        return Err(RuntimeConfigError::UnknownRuntimeKeyAlias(
+            input.to_string(),
+        ));
+    };
     Ok(RuntimeKeyAliasRecord {
         input_key: input.to_string(),
         canonical_key: alias.canonical_runtime_key(),
@@ -2003,6 +2018,23 @@ mod tests {
             .expect("Android property alias should resolve");
         assert_eq!(property.canonical_key.as_str(), KEY_PROJECTION_DEPTH_METERS);
         assert_eq!(property.source, RuntimeKeyAliasSource::AndroidProperty);
+
+        assert_eq!(
+            quest_makepad_property_alias("debug.rusty.projection.depth.meters"),
+            Some("debug.rustyquest.makepad.projection.depth.meters".to_string())
+        );
+
+        let quest_property =
+            resolve_projection_runtime_key("debug.rustyquest.makepad.projection.depth.meters")
+                .expect("Quest Makepad Android property alias should resolve");
+        assert_eq!(
+            quest_property.canonical_key.as_str(),
+            KEY_PROJECTION_DEPTH_METERS
+        );
+        assert_eq!(
+            quest_property.source,
+            RuntimeKeyAliasSource::AndroidProperty
+        );
     }
 
     #[test]
@@ -2074,10 +2106,16 @@ mod tests {
         let parsed = parse_projection_runtime_pairs(
             RuntimeConfigSource::AndroidProperty,
             [
-                ("debug.rusty.projection.depth.meters", "1"),
-                ("debug.rusty.camera.preview.offset.y.meters", "0"),
+                ("debug.rustyquest.makepad.projection.depth.meters", "1"),
+                (
+                    "debug.rustyquest.makepad.camera.preview.offset.y.meters",
+                    "0",
+                ),
                 ("makepad.cameraTextureFlipX", "true"),
-                ("debug.rusty.projection.alpha.mode", "source-alpha"),
+                (
+                    "debug.rustyquest.makepad.projection.alpha.mode",
+                    "source-alpha",
+                ),
             ],
         )
         .expect("registered projection value kinds should parse");

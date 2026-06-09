@@ -306,28 +306,30 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                 if len(command) >= 7 and command[-4:-2] == ["shell", "setprop"]
             }
             self.assertEqual(
-                setprops["debug.rusty.processing.layer"],
+                setprops["debug.rustyquest.makepad.processing.layer"],
                 "peripheral-stretch",
             )
             self.assertEqual(
-                setprops["debug.rusty.camera.source.sampling.mode"],
+                setprops["debug.rustyquest.makepad.camera.source.sampling.mode"],
                 "target-local-raster",
             )
             self.assertEqual(
-                setprops["debug.rusty.projection.border.policy"],
+                setprops["debug.rustyquest.makepad.projection.border.policy"],
                 "passthrough-underlay",
             )
             self.assertEqual(
-                setprops["debug.rusty.projection.border.opacity"],
+                setprops["debug.rustyquest.makepad.projection.border.opacity"],
                 "0.0",
             )
-            self.assertEqual(
-                setprops["debug.rusty.makepad.projection.border.policy"],
-                "passthrough-underlay",
+            legacy_makepad_prefixes = (
+                "debug.rusty.camera.",
+                "debug.rusty.processing.",
+                "debug.rusty.projection.",
+                "debug.rusty.peripheral.",
+                "debug.rusty.makepad.",
             )
-            self.assertEqual(
-                setprops["debug.rusty.makepad.projection.border.opacity"],
-                "0.0",
+            self.assertFalse(
+                any(key.startswith(legacy_makepad_prefixes) for key in setprops)
             )
             self.assertFalse(any(key.startswith("debug.rustyxr.") for key in setprops))
             self.assertIn(
