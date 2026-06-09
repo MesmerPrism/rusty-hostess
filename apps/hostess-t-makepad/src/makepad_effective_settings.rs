@@ -83,6 +83,7 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) issue_evidence: Option<String>,
     pub(crate) source_effective_settings_path: Option<String>,
     pub(crate) source_modified_ns: Option<u128>,
+    pub(crate) render_scale: Option<f32>,
     pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
 }
@@ -225,6 +226,7 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             issue_evidence: Some("No Makepad effective-settings path was configured".to_string()),
             source_effective_settings_path: None,
             source_modified_ns: None,
+            render_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
         };
@@ -243,6 +245,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 issue_evidence: Some(format!("read failed: {error}")),
                 source_effective_settings_path: Some(path.display().to_string()),
                 source_modified_ns,
+                render_scale: None,
                 feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
             };
@@ -258,6 +261,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 issue_evidence: None,
                 source_effective_settings_path: Some(path.display().to_string()),
                 source_modified_ns,
+                render_scale: Some(bundle.effective_config.render_scale),
                 feature_uniforms,
                 runtime: Some(bundle.mesh_replay_runtime),
             }
@@ -268,6 +272,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             issue_evidence: Some(error.to_string()),
             source_effective_settings_path: Some(path.display().to_string()),
             source_modified_ns,
+            render_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
         },
@@ -550,6 +555,7 @@ mod tests {
         assert!(selection.issue_code.is_none());
         assert!(selection.source_modified_ns.is_some());
         assert!(selection.settings_identity_changed_from(None, None));
+        assert_eq!(selection.render_scale, Some(0.9));
         assert_eq!(
             selection.feature_uniforms,
             MakepadCameraShellFeatureUniforms::default()

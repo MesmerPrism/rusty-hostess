@@ -1463,6 +1463,10 @@ pub struct App {
     #[rust]
     camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
     #[rust]
+    camera_shell_effective_render_scale: f32,
+    #[rust]
+    camera_shell_effective_render_scale_present: bool,
+    #[rust]
     mesh_replay_effective_settings_path: Option<String>,
     #[rust]
     mesh_replay_effective_settings_modified_ns: u128,
@@ -3155,6 +3159,8 @@ impl App {
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
             selection.source_modified_ns.is_some();
+        self.camera_shell_effective_render_scale = selection.render_scale.unwrap_or_default();
+        self.camera_shell_effective_render_scale_present = selection.render_scale.is_some();
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
         self.mesh_replay_runtime = selection.runtime;
 
@@ -3175,19 +3181,28 @@ impl App {
 
     fn camera_shell_feature_uniform_marker_line(&self, phase: &str) -> String {
         format!(
-            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} sourcePath={}",
+            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} renderScale={} sourcePath={}",
             marker_token(phase),
             self.camera_shell_feature_uniforms.collision_enabled >= 0.5,
             marker_token(camera_shell_sdf_adf_mode_token(
                 self.camera_shell_feature_uniforms.sdf_adf_overlay_mode,
             )),
             self.camera_shell_feature_uniforms.particles_enabled >= 0.5,
+            marker_f32_token(self.current_camera_shell_effective_render_scale()),
             marker_token(
                 self.mesh_replay_effective_settings_path
                     .as_deref()
                     .unwrap_or("none")
             ),
         )
+    }
+
+    fn current_camera_shell_effective_render_scale(&self) -> Option<f32> {
+        if self.camera_shell_effective_render_scale_present {
+            Some(self.camera_shell_effective_render_scale)
+        } else {
+            None
+        }
     }
 
     fn current_mesh_replay_effective_settings_modified_ns(&self) -> Option<u128> {
@@ -4544,7 +4559,9 @@ impl App {
                 >= SETTINGS_HOTLOAD_CHECK_PERIOD_FRAMES
         {
             self.mesh_replay_settings_check_frame = self.cadence_frame_count;
-            self.refresh_mesh_replay_runtime_from_selected_settings("hotload", false);
+            if self.refresh_mesh_replay_runtime_from_selected_settings("hotload", false) {
+                self.apply_camera_shell_render_scale(cx, "hotload");
+            }
         }
 
         let mut marker_lines = Vec::new();
@@ -4579,6 +4596,26 @@ impl App {
         };
         panel.set_mesh_replay_uniforms(cx, uniforms, feature_uniforms);
         true
+    }
+
+    fn apply_camera_shell_render_scale(&self, cx: &mut Cx, phase: &str) {
+        let (render_scale, source) =
+            if let Some(render_scale) = self.current_camera_shell_effective_render_scale() {
+                (render_scale, "effective-settings")
+            } else {
+                let config = Self::runtime_config();
+                (
+                    runtime_float(&config, KEY_XR_RENDER_SCALE) as f32,
+                    "runtime-config",
+                )
+            };
+        cx.xr_set_render_scale(render_scale);
+        emit_marker_line(&format!(
+            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_RENDER_SCALE schema=rusty.quest.makepad.camera_shell_render_scale.v1 phase={} status=applied renderScale={} source={}",
+            marker_token(phase),
+            marker_f32_token(Some(render_scale)),
+            marker_token(source),
+        ));
     }
 
     fn handle_cadence_event(&mut self, cx: &mut Cx, event: &Event) {
@@ -6814,5 +6851,12 @@ fn camera_shell_sdf_adf_mode_token(mode: f32) -> &'static str {
         "sdf"
     } else {
         "off"
+    }
+}
+
+fn marker_f32_token(value: Option<f32>) -> String {
+    match value {
+        Some(value) if value.is_finite() => format!("{value:.3}"),
+        _ => "none".to_string(),
     }
 }
