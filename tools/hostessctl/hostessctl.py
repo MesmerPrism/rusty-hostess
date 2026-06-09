@@ -170,7 +170,7 @@ def broker_identity(args: argparse.Namespace) -> dict[str, Any]:
         "$schema": "rusty.hostess.manifold_broker_identity.v1",
         "authority": "rusty.manifold",
         "profile_id": (
-            "broker.profile.legacy_reference_rusty_xr"
+            "broker.profile.legacy_reference"
             if legacy_reference
             else "broker.profile.rusty_manifold_android"
         ),
