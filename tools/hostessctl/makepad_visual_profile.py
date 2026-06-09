@@ -17,33 +17,12 @@ MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES = {
     "debug.rusty.peripheral.stretch.debug": "off",
 }
 
-
-def legacy_rustyxr_property_aliases(properties: dict[str, str]) -> dict[str, str]:
-    aliased = dict(properties)
-    for key, value in properties.items():
-        if key.startswith("debug.rusty."):
-            legacy_key = "debug.rustyxr." + key[len("debug.rusty.") :]
-            aliased.setdefault(legacy_key, value)
-    return aliased
+def makepad_visual_profile_runtime_properties() -> dict[str, str]:
+    return dict(MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES)
 
 
-def makepad_visual_profile_runtime_properties(
-    *,
-    include_legacy_aliases: bool = False,
-) -> dict[str, str]:
-    properties = dict(MAKEPAD_VISUAL_PROFILE_RUNTIME_PROPERTIES)
-    if include_legacy_aliases:
-        return legacy_rustyxr_property_aliases(properties)
-    return properties
-
-
-def makepad_visual_profile_property_records(
-    *,
-    include_legacy_aliases: bool = False,
-) -> list[dict[str, str]]:
-    properties = makepad_visual_profile_runtime_properties(
-        include_legacy_aliases=include_legacy_aliases
-    )
+def makepad_visual_profile_property_records() -> list[dict[str, str]]:
+    properties = makepad_visual_profile_runtime_properties()
     return [
         {"key": key, "value": value}
         for key, value in properties.items()

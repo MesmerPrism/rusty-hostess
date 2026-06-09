@@ -311,7 +311,7 @@ fn build_hello_message(config: &ManifoldBreathFeedbackConfig) -> JsonValue {
     json!({
         "type": "hello",
         "client_id": config.receiver_id,
-        "app_package": "rusty-xr-makepad-camera-shell",
+        "app_package": "rusty-hostess-makepad-camera-shell",
         "role": "makepad_breath_feedback_subscriber",
     })
 }

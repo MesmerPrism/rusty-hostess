@@ -33,11 +33,11 @@ BROKER_PORT = 8765
 BROKER_LOCAL_FORWARD_PORT = 18765
 MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1"
 MANIFOLD_BROKER_EVENTS_PATH = "/manifold/v1/events"
-MAKEPAD_XR_PROVIDER_PACKAGE = "io.github.mesmerprism.rustyxr.makepad.camera"
-MAKEPAD_XR_PROVIDER_ACTIVITY = f"{MAKEPAD_XR_PROVIDER_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
 MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_XR_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadAppXr"
+MAKEPAD_PROVIDER_PACKAGE = MAKEPAD_ANDROID_PACKAGE
+MAKEPAD_PROVIDER_ACTIVITY = MAKEPAD_ANDROID_XR_ACTIVITY
 ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
 ANDROID_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY"
 ANDROID_PMB_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY"
@@ -436,8 +436,8 @@ def main() -> int:
     record_values.add_argument("--broker-activity", default=BROKER_ACTIVITY)
     record_values.add_argument("--broker-port", type=int, default=BROKER_PORT)
     record_values.add_argument("--broker-local-port", type=int, default=BROKER_LOCAL_FORWARD_PORT)
-    record_values.add_argument("--makepad-provider-package", default=MAKEPAD_XR_PROVIDER_PACKAGE)
-    record_values.add_argument("--makepad-provider-activity", default=MAKEPAD_XR_PROVIDER_ACTIVITY)
+    record_values.add_argument("--makepad-provider-package", default=MAKEPAD_PROVIDER_PACKAGE)
+    record_values.add_argument("--makepad-provider-activity", default=MAKEPAD_PROVIDER_ACTIVITY)
     record_values.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     record_values.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
     record_values.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
@@ -1950,20 +1950,16 @@ def record_broker_websocket_streams(
                 errors.append(f"polar_pmd.stop cleanup failed: {ex}")
             ws.close()
         if makepad_publish_enabled:
-            for key in [
-                "debug.rusty.manifold.pose.publish.enabled",
-                "debug.rustyxr.manifold.pose.publish.enabled",
-            ]:
-                run_adb(
-                    f"disable-makepad-pose-publish-{key}",
-                    adb_prefix(args) + ["shell", "setprop", key, "false"],
-                    allow_failure=True,
-                )
+            key = "debug.rusty.manifold.pose.publish.enabled"
+            run_adb(
+                f"disable-makepad-pose-publish-{key}",
+                adb_prefix(args) + ["shell", "setprop", key, "false"],
+                allow_failure=True,
+            )
         if makepad_breath_feedback_enabled:
             for key in [
                 "debug.rusty.manifold.breath.feedback.enabled",
-                "debug.rustyxr.manifold.breath.feedback.enabled",
-                "debug.rustyxr.projection.target.breath.controls",
+                "debug.rusty.projection.target.breath.controls",
             ]:
                 run_adb(
                     f"disable-makepad-breath-feedback-subscriber-{key}",
