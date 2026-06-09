@@ -83,6 +83,21 @@ python tools\telemetry_stream.py --snapshot <snapshot.json> --out <telemetry.jso
 cargo run --manifest-path apps\hostess-t-makepad\Cargo.toml -- --snapshot <snapshot.json> --stream-jsonl <telemetry.jsonl>
 ```
 
+## Makepad Runtime Settings
+
+Hostess Makepad runtime settings use Morphospace Makepad names only. Use
+`RUSTY_MAKEPAD_*` environment variables, `debug.rusty.*` Android properties,
+canonical snake_case runtime keys, or current `makepad.*` launch aliases.
+Legacy `RUSTY_XR_*`, `debug.rustyxr.*`, and `rustyxr.*` spellings are not
+accepted by the active Hostess Makepad settings stack.
+
+The projection runtime trace marker is
+`RUSTY_MAKEPAD_PROJECTION_RUNTIME_MANIFEST` with schema
+`rusty.gui.makepad.projection_runtime_manifest.v1`. App-level profile and
+hotload behavior should be modeled through the canonical `rusty.gui.makepad.*`
+settings surface in the Rusty Makepad repo, then consumed as effective settings
+instead of adding another local resolver.
+
 Live evidence, including runtime processor-module metrics, is validated with:
 
 ```powershell

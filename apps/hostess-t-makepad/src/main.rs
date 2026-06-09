@@ -2916,7 +2916,7 @@ impl App {
     }
 
     fn broker_h264_enabled() -> bool {
-        let transport_requests_broker = std::env::var("RUSTY_XR_TRANSPORT_PROFILE")
+        let transport_requests_broker = std::env::var("RUSTY_MAKEPAD_TRANSPORT_PROFILE")
             .map(|value| value.to_ascii_lowercase().contains("broker-h264"))
             .unwrap_or(false);
         hotload_bool(

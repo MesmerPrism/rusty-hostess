@@ -263,48 +263,50 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
     set_runtime_text(
         &mut config,
         KEY_RUNTIME_PROFILE,
-        std::env::var("RUSTY_XR_RUNTIME_PROFILE").unwrap_or_else(|_| DEFAULT_PROFILE.to_string()),
+        std::env::var("RUSTY_MAKEPAD_RUNTIME_PROFILE")
+            .unwrap_or_else(|_| DEFAULT_PROFILE.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_TRANSPORT_PROFILE,
-        std::env::var("RUSTY_XR_TRANSPORT_PROFILE")
+        std::env::var("RUSTY_MAKEPAD_TRANSPORT_PROFILE")
             .unwrap_or_else(|_| DEFAULT_TRANSPORT.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_CAMERA_TIER,
-        std::env::var("RUSTY_XR_CAMERA_TIER").unwrap_or_else(|_| DEFAULT_CAMERA_TIER.to_string()),
+        std::env::var("RUSTY_MAKEPAD_CAMERA_TIER")
+            .unwrap_or_else(|_| DEFAULT_CAMERA_TIER.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_CAMERA_PROJECTION_MODE,
         runtime_property_value(KEY_CAMERA_PROJECTION_MODE)
-            .or_else(|| std::env::var("RUSTY_XR_CAMERA_PROJECTION_MODE").ok())
+            .or_else(|| std::env::var("RUSTY_MAKEPAD_CAMERA_PROJECTION_MODE").ok())
             .unwrap_or_else(|| DEFAULT_CAMERA_PROJECTION_MODE.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_COMPARISON_BASELINE,
-        std::env::var("RUSTY_XR_COMPARISON_BASELINE")
+        std::env::var("RUSTY_MAKEPAD_COMPARISON_BASELINE")
             .unwrap_or_else(|_| DEFAULT_COMPARISON_BASELINE.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_SYNTHETIC_SCENE,
-        std::env::var("RUSTY_XR_SYNTHETIC_SCENE")
+        std::env::var("RUSTY_MAKEPAD_SYNTHETIC_SCENE")
             .unwrap_or_else(|_| DEFAULT_SYNTHETIC_SCENE.to_string()),
         RuntimeConfigSource::Environment,
     );
     set_runtime_text(
         &mut config,
         KEY_ACQUISITION_PROFILE,
-        std::env::var("RUSTY_XR_ACQUISITION_PROFILE")
+        std::env::var("RUSTY_MAKEPAD_ACQUISITION_PROFILE")
             .unwrap_or_else(|_| DEFAULT_ACQUISITION_PROFILE.to_string()),
         RuntimeConfigSource::Environment,
     );
@@ -313,7 +315,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_PROJECTION_SCALE,
         startup_f64(
             KEY_PROJECTION_SCALE,
-            "RUSTY_XR_PROJECTION_SCALE",
+            "RUSTY_MAKEPAD_PROJECTION_SCALE",
             DEFAULT_PROJECTION_SCALE,
         ),
         RuntimeConfigSource::Environment,
@@ -323,7 +325,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_PROJECTION_DEPTH_METERS,
         startup_f64(
             KEY_PROJECTION_DEPTH_METERS,
-            "RUSTY_XR_PROJECTION_DEPTH_METERS",
+            "RUSTY_MAKEPAD_PROJECTION_DEPTH_METERS",
             DEFAULT_PROJECTION_DEPTH_METERS,
         ),
         RuntimeConfigSource::Environment,
@@ -333,7 +335,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_CAMERA_PREVIEW_FOV_Y_DEGREES,
         startup_f64(
             KEY_CAMERA_PREVIEW_FOV_Y_DEGREES,
-            "RUSTY_XR_CAMERA_PREVIEW_FOV_Y_DEGREES",
+            "RUSTY_MAKEPAD_CAMERA_PREVIEW_FOV_Y_DEGREES",
             TARGET_PROJECTION_PREVIEW_FOV_Y_DEGREES as f64,
         ),
         RuntimeConfigSource::Environment,
@@ -343,7 +345,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_CAMERA_PREVIEW_OFFSET_Y_METERS,
         startup_signed_f64(
             KEY_CAMERA_PREVIEW_OFFSET_Y_METERS,
-            "RUSTY_XR_CAMERA_PREVIEW_OFFSET_Y_METERS",
+            "RUSTY_MAKEPAD_CAMERA_PREVIEW_OFFSET_Y_METERS",
             TARGET_PROJECTION_PREVIEW_OFFSET_Y_METERS as f64,
         ),
         RuntimeConfigSource::Environment,
@@ -353,7 +355,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_CAMERA_RAW_OVERLAY_OVERSCAN,
         startup_f64(
             KEY_CAMERA_RAW_OVERLAY_OVERSCAN,
-            "RUSTY_XR_CAMERA_RAW_OVERLAY_OVERSCAN",
+            "RUSTY_MAKEPAD_CAMERA_RAW_OVERLAY_OVERSCAN",
             TARGET_PROJECTION_RAW_OVERSCAN as f64,
         ),
         RuntimeConfigSource::Environment,
@@ -363,7 +365,7 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         KEY_XR_RENDER_SCALE,
         startup_f64(
             KEY_XR_RENDER_SCALE,
-            "RUSTY_XR_RENDER_SCALE",
+            "RUSTY_MAKEPAD_RENDER_SCALE",
             DEFAULT_XR_RENDER_SCALE,
         ),
         RuntimeConfigSource::Environment,
@@ -520,32 +522,16 @@ pub(crate) fn hotload_u16(key: &'static str, default: u16, min: u16, max: u16) -
 
 fn runtime_env_key(key: &str) -> String {
     format!(
-        "RUSTY_XR_{}",
+        "RUSTY_MAKEPAD_{}",
         key.replace(['-', '.'], "_").to_ascii_uppercase()
     )
 }
 
 #[cfg(any(target_os = "android", test))]
-fn legacy_runtime_property_name(key: &'static str) -> String {
-    RuntimeKey::new(key)
-        .expect("runtime config key should be valid")
-        .android_property(
-            &AndroidPropertyPrefix::new("debug.rustyxr")
-                .expect("legacy Android property prefix should be valid"),
-        )
-}
-
-#[cfg(any(target_os = "android", test))]
 pub(crate) fn runtime_property_names(key: &'static str) -> Vec<String> {
-    let primary = RuntimeKey::new(key)
+    vec![RuntimeKey::new(key)
         .expect("runtime config key should be valid")
-        .android_property(&AndroidPropertyPrefix::default());
-    let legacy = legacy_runtime_property_name(key);
-    if primary == legacy {
-        vec![primary]
-    } else {
-        vec![primary, legacy]
-    }
+        .android_property(&AndroidPropertyPrefix::default())]
 }
 
 #[cfg(target_os = "android")]
@@ -610,13 +596,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn runtime_property_names_prefer_rusty_prefix_with_legacy_fallback() {
+    fn runtime_property_names_use_rusty_prefix() {
         assert_eq!(
             runtime_property_names(KEY_MANIFOLD_BROKER_HOST),
-            [
-                "debug.rusty.manifold.broker.host".to_string(),
-                "debug.rustyxr.manifold.broker.host".to_string(),
-            ]
+            ["debug.rusty.manifold.broker.host".to_string()]
         );
     }
 }

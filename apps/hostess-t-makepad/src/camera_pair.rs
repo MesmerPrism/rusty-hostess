@@ -607,7 +607,7 @@ pub(crate) fn frame_rate_token(frame_rate: Option<f64>) -> String {
 }
 
 pub(crate) fn makepad_display_source_eye_mapping() -> &'static str {
-    match option_env!("RUSTY_XR_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING") {
+    match option_env!("RUSTY_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING") {
         Some("display-left-from-left-source") => "display-left-from-left-source",
         Some("display-left-from-right-source") => "display-left-from-right-source",
         _ => DEFAULT_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING,
@@ -759,7 +759,7 @@ mod tests {
 
     #[test]
     fn compile_time_source_eye_mapping_is_sanitized() {
-        let expected = match option_env!("RUSTY_XR_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING") {
+        let expected = match option_env!("RUSTY_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING") {
             Some("display-left-from-left-source") => "display-left-from-left-source",
             Some("display-left-from-right-source") => "display-left-from-right-source",
             _ => DEFAULT_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING,
