@@ -6,6 +6,10 @@ mod acamera_sys;
 mod android_camera_probe;
 mod camera_pair;
 mod camera_texture_path;
+#[allow(dead_code, unused_imports)]
+mod hostess_camera_model;
+#[allow(dead_code, unused_imports)]
+mod hostess_contracts;
 mod makepad_effective_settings;
 #[allow(dead_code, unused_imports)]
 mod makepad_runtime_config;
@@ -16,10 +20,6 @@ mod projection_runtime;
 mod projection_settings;
 mod projection_target_controls;
 mod runtime_settings;
-#[allow(dead_code, unused_imports)]
-mod rusty_xr_camera_model;
-#[allow(dead_code, unused_imports)]
-mod rusty_xr_contracts;
 mod shell_contract;
 mod shell_runtime_capabilities;
 mod shell_xr_runtime;
@@ -88,8 +88,8 @@ use source_metadata::{
     MakepadTargetScreenFootprintPair,
 };
 
+use crate::hostess_camera_model::{Rect2, SourceSamplingMode, Vec2};
 use crate::makepad_runtime_config::RuntimeConfig;
-use crate::rusty_xr_camera_model::{Rect2, SourceSamplingMode, Vec2};
 use makepad_widgets::makepad_platform::{
     event::video_playback::{
         CameraPreviewMode, ExternalH264VideoSource, TextureHandleReadyEvent, VideoSource,

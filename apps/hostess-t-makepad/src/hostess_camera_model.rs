@@ -1,13 +1,16 @@
-//! Camera metadata and projection helpers for Rusty XR.
+//! Hostess-local camera metadata and projection helpers.
 //!
-//! This crate owns camera math that is public and app-neutral: intrinsics
+//! This module owns camera math that is public and app-neutral: intrinsics
 //! scaling, pinhole projection/back-projection, and timestamp matching.
+//! Existing `rusty.xr.*` schema identifiers below are serialized compatibility
+//! values; the active module name is Hostess-local until the contracts move to
+//! their Morphospace owner crates.
 //!
 //! Enable the `serde` feature to serialize helper result types; camera metadata
-//! serialization is forwarded through `rusty-xr-contracts/serde`.
+//! serialization is forwarded through `hostess-contracts/serde`.
 //!
 //! ```
-//! use crate::rusty_xr_camera_model::{project_camera_point, CameraIntrinsics, ImageSize, Vec2, Vec3};
+//! use crate::hostess_camera_model::{project_camera_point, CameraIntrinsics, ImageSize, Vec2, Vec3};
 //!
 //! let intrinsics = CameraIntrinsics::new(
 //!     Vec2::new(500.0, 500.0),
@@ -20,7 +23,7 @@
 
 use core::fmt;
 
-pub use crate::rusty_xr_contracts::{
+pub use crate::hostess_contracts::{
     CameraCompositeTier, CameraExtrinsics, CameraFrameAdoptionMode, CameraFrameMetadata,
     CameraFrameMetadataFlags, CameraFrameTiming, CameraGpuBufferDescriptor, CameraImageRotation,
     CameraIntrinsics, CameraPixelDomain, CameraPixelDomainKind, CameraProjectionState,

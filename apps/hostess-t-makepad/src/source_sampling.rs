@@ -1,6 +1,6 @@
 use crate::camera_texture_path::MakepadCameraTexturePath;
-use crate::rusty_xr_camera_model::SourceSamplingMode;
-use crate::rusty_xr_contracts::{
+use crate::hostess_camera_model::SourceSamplingMode;
+use crate::hostess_contracts::{
     SourceSamplerYAxis, SourceSamplingContract, SourceSamplingTransformStage,
     StereoSourceEyeMapping,
 };

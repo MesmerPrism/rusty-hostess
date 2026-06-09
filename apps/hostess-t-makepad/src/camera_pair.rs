@@ -1,11 +1,11 @@
 #[cfg(target_os = "android")]
 use crate::android_camera_probe;
+use crate::hostess_camera_model::Rect2;
 use crate::projection_geometry::MakepadOpenXrProjectionContract;
 use crate::runtime_settings::{
     marker_token, DEFAULT_CAMERA_PROJECTION_GEOMETRY_PROFILE,
     DEFAULT_MAKEPAD_DISPLAY_SOURCE_EYE_MAPPING, IDENTITY_SURFACE_TO_CAMERA_HOMOGRAPHY,
 };
-use crate::rusty_xr_camera_model::Rect2;
 use crate::source_metadata::{
     makepad_runtime_target_screen_footprint_pair,
     normalize_direct_camera_projection_geometry_profile, MakepadTargetScreenFootprintPair,

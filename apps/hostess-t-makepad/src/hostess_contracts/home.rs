@@ -587,7 +587,7 @@ pub enum KioskSurfaceIntent {
     /// Rusty Kiosk broker/home is intentionally the baseline.
     #[default]
     RustyKioskDefault,
-    /// A target Rusty XR app is intentionally focused.
+    /// A target compatibility app is intentionally focused.
     RustyXrTarget,
     /// Meta Home/Menu/settings was intentionally opened for a bracketed test or setting.
     MetaPanelIntentional,

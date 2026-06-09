@@ -1,13 +1,13 @@
 use crate::camera_texture_path::MakepadCameraTexturePath;
 #[cfg(target_os = "android")]
-use crate::rusty_xr_camera_model::{
+use crate::hostess_camera_model::{
     camera2_lens_pose_to_extrinsics, camera_basis_from_camera2_reference_pose_relative_to_center,
     head_anchored_preview_surface_corners, invert_homography, scale_intrinsics_to_image,
     screen_to_camera_uv_homography, surface_to_camera_uv_homography,
     surface_to_eye_screen_uv_homography, CameraBasis, CameraIntrinsics, ImageSize, Quat,
     TrackingBasis, Vec2, Vec3,
 };
-use crate::rusty_xr_camera_model::{
+use crate::hostess_camera_model::{
     homography_unit_square_bounding_rect, rect_xywh, source_valid_screen_uv_footprint,
     uv_rect_token, Rect2,
 };
@@ -2231,7 +2231,7 @@ pub(crate) fn makepad_projection_target_marker_fields() -> String {
         )),
         projection_canvas_mode,
         projection_surface_aspect_contract,
-        crate::rusty_xr_camera_model::TARGET_SCREEN_FOOTPRINT_SCHEMA,
+        crate::hostess_camera_model::TARGET_SCREEN_FOOTPRINT_SCHEMA,
         target_screen_uv_rect_token(target_footprint.left_rect),
         target_screen_uv_rect_token(target_footprint.right_rect),
         if target_footprint.from_metadata {

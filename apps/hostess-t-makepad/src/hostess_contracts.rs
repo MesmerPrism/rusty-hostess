@@ -1,14 +1,17 @@
-//! Framework-neutral XR data contracts for Rusty XR.
+//! Hostess-local framework-neutral data contracts.
 //!
-//! This crate deliberately contains plain Rust data and small validation
+//! This module deliberately contains plain Rust data and small validation
 //! helpers only. It does not depend on Android, OpenXR, Vulkan, Makepad, Unity,
 //! Meta SDKs, LSL, or downstream application repositories.
+//! Existing `rusty.xr.*` schema identifiers remain serialized compatibility
+//! values until the relevant contracts are extracted into Lattice, Optics,
+//! Matter, GUI, Quest, or Manifold owner crates.
 //!
 //! Enable the `serde` feature to derive serialization for stable public data
 //! contracts without making serialization mandatory for plain Rust consumers.
 //!
 //! ```
-//! use rusty_xr_contracts::{CameraIntrinsics, ImageSize, Vec2};
+//! use hostess_contracts::{CameraIntrinsics, ImageSize, Vec2};
 //!
 //! let intrinsics = CameraIntrinsics::new(
 //!     Vec2::new(500.0, 510.0),

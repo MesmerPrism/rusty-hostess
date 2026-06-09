@@ -1,9 +1,9 @@
 use crate::camera_texture_path::MakepadCameraTexturePath;
-use crate::makepad_widgets::makepad_platform::event::video_playback::VideoTextureUpdateMetadata;
-use crate::rusty_xr_camera_model::{
+use crate::hostess_camera_model::{
     rect_xywh, target_footprint_debug_region_marker_fields, uv_rect_token, Rect2,
     SourceSamplingMode, Vec2, TARGET_SCREEN_FOOTPRINT_SCHEMA,
 };
+use crate::makepad_widgets::makepad_platform::event::video_playback::VideoTextureUpdateMetadata;
 use serde_json::Value as JsonValue;
 
 use super::{
