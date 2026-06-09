@@ -96,11 +96,6 @@ fn makepad_projection_runtime_android_property_config(
         if let Some(value) = android_system_property_value(alias.alias) {
             values.push((alias.alias.to_string(), value));
         }
-        if let Some(active_alias) = makepad_config::quest_makepad_property_alias(alias.alias) {
-            if let Some(value) = android_system_property_value(&active_alias) {
-                values.push((active_alias, value));
-            }
-        }
     }
     makepad_projection_runtime_alias_config(
         makepad_config::RuntimeConfigSource::AndroidProperty,
@@ -849,42 +844,42 @@ fn makepad_projection_runtime_config_effective(
 
 fn makepad_projection_alias_records() -> Vec<makepad_config::RuntimeKeyAliasRecord> {
     [
-        "debug.rusty.projection.depth.meters",
-        "debug.rusty.camera.preview.fov.y.degrees",
-        "debug.rusty.camera.preview.offset.y.meters",
-        "debug.rusty.camera.raw.overlay.overscan",
-        "debug.rusty.projection.area.scale.uv",
-        "debug.rusty.projection.area.offset.x.uv",
-        "debug.rusty.projection.area.left.offset.x.uv",
-        "debug.rusty.projection.area.right.offset.x.uv",
-        "debug.rusty.projection.area.offset.y.uv",
-        "debug.rusty.projection.area.scale.x",
-        "debug.rusty.projection.area.scale.y",
-        "debug.rusty.projection.target.offset.x.uv",
-        "debug.rusty.projection.target.offset.y.uv",
-        "debug.rusty.projection.target.scale",
-        "debug.rusty.projection.target.joystick.controls",
-        "debug.rusty.projection.area.radius.x.uv",
-        "debug.rusty.projection.area.radius.y.uv",
-        "debug.rusty.projection.area.corner.radius.uv",
-        "debug.rusty.projection.area.opacity",
-        "debug.rusty.projection.border.opacity",
-        "debug.rusty.projection.border.policy",
-        "debug.rusty.processing.layer",
-        "debug.rusty.camera.blur.radius.px",
-        "debug.rusty.peripheral.stretch.mode",
-        "debug.rusty.peripheral.stretch.core.scale",
-        "debug.rusty.peripheral.stretch.edge.inset.uv",
-        "debug.rusty.peripheral.stretch.max.inset.uv",
-        "debug.rusty.peripheral.stretch.curve",
-        "debug.rusty.peripheral.stretch.inner.blend.uv",
-        "debug.rusty.peripheral.stretch.blend.curve",
-        "debug.rusty.peripheral.stretch.blend.mode",
-        "debug.rusty.peripheral.stretch.corner.mode",
-        "debug.rusty.peripheral.stretch.debug",
-        "debug.rusty.projection.alpha.mode",
-        "debug.rusty.projection.alpha.scale",
-        "debug.rusty.projection.alpha.bias",
+        "debug.rustyquest.makepad.projection.depth.meters",
+        "debug.rustyquest.makepad.camera.preview.fov.y.degrees",
+        "debug.rustyquest.makepad.camera.preview.offset.y.meters",
+        "debug.rustyquest.makepad.camera.raw.overlay.overscan",
+        "debug.rustyquest.makepad.projection.area.scale.uv",
+        "debug.rustyquest.makepad.projection.area.offset.x.uv",
+        "debug.rustyquest.makepad.projection.area.left.offset.x.uv",
+        "debug.rustyquest.makepad.projection.area.right.offset.x.uv",
+        "debug.rustyquest.makepad.projection.area.offset.y.uv",
+        "debug.rustyquest.makepad.projection.area.scale.x",
+        "debug.rustyquest.makepad.projection.area.scale.y",
+        "debug.rustyquest.makepad.projection.target.offset.x.uv",
+        "debug.rustyquest.makepad.projection.target.offset.y.uv",
+        "debug.rustyquest.makepad.projection.target.scale",
+        "debug.rustyquest.makepad.projection.target.joystick.controls",
+        "debug.rustyquest.makepad.projection.area.radius.x.uv",
+        "debug.rustyquest.makepad.projection.area.radius.y.uv",
+        "debug.rustyquest.makepad.projection.area.corner.radius.uv",
+        "debug.rustyquest.makepad.projection.area.opacity",
+        "debug.rustyquest.makepad.projection.border.opacity",
+        "debug.rustyquest.makepad.projection.border.policy",
+        "debug.rustyquest.makepad.processing.layer",
+        "debug.rustyquest.makepad.camera.blur.radius.px",
+        "debug.rustyquest.makepad.peripheral.stretch.mode",
+        "debug.rustyquest.makepad.peripheral.stretch.core.scale",
+        "debug.rustyquest.makepad.peripheral.stretch.edge.inset.uv",
+        "debug.rustyquest.makepad.peripheral.stretch.max.inset.uv",
+        "debug.rustyquest.makepad.peripheral.stretch.curve",
+        "debug.rustyquest.makepad.peripheral.stretch.inner.blend.uv",
+        "debug.rustyquest.makepad.peripheral.stretch.blend.curve",
+        "debug.rustyquest.makepad.peripheral.stretch.blend.mode",
+        "debug.rustyquest.makepad.peripheral.stretch.corner.mode",
+        "debug.rustyquest.makepad.peripheral.stretch.debug",
+        "debug.rustyquest.makepad.projection.alpha.mode",
+        "debug.rustyquest.makepad.projection.alpha.scale",
+        "debug.rustyquest.makepad.projection.alpha.bias",
     ]
     .into_iter()
     .filter_map(|key| makepad_config::resolve_projection_runtime_key(key).ok())
