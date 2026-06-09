@@ -116,6 +116,7 @@ use projection_target_controls::{
     makepad_projection_target_offset_y_uv, makepad_projection_target_scale,
     makepad_projection_target_scale_step, PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
 };
+use rusty_quest_makepad_camera_shell::{MeshReplayRuntime, MeshReplayUniforms};
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
 use shell_xr_runtime::ShellXrRuntimeState;
@@ -281,6 +282,11 @@ script_mod! {
         projection_alpha_mode: uniform(0.0)
         projection_alpha_scale: uniform(1.0)
         projection_alpha_bias: uniform(0.0)
+        mesh_replay_runtime: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        mesh_replay_segment0: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        mesh_replay_segment1: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        mesh_replay_segment2: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        mesh_replay_segment3: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         source_sample_y_flip: uniform(0.0)
         projection_content_mapping_mode: uniform(0.0)
         display_source_eye_swap: uniform(0.0)
@@ -1014,6 +1020,47 @@ script_mod! {
             return mix(with_border, vec3(1.0, 1.0, 1.0), clamp(surface_border * 0.70, 0.0, 1.0));
         }
 
+        mesh_replay_segment_mask: fn(coord: vec2f, segment: vec4f) -> float {
+            let start = vec2(segment.x, segment.y);
+            let end = vec2(segment.z, segment.w);
+            let edge = end - start;
+            let edge_len2 = max(dot(edge, edge), 0.0001);
+            let t = clamp(dot(coord - start, edge) / edge_len2, 0.0, 1.0);
+            let nearest = start + edge * t;
+            let distance_to_edge = length(coord - nearest);
+            return 1.0 - smoothstep(0.004, 0.014, distance_to_edge);
+        }
+
+        mesh_replay_overlay_mask: fn(coord: vec2f) -> float {
+            let enabled = step(0.5, self.mesh_replay_runtime.x);
+            let inside =
+                step(0.0, coord.x) *
+                step(coord.x, 1.0) *
+                step(0.0, coord.y) *
+                step(coord.y, 1.0);
+            let mask0 = self.mesh_replay_segment_mask(coord, self.mesh_replay_segment0);
+            let mask1 = self.mesh_replay_segment_mask(coord, self.mesh_replay_segment1);
+            let mask2 = self.mesh_replay_segment_mask(coord, self.mesh_replay_segment2);
+            let mask3 = self.mesh_replay_segment_mask(coord, self.mesh_replay_segment3);
+            return enabled * inside * clamp(max(max(mask0, mask1), max(mask2, mask3)), 0.0, 1.0);
+        }
+
+        mesh_replay_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let mask = self.mesh_replay_overlay_mask(coord) * clamp(visibility, 0.0, 1.0);
+            let phase = fract(self.mesh_replay_runtime.y);
+            let opacity = clamp(self.mesh_replay_runtime.w, 0.0, 1.0);
+            let pulse = 0.52 + 0.28 * sin(phase * 6.28318530718);
+            let replay_color =
+                vec3(0.04, 0.95, 0.74) * pulse +
+                vec3(0.10, 0.22, 0.95) * (1.0 - pulse);
+            return mix(rgb, replay_color, clamp(mask * opacity, 0.0, 1.0));
+        }
+
+        mesh_replay_overlay_alpha: fn(alpha: float, coord: vec2f, visibility: float) -> float {
+            let mask = self.mesh_replay_overlay_mask(coord) * clamp(visibility, 0.0, 1.0);
+            return max(alpha, clamp(mask * self.mesh_replay_runtime.w, 0.0, 1.0));
+        }
+
         pixel: fn() {
             let renderer_surface_uv = clamp(self.v_uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
             let full_view_uv = vec2(renderer_surface_uv.x, 1.0 - renderer_surface_uv.y);
@@ -1138,12 +1185,14 @@ script_mod! {
             if self.camera_ready <= 0.5 {
                 let waiting = vec3(0.015, 0.020, 0.024);
                 let guided_waiting = mix(waiting, vec3(1.0, 0.98, 0.84), proof_guide);
-                return vec4(guided_waiting.x, guided_waiting.y, guided_waiting.z, 1.0);
+                let replay_waiting = self.mesh_replay_overlay_rgb(guided_waiting, full_view_uv, 1.0);
+                return vec4(replay_waiting.x, replay_waiting.y, replay_waiting.z, 1.0);
             }
             if self.suppress_live_camera_sampling > 0.5 {
                 let armed = vec3(0.015, 0.18, 0.08);
                 let guided_armed = mix(armed, vec3(1.0, 0.98, 0.84), proof_guide);
-                return vec4(guided_armed.x, guided_armed.y, guided_armed.z, 1.0);
+                let replay_armed = self.mesh_replay_overlay_rgb(guided_armed, full_view_uv, 1.0);
+                return vec4(replay_armed.x, replay_armed.y, replay_armed.z, 1.0);
             }
             if self.projection_area_diagnostic > 0.5 {
                 let diagnostic_rgb = self.projection_area_diagnostic_color(
@@ -1153,7 +1202,12 @@ script_mod! {
                     projection_valid
                 );
                 let guided_diagnostic = mix(diagnostic_rgb, vec3(1.0, 0.98, 0.84), proof_guide);
-                return vec4(guided_diagnostic.x, guided_diagnostic.y, guided_diagnostic.z, 1.0);
+                let replay_diagnostic = self.mesh_replay_overlay_rgb(
+                    guided_diagnostic,
+                    projection_area_content_uv,
+                    projection_area_mask
+                );
+                return vec4(replay_diagnostic.x, replay_diagnostic.y, replay_diagnostic.z, 1.0);
             }
             if self.force_in_surface_camera_window > 0.5 {
                 let camera_window_uv = clamp(mapped_source_uv, vec2(0.0, 0.0), vec2(1.0, 1.0));
@@ -1203,8 +1257,17 @@ script_mod! {
                 let guided_window = mix(window_rgb, vec3(1.0, 0.98, 0.84), proof_guide);
                 let border_alpha = projection_border_opacity * (1.0 - passthrough_border_policy);
                 let area_alpha = projection_area_opacity * self.projection_color_alpha(debug_camera_rgb);
-                let alpha = mix(border_alpha, area_alpha, camera_window_valid);
-                let premultiplied_window = guided_window * alpha;
+                let alpha = self.mesh_replay_overlay_alpha(
+                    mix(border_alpha, area_alpha, camera_window_valid),
+                    projection_area_content_uv,
+                    projection_area_mask
+                );
+                let replay_window = self.mesh_replay_overlay_rgb(
+                    guided_window,
+                    projection_area_content_uv,
+                    projection_area_mask
+                );
+                let premultiplied_window = replay_window * alpha;
                 return vec4(
                     premultiplied_window.x,
                     premultiplied_window.y,
@@ -1215,7 +1278,8 @@ script_mod! {
             let direct_rgb =
                 self.sample_or_solid_camera_rgb(live_sample_uv, eye_selector) * mix(0.12, 1.0, live_projection_valid);
             let guided_direct = mix(direct_rgb, vec3(1.0, 0.98, 0.84), proof_guide);
-            return vec4(guided_direct.x, guided_direct.y, guided_direct.z, 1.0);
+            let replay_direct = self.mesh_replay_overlay_rgb(guided_direct, full_view_uv, 1.0);
+            return vec4(replay_direct.x, replay_direct.y, replay_direct.z, 1.0);
         }
 
         fragment: fn() {
@@ -1238,6 +1302,11 @@ script_mod! {
             yuv_biplanar: 0.0
             texture_probe_mode: 2.0
             proof_tint_strength: 0.0
+            mesh_replay_runtime: vec4(0.0, 0.0, 0.0, 0.0)
+            mesh_replay_segment0: vec4(0.0, 0.0, 0.0, 0.0)
+            mesh_replay_segment1: vec4(0.0, 0.0, 0.0, 0.0)
+            mesh_replay_segment2: vec4(0.0, 0.0, 0.0, 0.0)
+            mesh_replay_segment3: vec4(0.0, 0.0, 0.0, 0.0)
             depth_clip: 0.0
         }
     }
@@ -1308,6 +1377,16 @@ pub struct App {
     shell_runtime_capabilities: MakepadShellRuntimeCapabilityReceipt,
     #[rust]
     shell_xr_runtime: ShellXrRuntimeState,
+    #[rust]
+    mesh_replay_runtime: Option<MeshReplayRuntime>,
+    #[rust]
+    mesh_replay_effective_settings_path: Option<String>,
+    #[rust]
+    mesh_replay_effective_settings_modified_ns: u128,
+    #[rust]
+    mesh_replay_effective_settings_has_modified_ns: bool,
+    #[rust]
+    mesh_replay_settings_check_frame: u64,
     #[rust]
     paired_import_timer: Timer,
     #[rust]
@@ -1647,6 +1726,16 @@ pub struct DrawMakepadStereoCameraPanel {
     pub projection_alpha_scale: f32,
     #[rust(0.0_f32)]
     pub projection_alpha_bias: f32,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub mesh_replay_runtime: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub mesh_replay_segment0: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub mesh_replay_segment1: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub mesh_replay_segment2: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub mesh_replay_segment3: Vec4f,
     #[rust(1.0_f32)]
     pub source_sample_y_flip: f32,
     #[rust(0.0_f32)]
@@ -1959,6 +2048,33 @@ impl MakepadStereoCameraPanel {
         self.draw_panel
             .draw_vars
             .set_uniform_on_area(cx, id, &values);
+    }
+
+    fn set_mesh_replay_uniforms(&mut self, cx: &mut Cx, uniforms: MeshReplayUniforms) {
+        let runtime = Vec4f {
+            x: uniforms.enabled,
+            y: uniforms.phase,
+            z: uniforms.frame01,
+            w: uniforms.opacity,
+        };
+        let segment0 = mesh_replay_segment_vec4(uniforms.segments[0]);
+        let segment1 = mesh_replay_segment_vec4(uniforms.segments[1]);
+        let segment2 = mesh_replay_segment_vec4(uniforms.segments[2]);
+        let segment3 = mesh_replay_segment_vec4(uniforms.segments[3]);
+
+        self.draw_panel.mesh_replay_runtime = runtime;
+        self.draw_panel.mesh_replay_segment0 = segment0;
+        self.draw_panel.mesh_replay_segment1 = segment1;
+        self.draw_panel.mesh_replay_segment2 = segment2;
+        self.draw_panel.mesh_replay_segment3 = segment3;
+
+        self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_runtime), runtime);
+        self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment0), segment0);
+        self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment1), segment1);
+        self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment2), segment2);
+        self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment3), segment3);
+        self.draw_panel.draw_vars.redraw(cx);
+        self.node.redraw(cx);
     }
 
     fn synthetic_luma_probe_texture(&mut self, cx: &mut Cx) -> Texture {
@@ -2910,8 +3026,56 @@ impl App {
         let _ = makepad_effective_settings::write_selected_makepad_effective_settings_receipt(
             &effective_settings,
         );
+        self.refresh_mesh_replay_runtime_from_selected_settings("startup", true);
         self.shell_xr_runtime = ShellXrRuntimeState::registered_xr_shell();
         self.refresh_hostess_shell_runtime_capability_receipt();
+    }
+
+    fn refresh_mesh_replay_runtime_from_selected_settings(
+        &mut self,
+        phase: &str,
+        force: bool,
+    ) -> bool {
+        let selection = makepad_effective_settings::read_selected_mesh_replay_runtime();
+        if !force
+            && !selection.settings_identity_changed_from(
+                self.mesh_replay_effective_settings_path.as_deref(),
+                self.current_mesh_replay_effective_settings_modified_ns(),
+            )
+        {
+            return false;
+        }
+
+        let marker_line = if selection.runtime.is_none() {
+            Some(selection.marker_line(phase))
+        } else {
+            None
+        };
+        self.mesh_replay_effective_settings_path = selection.source_effective_settings_path.clone();
+        self.mesh_replay_effective_settings_modified_ns =
+            selection.source_modified_ns.unwrap_or_default();
+        self.mesh_replay_effective_settings_has_modified_ns =
+            selection.source_modified_ns.is_some();
+        self.mesh_replay_runtime = selection.runtime;
+
+        if let Some(marker_line) = marker_line {
+            emit_marker_line(&marker_line);
+        }
+        if let Some(runtime) = self.mesh_replay_runtime.as_mut() {
+            runtime.step(0.0);
+            if runtime.should_emit_config_marker() {
+                emit_marker_line(&runtime.config_marker_line(phase));
+            }
+        }
+        true
+    }
+
+    fn current_mesh_replay_effective_settings_modified_ns(&self) -> Option<u128> {
+        if self.mesh_replay_effective_settings_has_modified_ns {
+            Some(self.mesh_replay_effective_settings_modified_ns)
+        } else {
+            None
+        }
     }
 
     fn refresh_hostess_shell_runtime_capability_receipt(&mut self) {
@@ -4251,6 +4415,51 @@ impl App {
         true
     }
 
+    fn handle_mesh_replay_runtime_cadence(&mut self, cx: &mut Cx, now_seconds: f64) {
+        const SETTINGS_HOTLOAD_CHECK_PERIOD_FRAMES: u64 = 30;
+        if self.cadence_frame_count == 1
+            || self
+                .cadence_frame_count
+                .saturating_sub(self.mesh_replay_settings_check_frame)
+                >= SETTINGS_HOTLOAD_CHECK_PERIOD_FRAMES
+        {
+            self.mesh_replay_settings_check_frame = self.cadence_frame_count;
+            self.refresh_mesh_replay_runtime_from_selected_settings("hotload", false);
+        }
+
+        let mut marker_lines = Vec::new();
+        let uniforms = if let Some(runtime) = self.mesh_replay_runtime.as_mut() {
+            runtime.step(now_seconds);
+            if runtime.should_emit_config_marker() {
+                marker_lines.push(runtime.config_marker_line("cadence"));
+            }
+            if runtime.should_emit_frame_marker() {
+                marker_lines.push(runtime.frame_marker_line("cadence"));
+            }
+            runtime.uniforms()
+        } else {
+            MeshReplayUniforms::disabled()
+        };
+
+        for line in marker_lines {
+            emit_marker_line(&line);
+        }
+        self.apply_mesh_replay_uniforms_to_panel(cx, uniforms);
+    }
+
+    fn apply_mesh_replay_uniforms_to_panel(
+        &mut self,
+        cx: &mut Cx,
+        uniforms: MeshReplayUniforms,
+    ) -> bool {
+        let panel_ref = self.ui.widget(cx, ids!(camera_projection_panel));
+        let Some(mut panel) = panel_ref.borrow_mut::<MakepadStereoCameraPanel>() else {
+            return false;
+        };
+        panel.set_mesh_replay_uniforms(cx, uniforms);
+        true
+    }
+
     fn handle_cadence_event(&mut self, cx: &mut Cx, event: &Event) {
         if matches!(event, Event::Startup | Event::XrUpdate(_)) {
             self.refresh_horizontal_alignment_tuning(cx);
@@ -4306,6 +4515,7 @@ impl App {
         }
 
         self.cadence_frame_count = self.cadence_frame_count.saturating_add(1);
+        self.handle_mesh_replay_runtime_cadence(cx, next_frame_event.time);
         let interval_seconds = (next_frame_event.time - self.cadence_last_sample_time).max(0.0);
         if interval_seconds >= CADENCE_SAMPLE_SECONDS {
             self.emit_cadence_sample(cx, next_frame_event.time, interval_seconds);
@@ -6462,5 +6672,14 @@ fn optional_max_f64(left: Option<f64>, right: Option<f64>) -> Option<f64> {
         (Some(left), Some(right)) => Some(left.max(right)),
         (Some(value), None) | (None, Some(value)) => Some(value),
         (None, None) => None,
+    }
+}
+
+fn mesh_replay_segment_vec4(segment: [f32; 4]) -> Vec4f {
+    Vec4f {
+        x: segment[0],
+        y: segment[1],
+        z: segment[2],
+        w: segment[3],
     }
 }

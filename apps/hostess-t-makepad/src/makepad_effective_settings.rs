@@ -1,8 +1,12 @@
 use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
-use rusty_quest_makepad_camera_shell::CameraShellEffectiveConfig;
+use rusty_quest_makepad_camera_shell::{
+    mesh_replay_runtime_from_effective_settings_json, CameraShellEffectiveConfig,
+    MeshReplayRuntime, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
+};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
+use std::time::UNIX_EPOCH;
 
 pub(crate) const EFFECTIVE_SETTINGS_RECEIPT_SCHEMA: &str =
     "rusty.hostess.makepad_effective_settings_receipt.v1";
@@ -48,6 +52,43 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     particles_enabled: Option<bool>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
+}
+
+#[derive(Debug)]
+pub(crate) struct MakepadMeshReplayRuntimeSelection {
+    pub(crate) status: String,
+    pub(crate) issue_code: Option<String>,
+    pub(crate) issue_evidence: Option<String>,
+    pub(crate) source_effective_settings_path: Option<String>,
+    pub(crate) source_modified_ns: Option<u128>,
+    pub(crate) runtime: Option<MeshReplayRuntime>,
+}
+
+impl MakepadMeshReplayRuntimeSelection {
+    pub(crate) fn marker_line(&self, phase: &str) -> String {
+        format!(
+            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={}",
+            REPLAY_MARKER_PREFIX,
+            REPLAY_SCHEMA_ID,
+            marker_token(phase),
+            marker_token(&self.status),
+            marker_option(self.issue_code.as_deref()),
+            marker_option(self.issue_evidence.as_deref()),
+            marker_option(self.source_effective_settings_path.as_deref()),
+            self.source_modified_ns
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+        )
+    }
+
+    pub(crate) fn settings_identity_changed_from(
+        &self,
+        previous_path: Option<&str>,
+        previous_modified_ns: Option<u128>,
+    ) -> bool {
+        self.source_effective_settings_path.as_deref() != previous_path
+            || self.source_modified_ns != previous_modified_ns
+    }
 }
 
 impl MakepadEffectiveSettingsReceipt {
@@ -151,6 +192,55 @@ pub(crate) fn read_makepad_effective_settings_from_path(
         );
     }
     ready_receipt(path, report, &text)
+}
+
+pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSelection {
+    let Some(path) = selected_effective_settings_path() else {
+        return MakepadMeshReplayRuntimeSelection {
+            status: "not_configured".to_string(),
+            issue_code: Some(NOT_CONFIGURED_ISSUE.to_string()),
+            issue_evidence: Some("No Makepad effective-settings path was configured".to_string()),
+            source_effective_settings_path: None,
+            source_modified_ns: None,
+            runtime: None,
+        };
+    };
+    read_mesh_replay_runtime_from_path(&path)
+}
+
+pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshReplayRuntimeSelection {
+    let source_modified_ns = file_modified_ns(path);
+    let text = match std::fs::read_to_string(path) {
+        Ok(text) => text,
+        Err(error) => {
+            return MakepadMeshReplayRuntimeSelection {
+                status: "rejected".to_string(),
+                issue_code: Some(READ_ISSUE.to_string()),
+                issue_evidence: Some(format!("read failed: {error}")),
+                source_effective_settings_path: Some(path.display().to_string()),
+                source_modified_ns,
+                runtime: None,
+            };
+        }
+    };
+    match mesh_replay_runtime_from_effective_settings_json(&text) {
+        Ok(runtime) => MakepadMeshReplayRuntimeSelection {
+            status: "ready".to_string(),
+            issue_code: None,
+            issue_evidence: None,
+            source_effective_settings_path: Some(path.display().to_string()),
+            source_modified_ns,
+            runtime: Some(runtime),
+        },
+        Err(error) => MakepadMeshReplayRuntimeSelection {
+            status: "rejected".to_string(),
+            issue_code: Some(PARSE_ISSUE.to_string()),
+            issue_evidence: Some(error.to_string()),
+            source_effective_settings_path: Some(path.display().to_string()),
+            source_modified_ns,
+            runtime: None,
+        },
+    }
 }
 
 pub(crate) fn write_selected_makepad_effective_settings_receipt(
@@ -272,6 +362,14 @@ fn rejected_receipt(
         legacy_settings_fallback_used: false,
         ..Default::default()
     }
+}
+
+fn file_modified_ns(path: &Path) -> Option<u128> {
+    std::fs::metadata(path)
+        .ok()
+        .and_then(|metadata| metadata.modified().ok())
+        .and_then(|modified| modified.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_nanos())
 }
 
 fn selected_effective_settings_path() -> Option<PathBuf> {
@@ -412,6 +510,26 @@ mod tests {
     }
 
     #[test]
+    fn builds_mesh_replay_runtime_from_canonical_effective_settings() {
+        let path = write_temp_json("effective-settings-runtime", EFFECTIVE_SETTINGS_FIXTURE);
+
+        let mut selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(selection.status, "ready");
+        assert!(selection.issue_code.is_none());
+        assert!(selection.source_modified_ns.is_some());
+        assert!(selection.settings_identity_changed_from(None, None));
+        let runtime = selection.runtime.as_mut().expect("runtime selected");
+        let first = runtime.step(0.0);
+        assert!(first.enabled);
+        assert_eq!(first.frame_index, 0);
+        let marker = runtime.config_marker_line("test");
+        assert!(marker.contains("schema=rusty.quest.makepad.mesh_replay.v1"));
+        assert!(marker.contains("source=public-synthetic-hand-sequence"));
+        assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
     fn records_mesh_replay_adapter_rejection_without_legacy_fallback() {
         let different_app = EFFECTIVE_SETTINGS_FIXTURE
             .replace(CAMERA_SHELL_APP_ID, "rusty-quest-makepad.other-shell");
@@ -431,6 +549,27 @@ mod tests {
             .as_deref()
             .is_some_and(|error| error.contains("unexpected effective-settings app id")));
         assert!(!receipt.legacy_settings_fallback_used);
+    }
+
+    #[test]
+    fn records_mesh_replay_runtime_rejection_without_legacy_fallback() {
+        let different_app = EFFECTIVE_SETTINGS_FIXTURE
+            .replace(CAMERA_SHELL_APP_ID, "rusty-quest-makepad.other-shell");
+        let path = write_temp_json("wrong-effective-settings-runtime-app", &different_app);
+
+        let selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(selection.status, "rejected");
+        assert!(selection.runtime.is_none());
+        assert_eq!(selection.issue_code.as_deref(), Some(PARSE_ISSUE));
+        assert!(selection
+            .issue_evidence
+            .as_deref()
+            .is_some_and(|error| error.contains("unexpected effective-settings app id")));
+        let marker = selection.marker_line("test");
+        assert!(marker.contains("schema=rusty.quest.makepad.mesh_replay.v1"));
+        assert!(marker.contains("status=rejected"));
+        assert!(!marker.contains("rusty.xr"));
     }
 
     #[test]
