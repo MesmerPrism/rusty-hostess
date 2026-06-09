@@ -98,6 +98,12 @@ hotload behavior should be modeled through the canonical `rusty.gui.makepad.*`
 settings surface in the Rusty Makepad repo, then consumed as effective settings
 instead of adding another local resolver.
 
+`apps/hostess-t-makepad` can consume a generated effective-settings report with
+`--makepad-effective-settings <path>`, `HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS`, or
+`RUSTY_MAKEPAD_EFFECTIVE_SETTINGS`. The app emits
+`RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS` receipt evidence and can write the
+receipt with `--makepad-effective-settings-receipt-out <path>`.
+
 Live evidence, including runtime processor-module metrics, is validated with:
 
 ```powershell

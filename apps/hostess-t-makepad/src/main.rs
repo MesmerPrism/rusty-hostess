@@ -6,6 +6,7 @@ mod acamera_sys;
 mod android_camera_probe;
 mod camera_pair;
 mod camera_texture_path;
+mod makepad_effective_settings;
 #[allow(dead_code, unused_imports)]
 mod makepad_runtime_config;
 mod manifold_breath_feedback;
@@ -2902,6 +2903,12 @@ impl App {
         self.shell_contract_read = shell_contract::read_selected_makepad_shell_contract();
         let _ = shell_contract::write_selected_makepad_shell_contract_read_receipt(
             &self.shell_contract_read,
+        );
+        let effective_settings =
+            makepad_effective_settings::read_selected_makepad_effective_settings();
+        emit_marker_line(&effective_settings.marker_line("startup"));
+        let _ = makepad_effective_settings::write_selected_makepad_effective_settings_receipt(
+            &effective_settings,
         );
         self.shell_xr_runtime = ShellXrRuntimeState::registered_xr_shell();
         self.refresh_hostess_shell_runtime_capability_receipt();
