@@ -23,8 +23,8 @@ impl StereoEye {
 
     pub(crate) fn video_id(self) -> LiveId {
         match self {
-            Self::Left => live_id!(rusty_xr_makepad_left_camera_import_probe),
-            Self::Right => live_id!(rusty_xr_makepad_right_camera_import_probe),
+            Self::Left => live_id!(rusty_makepad_left_camera_import_probe),
+            Self::Right => live_id!(rusty_makepad_right_camera_import_probe),
         }
     }
 

@@ -201,21 +201,21 @@ unsafe fn run_camera_probe_with_manager(
 
 fn emit_metadata_marker(body: &str) {
     emit_marker_line(&format!(
-        "RUSTY_XR_MAKEPAD_CAMERA2_METADATA schema=rusty.xr.makepad-camera2.metadata.v1 {}",
+        "RUSTY_MAKEPAD_CAMERA2_METADATA schema=rusty.gui.makepad.camera2_metadata.v1 {}",
         body
     ));
 }
 
 fn emit_acquisition_marker(body: &str) {
     emit_marker_line(&format!(
-        "RUSTY_XR_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.xr.makepad-camera2.acquisition.v1 {}",
+        "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 {}",
         body
     ));
 }
 
 fn emit_stereo_projection_marker(body: &str) {
     emit_marker_line(&format!(
-        "RUSTY_XR_MAKEPAD_STEREO_PROJECTION schema=rusty.xr.makepad-stereo-projection.v1 {}",
+        "RUSTY_MAKEPAD_STEREO_PROJECTION schema=rusty.gui.makepad.stereo_projection.v1 {}",
         body
     ));
 }

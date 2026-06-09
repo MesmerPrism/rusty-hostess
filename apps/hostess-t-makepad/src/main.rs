@@ -3228,7 +3228,7 @@ impl App {
             "disabled"
         };
         format!(
-            "RUSTY_XR_MAKEPAD_BREATH_FEEDBACK_CONFIG schema=rusty.xr.makepad-breath-feedback-config.v1 phase=hotload status={} enabled={} enabledRaw={} stream={} streamRaw={} receiver={} receiverRaw={} brokerHost={} brokerHostRaw={} brokerPort={} brokerPortRaw={} connectTimeoutMs={} connectTimeoutRaw={} flagsOwner=hostessctl.record_values",
+            "RUSTY_MAKEPAD_BREATH_FEEDBACK_CONFIG schema=rusty.gui.makepad.breath_feedback_config.v1 phase=hotload status={} enabled={} enabledRaw={} stream={} streamRaw={} receiver={} receiverRaw={} brokerHost={} brokerHostRaw={} brokerPort={} brokerPortRaw={} connectTimeoutMs={} connectTimeoutRaw={} flagsOwner=hostessctl.record_values",
             status,
             config.enabled,
             marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BREATH_FEEDBACK_ENABLED)),
@@ -3457,7 +3457,7 @@ impl App {
             .is_none_or(|subscriber| subscriber.config() != &config)
         {
             emit_marker_line(&format!(
-                "RUSTY_XR_MAKEPAD_BREATH_FEEDBACK_SUBSCRIBER schema=rusty.xr.makepad-breath-feedback-subscriber.v1 phase=subscribe status=ready stream={} receiver={} brokerHost={} brokerPort={} subscribeCommand=subscribe receiptCommand=breath_feedback.received receiptSchema=rusty.manifold.breath.feedback_receipt.v1",
+                "RUSTY_MAKEPAD_BREATH_FEEDBACK_SUBSCRIBER schema=rusty.gui.makepad.breath_feedback_subscriber.v1 phase=subscribe status=ready stream={} receiver={} brokerHost={} brokerPort={} subscribeCommand=subscribe receiptCommand=breath_feedback.received receiptSchema=rusty.manifold.breath.feedback_receipt.v1",
                 marker_token(&config.stream_id),
                 marker_token(&config.receiver_id),
                 marker_token(&config.broker_host),
@@ -3615,7 +3615,7 @@ impl App {
             .is_none_or(|publisher| publisher.config() != &config)
         {
             emit_marker_line(&format!(
-                "RUSTY_XR_MAKEPAD_CONTROLLER_POSE_PROVIDER schema=rusty.xr.makepad-controller-pose-provider.v1 phase=configure status=ready stream={} source={} controller={} poseKind={} brokerHost={} brokerPort={} sampleHz={:.3} providerBoundary=stream.motion.object_pose sourceAgnostic=true controllerSpecificEstimator=false",
+                "RUSTY_MAKEPAD_CONTROLLER_POSE_PROVIDER schema=rusty.gui.makepad.controller_pose_provider.v1 phase=configure status=ready stream={} source={} controller={} poseKind={} brokerHost={} brokerPort={} sampleHz={:.3} providerBoundary=stream.motion.object_pose sourceAgnostic=true controllerSpecificEstimator=false",
                 marker_token(&config.stream_id),
                 marker_token(&config.source_id),
                 marker_token(&config.controller),
@@ -3677,7 +3677,7 @@ impl App {
             || self.manifold_pose_published_count % 120 == 0
         {
             emit_marker_line(&format!(
-                "RUSTY_XR_MAKEPAD_CONTROLLER_POSE_PROVIDER schema=rusty.xr.makepad-controller-pose-provider.v1 phase=sample status={} stream={} sequenceId={} controller={} poseKind={} active={} tracked={} queued={} published={} dropped={} positionM={:.5},{:.5},{:.5}",
+                "RUSTY_MAKEPAD_CONTROLLER_POSE_PROVIDER schema=rusty.gui.makepad.controller_pose_provider.v1 phase=sample status={} stream={} sequenceId={} controller={} poseKind={} active={} tracked={} queued={} published={} dropped={} positionM={:.5},{:.5},{:.5}",
                 if queued { "queued" } else { "dropped" },
                 marker_token(&config.stream_id),
                 sequence_id,
@@ -4321,14 +4321,14 @@ impl App {
         }
         if cx.in_xr_mode() {
             emit_marker_line(&format!(
-                "RUSTY_XR_MAKEPAD_XR_START_FALLBACK schema=rusty.makepad.xr_start_fallback.v1 phase={} status=already_presenting directXrActivity=true",
+                "RUSTY_MAKEPAD_XR_START_FALLBACK schema=rusty.gui.makepad.xr_start_fallback.v1 phase={} status=already_presenting directXrActivity=true",
                 phase
             ));
             return;
         }
         cx.xr_start_presenting();
         emit_marker_line(&format!(
-            "RUSTY_XR_MAKEPAD_XR_START_FALLBACK schema=rusty.makepad.xr_start_fallback.v1 phase={} status=requested directXrActivity=true permissionFlowFallback=true",
+            "RUSTY_MAKEPAD_XR_START_FALLBACK schema=rusty.gui.makepad.xr_start_fallback.v1 phase={} status=requested directXrActivity=true permissionFlowFallback=true",
             phase
         ));
     }
@@ -4468,7 +4468,7 @@ impl App {
             "missing-xr-update-pose"
         };
         emit_marker_line(&format!(
-            "RUSTY_XR_MAKEPAD_FRAME_ADOPTION schema=rusty.xr.makepad-stereo-frame-adoption.v1 phase=adopt status=ok reason={} adoptionId={} leftSide={} rightSide={} leftTextureUpdateCount={} rightTextureUpdateCount={} leftPositionMs={} rightPositionMs={} leftCameraFrameSeq={} rightCameraFrameSeq={} frameSequenceDelta={} leftCameraTimestampNs={} rightCameraTimestampNs={} timestampDeltaNs={} closeTimestampMatch={} pairingStatus={} texturePath={} poseSource={} poseUpdateCount={} predictedDisplayTimeNs={} leftPoseValid={} rightPoseValid={} leftPosePosition={} rightPosePosition={} leftPoseOrientation={} rightPoseOrientation={} adoptionPolicy=latest-complete-stereo-pair panelUpdatePolicy=adopted-pair-xr-update-only",
+            "RUSTY_MAKEPAD_FRAME_ADOPTION schema=rusty.gui.makepad.stereo_frame_adoption.v1 phase=adopt status=ok reason={} adoptionId={} leftSide={} rightSide={} leftTextureUpdateCount={} rightTextureUpdateCount={} leftPositionMs={} rightPositionMs={} leftCameraFrameSeq={} rightCameraFrameSeq={} frameSequenceDelta={} leftCameraTimestampNs={} rightCameraTimestampNs={} timestampDeltaNs={} closeTimestampMatch={} pairingStatus={} texturePath={} poseSource={} poseUpdateCount={} predictedDisplayTimeNs={} leftPoseValid={} rightPoseValid={} leftPosePosition={} rightPosePosition={} leftPoseOrientation={} rightPoseOrientation={} adoptionPolicy=latest-complete-stereo-pair panelUpdatePolicy=adopted-pair-xr-update-only",
             marker_value(reason),
             adopted.adoption_id,
             adopted.left.side.label(),
@@ -6187,7 +6187,7 @@ mod tests {
 
         let marker = App::manifold_breath_feedback_config_marker_line(&config);
 
-        assert!(marker.contains("RUSTY_XR_MAKEPAD_BREATH_FEEDBACK_CONFIG"));
+        assert!(marker.contains("RUSTY_MAKEPAD_BREATH_FEEDBACK_CONFIG"));
         assert!(marker.contains("status=enabled"));
         assert!(marker.contains("enabled=true"));
         assert!(marker.contains("enabledRaw=default"));

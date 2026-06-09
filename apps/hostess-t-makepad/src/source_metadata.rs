@@ -185,7 +185,7 @@ pub(crate) fn makepad_camera_status_marker_line(
     studio_host: &str,
 ) -> String {
     format!(
-        "RUSTY_XR_MAKEPAD_CAMERA_STATUS schema=rusty.xr.makepad-camera.status.v1 phase={} profile={} transport={} renderer=makepad android_packager=cargo-makepad makepad_rev={} studio_host={}",
+        "RUSTY_MAKEPAD_CAMERA_STATUS schema=rusty.gui.makepad.camera_status.v1 phase={} profile={} transport={} renderer=makepad android_packager=cargo-makepad makepad_rev={} studio_host={}",
         phase,
         runtime_profile,
         transport_profile,
@@ -195,12 +195,12 @@ pub(crate) fn makepad_camera_status_marker_line(
 }
 
 pub(crate) fn makepad_camera2_acquisition_broker_h264_skipped_marker_line() -> &'static str {
-    "RUSTY_XR_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.xr.makepad-camera2.acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
+    "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
 }
 
 pub(crate) fn makepad_hardware_buffer_import_marker_line(body: &str) -> String {
     format!(
-        "RUSTY_XR_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.xr.makepad-hardware-buffer-import.v1 {}",
+        "RUSTY_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.gui.makepad.hardware_buffer_import.v1 {}",
         body
     )
 }
@@ -616,7 +616,7 @@ pub(crate) fn makepad_hardware_buffer_import_raw_video_event_marker_line(
     right_video_id: u64,
 ) -> String {
     format!(
-        "RUSTY_XR_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.xr.makepad-hardware-buffer-import.v1 phase=raw-video-event status=seen event={} side={} videoId={} leftVideoId={} rightVideoId={} depthClip=false environmentDepthClip=false importPlan=makepad-video-texture-event",
+        "RUSTY_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.gui.makepad.hardware_buffer_import.v1 phase=raw-video-event status=seen event={} side={} videoId={} leftVideoId={} rightVideoId={} depthClip=false environmentDepthClip=false importPlan=makepad-video-texture-event",
         event_name,
         side_label,
         video_id,
@@ -1706,7 +1706,7 @@ mod tests {
                 "185020114",
                 "studio.local"
             ),
-            "RUSTY_XR_MAKEPAD_CAMERA_STATUS schema=rusty.xr.makepad-camera.status.v1 phase=startup profile=fast-visual transport=direct-camera renderer=makepad android_packager=cargo-makepad makepad_rev=185020114 studio_host=studio.local"
+            "RUSTY_MAKEPAD_CAMERA_STATUS schema=rusty.gui.makepad.camera_status.v1 phase=startup profile=fast-visual transport=direct-camera renderer=makepad android_packager=cargo-makepad makepad_rev=185020114 studio_host=studio.local"
         );
     }
 
@@ -1714,7 +1714,7 @@ mod tests {
     fn broker_h264_camera2_skip_marker_keeps_acquisition_shape() {
         assert_eq!(
             makepad_camera2_acquisition_broker_h264_skipped_marker_line(),
-            "RUSTY_XR_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.xr.makepad-camera2.acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
+            "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
         );
     }
 
@@ -1722,7 +1722,7 @@ mod tests {
     fn hardware_buffer_import_marker_line_keeps_prefix_shape() {
         assert_eq!(
             makepad_hardware_buffer_import_marker_line("phase=complete status=ok"),
-            "RUSTY_XR_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.xr.makepad-hardware-buffer-import.v1 phase=complete status=ok"
+            "RUSTY_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.gui.makepad.hardware_buffer_import.v1 phase=complete status=ok"
         );
     }
 
@@ -2198,7 +2198,7 @@ mod tests {
                 100,
                 101,
             ),
-            "RUSTY_XR_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.xr.makepad-hardware-buffer-import.v1 phase=raw-video-event status=seen event=texture-updated side=left videoId=100 leftVideoId=100 rightVideoId=101 depthClip=false environmentDepthClip=false importPlan=makepad-video-texture-event"
+            "RUSTY_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.gui.makepad.hardware_buffer_import.v1 phase=raw-video-event status=seen event=texture-updated side=left videoId=100 leftVideoId=100 rightVideoId=101 depthClip=false environmentDepthClip=false importPlan=makepad-video-texture-event"
         );
     }
 }
