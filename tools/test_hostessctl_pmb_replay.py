@@ -547,7 +547,7 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             controller_wait_seconds=10.0,
             feedback_publish_limit=12,
             receipt_listen_seconds=6.0,
-            device_address="00:11:22:33:44:55",
+            device_address="synthetic-device-address",
             foreground_hostess=False,
         )
 
@@ -570,7 +570,7 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             controller_wait_seconds=10.0,
             feedback_publish_limit=12,
             receipt_listen_seconds=6.0,
-            device_address="00:11:22:33:44:55",
+            device_address="synthetic-device-address",
             foreground_hostess=True,
         )
 

@@ -3455,7 +3455,7 @@ class StudioStagingRequestTests(unittest.TestCase):
         receipt = adapter.build_hostess_staging_file_plan_receipt(
             acceptance_receipt,
             file_plan,
-            staging_root="S:/Work/tmp/hostess-clean-staging",
+            staging_root="public-test-root/hostess-clean-staging",
         )
 
         self.assertEqual(
@@ -3492,11 +3492,8 @@ class StudioStagingRequestTests(unittest.TestCase):
         )
         self.assertTrue(
             all(
-                str(row["destination_absolute_path"]).startswith(
-                    "S:\\Work\\tmp\\hostess-clean-staging"
-                )
-                or str(row["destination_absolute_path"]).startswith(
-                    "S:/Work/tmp/hostess-clean-staging"
+                str(row["destination_absolute_path"]).replace("\\", "/").startswith(
+                    "public-test-root/hostess-clean-staging"
                 )
                 for row in receipt["staging_files"]
             )

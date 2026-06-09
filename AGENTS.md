@@ -32,7 +32,7 @@ requirements; see `docs/LICENSING.md`.
 - Product UI.
 - Dynamic package loading.
 - Long-lived background services.
-- Private planning paths, device serials, personal package ids, or old project
+- Local-only planning paths, device serials, personal package ids, or old project
   names in committed files.
 - Lattice contract authority. Hostess can collect evidence and run adapters,
   but generic relation schemas belong in Rusty Lattice and command/session
