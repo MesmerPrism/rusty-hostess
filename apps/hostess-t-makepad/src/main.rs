@@ -6738,7 +6738,7 @@ fn emit_marker_line(line: &str) {
     }
 
     let line = marker_line_with_runtime_projection_target_fields(line);
-    let tag = CString::new("RustyXRMakepad");
+    let tag = CString::new("HostessMakepad");
     let msg = CString::new(line.as_ref());
     if let (Ok(tag), Ok(msg)) = (tag, msg) {
         unsafe {
