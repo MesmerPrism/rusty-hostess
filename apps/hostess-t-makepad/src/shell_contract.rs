@@ -35,7 +35,7 @@ pub(crate) struct MakepadShellContractReadReceipt {
     selected_shell_app_id: Option<String>,
     expected_reader_contract_schema: Option<String>,
     descriptor_fallback_used: bool,
-    legacy_rusty_xr_dependency_used: bool,
+    legacy_reference_dependency_used: bool,
     launch_started_by_reader: bool,
     platform_execution_performed: bool,
     runtime_execution_performed: bool,
@@ -71,8 +71,8 @@ impl MakepadShellContractReadReceipt {
         self.descriptor_fallback_used
     }
 
-    pub(crate) fn legacy_rusty_xr_dependency_used(&self) -> bool {
-        self.legacy_rusty_xr_dependency_used
+    pub(crate) fn legacy_reference_dependency_used(&self) -> bool {
+        self.legacy_reference_dependency_used
     }
 
     #[cfg(test)]
@@ -169,10 +169,10 @@ fn build_receipt(
         || contract
             .and_then(|payload| bool_field(payload, "descriptor_fallback_used"))
             .unwrap_or(false);
-    let legacy_rusty_xr_dependency_used = bool_field(launch, "legacy_rusty_xr_dependency_used")
+    let legacy_reference_dependency_used = bool_field(launch, "legacy_reference_dependency_used")
         .unwrap_or(false)
         || contract
-            .and_then(|payload| bool_field(payload, "legacy_rusty_xr_dependency_used"))
+            .and_then(|payload| bool_field(payload, "legacy_reference_dependency_used"))
             .unwrap_or(false);
     let selected_handoff_id = string_field(launch, "selected_handoff_id");
     let selected_shell_app_id = string_field(launch, "selected_shell_app_id");
@@ -208,9 +208,9 @@ fn build_receipt(
     add_check(
         &mut checks,
         "hostess.check.makepad_shell_contract_read.clean_route",
-        !descriptor_fallback_used && !legacy_rusty_xr_dependency_used,
+        !descriptor_fallback_used && !legacy_reference_dependency_used,
         "Makepad shell contract reader is using the clean Hostess/Manifold route",
-        "Makepad shell contract reader input used descriptor fallback or legacy Rusty-XR",
+        "Makepad shell contract reader input used descriptor fallback or legacy reference",
         "hostess.issue.makepad_shell_contract_read_legacy_or_fallback",
     );
     add_check(
@@ -284,7 +284,7 @@ fn build_receipt(
         selected_shell_app_id,
         expected_reader_contract_schema,
         descriptor_fallback_used,
-        legacy_rusty_xr_dependency_used,
+        legacy_reference_dependency_used,
         launch_started_by_reader: false,
         platform_execution_performed: false,
         runtime_execution_performed: false,
@@ -467,7 +467,7 @@ impl MakepadShellContractReadReceipt {
                 "\"selected_shell_app_id\":{},",
                 "\"expected_reader_contract_schema\":{},",
                 "\"descriptor_fallback_used\":{},",
-                "\"legacy_rusty_xr_dependency_used\":{},",
+                "\"legacy_reference_dependency_used\":{},",
                 "\"launch_started_by_reader\":{},",
                 "\"platform_execution_performed\":{},",
                 "\"runtime_execution_performed\":{},",
@@ -501,7 +501,7 @@ impl MakepadShellContractReadReceipt {
             json_option_string(self.selected_shell_app_id.as_deref()),
             json_option_string(self.expected_reader_contract_schema.as_deref()),
             json_bool(self.descriptor_fallback_used),
-            json_bool(self.legacy_rusty_xr_dependency_used),
+            json_bool(self.legacy_reference_dependency_used),
             json_bool(self.launch_started_by_reader),
             json_bool(self.platform_execution_performed),
             json_bool(self.runtime_execution_performed),
@@ -584,7 +584,7 @@ mod tests {
                     "\"issue_code\":null,",
                     "\"makepad_shell_contract_ready\":true,",
                     "\"descriptor_fallback_used\":false,",
-                    "\"legacy_rusty_xr_dependency_used\":false,",
+                    "\"legacy_reference_dependency_used\":false,",
                     "\"selected_handoff_id\":\"handoff.1\",",
                     "\"selected_shell_app_id\":\"app.makepad\"",
                     "}}"
@@ -605,7 +605,7 @@ mod tests {
                     "\"makepad_launch_handoff_ready\":true,",
                     "\"expected_reader_contract_schema\":\"{}\",",
                     "\"descriptor_fallback_used\":false,",
-                    "\"legacy_rusty_xr_dependency_used\":false,",
+                    "\"legacy_reference_dependency_used\":false,",
                     "\"selected_handoff_id\":\"handoff.1\",",
                     "\"selected_shell_app_id\":\"app.makepad\"",
                     "}}"
@@ -622,7 +622,7 @@ mod tests {
         assert_eq!(receipt.issue_code, None);
         assert!(receipt.makepad_contract_read_performed);
         assert!(!receipt.descriptor_fallback_used);
-        assert!(!receipt.legacy_rusty_xr_dependency_used);
+        assert!(!receipt.legacy_reference_dependency_used);
     }
 
     #[test]
@@ -643,7 +643,7 @@ mod tests {
                     "\"makepad_launch_handoff_ready\":true,",
                     "\"expected_reader_contract_schema\":\"{}\",",
                     "\"descriptor_fallback_used\":true,",
-                    "\"legacy_rusty_xr_dependency_used\":false,",
+                    "\"legacy_reference_dependency_used\":false,",
                     "\"selected_handoff_id\":\"handoff.1\",",
                     "\"selected_shell_app_id\":\"app.makepad\"",
                     "}}"

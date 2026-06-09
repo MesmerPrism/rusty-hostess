@@ -55,7 +55,7 @@ def hostess_makepad_shell_contract_source_ready(
         and intake_receipt.get("makepad_shell_descriptor_selected") is False
         and intake_receipt.get("manifold_shell_handoff_reviewed") is True
         and intake_receipt.get("manifold_shell_handoff_review_ready") is True
-        and intake_receipt.get("legacy_rusty_xr_dependency_used") is False
+        and intake_receipt.get("legacy_reference_dependency_used") is False
         and hostess_makepad_shell_contract_intake_no_runtime_started(intake_receipt)
     )
 
@@ -194,7 +194,7 @@ def build_hostess_makepad_shell_contract_receipt(
             if isinstance(reviewed_endpoint_ids, list)
             else 0
         ),
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "device_required": False,
         "schema_path_execution_allowed": False,
         "platform_execution_allowed": False,
@@ -404,7 +404,7 @@ def hostess_makepad_shell_launch_handoff_source_ready(
         and contract_receipt.get("descriptor_fallback_used") is False
         and contract_receipt.get("manifold_shell_handoff_selected") is True
         and contract_receipt.get("manifold_shell_handoff_review_ready") is True
-        and contract_receipt.get("legacy_rusty_xr_dependency_used") is False
+        and contract_receipt.get("legacy_reference_dependency_used") is False
         and hostess_makepad_shell_contract_receipt_no_runtime_started(
             contract_receipt
         )
@@ -513,8 +513,8 @@ def build_hostess_makepad_shell_launch_handoff_receipt(
         "descriptor_fallback_used": (
             contract_receipt.get("descriptor_fallback_used") is True
         ),
-        "legacy_rusty_xr_dependency_allowed": False,
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_allowed": False,
+        "legacy_reference_dependency_used": False,
         "manifold_shell_handoff_selected": (
             contract_receipt.get("manifold_shell_handoff_selected") is True
         ),
@@ -688,8 +688,8 @@ def validate_hostess_makepad_shell_launch_handoff_receipt(
                 == HOSTESS_MAKEPAD_SHELL_CONTRACT_RECEIPT_SCHEMA
                 and receipt.get("descriptor_fallback_allowed") is False
                 and receipt.get("descriptor_fallback_used") is False
-                and receipt.get("legacy_rusty_xr_dependency_allowed") is False
-                and receipt.get("legacy_rusty_xr_dependency_used") is False
+                and receipt.get("legacy_reference_dependency_allowed") is False
+                and receipt.get("legacy_reference_dependency_used") is False
                 and receipt.get("selected_handoff_id")
                 == contract_receipt.get("selected_handoff_id")
                 and receipt.get("selected_shell_app_id")
@@ -773,8 +773,8 @@ def validate_hostess_makepad_shell_launch_handoff_receipt(
         )
         is True,
         "descriptor_fallback_used": receipt.get("descriptor_fallback_used") is True,
-        "legacy_rusty_xr_dependency_used": (
-            receipt.get("legacy_rusty_xr_dependency_used") is True
+        "legacy_reference_dependency_used": (
+            receipt.get("legacy_reference_dependency_used") is True
         ),
         "checks": checks,
     }
@@ -807,7 +807,7 @@ def hostess_makepad_shell_launch_handoff_receipt_checks(
             status != READY_STATUS
             or (
                 contract_receipt.get("descriptor_fallback_used") is False
-                and contract_receipt.get("legacy_rusty_xr_dependency_used")
+                and contract_receipt.get("legacy_reference_dependency_used")
                 is False
                 and contract_receipt.get("manifold_shell_handoff_selected") is True
             ),
@@ -859,7 +859,7 @@ def hostess_makepad_shell_contract_receipt_checks(
                 intake_receipt.get("selected_handoff_schema")
                 == MANIFOLD_SHELL_HANDOFF_SCHEMA
                 and intake_receipt.get("makepad_shell_descriptor_selected") is False
-                and intake_receipt.get("legacy_rusty_xr_dependency_used") is False
+                and intake_receipt.get("legacy_reference_dependency_used") is False
             ),
             "Makepad contract source is the reviewed Manifold shell handoff",
             "Makepad contract source is not the reviewed Manifold shell handoff",
@@ -886,7 +886,7 @@ def hostess_makepad_shell_contract_intake_no_runtime_started(
     intake_receipt: dict[str, Any],
 ) -> bool:
     return (
-        intake_receipt.get("legacy_rusty_xr_dependency_used") is False
+        intake_receipt.get("legacy_reference_dependency_used") is False
         and intake_receipt.get("downstream_shell_runtime_started") is False
         and intake_receipt.get("device_required") is False
         and intake_receipt.get("schema_path_execution_allowed") is False
@@ -909,7 +909,7 @@ def hostess_makepad_shell_contract_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("device_required") is False
         and receipt.get("schema_path_execution_allowed") is False
         and receipt.get("platform_execution_allowed") is False
@@ -936,7 +936,7 @@ def hostess_makepad_shell_launch_handoff_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("device_required") is False
         and receipt.get("schema_path_execution_allowed") is False
         and receipt.get("platform_execution_allowed") is False

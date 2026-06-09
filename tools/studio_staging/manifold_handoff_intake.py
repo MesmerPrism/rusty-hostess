@@ -149,7 +149,7 @@ def _hostess_downstream_shell_selection_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("downstream_shell_runtime_started") is False
         and receipt.get("schema_path_execution_allowed") is False
         and receipt.get("platform_execution_allowed") is False
@@ -366,7 +366,7 @@ def build_hostess_manifold_shell_handoff_review_intake_receipt(
             if isinstance(reviewed_endpoint_ids, list)
             else 0
         ),
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "downstream_shell_runtime_started": False,
         "device_required": False,
         "schema_path_execution_allowed": False,
@@ -667,7 +667,7 @@ def hostess_manifold_shell_handoff_review_intake_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("downstream_shell_runtime_started") is False
         and receipt.get("device_required") is False
         and receipt.get("schema_path_execution_allowed") is False

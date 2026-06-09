@@ -86,9 +86,9 @@ def launch_makepad_shell_contract(
         launch_handoff.get("descriptor_fallback_used") is True
         or contract_receipt.get("descriptor_fallback_used") is True
     )
-    legacy_rusty_xr_dependency_used = (
-        launch_handoff.get("legacy_rusty_xr_dependency_used") is True
-        or contract_receipt.get("legacy_rusty_xr_dependency_used") is True
+    legacy_reference_dependency_used = (
+        launch_handoff.get("legacy_reference_dependency_used") is True
+        or contract_receipt.get("legacy_reference_dependency_used") is True
     )
     failed = [entry for entry in checks if entry["status"] == "fail"]
 
@@ -296,7 +296,7 @@ def launch_makepad_shell_contract(
         makepad_runtime_capability_receipt_pulled=makepad_runtime_capability_receipt_pulled,
         pulled_runtime_capability_receipt=pulled_runtime_capability_receipt,
         descriptor_fallback_used=descriptor_fallback_used,
-        legacy_rusty_xr_dependency_used=legacy_rusty_xr_dependency_used,
+        legacy_reference_dependency_used=legacy_reference_dependency_used,
         permission_pregrant_performed=permission_pregrant_performed,
         permission_grant_records=permission_grant_records,
         visual_profile_setprops_performed=visual_profile_setprops_performed,
@@ -480,9 +480,9 @@ def validate_makepad_shell_contract_launch_inputs(
         launch_handoff.get("descriptor_fallback_used") is True
         or contract_receipt.get("descriptor_fallback_used") is True
     )
-    legacy_rusty_xr_dependency_used = (
-        launch_handoff.get("legacy_rusty_xr_dependency_used") is True
-        or contract_receipt.get("legacy_rusty_xr_dependency_used") is True
+    legacy_reference_dependency_used = (
+        launch_handoff.get("legacy_reference_dependency_used") is True
+        or contract_receipt.get("legacy_reference_dependency_used") is True
     )
     return [
         makepad_shell_launch_check(
@@ -538,9 +538,9 @@ def validate_makepad_shell_contract_launch_inputs(
         ),
         makepad_shell_launch_check(
             "hostess.check.makepad_shell_contract_launch.clean_route",
-            not descriptor_fallback_used and not legacy_rusty_xr_dependency_used,
+            not descriptor_fallback_used and not legacy_reference_dependency_used,
             "Makepad shell launch uses the clean Hostess/Manifold route",
-            "Makepad shell launch uses descriptor fallback or legacy Rusty-XR",
+            "Makepad shell launch uses descriptor fallback or legacy reference",
             "hostess.issue.makepad_shell_contract_launch_legacy_or_fallback",
         ),
     ]
@@ -585,7 +585,7 @@ def build_makepad_shell_contract_launch_evidence(
     makepad_runtime_capability_receipt_pulled: bool,
     pulled_runtime_capability_receipt: dict[str, Any] | None,
     descriptor_fallback_used: bool,
-    legacy_rusty_xr_dependency_used: bool,
+    legacy_reference_dependency_used: bool,
     permission_pregrant_performed: bool,
     permission_grant_records: list[dict[str, Any]],
     visual_profile_setprops_performed: bool,
@@ -769,7 +769,7 @@ def build_makepad_shell_contract_launch_evidence(
             "run_as_app_private" if app_private_write_performed or makepad_shell_uses_run_as(remote_dir, args.makepad_package) else "adb_push"
         ),
         "descriptor_fallback_used": descriptor_fallback_used,
-        "legacy_rusty_xr_dependency_used": legacy_rusty_xr_dependency_used,
+        "legacy_reference_dependency_used": legacy_reference_dependency_used,
         "old_makepad_provider_route_changed": False,
         "record_values_provider_route_changed": False,
         "next_required_action": (

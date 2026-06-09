@@ -68,8 +68,8 @@ pub(crate) struct MakepadShellRuntimeCapabilityReceipt {
     left_controller_active: bool,
     right_controller_active: bool,
     last_xr_time_s: Option<f64>,
-    legacy_rusty_xr_dependency_used: bool,
-    legacy_rusty_xr_reference_only: bool,
+    legacy_reference_dependency_used: bool,
+    legacy_reference_only: bool,
     runtime_capability_receipt_written: bool,
     required_capabilities: Vec<String>,
     implemented_capabilities: Vec<String>,
@@ -143,8 +143,8 @@ impl MakepadShellRuntimeCapabilityReceipt {
                 "\"left_controller_active\":{},",
                 "\"right_controller_active\":{},",
                 "\"last_xr_time_s\":{},",
-                "\"legacy_rusty_xr_dependency_used\":{},",
-                "\"legacy_rusty_xr_reference_only\":{},",
+                "\"legacy_reference_dependency_used\":{},",
+                "\"legacy_reference_only\":{},",
                 "\"runtime_capability_receipt_written\":{},",
                 "\"required_capabilities\":{},",
                 "\"implemented_capabilities\":{},",
@@ -178,8 +178,8 @@ impl MakepadShellRuntimeCapabilityReceipt {
             json_bool(self.left_controller_active),
             json_bool(self.right_controller_active),
             json_option_f64(self.last_xr_time_s),
-            json_bool(self.legacy_rusty_xr_dependency_used),
-            json_bool(self.legacy_rusty_xr_reference_only),
+            json_bool(self.legacy_reference_dependency_used),
+            json_bool(self.legacy_reference_only),
             json_bool(self.runtime_capability_receipt_written),
             json_string_array(&self.required_capabilities),
             json_string_array(&self.implemented_capabilities),
@@ -215,7 +215,7 @@ pub(crate) fn evaluate(
         .collect::<Vec<_>>();
     let contract_read_ok = contract_read.status() == "read";
     let clean_route = !contract_read.descriptor_fallback_used()
-        && !contract_read.legacy_rusty_xr_dependency_used();
+        && !contract_read.legacy_reference_dependency_used();
 
     let (status, issue_code, next_required_action) = if !contract_read_ok {
         (
@@ -257,7 +257,7 @@ pub(crate) fn evaluate(
         "hostess.check.makepad_shell_runtime_capability.clean_route",
         clean_route,
         "Runtime capability gate is using the clean Hostess/Manifold route",
-        "Runtime capability gate saw descriptor fallback or legacy Rusty-XR dependency",
+        "Runtime capability gate saw descriptor fallback or legacy reference dependency",
         LEGACY_OR_FALLBACK_ISSUE,
     );
     add_check(
@@ -326,8 +326,8 @@ pub(crate) fn evaluate(
         left_controller_active: xr_runtime.left_controller_active(),
         right_controller_active: xr_runtime.right_controller_active(),
         last_xr_time_s: xr_runtime.last_xr_time_s(),
-        legacy_rusty_xr_dependency_used: contract_read.legacy_rusty_xr_dependency_used(),
-        legacy_rusty_xr_reference_only: true,
+        legacy_reference_dependency_used: contract_read.legacy_reference_dependency_used(),
+        legacy_reference_only: true,
         runtime_capability_receipt_written: false,
         required_capabilities: required,
         implemented_capabilities: implemented,
@@ -507,7 +507,7 @@ mod tests {
         assert!(receipt.makepad_xr_root_registered);
         assert!(!receipt.xr_update_observed);
         assert!(!receipt.controller_pose_provider_observed);
-        assert!(receipt.legacy_rusty_xr_reference_only);
+        assert!(receipt.legacy_reference_only);
         assert!(receipt
             .missing_capabilities
             .iter()

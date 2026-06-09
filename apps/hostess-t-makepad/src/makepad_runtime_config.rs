@@ -874,7 +874,7 @@ const fn projection_key(
 /// Current external spellings for projection runtime keys.
 ///
 /// These are accepted entry-point names for launch profiles, Android
-/// properties, and environment variables. Legacy Rusty-XR spellings are
+/// properties, and environment variables. Legacy `rustyxr`/`RUSTY_XR` spellings are
 /// intentionally not registered in this active Makepad settings surface.
 pub const PROJECTION_RUNTIME_KEY_ALIASES: &[RuntimeKeyAlias] = &[
     launch_alias("makepad.cameraProjectionMode", KEY_CAMERA_PROJECTION_MODE),
@@ -2120,7 +2120,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_rusty_xr_projection_aliases() {
+    fn rejects_legacy_projection_aliases() {
         for key in [
             "rustyxr.projectionDepthMeters",
             "debug.rustyxr.projection.depth.meters",

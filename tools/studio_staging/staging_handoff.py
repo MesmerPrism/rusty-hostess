@@ -1869,7 +1869,7 @@ def build_hostess_staged_payload_manifest_receipt(
         "staged_payloads_available": reviewed,
         "downstream_shell_selection_ready": reviewed and bool(target_descriptor_rows),
         "makepad_shell_selection_ready": reviewed and bool(target_descriptor_rows),
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "downstream_shell_runtime_started": False,
         "device_required": False,
         "schema_path_execution_allowed": False,
@@ -1907,7 +1907,7 @@ def build_hostess_staged_payload_manifest_receipt(
         "payload_rows": payload_rows,
         "checks": checks,
         "next_required_action": (
-            "downstream_shell_select_staged_descriptor_without_legacy_rusty_xr"
+            "downstream_shell_select_staged_descriptor_without_legacy_reference"
             if reviewed
             else "repair_or_decline_hostess_staged_payload_manifest"
         ),
@@ -2076,10 +2076,10 @@ def validate_hostess_staged_payload_manifest_receipt(
                     row.get("downstream_shell_descriptor_ready") is True
                     for row in target_descriptor_rows
                 )
-                and receipt.get("legacy_rusty_xr_dependency_used") is False
+                and receipt.get("legacy_reference_dependency_used") is False
             )
             or status == REJECTED_STATUS,
-            "Hostess staged payload manifest exposes downstream shell descriptors without legacy Rusty-XR dependency",
+            "Hostess staged payload manifest exposes downstream shell descriptors without legacy reference dependency",
             "Hostess staged payload manifest is not ready for downstream shell descriptor selection",
             "hostess.issue.hostess_staged_payload_manifest_receipt_downstream_selection",
         ),
@@ -2341,7 +2341,7 @@ def build_hostess_downstream_shell_selection_receipt(
         "selected_consumer_id": (
             selected_row.get("consumer_id") if selected_row else None
         ),
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "downstream_shell_runtime_started": False,
         "device_required": False,
         "schema_path_execution_allowed": False,
@@ -2558,7 +2558,7 @@ def validate_hostess_downstream_shell_selection_receipt(
                 and bool(matching_rows)
                 and selected_row.get("source_payload_row_id")
                 == matching_rows[0].get("payload_row_id")
-                and receipt.get("legacy_rusty_xr_dependency_used") is False
+                and receipt.get("legacy_reference_dependency_used") is False
             )
             or (
                 status == REJECTED_STATUS
@@ -2771,7 +2771,7 @@ def hostess_downstream_shell_selection_row(
         "downstream_shell_artifact_priority": downstream_shell_artifact_priority(
             selected_artifact_kind
         ),
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "downstream_shell_runtime_started": False,
         "device_required": False,
         "schema_path_execution_allowed": False,
@@ -2957,7 +2957,7 @@ def hostess_downstream_shell_selection_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("downstream_shell_runtime_started") is False
         and receipt.get("device_required") is False
         and receipt.get("schema_path_execution_allowed") is False
@@ -2984,7 +2984,7 @@ def hostess_downstream_shell_selection_row_no_runtime_started(
     row: dict[str, Any],
 ) -> bool:
     return (
-        row.get("legacy_rusty_xr_dependency_used") is False
+        row.get("legacy_reference_dependency_used") is False
         and row.get("downstream_shell_runtime_started") is False
         and row.get("device_required") is False
         and row.get("schema_path_execution_allowed") is False
@@ -3147,7 +3147,7 @@ def hostess_staged_payload_manifest_rows(
                     if descriptor_ready
                     else None
                 ),
-                "legacy_rusty_xr_dependency_used": False,
+                "legacy_reference_dependency_used": False,
                 "downstream_shell_runtime_started": False,
                 "device_required": False,
                 "schema_path_execution_allowed": False,
@@ -3286,7 +3286,7 @@ def hostess_staged_payload_manifest_receipt_no_runtime_started(
     receipt: dict[str, Any],
 ) -> bool:
     return (
-        receipt.get("legacy_rusty_xr_dependency_used") is False
+        receipt.get("legacy_reference_dependency_used") is False
         and receipt.get("downstream_shell_runtime_started") is False
         and receipt.get("device_required") is False
         and receipt.get("schema_path_execution_allowed") is False
@@ -3311,7 +3311,7 @@ def hostess_staged_payload_manifest_receipt_no_runtime_started(
 
 def hostess_staged_payload_row_no_runtime_started(row: dict[str, Any]) -> bool:
     return (
-        row.get("legacy_rusty_xr_dependency_used") is False
+        row.get("legacy_reference_dependency_used") is False
         and row.get("downstream_shell_runtime_started") is False
         and row.get("device_required") is False
         and row.get("schema_path_execution_allowed") is False

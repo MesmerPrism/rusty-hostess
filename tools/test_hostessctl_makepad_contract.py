@@ -92,7 +92,7 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                 "files/hostess-t/shell/makepad-shell-runtime-capability-receipt.json",
             )
             self.assertFalse(evidence["descriptor_fallback_used"])
-            self.assertFalse(evidence["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(evidence["legacy_reference_dependency_used"])
 
     def test_plan_only_rejects_descriptor_fallback_launch(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -119,7 +119,7 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                 "hostess.issue.makepad_shell_contract_launch_legacy_or_fallback",
             )
             self.assertTrue(evidence["descriptor_fallback_used"])
-            self.assertFalse(evidence["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(evidence["legacy_reference_dependency_used"])
             self.assertFalse(evidence["adb_execution_performed"])
             self.assertEqual(validation["status"], "fail")
 
@@ -378,7 +378,7 @@ def accepted_contract_receipt() -> dict[str, object]:
         "makepad_contract_input_accepted": True,
         "makepad_shell_contract_ready": True,
         "descriptor_fallback_used": False,
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "manifold_shell_handoff_selected": True,
         "manifold_shell_handoff_review_ready": True,
         "selected_handoff_id": "manifold.shell_handoff.test",
@@ -399,7 +399,7 @@ def ready_launch_handoff(contract_path: Path) -> dict[str, object]:
         "makepad_launch_request_ready": True,
         "expected_reader_contract_schema": "rusty.hostess.makepad_shell_contract_receipt.v1",
         "descriptor_fallback_used": False,
-        "legacy_rusty_xr_dependency_used": False,
+        "legacy_reference_dependency_used": False,
         "selected_handoff_id": "manifold.shell_handoff.test",
         "selected_shell_app_id": "app.hostess_t_makepad",
     }

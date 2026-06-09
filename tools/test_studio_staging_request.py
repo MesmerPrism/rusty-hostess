@@ -3745,7 +3745,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertTrue(manifest["staged_payloads_available"])
             self.assertTrue(manifest["downstream_shell_selection_ready"])
             self.assertTrue(manifest["makepad_shell_selection_ready"])
-            self.assertFalse(manifest["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(manifest["legacy_reference_dependency_used"])
             self.assertFalse(manifest["downstream_shell_runtime_started"])
             self.assertFalse(manifest["copy_started"])
             self.assertFalse(manifest["install_started"])
@@ -3890,7 +3890,7 @@ class StudioStagingRequestTests(unittest.TestCase):
                 "rusty-studio-desktop-shell",
             )
             self.assertTrue(Path(selection["selected_payload_path"]).exists())
-            self.assertFalse(selection["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(selection["legacy_reference_dependency_used"])
             self.assertFalse(selection["downstream_shell_runtime_started"])
             self.assertFalse(selection["copy_started"])
             self.assertFalse(selection["install_started"])
@@ -3969,7 +3969,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertEqual(receipt["reviewed_command_count"], 2)
             self.assertEqual(receipt["reviewed_transport_count"], 1)
             self.assertEqual(receipt["reviewed_endpoint_count"], 1)
-            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(receipt["legacy_reference_dependency_used"])
             self.assertFalse(receipt["downstream_shell_runtime_started"])
             self.assertFalse(receipt["launch_started"])
             self.assertFalse(receipt["runtime_execution_performed"])
@@ -4272,7 +4272,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertEqual(receipt["reviewed_command_count"], 2)
             self.assertEqual(receipt["reviewed_transport_count"], 1)
             self.assertEqual(receipt["reviewed_endpoint_count"], 1)
-            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(receipt["legacy_reference_dependency_used"])
             self.assertFalse(receipt["launch_started"])
             self.assertFalse(receipt["makepad_runtime_started"])
             self.assertFalse(receipt["runtime_execution_performed"])
@@ -4349,7 +4349,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             )
             self.assertFalse(receipt["descriptor_fallback_allowed"])
             self.assertFalse(receipt["descriptor_fallback_used"])
-            self.assertFalse(receipt["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(receipt["legacy_reference_dependency_used"])
             self.assertEqual(
                 receipt["selected_handoff_id"],
                 contract["selected_handoff_id"],
@@ -4379,7 +4379,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertTrue(validation["makepad_contract_reader_ready"])
             self.assertTrue(validation["makepad_launch_handoff_ready"])
             self.assertFalse(validation["descriptor_fallback_used"])
-            self.assertFalse(validation["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(validation["legacy_reference_dependency_used"])
 
     def test_hostess_makepad_shell_contract_rejects_descriptor_and_runtime_drift(
         self,
@@ -4947,7 +4947,7 @@ class StudioStagingRequestTests(unittest.TestCase):
             self.assertTrue(selection["manifold_shell_handoff_selected"])
             self.assertFalse(selection["makepad_shell_descriptor_selected"])
             self.assertTrue(Path(selection["selected_payload_path"]).exists())
-            self.assertFalse(selection["legacy_rusty_xr_dependency_used"])
+            self.assertFalse(selection["legacy_reference_dependency_used"])
             self.assertFalse(selection["launch_started"])
             self.assertFalse(selection["runtime_execution_performed"])
             self.assertEqual(validation["status"], "pass")

@@ -4613,7 +4613,7 @@ def build_pmb_shell_handoff_validation_evidence(
             "live_sensor_used": False,
             "downstream_shell_runtime_used": False,
             "legacy_app_dependency_used": False,
-            "legacy_rusty_xr_repo_used": False,
+            "legacy_reference_repo_used": False,
         },
         "shell_handoff": {
             "handoff_artifact": handoff_path.name,
@@ -4743,7 +4743,7 @@ def validate_pmb_shell_handoff_validation_evidence(evidence: dict[str, Any]) -> 
             and execution.get("broker_transport_used") is False
             and execution.get("downstream_shell_runtime_used") is False
             and execution.get("legacy_app_dependency_used") is False
-            and execution.get("legacy_rusty_xr_repo_used") is False,
+            and execution.get("legacy_reference_repo_used") is False,
             "PMB shell handoff validation avoided runtime shell, device, transport, and legacy repo dependencies",
             "validation.pmb_shell_handoff_failed",
         ),
@@ -5421,7 +5421,7 @@ def write_pmb_shell_handoff_host_run_evidence(
             "validation.check.pmb_shell_handoff_clean_boundary",
             execution.get("runtime_execution_performed") is False
             and execution.get("legacy_app_dependency_used") is False
-            and execution.get("legacy_rusty_xr_repo_used") is False
+            and execution.get("legacy_reference_repo_used") is False
             and execution.get("downstream_shell_runtime_used") is False,
             "PMB shell handoff host-run evidence records a package-only validation boundary",
             "validation.pmb_shell_handoff_failed",
@@ -5463,7 +5463,7 @@ def write_pmb_shell_handoff_host_run_evidence(
             "runtime_execution_performed": execution.get("runtime_execution_performed"),
             "broker_transport_used": execution.get("broker_transport_used"),
             "legacy_app_dependency_used": execution.get("legacy_app_dependency_used"),
-            "legacy_rusty_xr_repo_used": execution.get("legacy_rusty_xr_repo_used"),
+            "legacy_reference_repo_used": execution.get("legacy_reference_repo_used"),
         },
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",

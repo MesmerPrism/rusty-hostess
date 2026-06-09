@@ -205,7 +205,7 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             self.assertFalse(evidence["execution"]["broker_transport_used"])
             self.assertFalse(evidence["execution"]["downstream_shell_runtime_used"])
             self.assertFalse(evidence["execution"]["legacy_app_dependency_used"])
-            self.assertFalse(evidence["execution"]["legacy_rusty_xr_repo_used"])
+            self.assertFalse(evidence["execution"]["legacy_reference_repo_used"])
             binding_pairs = {
                 (binding["stream_id"], binding["direction"])
                 for binding in evidence["shell_handoff"]["binding_pairs"]
