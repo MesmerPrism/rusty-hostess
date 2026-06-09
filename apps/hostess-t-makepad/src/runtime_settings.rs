@@ -648,7 +648,7 @@ mod tests {
 
         apply_effective_settings_runtime_overrides(&mut config, &receipt);
 
-        assert_eq!(runtime_float(&config, KEY_XR_RENDER_SCALE), 0.9);
+        assert!((runtime_float(&config, KEY_XR_RENDER_SCALE) - 0.9).abs() < 0.000_001);
     }
 
     fn write_temp_json(name: &str, text: &str) -> PathBuf {

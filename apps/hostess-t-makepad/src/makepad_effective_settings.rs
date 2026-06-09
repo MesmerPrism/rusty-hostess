@@ -1,6 +1,6 @@
 use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
-use rusty_quest_makepad_camera_shell::CameraShellReplayConfig;
+use rusty_quest_makepad_camera_shell::CameraShellEffectiveConfig;
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +12,6 @@ const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
 const SCHEMA_ISSUE: &str = "hostess.issue.makepad_effective_settings_schema";
 const MESH_REPLAY_ADAPTER: &str = "rusty-quest-makepad-camera-shell";
-const RENDER_SCALE_SETTING: &str = "makepad.render.scale";
 
 #[cfg(target_os = "android")]
 const ANDROID_INTERNAL_SETTINGS_ROOT: &str =
@@ -44,6 +43,9 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     mesh_replay_speed: Option<f64>,
     mesh_replay_opacity: Option<f64>,
     render_scale: Option<f64>,
+    collision_enabled: Option<bool>,
+    sdf_adf_overlay_mode: Option<String>,
+    particles_enabled: Option<bool>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
 }
@@ -51,7 +53,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -75,6 +77,9 @@ impl MakepadEffectiveSettingsReceipt {
             marker_f64(self.mesh_replay_speed),
             marker_f64(self.mesh_replay_opacity),
             marker_f64(self.render_scale),
+            marker_bool(self.collision_enabled),
+            marker_option(self.sdf_adf_overlay_mode.as_deref()),
+            marker_bool(self.particles_enabled),
             self.legacy_settings_fallback_used,
         )
     }
@@ -107,6 +112,9 @@ impl MakepadEffectiveSettingsReceipt {
             "mesh_replay_speed": self.mesh_replay_speed,
             "mesh_replay_opacity": self.mesh_replay_opacity,
             "render_scale": self.render_scale,
+            "collision_enabled": self.collision_enabled,
+            "sdf_adf_overlay_mode": self.sdf_adf_overlay_mode,
+            "particles_enabled": self.particles_enabled,
             "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
             "receipt_written": self.receipt_written,
         })
@@ -178,15 +186,23 @@ fn ready_receipt(
         mesh_replay_source,
         mesh_replay_speed,
         mesh_replay_opacity,
-    ) = match CameraShellReplayConfig::from_effective_settings_json(raw_json) {
+        render_scale,
+        collision_enabled,
+        sdf_adf_overlay_mode,
+        particles_enabled,
+    ) = match CameraShellEffectiveConfig::from_effective_settings_json(raw_json) {
         Ok(config) => (
             Some("ready".to_string()),
             None,
             true,
-            Some(config.enabled),
-            Some(config.source),
-            Some(f64::from(config.speed)),
-            Some(f64::from(config.opacity)),
+            Some(config.replay.enabled),
+            Some(config.replay.source),
+            Some(f64::from(config.replay.speed)),
+            Some(f64::from(config.replay.opacity)),
+            Some(f64::from(config.render_scale)),
+            Some(config.collision_enabled),
+            Some(config.sdf_adf_overlay_mode.as_str().to_string()),
+            Some(config.particles_enabled),
         ),
         Err(error) => (
             Some("rejected".to_string()),
@@ -196,9 +212,12 @@ fn ready_receipt(
             None,
             None,
             None,
+            None,
+            None,
+            None,
+            None,
         ),
     };
-    let render_scale = number_setting(&report, RENDER_SCALE_SETTING);
 
     MakepadEffectiveSettingsReceipt {
         status: "ready".to_string(),
@@ -222,6 +241,9 @@ fn ready_receipt(
         mesh_replay_speed,
         mesh_replay_opacity,
         render_scale,
+        collision_enabled,
+        sdf_adf_overlay_mode,
+        particles_enabled,
         legacy_settings_fallback_used: false,
         receipt_written: false,
     }
@@ -329,18 +351,10 @@ fn marker_f64(value: Option<f64>) -> String {
     }
 }
 
-fn number_setting(report: &EffectiveSettingsReport, setting_id: &str) -> Option<f64> {
-    setting_value(report, setting_id)
-        .and_then(Value::as_f64)
-        .filter(|value| value.is_finite())
-}
-
-fn setting_value<'a>(report: &'a EffectiveSettingsReport, setting_id: &str) -> Option<&'a Value> {
-    report
-        .settings
-        .iter()
-        .find(|setting| setting.setting_id == setting_id)
-        .map(|setting| &setting.value)
+fn marker_bool(value: Option<bool>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
 }
 
 #[cfg(test)]
@@ -375,7 +389,12 @@ mod tests {
         );
         assert_eq!(receipt.mesh_replay_speed, Some(1.5));
         assert_eq!(receipt.mesh_replay_opacity, Some(0.75));
-        assert_eq!(receipt.render_scale, Some(0.9));
+        assert!(receipt
+            .render_scale
+            .is_some_and(|value| (value - 0.9).abs() < 0.000_001));
+        assert_eq!(receipt.collision_enabled, Some(false));
+        assert_eq!(receipt.sdf_adf_overlay_mode.as_deref(), Some("off"));
+        assert_eq!(receipt.particles_enabled, Some(false));
         assert!(!receipt.legacy_settings_fallback_used);
 
         let marker = receipt.marker_line("test");
@@ -385,6 +404,9 @@ mod tests {
         assert!(marker.contains("meshReplayAdapter=rusty-quest-makepad-camera-shell"));
         assert!(marker.contains("meshReplayAdapterStatus=ready"));
         assert!(marker.contains("renderScale=0.900"));
+        assert!(marker.contains("collisionEnabled=false"));
+        assert!(marker.contains("sdfAdfOverlayMode=off"));
+        assert!(marker.contains("particlesEnabled=false"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
     }

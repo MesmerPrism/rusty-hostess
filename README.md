@@ -106,7 +106,8 @@ receipt with `--makepad-effective-settings-receipt-out <path>`. Mesh replay
 settings are interpreted through the active `rusty-quest-makepad-camera-shell`
 adapter instead of a Hostess-local parser. The `makepad.render.scale` value is
 applied as the Hostess `xr_render_scale` runtime override when the report is
-configured.
+configured. Collision, SDF/ADF, and particle values are recorded in the receipt
+as adapter-parsed readback until their runtime paths are wired into the app.
 
 Live evidence, including runtime processor-module metrics, is validated with:
 
