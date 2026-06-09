@@ -78,7 +78,7 @@ pub fn start_camera_probe_once() {
     }
 
     if let Err(error) = std::thread::Builder::new()
-        .name("rusty-xr-camera2-probe".to_string())
+        .name("hostess-camera2-probe".to_string())
         .spawn(run_camera_probe_thread)
     {
         emit_acquisition_marker(&format!(
