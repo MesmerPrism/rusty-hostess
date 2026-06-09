@@ -104,7 +104,9 @@ instead of adding another local resolver.
 `RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS` receipt evidence and can write the
 receipt with `--makepad-effective-settings-receipt-out <path>`. Mesh replay
 settings are interpreted through the active `rusty-quest-makepad-camera-shell`
-adapter instead of a Hostess-local parser.
+adapter instead of a Hostess-local parser. The `makepad.render.scale` value is
+applied as the Hostess `xr_render_scale` runtime override when the report is
+configured.
 
 Live evidence, including runtime processor-module metrics, is validated with:
 

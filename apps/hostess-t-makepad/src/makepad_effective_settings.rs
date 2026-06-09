@@ -12,6 +12,7 @@ const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
 const SCHEMA_ISSUE: &str = "hostess.issue.makepad_effective_settings_schema";
 const MESH_REPLAY_ADAPTER: &str = "rusty-quest-makepad-camera-shell";
+const RENDER_SCALE_SETTING: &str = "makepad.render.scale";
 
 #[cfg(target_os = "android")]
 const ANDROID_INTERNAL_SETTINGS_ROOT: &str =
@@ -42,6 +43,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     mesh_replay_source: Option<String>,
     mesh_replay_speed: Option<f64>,
     mesh_replay_opacity: Option<f64>,
+    render_scale: Option<f64>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
 }
@@ -49,7 +51,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -72,8 +74,13 @@ impl MakepadEffectiveSettingsReceipt {
             marker_option(self.mesh_replay_source.as_deref()),
             marker_f64(self.mesh_replay_speed),
             marker_f64(self.mesh_replay_opacity),
+            marker_f64(self.render_scale),
             self.legacy_settings_fallback_used,
         )
+    }
+
+    pub(crate) fn render_scale(&self) -> Option<f64> {
+        self.render_scale
     }
 
     fn to_json_value(&self) -> Value {
@@ -99,6 +106,7 @@ impl MakepadEffectiveSettingsReceipt {
             "mesh_replay_source": self.mesh_replay_source,
             "mesh_replay_speed": self.mesh_replay_speed,
             "mesh_replay_opacity": self.mesh_replay_opacity,
+            "render_scale": self.render_scale,
             "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
             "receipt_written": self.receipt_written,
         })
@@ -190,6 +198,7 @@ fn ready_receipt(
             None,
         ),
     };
+    let render_scale = number_setting(&report, RENDER_SCALE_SETTING);
 
     MakepadEffectiveSettingsReceipt {
         status: "ready".to_string(),
@@ -212,6 +221,7 @@ fn ready_receipt(
         mesh_replay_source,
         mesh_replay_speed,
         mesh_replay_opacity,
+        render_scale,
         legacy_settings_fallback_used: false,
         receipt_written: false,
     }
@@ -319,6 +329,20 @@ fn marker_f64(value: Option<f64>) -> String {
     }
 }
 
+fn number_setting(report: &EffectiveSettingsReport, setting_id: &str) -> Option<f64> {
+    setting_value(report, setting_id)
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+}
+
+fn setting_value<'a>(report: &'a EffectiveSettingsReport, setting_id: &str) -> Option<&'a Value> {
+    report
+        .settings
+        .iter()
+        .find(|setting| setting.setting_id == setting_id)
+        .map(|setting| &setting.value)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -351,6 +375,7 @@ mod tests {
         );
         assert_eq!(receipt.mesh_replay_speed, Some(1.5));
         assert_eq!(receipt.mesh_replay_opacity, Some(0.75));
+        assert_eq!(receipt.render_scale, Some(0.9));
         assert!(!receipt.legacy_settings_fallback_used);
 
         let marker = receipt.marker_line("test");
@@ -359,6 +384,7 @@ mod tests {
         assert!(marker.contains("meshReplaySettingsPresent=true"));
         assert!(marker.contains("meshReplayAdapter=rusty-quest-makepad-camera-shell"));
         assert!(marker.contains("meshReplayAdapterStatus=ready"));
+        assert!(marker.contains("renderScale=0.900"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
     }

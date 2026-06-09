@@ -1,3 +1,4 @@
+use crate::makepad_effective_settings::MakepadEffectiveSettingsReceipt;
 #[cfg(any(target_os = "android", test))]
 use crate::makepad_runtime_config::{AndroidPropertyPrefix, RuntimeKey};
 use crate::makepad_runtime_config::{RuntimeConfig, RuntimeConfigSource, RuntimeValue};
@@ -370,6 +371,9 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         ),
         RuntimeConfigSource::Environment,
     );
+    let effective_settings =
+        crate::makepad_effective_settings::read_selected_makepad_effective_settings();
+    apply_effective_settings_runtime_overrides(&mut config, &effective_settings);
     set_runtime_text(
         &mut config,
         KEY_RENDERER,
@@ -401,6 +405,23 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         RuntimeConfigSource::Environment,
     );
     config
+}
+
+pub(crate) fn apply_effective_settings_runtime_overrides(
+    config: &mut RuntimeConfig,
+    receipt: &MakepadEffectiveSettingsReceipt,
+) {
+    if let Some(render_scale) = receipt
+        .render_scale()
+        .filter(|value| value.is_finite() && *value > 0.0)
+    {
+        set_runtime_float(
+            config,
+            KEY_XR_RENDER_SCALE,
+            render_scale,
+            RuntimeConfigSource::File,
+        );
+    }
 }
 
 fn set_runtime_text(
@@ -594,6 +615,12 @@ pub(crate) fn marker_token(value: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    const EFFECTIVE_SETTINGS_FIXTURE: &str = include_str!(
+        "../../../../rusty-quest-makepad/fixtures/effective-settings/mesh-replay.effective-settings.json"
+    );
 
     #[test]
     fn runtime_property_names_use_rusty_prefix() {
@@ -601,5 +628,38 @@ mod tests {
             runtime_property_names(KEY_MANIFOLD_BROKER_HOST),
             ["debug.rusty.manifold.broker.host".to_string()]
         );
+    }
+
+    #[test]
+    fn effective_settings_render_scale_overrides_environment_layer() {
+        let path = write_temp_json(
+            "effective-settings-render-scale",
+            EFFECTIVE_SETTINGS_FIXTURE,
+        );
+        let receipt =
+            crate::makepad_effective_settings::read_makepad_effective_settings_from_path(&path);
+        let mut config = RuntimeConfig::new();
+        set_runtime_float(
+            &mut config,
+            KEY_XR_RENDER_SCALE,
+            1.25,
+            RuntimeConfigSource::Environment,
+        );
+
+        apply_effective_settings_runtime_overrides(&mut config, &receipt);
+
+        assert_eq!(runtime_float(&config, KEY_XR_RENDER_SCALE), 0.9);
+    }
+
+    fn write_temp_json(name: &str, text: &str) -> PathBuf {
+        let stamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock before Unix epoch")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("{name}-{stamp}"));
+        std::fs::create_dir_all(&root).expect("create temp root");
+        let path = root.join("settings.json");
+        std::fs::write(&path, text).expect("write effective settings fixture");
+        path
     }
 }
