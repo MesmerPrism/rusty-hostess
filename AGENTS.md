@@ -132,3 +132,14 @@ that static small billboards stayed render-light through the current
 `xrRepaintTextureUploadBytes=0`, and GPU repaint about `0.40`-`1.19 ms`.
 Matter worker time remained the bottleneck; a `16384` source-particle run
 emitted `16384` Matter rows but drew `8192` instances with `droppedRows=8192`.
+For compute-focused density runs, patch generated/local effective settings with
+`makepad.particles.distance_refresh_policy=disabled` as well. Hostess should
+echo this as `matterSurfaceParticleDistanceRefreshPolicy=disabled`; Matter
+runtime markers should show `particleDistanceSamples=0`,
+`particleRefreshSamples=0`, and `particleClosestSamples` equal to the source
+particle count. The 2026-06-10 disabled-refresh Rayon/4 sweep at
+`1024` through `32768` particles kept camera/collision/SDF off,
+`animation_mode=static-ring`, and `size_scale=0.2`. App-owned cadence stayed
+`90.0` Hz, texture upload bytes stayed `0`, and GPU repaint stayed about
+`0.4`-`1.2 ms`; the remaining scaling pressure was Matter particle stepping
+plus CPU payload/visual packing, not GPU rendering.
