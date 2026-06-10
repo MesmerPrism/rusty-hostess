@@ -2,8 +2,8 @@ use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
 use rusty_quest_makepad_camera_shell::{
     camera_shell_runtime_bundle_from_effective_settings_json_with_replay_asset_dir,
-    CameraShellEffectiveConfig, MeshReplayRuntime, QuestMakepadMatterSurfaceRuntime,
-    SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
+    CameraShellEffectiveConfig, MeshReplayRuntime, ParticleRenderAnimationMode,
+    QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -55,6 +55,8 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     sdf_adf_unsupported_future_mode: Option<bool>,
     particles_enabled: Option<bool>,
     particle_render_draw_limit: Option<usize>,
+    particle_render_animation_mode: Option<String>,
+    particle_render_size_scale: Option<f64>,
     matter_surface_native_runtime_configured: Option<bool>,
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
@@ -96,6 +98,8 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) render_scale: Option<f32>,
     pub(crate) camera_streaming_enabled: Option<bool>,
     pub(crate) particle_render_draw_limit: Option<usize>,
+    pub(crate) particle_render_animation_mode: Option<ParticleRenderAnimationMode>,
+    pub(crate) particle_render_size_scale: Option<f32>,
     pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
     pub(crate) matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
@@ -121,7 +125,7 @@ impl MakepadEffectiveSettingsIdentity {
 impl MakepadMeshReplayRuntimeSelection {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} particleRenderDrawLimit={}",
+            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={}",
             REPLAY_MARKER_PREFIX,
             REPLAY_SCHEMA_ID,
             marker_token(phase),
@@ -134,6 +138,11 @@ impl MakepadMeshReplayRuntimeSelection {
                 .unwrap_or_else(|| "none".to_string()),
             self.matter_surface_runtime.is_some(),
             marker_usize(self.particle_render_draw_limit),
+            marker_option(
+                self.particle_render_animation_mode
+                    .map(ParticleRenderAnimationMode::as_str)
+            ),
+            marker_f32(self.particle_render_size_scale),
         )
     }
 }
@@ -141,7 +150,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -172,6 +181,8 @@ impl MakepadEffectiveSettingsReceipt {
             marker_bool(self.sdf_adf_unsupported_future_mode),
             marker_bool(self.particles_enabled),
             marker_usize(self.particle_render_draw_limit),
+            marker_option(self.particle_render_animation_mode.as_deref()),
+            marker_f64(self.particle_render_size_scale),
             marker_bool(self.matter_surface_native_runtime_configured),
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
@@ -221,6 +232,8 @@ impl MakepadEffectiveSettingsReceipt {
             "sdf_adf_unsupported_future_mode": self.sdf_adf_unsupported_future_mode,
             "particles_enabled": self.particles_enabled,
             "particle_render_draw_limit": self.particle_render_draw_limit,
+            "particle_render_animation_mode": self.particle_render_animation_mode,
+            "particle_render_size_scale": self.particle_render_size_scale,
             "matter_surface_native_runtime_configured": self.matter_surface_native_runtime_configured,
             "matter_surface_particle_count": self.matter_surface_particle_count,
             "matter_surface_leaf_triangle_count": self.matter_surface_leaf_triangle_count,
@@ -291,6 +304,8 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             render_scale: None,
             camera_streaming_enabled: None,
             particle_render_draw_limit: None,
+            particle_render_animation_mode: None,
+            particle_render_size_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
@@ -313,6 +328,8 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 render_scale: None,
                 camera_streaming_enabled: None,
                 particle_render_draw_limit: None,
+                particle_render_animation_mode: None,
+                particle_render_size_scale: None,
                 feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
                 matter_surface_runtime: None,
@@ -338,6 +355,12 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 particle_render_draw_limit: Some(
                     bundle.effective_config.particle_render_draw_limit,
                 ),
+                particle_render_animation_mode: Some(
+                    bundle.effective_config.particle_render_animation_mode,
+                ),
+                particle_render_size_scale: Some(
+                    bundle.effective_config.particle_render_size_scale,
+                ),
                 feature_uniforms,
                 runtime: Some(bundle.mesh_replay_runtime),
                 matter_surface_runtime: Some(bundle.matter_surface_runtime),
@@ -352,6 +375,8 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             render_scale: None,
             camera_streaming_enabled: None,
             particle_render_draw_limit: None,
+            particle_render_animation_mode: None,
+            particle_render_size_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
@@ -400,6 +425,8 @@ fn ready_receipt(
         sdf_adf_unsupported_future_mode,
         particles_enabled,
         particle_render_draw_limit,
+        particle_render_animation_mode,
+        particle_render_size_scale,
         matter_surface_native_runtime_configured,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
@@ -425,6 +452,8 @@ fn ready_receipt(
                 Some(runtime_mode.is_unsupported_adf_placeholder()),
                 Some(config.particles_enabled),
                 Some(config.particle_render_draw_limit),
+                Some(config.particle_render_animation_mode.as_str().to_string()),
+                Some(f64::from(config.particle_render_size_scale)),
                 Some(config.matter_surface.enabled),
                 Some(config.matter_surface.particle_count),
                 Some(config.matter_surface.leaf_triangle_count),
@@ -443,6 +472,8 @@ fn ready_receipt(
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
+            None,
             None,
             None,
             None,
@@ -493,6 +524,8 @@ fn ready_receipt(
         sdf_adf_unsupported_future_mode,
         particles_enabled,
         particle_render_draw_limit,
+        particle_render_animation_mode,
+        particle_render_size_scale,
         matter_surface_native_runtime_configured,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
@@ -614,6 +647,13 @@ fn marker_f64(value: Option<f64>) -> String {
     }
 }
 
+fn marker_f32(value: Option<f32>) -> String {
+    match value {
+        Some(value) if value.is_finite() => format!("{value:.3}"),
+        _ => "none".to_string(),
+    }
+}
+
 fn marker_bool(value: Option<bool>) -> String {
     value
         .map(|value| value.to_string())
@@ -675,6 +715,11 @@ mod tests {
         assert_eq!(receipt.sdf_adf_unsupported_future_mode, Some(false));
         assert_eq!(receipt.particles_enabled, Some(true));
         assert_eq!(receipt.particle_render_draw_limit, Some(192));
+        assert_eq!(
+            receipt.particle_render_animation_mode.as_deref(),
+            Some("procedural-morph-ring")
+        );
+        assert_eq!(receipt.particle_render_size_scale, Some(1.0));
         assert_eq!(receipt.matter_surface_native_runtime_configured, Some(true));
         assert_eq!(receipt.matter_surface_particle_count, Some(1000));
         assert_eq!(receipt.matter_surface_leaf_triangle_count, Some(8));
@@ -707,6 +752,8 @@ mod tests {
         assert!(marker.contains("matterSurfaceParticleExecutionMaxThreads=none"));
         assert!(marker.contains("particlesEnabled=true"));
         assert!(marker.contains("particleRenderDrawLimit=192"));
+        assert!(marker.contains("particleRenderAnimationMode=procedural-morph-ring"));
+        assert!(marker.contains("particleRenderSizeScale=1.000"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
     }
@@ -724,6 +771,11 @@ mod tests {
         assert_eq!(selection.render_scale, Some(0.9));
         assert_eq!(selection.camera_streaming_enabled, Some(false));
         assert_eq!(selection.particle_render_draw_limit, Some(192));
+        assert_eq!(
+            selection.particle_render_animation_mode,
+            Some(ParticleRenderAnimationMode::ProceduralMorphRing)
+        );
+        assert_eq!(selection.particle_render_size_scale, Some(1.0));
         assert_eq!(
             selection.feature_uniforms,
             MakepadCameraShellFeatureUniforms {

@@ -6,9 +6,13 @@
 
 use crate::makepad_widgets::*;
 use makepad_xr::scene::{xr_widget_world_transform, XrNode};
-use rusty_quest_makepad_camera_shell::QuestMakepadWorldParticleBatch;
+use rusty_quest_makepad_camera_shell::{
+    ParticleRenderAnimationMode, QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+};
 
-pub(crate) const HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX: usize = 512;
+pub(crate) const HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX: usize = 8192;
+const HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MIN: f32 = 0.05;
+const HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MAX: f32 = 4.0;
 
 #[derive(Script, Widget)]
 pub struct MatterWorldParticleBillboardCloud {
@@ -19,6 +23,10 @@ pub struct MatterWorldParticleBillboardCloud {
     batch: Option<QuestMakepadWorldParticleBatch>,
     #[rust]
     draw_limit: usize,
+    #[rust]
+    size_scale: f32,
+    #[rust]
+    animation_mode: ParticleRenderAnimationMode,
     #[cast]
     #[deref]
     node: XrNode,
@@ -30,13 +38,29 @@ impl MatterWorldParticleBillboardCloud {
         cx: &mut Cx,
         batch: Option<QuestMakepadWorldParticleBatch>,
         draw_limit: usize,
+        size_scale: f32,
+        animation_mode: ParticleRenderAnimationMode,
     ) {
         let draw_limit = draw_limit.min(HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX);
-        if self.batch == batch && self.draw_limit == draw_limit {
+        let size_scale = if size_scale.is_finite() {
+            size_scale.clamp(
+                HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MIN,
+                HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MAX,
+            )
+        } else {
+            DEFAULT_PARTICLE_RENDER_SIZE_SCALE
+        };
+        if self.batch == batch
+            && self.draw_limit == draw_limit
+            && self.size_scale == size_scale
+            && self.animation_mode == animation_mode
+        {
             return;
         }
         self.batch = batch;
         self.draw_limit = draw_limit;
+        self.size_scale = size_scale;
+        self.animation_mode = animation_mode;
         self.node.redraw(cx);
     }
 
@@ -49,9 +73,22 @@ impl MatterWorldParticleBillboardCloud {
         normal_frame: [f32; 4],
         aux: [f32; 4],
     ) {
-        let radius = center_radius[3].clamp(0.012, 0.044);
-        let diameter = (radius * 2.0).clamp(0.032, 0.088);
-        let frame01 = normal_frame[3].clamp(0.0, 0.999_985);
+        let size_scale = if self.size_scale.is_finite() {
+            self.size_scale.clamp(
+                HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MIN,
+                HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MAX,
+            )
+        } else {
+            DEFAULT_PARTICLE_RENDER_SIZE_SCALE
+        };
+        let radius = (center_radius[3] * size_scale).clamp(0.012 * size_scale, 0.044 * size_scale);
+        let diameter = (radius * 2.0).clamp(0.032 * size_scale, 0.088 * size_scale);
+        let animated_frame = normal_frame[3].clamp(0.0, 0.999_985);
+        let frame01 = if self.animation_mode.uses_frame_animation() {
+            animated_frame
+        } else {
+            0.0
+        };
         let rotation = if aux[0].is_finite() {
             aux[0]
         } else {

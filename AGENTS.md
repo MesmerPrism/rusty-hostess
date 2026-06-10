@@ -101,3 +101,14 @@ permission failures from passive Makepad media discovery, Matter runtime
 markers, `RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER` with `mode=latest-wins
 workerThread=true renderThreadBlocking=false`, and
 `RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW`.
+
+For particle-density sweeps, keep animation and size explicit in evidence:
+`makepad.particles.render.animation_mode=static-ring` and
+`makepad.particles.render.size_scale=0.2` reduce visual animation/render cost
+while measuring Matter compute. Log evidence should include
+`particleRenderAnimationMode`, `particleRenderSizeScale`,
+`particleCount`, `particleDrawLimit`, ready
+`RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW` markers, `xrRepaintGpuMs`,
+`xrRepaintTextureUploadBytes`, and Matter worker timing fields. The 2026-06-10
+1024/2048/4096 run showed render/upload stayed light; serial Matter particle
+stepping and backlog were the limiting path.
