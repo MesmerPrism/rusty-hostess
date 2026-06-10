@@ -17,6 +17,7 @@ min_sdk_version = 26
 [features]
 default = []
 makepad-hwb-ycbcr-metadata = []
+matter-particles-parallel = ["rusty-quest-makepad-camera-shell/parallel"]
 serde = ["dep:serde"]
 
 [dependencies]

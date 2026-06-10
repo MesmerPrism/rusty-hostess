@@ -111,4 +111,10 @@ while measuring Matter compute. Log evidence should include
 `RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW` markers, `xrRepaintGpuMs`,
 `xrRepaintTextureUploadBytes`, and Matter worker timing fields. The 2026-06-10
 1024/2048/4096 run showed render/upload stayed light; serial Matter particle
-stepping and backlog were the limiting path.
+stepping and backlog were the limiting path. To run the measured parallel
+experiment, build this APK with `--features matter-particles-parallel` and set
+`makepad.particles.execution.backend=rayon` plus a positive
+`makepad.particles.execution.max_threads` only in generated/local effective
+settings. The 2026-06-10 Rayon/4 run improved high-density Matter stepping but
+still left backlog, so the next performance implementation should bound
+simulation cadence before GPU compute.
