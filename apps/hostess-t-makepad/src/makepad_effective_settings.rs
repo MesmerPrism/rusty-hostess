@@ -58,6 +58,9 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     matter_surface_native_runtime_configured: Option<bool>,
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
+    matter_surface_particle_execution_backend: Option<String>,
+    matter_surface_particle_execution_batch_size: Option<usize>,
+    matter_surface_particle_execution_max_threads: Option<usize>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
 }
@@ -138,7 +141,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -172,6 +175,9 @@ impl MakepadEffectiveSettingsReceipt {
             marker_bool(self.matter_surface_native_runtime_configured),
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
+            marker_option(self.matter_surface_particle_execution_backend.as_deref()),
+            marker_usize(self.matter_surface_particle_execution_batch_size),
+            marker_usize(self.matter_surface_particle_execution_max_threads),
             self.legacy_settings_fallback_used,
         )
     }
@@ -218,6 +224,9 @@ impl MakepadEffectiveSettingsReceipt {
             "matter_surface_native_runtime_configured": self.matter_surface_native_runtime_configured,
             "matter_surface_particle_count": self.matter_surface_particle_count,
             "matter_surface_leaf_triangle_count": self.matter_surface_leaf_triangle_count,
+            "matter_surface_particle_execution_backend": self.matter_surface_particle_execution_backend,
+            "matter_surface_particle_execution_batch_size": self.matter_surface_particle_execution_batch_size,
+            "matter_surface_particle_execution_max_threads": self.matter_surface_particle_execution_max_threads,
             "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
             "receipt_written": self.receipt_written,
         })
@@ -394,6 +403,9 @@ fn ready_receipt(
         matter_surface_native_runtime_configured,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
+        matter_surface_particle_execution_backend,
+        matter_surface_particle_execution_batch_size,
+        matter_surface_particle_execution_max_threads,
     ) = match CameraShellEffectiveConfig::from_effective_settings_json(raw_json) {
         Ok(config) => {
             let runtime_mode = SdfAdfRuntimeMode::from_overlay_mode(config.sdf_adf_overlay_mode);
@@ -416,12 +428,24 @@ fn ready_receipt(
                 Some(config.matter_surface.enabled),
                 Some(config.matter_surface.particle_count),
                 Some(config.matter_surface.leaf_triangle_count),
+                Some(
+                    config
+                        .matter_surface
+                        .particle_execution_backend
+                        .marker_value()
+                        .to_string(),
+                ),
+                Some(config.matter_surface.particle_execution_batch_size.get()),
+                config.matter_surface.particle_execution_max_threads,
             )
         }
         Err(error) => (
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -472,6 +496,9 @@ fn ready_receipt(
         matter_surface_native_runtime_configured,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
+        matter_surface_particle_execution_backend,
+        matter_surface_particle_execution_batch_size,
+        matter_surface_particle_execution_max_threads,
         legacy_settings_fallback_used: false,
         receipt_written: false,
     }
@@ -651,6 +678,15 @@ mod tests {
         assert_eq!(receipt.matter_surface_native_runtime_configured, Some(true));
         assert_eq!(receipt.matter_surface_particle_count, Some(1000));
         assert_eq!(receipt.matter_surface_leaf_triangle_count, Some(8));
+        assert_eq!(
+            receipt.matter_surface_particle_execution_backend.as_deref(),
+            Some("serial")
+        );
+        assert_eq!(
+            receipt.matter_surface_particle_execution_batch_size,
+            Some(256)
+        );
+        assert_eq!(receipt.matter_surface_particle_execution_max_threads, None);
         assert!(!receipt.legacy_settings_fallback_used);
 
         let marker = receipt.marker_line("test");
@@ -666,6 +702,9 @@ mod tests {
         assert!(marker.contains("sdfAdfRuntimeMode=sdf"));
         assert!(marker.contains("matterSurfaceNativeRuntimeConfigured=true"));
         assert!(marker.contains("matterSurfaceParticleCount=1000"));
+        assert!(marker.contains("matterSurfaceParticleExecutionBackend=serial"));
+        assert!(marker.contains("matterSurfaceParticleExecutionBatchSize=256"));
+        assert!(marker.contains("matterSurfaceParticleExecutionMaxThreads=none"));
         assert!(marker.contains("particlesEnabled=true"));
         assert!(marker.contains("particleRenderDrawLimit=192"));
         assert!(!marker.contains("rustyxr"));
