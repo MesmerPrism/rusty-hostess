@@ -105,9 +105,10 @@ use makepad_widgets::makepad_platform::{
         VideoTextureResourcePath, VideoTextureUpdateMetadata, VideoYuvMetadata,
     },
     permission::Permission,
+    script::vm::ScriptVmCx,
     thread::SignalToUI,
     video::VideoInputsEvent,
-    TextureFormat, TextureId, TextureUpdated,
+    CxMediaApi, TextureFormat, TextureId, TextureUpdated,
 };
 use makepad_widgets::*;
 use makepad_xr::scene::{xr_widget_world_transform, XrNode};
@@ -1647,6 +1648,8 @@ pub struct App {
     camera_shell_effective_render_scale_present: bool,
     #[rust]
     camera_shell_effective_camera_streaming_enabled: bool,
+    #[rust]
+    makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
     mesh_replay_effective_settings_path: Option<String>,
     #[rust]
@@ -3412,6 +3415,25 @@ impl App {
         )
     }
 
+    fn apply_makepad_video_input_discovery_enabled(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        enabled: bool,
+    ) {
+        if self.makepad_video_input_discovery_enabled == Some(enabled) {
+            return;
+        }
+        self.makepad_video_input_discovery_enabled = Some(enabled);
+        cx.set_video_input_discovery_enabled(enabled);
+        emit_marker_line(&format!(
+            "RUSTY_HOSTESS_MAKEPAD_CAMERA_DISCOVERY schema=rusty.gui.makepad.camera_discovery.v1 phase={} status=applied videoInputDiscoveryEnabled={} cameraStreamingEnabled={} settingId=makepad.camera.streaming.enabled",
+            marker_token(phase),
+            enabled,
+            enabled,
+        ));
+    }
+
     fn matter_world_particle_placement() -> QuestMakepadWorldParticlePlacement {
         QuestMakepadWorldParticlePlacement::content_local(
             MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
@@ -4895,6 +4917,7 @@ impl App {
 
     fn update_camera_projection_panel_streaming_enabled(&mut self, cx: &mut Cx) {
         let enabled = self.current_camera_streaming_enabled();
+        self.apply_makepad_video_input_discovery_enabled(cx, "event", enabled);
         let panel_ref = self.ui.widget(cx, ids!(camera_projection_panel));
         let Some(mut panel) = panel_ref.borrow_mut::<MakepadStereoCameraPanel>() else {
             return;
@@ -7413,9 +7436,15 @@ impl AppMain for App {
         self::script_mod(vm)
     }
 
-    fn after_new_from_script(_vm: &mut ScriptVm, app: &mut Self) {
+    fn after_new_from_script(vm: &mut ScriptVm, app: &mut Self) {
         Self::emit_startup_markers_once("startup");
         app.initialize_hostess_shell_contract();
+        let camera_streaming_enabled = app.current_camera_streaming_enabled();
+        app.apply_makepad_video_input_discovery_enabled(
+            vm.cx_mut(),
+            "startup",
+            camera_streaming_enabled,
+        );
     }
 
     fn handle_event(&mut self, cx: &mut Cx, event: &Event) {

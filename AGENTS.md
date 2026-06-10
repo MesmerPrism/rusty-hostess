@@ -94,7 +94,10 @@ $package = 'io.github.mesmerprism.rustyhostess.makepad'
 For camera-free particle runs, evidence should include no packaged
 `android.permission.CAMERA`, no `horizonos.permission.HEADSET_CAMERA`, no
 `horizonos.permission.SPATIAL_CAMERA`, `RUSTY_MAKEPAD_CAMERA2_ACQUISITION`
-with `status=skipped reason=camera-streaming-disabled`, Matter runtime markers,
-`RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER` with `mode=latest-wins
+with `status=skipped reason=camera-streaming-disabled`,
+`RUSTY_HOSTESS_MAKEPAD_CAMERA_DISCOVERY` with
+`videoInputDiscoveryEnabled=false`, no app-UID headset/spatial camera
+permission failures from passive Makepad media discovery, Matter runtime
+markers, `RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER` with `mode=latest-wins
 workerThread=true renderThreadBlocking=false`, and
 `RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW`.
