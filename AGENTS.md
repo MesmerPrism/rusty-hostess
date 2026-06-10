@@ -118,3 +118,17 @@ experiment, build this APK with `--features matter-particles-parallel` and set
 settings. The 2026-06-10 Rayon/4 run improved high-density Matter stepping but
 still left backlog, so the next performance implementation should bound
 simulation cadence before GPU compute.
+
+Bounded density runs should patch only generated/local effective settings with
+`makepad.particles.simulation.max_frame_delta_seconds` set to a positive cap
+such as `0.022`; committed profiles keep `0` for unbounded behavior. Hostess
+evidence should echo the cap in
+`RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS` as
+`matterSurfaceParticleMaxFrameDeltaSeconds`, and Matter runtime markers should
+show `particleInputDeltaSeconds`, `particleSimulatedDeltaSeconds`, and
+`particleDroppedDeltaSeconds`. The 2026-06-10 bounded Rayon/4 sweep showed
+that static small billboards stayed render-light through the current
+`8192`-instance draw cap: `xrEffectiveFrameRateHz=90.0`,
+`xrRepaintTextureUploadBytes=0`, and GPU repaint about `0.40`-`1.19 ms`.
+Matter worker time remained the bottleneck; a `16384` source-particle run
+emitted `16384` Matter rows but drew `8192` instances with `droppedRows=8192`.

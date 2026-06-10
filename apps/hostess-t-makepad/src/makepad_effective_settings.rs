@@ -63,6 +63,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     matter_surface_particle_execution_backend: Option<String>,
     matter_surface_particle_execution_batch_size: Option<usize>,
     matter_surface_particle_execution_max_threads: Option<usize>,
+    matter_surface_particle_max_frame_delta_seconds: Option<f64>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
 }
@@ -150,7 +151,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -189,6 +190,7 @@ impl MakepadEffectiveSettingsReceipt {
             marker_option(self.matter_surface_particle_execution_backend.as_deref()),
             marker_usize(self.matter_surface_particle_execution_batch_size),
             marker_usize(self.matter_surface_particle_execution_max_threads),
+            marker_f64(self.matter_surface_particle_max_frame_delta_seconds),
             self.legacy_settings_fallback_used,
         )
     }
@@ -240,6 +242,7 @@ impl MakepadEffectiveSettingsReceipt {
             "matter_surface_particle_execution_backend": self.matter_surface_particle_execution_backend,
             "matter_surface_particle_execution_batch_size": self.matter_surface_particle_execution_batch_size,
             "matter_surface_particle_execution_max_threads": self.matter_surface_particle_execution_max_threads,
+            "matter_surface_particle_max_frame_delta_seconds": self.matter_surface_particle_max_frame_delta_seconds,
             "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
             "receipt_written": self.receipt_written,
         })
@@ -433,6 +436,7 @@ fn ready_receipt(
         matter_surface_particle_execution_backend,
         matter_surface_particle_execution_batch_size,
         matter_surface_particle_execution_max_threads,
+        matter_surface_particle_max_frame_delta_seconds,
     ) = match CameraShellEffectiveConfig::from_effective_settings_json(raw_json) {
         Ok(config) => {
             let runtime_mode = SdfAdfRuntimeMode::from_overlay_mode(config.sdf_adf_overlay_mode);
@@ -466,12 +470,17 @@ fn ready_receipt(
                 ),
                 Some(config.matter_surface.particle_execution_batch_size.get()),
                 config.matter_surface.particle_execution_max_threads,
+                config
+                    .matter_surface
+                    .particle_max_frame_delta_seconds
+                    .map(f64::from),
             )
         }
         Err(error) => (
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
             None,
             None,
             None,
@@ -532,6 +541,7 @@ fn ready_receipt(
         matter_surface_particle_execution_backend,
         matter_surface_particle_execution_batch_size,
         matter_surface_particle_execution_max_threads,
+        matter_surface_particle_max_frame_delta_seconds,
         legacy_settings_fallback_used: false,
         receipt_written: false,
     }
@@ -732,6 +742,10 @@ mod tests {
             Some(256)
         );
         assert_eq!(receipt.matter_surface_particle_execution_max_threads, None);
+        assert_eq!(
+            receipt.matter_surface_particle_max_frame_delta_seconds,
+            None
+        );
         assert!(!receipt.legacy_settings_fallback_used);
 
         let marker = receipt.marker_line("test");
@@ -750,6 +764,7 @@ mod tests {
         assert!(marker.contains("matterSurfaceParticleExecutionBackend=serial"));
         assert!(marker.contains("matterSurfaceParticleExecutionBatchSize=256"));
         assert!(marker.contains("matterSurfaceParticleExecutionMaxThreads=none"));
+        assert!(marker.contains("matterSurfaceParticleMaxFrameDeltaSeconds=none"));
         assert!(marker.contains("particlesEnabled=true"));
         assert!(marker.contains("particleRenderDrawLimit=192"));
         assert!(marker.contains("particleRenderAnimationMode=procedural-morph-ring"));
