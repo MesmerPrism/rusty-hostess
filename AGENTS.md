@@ -137,9 +137,13 @@ For compute-focused density runs, patch generated/local effective settings with
 echo this as `matterSurfaceParticleDistanceRefreshPolicy=disabled`; Matter
 runtime markers should show `particleDistanceSamples=0`,
 `particleRefreshSamples=0`, and `particleClosestSamples` equal to the source
-particle count. The 2026-06-10 disabled-refresh Rayon/4 sweep at
-`1024` through `32768` particles kept camera/collision/SDF off,
-`animation_mode=static-ring`, and `size_scale=0.2`. App-owned cadence stayed
+particle count. Newer Quest-Makepad runtime markers also include
+`particleSurfaceNodeTests`, `particleSurfaceLeafTests`, and
+`particleSurfaceTriangleTests`; use those totals to judge Matter
+surface-distance query shape before changing ADF, GPU, or mesh-resolution
+strategy. The 2026-06-10 disabled-refresh Rayon/4 sweep at `1024` through
+`32768` particles kept camera/collision/SDF off, `animation_mode=static-ring`,
+and `size_scale=0.2`. App-owned cadence stayed
 `90.0` Hz, texture upload bytes stayed `0`, and GPU repaint stayed about
 `0.4`-`1.2 ms`; the remaining scaling pressure was Matter particle stepping
 plus CPU payload/visual packing, not GPU rendering. Current Quest-Makepad
