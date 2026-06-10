@@ -15,6 +15,8 @@ mod makepad_effective_settings;
 mod makepad_runtime_config;
 mod manifold_breath_feedback;
 mod manifold_pose_publisher;
+mod matter_particle_texture;
+mod matter_surface_uniforms;
 mod projection_geometry;
 mod projection_runtime;
 mod projection_settings;
@@ -34,6 +36,10 @@ use camera_pair::{
 };
 use camera_texture_path::MakepadCameraTexturePath;
 use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
+use matter_particle_texture::{
+    MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
+};
+use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 #[cfg(target_os = "android")]
 use projection_geometry::broker_projection_plan_marker_fields;
 use projection_geometry::{
@@ -57,11 +63,10 @@ use projection_runtime::{
 use projection_settings::*;
 use runtime_settings::*;
 #[cfg(target_os = "android")]
+use source_metadata::{broker_projection_plan_decision, BrokerProjectionPlanKind};
 use source_metadata::{
-    broker_projection_plan_decision, BrokerProjectionPlanDecision, BrokerProjectionPlanKind,
-};
-use source_metadata::{
-    makepad_camera2_acquisition_broker_h264_skipped_marker_line, makepad_camera_status_marker_line,
+    makepad_camera2_acquisition_broker_h264_skipped_marker_line,
+    makepad_camera2_acquisition_streaming_disabled_marker_line, makepad_camera_status_marker_line,
     makepad_content_geometry_marker_fields,
     makepad_hardware_buffer_import_broker_h264_prepare_request_marker_fields,
     makepad_hardware_buffer_import_broker_h264_startup_marker_fields,
@@ -117,7 +122,11 @@ use projection_target_controls::{
     makepad_projection_target_offset_y_uv, makepad_projection_target_scale,
     makepad_projection_target_scale_step, PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
 };
-use rusty_quest_makepad_camera_shell::{MeshReplayRuntime, MeshReplayUniforms};
+use rusty_quest_makepad_camera_shell::{
+    MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms,
+    QuestMakepadMatterSurfaceRuntime, QuestMakepadWorldParticleBatch,
+    QuestMakepadWorldParticlePlacement, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+};
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
 use shell_xr_runtime::ShellXrRuntimeState;
@@ -157,6 +166,19 @@ static ANDROID_XR_START_FALLBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 const CAMERA_FRAME_STALE_THRESHOLD_MS: f64 = 100.0;
 const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
+const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
+const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
+const MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT: usize = 96;
+const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
+const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
+const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
+const MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS: f32 = 0.50;
+const MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER: [f32; 3] = [
+    0.0,
+    -MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS,
+    -(MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS
+        - MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS),
+];
 
 script_mod! {
     use mod.pod.*
@@ -187,6 +209,7 @@ script_mod! {
         right_tex_y: texture_2d(float)
         right_tex_u: texture_2d(float)
         right_tex_v: texture_2d(float)
+        matter_particle_texture: texture_2d(float)
         left_projection_h00: uniform(1.0)
         left_projection_h01: uniform(0.0)
         left_projection_h02: uniform(0.0)
@@ -245,7 +268,7 @@ script_mod! {
         display_eye_offset_meters: uniform(0.032)
         display_fov_y_degrees: uniform(92.0)
         display_aspect: uniform(1.0)
-        projection_depth_meters: uniform(1.0)
+        projection_depth_meters: uniform(0.5)
         projection_preview_offset_y_meters: uniform(0.0)
         projection_preview_fov_y_degrees: uniform(60.0)
         projection_raw_overscan: uniform(1.06)
@@ -289,6 +312,18 @@ script_mod! {
         mesh_replay_segment2: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         mesh_replay_segment3: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         camera_shell_feature_runtime: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_surface_runtime: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_collision_contact: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_collision_normal: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_sdf_sample0: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_sdf_sample1: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_sdf_sample2: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_sdf_sample3: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_particle0: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_particle1: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_particle2: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_particle3: uniform(vec4(0.0, 0.0, 0.0, 0.0))
+        matter_particle_texture_runtime: uniform(vec4(0.0, 0.0, 0.0, 0.0))
         source_sample_y_flip: uniform(0.0)
         projection_content_mapping_mode: uniform(0.0)
         display_source_eye_swap: uniform(0.0)
@@ -1075,68 +1110,81 @@ script_mod! {
         }
 
         sdf_adf_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
-            let replay_enabled = step(0.5, self.mesh_replay_runtime.x);
             let mode = floor(self.camera_shell_feature_runtime.y + 0.5);
             let sdf_active =
-                step(0.5, mode) * (1.0 - step(1.5, mode)) +
-                step(2.5, mode);
-            let adf_active =
-                step(1.5, mode) * (1.0 - step(2.5, mode)) +
-                step(2.5, mode);
-            let active = replay_enabled * clamp(visibility, 0.0, 1.0);
-            let distance_to_replay = self.mesh_replay_field_distance(coord);
-            let near_replay = 1.0 - smoothstep(0.02, 0.25, distance_to_replay);
-            let phase = fract(self.mesh_replay_runtime.y);
-            let sdf_ring = 0.5 + 0.5 * sin(distance_to_replay * 52.0 - phase * 6.28318530718);
-            let sdf_mask = active * sdf_active * near_replay * (0.25 + 0.55 * sdf_ring);
+                step(0.5, mode) *
+                (1.0 - step(1.5, mode)) *
+                step(0.5, self.matter_surface_runtime.x) *
+                step(0.5, self.matter_surface_runtime.z) *
+                clamp(visibility, 0.0, 1.0);
+            let s0 = self.matter_sdf_sample_mask(coord, self.matter_sdf_sample0);
+            let s1 = self.matter_sdf_sample_mask(coord, self.matter_sdf_sample1);
+            let s2 = self.matter_sdf_sample_mask(coord, self.matter_sdf_sample2);
+            let s3 = self.matter_sdf_sample_mask(coord, self.matter_sdf_sample3);
+            let mask = sdf_active * clamp(max(max(s0, s1), max(s2, s3)), 0.0, 1.0);
+            return mix(rgb, vec3(0.03, 0.74, 0.92), clamp(mask * 0.42, 0.0, 0.42));
+        }
 
-            let adaptive_cells = mix(8.0, 22.0, near_replay);
-            let grid_x = abs(fract(coord.x * adaptive_cells) - 0.5);
-            let grid_y = abs(fract(coord.y * adaptive_cells) - 0.5);
-            let grid_line = 1.0 - step(0.045, min(grid_x, grid_y));
-            let adf_mask = active * adf_active * near_replay * grid_line;
-
-            let sdf_rgb = mix(rgb, vec3(0.03, 0.74, 0.92), clamp(sdf_mask * 0.35, 0.0, 0.35));
-            return mix(sdf_rgb, vec3(0.94, 0.64, 0.08), clamp(adf_mask * 0.30, 0.0, 0.30));
+        matter_sdf_sample_mask: fn(coord: vec2f, sample: vec4f) -> float {
+            let sample_live = step(0.5, sample.w);
+            let distance_uv = length(coord - vec2(sample.x, sample.y));
+            let radius = mix(0.018, 0.044, clamp(1.0 - sample.z, 0.0, 1.0));
+            return sample_live * (1.0 - smoothstep(radius, radius + 0.018, distance_uv));
         }
 
         collision_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
             let enabled =
                 step(0.5, self.camera_shell_feature_runtime.x) *
-                step(0.5, self.mesh_replay_runtime.x) *
+                step(0.5, self.matter_surface_runtime.x) *
+                step(0.5, self.matter_surface_runtime.y) *
                 clamp(visibility, 0.0, 1.0);
-            let probe_distance = length(coord - vec2(0.5, 0.5));
-            let probe_mask = 1.0 - smoothstep(0.075, 0.120, probe_distance);
-            let replay_contact =
-                1.0 - smoothstep(0.016, 0.050, self.mesh_replay_field_distance(coord));
-            let collision_mask = enabled * probe_mask * replay_contact;
+            let contact = vec2(self.matter_collision_contact.x, self.matter_collision_contact.y);
+            let probe_distance = length(coord - contact);
+            let probe_mask = 1.0 - smoothstep(0.035, 0.085, probe_distance);
+            let collision_mask = enabled * self.matter_collision_contact.w * probe_mask;
             return mix(rgb, vec3(1.0, 0.10, 0.04), clamp(collision_mask * 0.68, 0.0, 0.68));
         }
 
+        matter_particle_mask: fn(coord: vec2f, particle: vec4f) -> float {
+            let particle_live = step(0.001, particle.w);
+            let radius = max(particle.z, 0.006);
+            return particle_live * particle.w * (1.0 - smoothstep(radius, radius + 0.016, length(coord - vec2(particle.x, particle.y))));
+        }
+
         particle_mask: fn(coord: vec2f) -> float {
-            let phase = self.mesh_replay_runtime.y * 6.28318530718;
-            let p0 = vec2(0.50 + 0.28 * cos(phase), 0.50 + 0.18 * sin(phase * 1.23));
-            let p1 = vec2(0.50 + 0.22 * cos(phase + 2.09), 0.50 + 0.25 * sin(phase * 0.91 + 0.50));
-            let p2 = vec2(0.50 + 0.18 * cos(phase * 1.41 + 4.18), 0.50 + 0.29 * sin(phase + 1.30));
-            let p3 = vec2(0.50 + 0.31 * cos(phase * 0.73 + 1.10), 0.50 + 0.15 * sin(phase * 1.67 + 2.80));
-            let m0 = 1.0 - smoothstep(0.012, 0.028, length(coord - p0));
-            let m1 = 1.0 - smoothstep(0.010, 0.024, length(coord - p1));
-            let m2 = 1.0 - smoothstep(0.010, 0.024, length(coord - p2));
-            let m3 = 1.0 - smoothstep(0.012, 0.030, length(coord - p3));
+            let m0 = self.matter_particle_mask(coord, self.matter_particle0);
+            let m1 = self.matter_particle_mask(coord, self.matter_particle1);
+            let m2 = self.matter_particle_mask(coord, self.matter_particle2);
+            let m3 = self.matter_particle_mask(coord, self.matter_particle3);
             return clamp(max(max(m0, m1), max(m2, m3)), 0.0, 1.0);
         }
 
         particles_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
             let enabled =
                 step(0.5, self.camera_shell_feature_runtime.z) *
+                step(0.5, self.matter_surface_runtime.x) *
+                step(0.5, self.matter_surface_runtime.w) *
                 clamp(visibility, 0.0, 1.0);
             let mask = enabled * self.particle_mask(coord);
             return mix(rgb, vec3(0.96, 0.92, 0.30), clamp(mask * 0.74, 0.0, 0.74));
         }
 
+        particle_texture_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
+            let enabled =
+                step(0.5, self.camera_shell_feature_runtime.z) *
+                step(0.5, self.matter_surface_runtime.x) *
+                step(0.5, self.matter_surface_runtime.w) *
+                step(0.5, self.matter_particle_texture_runtime.x) *
+                clamp(visibility, 0.0, 1.0);
+            let sample = self.matter_particle_texture.sample(coord);
+            let particle_rgb = sample.xyz * enabled;
+            return clamp(rgb + particle_rgb, vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0));
+        }
+
         camera_shell_overlay_rgb: fn(rgb: vec3f, coord: vec2f, visibility: float) -> vec3f {
             let field_rgb = self.sdf_adf_overlay_rgb(rgb, coord, visibility);
-            let particle_rgb = self.particles_overlay_rgb(field_rgb, coord, visibility);
+            let particle_texture_rgb = self.particle_texture_overlay_rgb(field_rgb, coord, visibility);
+            let particle_rgb = self.particles_overlay_rgb(particle_texture_rgb, coord, visibility);
             let collision_rgb = self.collision_overlay_rgb(particle_rgb, coord, visibility);
             return self.mesh_replay_overlay_rgb(collision_rgb, coord, visibility);
         }
@@ -1388,7 +1436,33 @@ script_mod! {
             mesh_replay_segment2: vec4(0.0, 0.0, 0.0, 0.0)
             mesh_replay_segment3: vec4(0.0, 0.0, 0.0, 0.0)
             camera_shell_feature_runtime: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_surface_runtime: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_collision_contact: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_collision_normal: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_sdf_sample0: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_sdf_sample1: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_sdf_sample2: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_sdf_sample3: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_particle0: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_particle1: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_particle2: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_particle3: vec4(0.0, 0.0, 0.0, 0.0)
+            matter_particle_texture_runtime: vec4(0.0, 0.0, 0.0, 0.0)
             depth_clip: 0.0
+        }
+    }
+
+    mod.widgets.MakepadMatterParticleCloudBase = #(MakepadMatterParticleCloud::register_widget(vm))
+    mod.widgets.MakepadMatterParticleCloud = set_type_default() do mod.widgets.MakepadMatterParticleCloudBase{
+        body: mod.widgets.XrBodyKind.Fixed
+        shared_object_policy: mod.widgets.XrSharedObjectPolicy.None
+        draw_cube +: {
+            backface_culling: false
+            light_dir: vec3(0.0, 0.0, 1.0)
+            get_color: fn(dp: float) {
+                let glow = self.color.xyz * 1.65 + vec3(0.08, 0.14, 0.18)
+                return vec4(min(glow, vec3(1.0, 1.0, 1.0)), 1.0)
+            }
         }
     }
 
@@ -1410,6 +1484,11 @@ script_mod! {
                     body: mod.widgets.XrBodyKind.Fixed
                     size: vec3(1.0, 1.0, 0.010)
                     pos: vec3(0.0, 0.0, -1.0)
+                }
+
+                matter_particle_cloud := mod.widgets.MakepadMatterParticleCloud{
+                    body: mod.widgets.XrBodyKind.Fixed
+                    pos: vec3(0.0, 0.0, 0.0)
                 }
             }
 
@@ -1461,11 +1540,29 @@ pub struct App {
     #[rust]
     mesh_replay_runtime: Option<MeshReplayRuntime>,
     #[rust]
+    matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
+    #[rust]
+    matter_surface_frame_markers_emitted: usize,
+    #[rust]
+    matter_surface_world_particle_markers_emitted: usize,
+    #[rust]
+    matter_surface_world_particle_draw_markers_emitted: usize,
+    #[rust]
+    matter_surface_last_step_seconds: f64,
+    #[rust]
+    matter_surface_cached_panel_overlay_frame: MatterSurfacePanelOverlayFrame,
+    #[rust]
+    matter_surface_cached_world_particle_batch: Option<QuestMakepadWorldParticleBatch>,
+    #[rust]
+    matter_particle_texture: MatterParticleTextureRenderer,
+    #[rust]
     camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
     #[rust]
     camera_shell_effective_render_scale: f32,
     #[rust]
     camera_shell_effective_render_scale_present: bool,
+    #[rust]
+    camera_shell_effective_camera_streaming_enabled: bool,
     #[rust]
     mesh_replay_effective_settings_path: Option<String>,
     #[rust]
@@ -1482,6 +1579,8 @@ pub struct App {
     paired_import_choice: Option<MakepadCameraPair>,
     #[rust]
     paired_import_selection_logged: bool,
+    #[rust]
+    camera_streaming_disabled_logged: bool,
     #[rust]
     paired_import_started: bool,
     #[rust]
@@ -1698,6 +1797,12 @@ pub struct App {
     cadence_right_last_position_ms: u128,
 }
 
+#[derive(Clone, Debug, Default)]
+struct MatterSurfacePanelOverlayFrame {
+    uniforms: MakepadMatterSurfaceUniforms,
+    particle_texture: MatterParticleTextureFrame,
+}
+
 #[derive(Script, ScriptHook, Debug)]
 #[repr(C)]
 pub struct DrawMakepadStereoCameraPanel {
@@ -1737,7 +1842,7 @@ pub struct DrawMakepadStereoCameraPanel {
     pub display_fov_y_degrees: f32,
     #[rust(1.0_f32)]
     pub display_aspect: f32,
-    #[rust(0.75_f32)]
+    #[rust(0.5_f32)]
     pub projection_depth_meters: f32,
     #[rust(0.0_f32)]
     pub projection_preview_offset_y_meters: f32,
@@ -1825,6 +1930,30 @@ pub struct DrawMakepadStereoCameraPanel {
     pub mesh_replay_segment3: Vec4f,
     #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
     pub camera_shell_feature_runtime: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_surface_runtime: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_collision_contact: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_collision_normal: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_sdf_sample0: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_sdf_sample1: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_sdf_sample2: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_sdf_sample3: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_particle0: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_particle1: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_particle2: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_particle3: Vec4f,
+    #[rust(vec4(0.0, 0.0, 0.0, 0.0))]
+    pub matter_particle_texture_runtime: Vec4f,
     #[rust(1.0_f32)]
     pub source_sample_y_flip: f32,
     #[rust(0.0_f32)]
@@ -2025,11 +2154,96 @@ pub struct MakepadStereoCameraPanel {
     size: Vec3f,
     #[rust(false)]
     camera_ready: bool,
+    #[rust(true)]
+    camera_streaming_enabled: bool,
     #[cast]
     #[deref]
     node: XrNode,
     #[rust]
     synthetic_luma_probe_texture: Option<Texture>,
+}
+
+#[derive(Script, Widget)]
+pub struct MakepadMatterParticleCloud {
+    #[redraw]
+    #[live]
+    draw_cube: DrawCube,
+    #[rust]
+    batch: Option<QuestMakepadWorldParticleBatch>,
+    #[cast]
+    #[deref]
+    node: XrNode,
+}
+
+impl MakepadMatterParticleCloud {
+    fn set_world_particle_batch(
+        &mut self,
+        cx: &mut Cx,
+        batch: Option<QuestMakepadWorldParticleBatch>,
+    ) {
+        if self.batch == batch {
+            return;
+        }
+        self.batch = batch;
+        self.node.redraw(cx);
+    }
+
+    fn draw_particle_cube(
+        &mut self,
+        cx: &mut Cx3d,
+        transform: Mat4f,
+        center_radius: [f32; 4],
+        color: [f32; 4],
+    ) {
+        let radius = center_radius[3].clamp(0.014, 0.040);
+        let diameter = (radius * 2.0).clamp(0.036, 0.080);
+        let alpha = color[3].clamp(0.35, 1.0);
+        let emission = 1.65 + alpha * 0.85;
+        self.draw_cube.transform = transform;
+        self.draw_cube.cube_pos = vec3(center_radius[0], center_radius[1], center_radius[2]);
+        self.draw_cube.cube_size = vec3(diameter, diameter, diameter);
+        self.draw_cube.color = vec4f(
+            (color[0] * emission).clamp(0.24, 1.0),
+            (color[1] * emission).clamp(0.46, 1.0),
+            (color[2] * emission).clamp(0.62, 1.0),
+            1.0,
+        );
+        self.draw_cube.depth_clip = 1.0;
+        self.draw_cube.draw(cx);
+    }
+}
+
+impl ScriptHook for MakepadMatterParticleCloud {}
+
+impl Widget for MakepadMatterParticleCloud {
+    fn draw_3d(&mut self, cx: &mut Cx3d, scope: &mut Scope) -> DrawStep {
+        if cx.scene_state_3d().is_none() {
+            return self.node.draw_3d(cx, scope);
+        }
+        let Some(batch) = self.batch.clone() else {
+            return self.node.draw_3d(cx, scope);
+        };
+        if batch.instances.is_empty() {
+            return self.node.draw_3d(cx, scope);
+        }
+
+        let transform = xr_widget_world_transform(cx, scope, self.widget_uid(), &self.node);
+        self.draw_cube.begin_many_instances(cx);
+        for instance in batch
+            .instances
+            .iter()
+            .take(MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT)
+        {
+            self.draw_particle_cube(cx, transform, instance.center_radius, instance.color);
+        }
+        self.draw_cube.end_many_instances(cx);
+
+        self.node.draw_3d(cx, scope)
+    }
+
+    fn draw_walk(&mut self, _cx: &mut Cx2d, _scope: &mut Scope, _walk: Walk) -> DrawStep {
+        DrawStep::done()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -2139,11 +2353,20 @@ impl MakepadStereoCameraPanel {
             .set_uniform_on_area(cx, id, &values);
     }
 
+    fn set_camera_streaming_enabled(&mut self, cx: &mut Cx, enabled: bool) {
+        if self.camera_streaming_enabled != enabled {
+            self.camera_streaming_enabled = enabled;
+            self.node.redraw(cx);
+        }
+    }
+
     fn set_mesh_replay_uniforms(
         &mut self,
         cx: &mut Cx,
         uniforms: MeshReplayUniforms,
         feature_uniforms: MakepadCameraShellFeatureUniforms,
+        matter_uniforms: MakepadMatterSurfaceUniforms,
+        particle_texture_frame: MatterParticleTextureFrame,
     ) {
         let runtime = Vec4f {
             x: uniforms.enabled,
@@ -2161,6 +2384,19 @@ impl MakepadStereoCameraPanel {
             z: feature_uniforms.particles_enabled,
             w: 0.0,
         };
+        let matter_runtime = mesh_replay_segment_vec4(matter_uniforms.runtime);
+        let matter_collision_contact = mesh_replay_segment_vec4(matter_uniforms.collision_contact);
+        let matter_collision_normal = mesh_replay_segment_vec4(matter_uniforms.collision_normal);
+        let matter_sdf_sample0 = mesh_replay_segment_vec4(matter_uniforms.sdf_samples[0]);
+        let matter_sdf_sample1 = mesh_replay_segment_vec4(matter_uniforms.sdf_samples[1]);
+        let matter_sdf_sample2 = mesh_replay_segment_vec4(matter_uniforms.sdf_samples[2]);
+        let matter_sdf_sample3 = mesh_replay_segment_vec4(matter_uniforms.sdf_samples[3]);
+        let matter_particle0 = mesh_replay_segment_vec4(matter_uniforms.particles[0]);
+        let matter_particle1 = mesh_replay_segment_vec4(matter_uniforms.particles[1]);
+        let matter_particle2 = mesh_replay_segment_vec4(matter_uniforms.particles[2]);
+        let matter_particle3 = mesh_replay_segment_vec4(matter_uniforms.particles[3]);
+        let matter_particle_texture_runtime =
+            mesh_replay_segment_vec4(particle_texture_frame.runtime);
 
         self.draw_panel.mesh_replay_runtime = runtime;
         self.draw_panel.mesh_replay_segment0 = segment0;
@@ -2168,6 +2404,20 @@ impl MakepadStereoCameraPanel {
         self.draw_panel.mesh_replay_segment2 = segment2;
         self.draw_panel.mesh_replay_segment3 = segment3;
         self.draw_panel.camera_shell_feature_runtime = feature_runtime;
+        self.draw_panel.matter_surface_runtime = matter_runtime;
+        self.draw_panel.matter_collision_contact = matter_collision_contact;
+        self.draw_panel.matter_collision_normal = matter_collision_normal;
+        self.draw_panel.matter_sdf_sample0 = matter_sdf_sample0;
+        self.draw_panel.matter_sdf_sample1 = matter_sdf_sample1;
+        self.draw_panel.matter_sdf_sample2 = matter_sdf_sample2;
+        self.draw_panel.matter_sdf_sample3 = matter_sdf_sample3;
+        self.draw_panel.matter_particle0 = matter_particle0;
+        self.draw_panel.matter_particle1 = matter_particle1;
+        self.draw_panel.matter_particle2 = matter_particle2;
+        self.draw_panel.matter_particle3 = matter_particle3;
+        self.draw_panel.matter_particle_texture_runtime = matter_particle_texture_runtime;
+        self.draw_panel
+            .assign_texture_slot(MATTER_PARTICLE_TEXTURE_SLOT, particle_texture_frame.texture);
 
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_runtime), runtime);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment0), segment0);
@@ -2175,6 +2425,30 @@ impl MakepadStereoCameraPanel {
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment2), segment2);
         self.set_panel_uniform_vec4f(cx, live_id!(mesh_replay_segment3), segment3);
         self.set_panel_uniform_vec4f(cx, live_id!(camera_shell_feature_runtime), feature_runtime);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_surface_runtime), matter_runtime);
+        self.set_panel_uniform_vec4f(
+            cx,
+            live_id!(matter_collision_contact),
+            matter_collision_contact,
+        );
+        self.set_panel_uniform_vec4f(
+            cx,
+            live_id!(matter_collision_normal),
+            matter_collision_normal,
+        );
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_sdf_sample0), matter_sdf_sample0);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_sdf_sample1), matter_sdf_sample1);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_sdf_sample2), matter_sdf_sample2);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_sdf_sample3), matter_sdf_sample3);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_particle0), matter_particle0);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_particle1), matter_particle1);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_particle2), matter_particle2);
+        self.set_panel_uniform_vec4f(cx, live_id!(matter_particle3), matter_particle3);
+        self.set_panel_uniform_vec4f(
+            cx,
+            live_id!(matter_particle_texture_runtime),
+            matter_particle_texture_runtime,
+        );
         self.draw_panel.draw_vars.redraw(cx);
         self.node.redraw(cx);
     }
@@ -3018,6 +3292,9 @@ impl Widget for MakepadStereoCameraPanel {
         if cx.scene_state_3d().is_none() {
             return self.node.draw_3d(cx, scope);
         }
+        if !self.camera_streaming_enabled {
+            return self.node.draw_3d(cx, scope);
+        }
         if !CAMERA_PANEL_DRAW_MARKER_EMITTED.swap(true, Ordering::AcqRel) {
             let projection_panel_draw_enabled =
                 MakepadProjectionSampleMode::current().draws_projection_panel();
@@ -3057,7 +3334,9 @@ impl App {
 
         Self::emit_status_marker(phase);
         Self::emit_stereo_comparison_marker(phase);
-        if Self::broker_h264_enabled() {
+        if !Self::startup_camera_streaming_enabled() {
+            emit_marker_line(makepad_camera2_acquisition_streaming_disabled_marker_line());
+        } else if Self::broker_h264_enabled() {
             emit_marker_line(makepad_camera2_acquisition_broker_h264_skipped_marker_line());
         } else {
             Self::start_camera_probe_once();
@@ -3117,6 +3396,28 @@ impl App {
         makepad_runtime_config()
     }
 
+    fn startup_camera_streaming_enabled() -> bool {
+        let config = Self::runtime_config();
+        hotload_bool(
+            KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+            runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED),
+        )
+    }
+
+    fn current_camera_streaming_enabled(&self) -> bool {
+        hotload_bool(
+            KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+            self.camera_shell_effective_camera_streaming_enabled,
+        )
+    }
+
+    fn matter_world_particle_placement() -> QuestMakepadWorldParticlePlacement {
+        QuestMakepadWorldParticlePlacement::content_local(
+            MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
+            DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+        )
+    }
+
     fn initialize_hostess_shell_contract(&mut self) {
         self.shell_contract_read = shell_contract::read_selected_makepad_shell_contract();
         let _ = shell_contract::write_selected_makepad_shell_contract_read_receipt(
@@ -3161,7 +3462,18 @@ impl App {
             selection.source_modified_ns.is_some();
         self.camera_shell_effective_render_scale = selection.render_scale.unwrap_or_default();
         self.camera_shell_effective_render_scale_present = selection.render_scale.is_some();
+        self.camera_shell_effective_camera_streaming_enabled = selection
+            .camera_streaming_enabled
+            .unwrap_or(DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED);
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
+        self.matter_surface_runtime = selection.matter_surface_runtime;
+        self.matter_surface_frame_markers_emitted = 0;
+        self.matter_surface_world_particle_markers_emitted = 0;
+        self.matter_surface_world_particle_draw_markers_emitted = 0;
+        self.matter_surface_last_step_seconds = f64::NEG_INFINITY;
+        self.matter_surface_cached_panel_overlay_frame = MatterSurfacePanelOverlayFrame::default();
+        self.matter_surface_cached_world_particle_batch = None;
+        self.matter_particle_texture.reset_markers();
         self.mesh_replay_runtime = selection.runtime;
 
         if let Some(marker_line) = marker_line {
@@ -4550,6 +4862,15 @@ impl App {
         true
     }
 
+    fn update_camera_projection_panel_streaming_enabled(&mut self, cx: &mut Cx) {
+        let enabled = self.current_camera_streaming_enabled();
+        let panel_ref = self.ui.widget(cx, ids!(camera_projection_panel));
+        let Some(mut panel) = panel_ref.borrow_mut::<MakepadStereoCameraPanel>() else {
+            return;
+        };
+        panel.set_camera_streaming_enabled(cx, enabled);
+    }
+
     fn handle_mesh_replay_runtime_cadence(&mut self, cx: &mut Cx, now_seconds: f64) {
         const SETTINGS_HOTLOAD_CHECK_PERIOD_FRAMES: u64 = 30;
         if self.cadence_frame_count == 1
@@ -4581,7 +4902,112 @@ impl App {
         for line in marker_lines {
             emit_marker_line(&line);
         }
-        self.apply_mesh_replay_uniforms_to_panel(cx, uniforms, self.camera_shell_feature_uniforms);
+        let camera_streaming_enabled = self.current_camera_streaming_enabled();
+        let matter_frame = self.update_matter_surface_runtime_for_evidence(
+            cx,
+            now_seconds,
+            "cadence",
+            camera_streaming_enabled,
+        );
+        if camera_streaming_enabled {
+            self.apply_mesh_replay_uniforms_to_panel(
+                cx,
+                uniforms,
+                self.camera_shell_feature_uniforms,
+                matter_frame.uniforms,
+                matter_frame.particle_texture,
+            );
+        }
+        self.apply_matter_world_particles_to_cloud(cx, "cadence");
+    }
+
+    fn update_matter_surface_runtime_for_evidence(
+        &mut self,
+        cx: &mut Cx,
+        now_seconds: f64,
+        phase: &str,
+        update_panel_overlay: bool,
+    ) -> MatterSurfacePanelOverlayFrame {
+        if now_seconds.is_finite()
+            && self.matter_surface_last_step_seconds.is_finite()
+            && now_seconds - self.matter_surface_last_step_seconds
+                < MATTER_SURFACE_STEP_INTERVAL_SECONDS
+        {
+            return self.matter_surface_cached_panel_overlay_frame.clone();
+        }
+
+        let delta_seconds =
+            if now_seconds.is_finite() && self.matter_surface_last_step_seconds.is_finite() {
+                (now_seconds - self.matter_surface_last_step_seconds).clamp(0.0, 0.25) as f32
+            } else {
+                1.0 / 60.0
+            };
+        let frame = self.step_matter_surface_runtime_for_evidence(
+            cx,
+            phase,
+            delta_seconds,
+            update_panel_overlay,
+        );
+        self.matter_surface_last_step_seconds = now_seconds;
+        self.matter_surface_cached_panel_overlay_frame = frame.clone();
+        frame
+    }
+
+    fn step_matter_surface_runtime_for_evidence(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        delta_seconds: f32,
+        update_panel_overlay: bool,
+    ) -> MatterSurfacePanelOverlayFrame {
+        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
+            self.matter_surface_cached_world_particle_batch = None;
+            return MatterSurfacePanelOverlayFrame::default();
+        };
+        let Some(matter_runtime) = self.matter_surface_runtime.as_mut() else {
+            self.matter_surface_cached_world_particle_batch = None;
+            return MatterSurfacePanelOverlayFrame::default();
+        };
+        let probe = MatterSurfaceContactProbe::sphere(
+            "hostess.camera_shell.center_probe",
+            replay_runtime.sequence().bounds_center(),
+            replay_runtime.sequence().bounds_radius() * 0.5,
+        );
+        let Ok(frame) = matter_runtime.step_from_replay(replay_runtime, delta_seconds, &[probe])
+        else {
+            self.matter_surface_cached_world_particle_batch = None;
+            return MatterSurfacePanelOverlayFrame::default();
+        };
+        if self.matter_surface_frame_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            emit_marker_line(&matter_runtime.marker_line(phase, &frame));
+            self.matter_surface_frame_markers_emitted += 1;
+        }
+        let bounds_min = replay_runtime.sequence().bounds_min();
+        let bounds_max = replay_runtime.sequence().bounds_max();
+        let world_batch = frame.world_particle_batch(
+            bounds_min,
+            bounds_max,
+            Self::matter_world_particle_placement(),
+            MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT,
+        );
+        if self.matter_surface_world_particle_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            if let Some(world_batch) = world_batch.as_ref() {
+                emit_marker_line(&world_batch.marker_line(phase));
+                self.matter_surface_world_particle_markers_emitted += 1;
+            }
+        }
+        self.matter_surface_cached_world_particle_batch = world_batch;
+        if !update_panel_overlay {
+            return MatterSurfacePanelOverlayFrame::default();
+        }
+        let uniforms = MakepadMatterSurfaceUniforms::from_frame(&frame, bounds_min, bounds_max);
+        let particle_texture = self
+            .matter_particle_texture
+            .update_from_frame(cx, &frame, bounds_min, bounds_max, phase);
+        MatterSurfacePanelOverlayFrame {
+            uniforms,
+            particle_texture,
+        }
     }
 
     fn apply_mesh_replay_uniforms_to_panel(
@@ -4589,13 +5015,78 @@ impl App {
         cx: &mut Cx,
         uniforms: MeshReplayUniforms,
         feature_uniforms: MakepadCameraShellFeatureUniforms,
+        matter_uniforms: MakepadMatterSurfaceUniforms,
+        particle_texture_frame: MatterParticleTextureFrame,
     ) -> bool {
         let panel_ref = self.ui.widget(cx, ids!(camera_projection_panel));
         let Some(mut panel) = panel_ref.borrow_mut::<MakepadStereoCameraPanel>() else {
             return false;
         };
-        panel.set_mesh_replay_uniforms(cx, uniforms, feature_uniforms);
+        panel.set_mesh_replay_uniforms(
+            cx,
+            uniforms,
+            feature_uniforms,
+            matter_uniforms,
+            particle_texture_frame,
+        );
         true
+    }
+
+    fn apply_matter_world_particles_to_cloud(&mut self, cx: &mut Cx, phase: &str) {
+        let batch = self.matter_surface_cached_world_particle_batch.clone();
+        let cloud_ref = self.ui.widget(cx, ids!(matter_particle_cloud));
+        let Some(mut cloud) = cloud_ref.borrow_mut::<MakepadMatterParticleCloud>() else {
+            if self.matter_surface_world_particle_draw_markers_emitted
+                < MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
+            {
+                emit_marker_line(&format!(
+                    "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=error renderer=makepad-xr-draw-cube-proof issue=matter_particle_cloud_widget_missing finalBillboardRenderer=false",
+                    marker_token(phase),
+                ));
+                self.matter_surface_world_particle_draw_markers_emitted += 1;
+            }
+            return;
+        };
+        cloud.set_world_particle_batch(cx, batch.clone());
+
+        if self.matter_surface_world_particle_draw_markers_emitted
+            >= MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
+        {
+            return;
+        }
+        let Some(batch) = batch else {
+            emit_marker_line(&format!(
+                "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=waiting renderer=makepad-xr-draw-cube-proof sourceSchema=none drawnInstances=0 finalBillboardRenderer=false",
+                marker_token(phase),
+            ));
+            self.matter_surface_world_particle_draw_markers_emitted += 1;
+            return;
+        };
+        let drawn_instances = batch
+            .instances
+            .len()
+            .min(MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT);
+        let content_center_distance = (batch.content_center[0] * batch.content_center[0]
+            + batch.content_center[1] * batch.content_center[1]
+            + batch.content_center[2] * batch.content_center[2])
+            .sqrt();
+        emit_marker_line(&format!(
+            "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=ready renderer=makepad-xr-unlit-cube-proof borrowedVisualReference=unity-viscereality-instanced-particle sourceSchema={} coordinateSpace={} sourceRows={} instanceRows={} drawnInstances={} droppedRows={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} finalBillboardRenderer=false",
+            marker_token(phase),
+            marker_token(&batch.source_schema_id),
+            marker_token(&batch.coordinate_space),
+            batch.source_rows,
+            batch.instances.len(),
+            drawn_instances,
+            batch.dropped_rows,
+            batch.content_center[0],
+            batch.content_center[1],
+            batch.content_center[2],
+            batch.content_radius,
+            content_center_distance,
+            MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
+        ));
+        self.matter_surface_world_particle_draw_markers_emitted += 1;
     }
 
     fn apply_camera_shell_render_scale(&self, cx: &mut Cx, phase: &str) {
@@ -4619,7 +5110,9 @@ impl App {
     }
 
     fn handle_cadence_event(&mut self, cx: &mut Cx, event: &Event) {
-        if matches!(event, Event::Startup | Event::XrUpdate(_)) {
+        if matches!(event, Event::Startup)
+            || (matches!(event, Event::XrUpdate(_)) && self.current_camera_streaming_enabled())
+        {
             self.refresh_horizontal_alignment_tuning(cx);
         }
 
@@ -4631,6 +5124,7 @@ impl App {
         match event {
             Event::XrUpdate(_update) => {
                 self.cadence_xr_update_count = self.cadence_xr_update_count.saturating_add(1);
+                let camera_streaming_enabled = self.current_camera_streaming_enabled();
                 if self
                     .shell_xr_runtime
                     .observe_update(cx.in_xr_mode(), _update)
@@ -4640,17 +5134,19 @@ impl App {
                 self.record_xr_pose_snapshot(_update);
                 self.handle_manifold_breath_feedback_subscription();
                 self.handle_manifold_pose_publish(_update);
-                self.handle_projection_target_joystick(cx, _update);
-                self.handle_projection_target_breath_feedback(cx);
-                #[cfg(target_os = "android")]
-                self.update_runtime_xr_projection(_update);
-                let adopted = self.try_adopt_pending_stereo_camera_frame("xr-update");
-                if (adopted || self.adopted_stereo_camera_frame.is_some())
-                    && !self.paired_import_finished
-                {
-                    self.complete_paired_import_if_ready(cx);
-                } else if adopted {
-                    self.bind_camera_projection_panel(cx);
+                if camera_streaming_enabled {
+                    self.handle_projection_target_joystick(cx, _update);
+                    self.handle_projection_target_breath_feedback(cx);
+                    #[cfg(target_os = "android")]
+                    self.update_runtime_xr_projection(_update);
+                    let adopted = self.try_adopt_pending_stereo_camera_frame("xr-update");
+                    if (adopted || self.adopted_stereo_camera_frame.is_some())
+                        && !self.paired_import_finished
+                    {
+                        self.complete_paired_import_if_ready(cx);
+                    } else if adopted {
+                        self.bind_camera_projection_panel(cx);
+                    }
                 }
             }
             Event::Draw(_) => {
@@ -5172,7 +5668,7 @@ impl App {
 
     fn handle_broker_h264_projection_metadata(&mut self, video_id: LiveId, metadata_json: &str) {
         emit_raw_video_event_marker("metadata", video_id);
-        if !Self::broker_h264_enabled() {
+        if !self.current_camera_streaming_enabled() || !Self::broker_h264_enabled() {
             return;
         }
         let texture_path = Self::broker_h264_requested_texture_path();
@@ -5256,33 +5752,54 @@ impl App {
         }
     }
 
+    fn begin_camera_streaming_startup(&mut self, cx: &mut Cx) {
+        if self.paired_import_started || self.paired_import_finished {
+            return;
+        }
+        if !self.paired_import_timer.is_empty() {
+            return;
+        }
+        if Self::broker_h264_enabled() {
+            let source = Self::broker_h264_source();
+            self.paired_import_choice = Some(MakepadCameraPair::from_broker_h264_source(&source));
+            Self::emit_hardware_buffer_import_marker(
+                &makepad_hardware_buffer_import_broker_h264_startup_marker_fields(
+                    &source.broker_host,
+                    source.broker_port,
+                    source.stream_port,
+                    Self::broker_h264_stream_port(StereoEye::Right),
+                    &source.source_mode,
+                    &source.decode_output_mode,
+                    &source.synthetic_pattern,
+                    source.preferred_width,
+                    source.preferred_height,
+                    source.live_stream,
+                    Self::broker_h264_requested_texture_path(),
+                ),
+            );
+        } else {
+            cx.request_permission(Permission::Camera);
+            cx.request_permission(Permission::HeadsetCamera);
+        }
+        self.arm_paired_import_timer(cx, PAIRED_IMPORT_DELAY_SECONDS, "startup");
+    }
+
     fn handle_paired_import_event(&mut self, cx: &mut Cx, event: &Event) {
+        if !self.current_camera_streaming_enabled() {
+            self.paired_import_timer = Timer::empty();
+            if !self.camera_streaming_disabled_logged {
+                self.camera_streaming_disabled_logged = true;
+                emit_marker_line(makepad_camera2_acquisition_streaming_disabled_marker_line());
+            }
+            return;
+        }
+        if self.camera_streaming_disabled_logged {
+            self.camera_streaming_disabled_logged = false;
+            self.begin_camera_streaming_startup(cx);
+        }
         match event {
             Event::Startup => {
-                if Self::broker_h264_enabled() {
-                    let source = Self::broker_h264_source();
-                    self.paired_import_choice =
-                        Some(MakepadCameraPair::from_broker_h264_source(&source));
-                    Self::emit_hardware_buffer_import_marker(
-                        &makepad_hardware_buffer_import_broker_h264_startup_marker_fields(
-                            &source.broker_host,
-                            source.broker_port,
-                            source.stream_port,
-                            Self::broker_h264_stream_port(StereoEye::Right),
-                            &source.source_mode,
-                            &source.decode_output_mode,
-                            &source.synthetic_pattern,
-                            source.preferred_width,
-                            source.preferred_height,
-                            source.live_stream,
-                            Self::broker_h264_requested_texture_path(),
-                        ),
-                    );
-                } else {
-                    cx.request_permission(Permission::Camera);
-                    cx.request_permission(Permission::HeadsetCamera);
-                }
-                self.arm_paired_import_timer(cx, PAIRED_IMPORT_DELAY_SECONDS, "startup");
+                self.begin_camera_streaming_startup(cx);
             }
             Event::VideoInputs(inputs) => {
                 if Self::broker_h264_enabled() {
@@ -5504,7 +6021,7 @@ impl App {
     }
 
     fn maybe_prepare_broker_h264_import(&mut self, cx: &mut Cx, ready: &TextureHandleReadyEvent) {
-        if !Self::broker_h264_enabled() {
+        if !self.current_camera_streaming_enabled() || !Self::broker_h264_enabled() {
             return;
         }
 
@@ -5561,7 +6078,7 @@ impl App {
     }
 
     fn request_broker_h264_import(&mut self, cx: &mut Cx, side: StereoEye, texture_id: TextureId) {
-        if !Self::broker_h264_enabled() {
+        if !self.current_camera_streaming_enabled() || !Self::broker_h264_enabled() {
             return;
         }
         let already_requested = match side {
@@ -5602,6 +6119,9 @@ impl App {
     }
 
     fn try_start_paired_import(&mut self, cx: &mut Cx) {
+        if !self.current_camera_streaming_enabled() {
+            return;
+        }
         if self.paired_import_started || self.paired_import_finished {
             return;
         }
@@ -5896,6 +6416,11 @@ impl App {
     }
 
     fn bind_camera_projection_panel(&mut self, cx: &mut Cx) -> bool {
+        if !self.current_camera_streaming_enabled() {
+            self.camera_projection_textures_bound = false;
+            self.camera_projection_paired_textures_bound = false;
+            return false;
+        }
         let broker_h264_enabled = Self::broker_h264_enabled();
         let projection_sample_mode = MakepadProjectionSampleMode::current();
         let camera_texture_binding_enabled = projection_sample_mode.binds_camera_textures();
@@ -6791,6 +7316,7 @@ impl AppMain for App {
         self.request_android_xr_start_fallback_once(cx, "first_event");
         self.match_event(cx, event);
         self.handle_cadence_event(cx, event);
+        self.update_camera_projection_panel_streaming_enabled(cx);
         self.handle_paired_import_event(cx, event);
         self.ui.handle_event(cx, event, &mut Scope::empty());
     }

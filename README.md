@@ -110,13 +110,14 @@ mesh replay runtime from that same effective-settings report, emits
 by file identity, and binds the runtime's four segment uniforms into the XR
 panel shader overlay. The `makepad.render.scale` value is applied as the
 Hostess `xr_render_scale` runtime override when the report is configured.
-Collision, SDF/ADF, and particle values are also sourced from the same
-effective-settings report and bound as shader-side app-shell feature uniforms:
-collision highlights a deterministic central contact probe over replay
-segments, SDF/ADF modes draw distance/grid overlays over the replay field, and
-particles draw a small phase-driven overlay. These are runtime-visible app
-scaffolds until Matter-owned simulation/collision/SDF/particle contracts replace
-the procedural shader behavior.
+Collision, SDF, ADF, and particle controls are also sourced from the same
+effective-settings report. Hostess now consumes the camera-shell adapter's
+native Matter-surface runtime boundary and records receipt evidence for the
+derived Matter config. Only the `sdf` mode activates the SDF feature uniform;
+`adf` and `combined` are logged as unsupported future placeholders until Matter
+owns a real ADF contract. The remaining render-integration slice is to replace
+the procedural shader collision/SDF/particle scaffolds with the adapter's
+Matter-backed upload rows.
 
 Live evidence, including runtime processor-module metrics, is validated with:
 

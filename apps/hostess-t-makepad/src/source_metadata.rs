@@ -198,6 +198,10 @@ pub(crate) fn makepad_camera2_acquisition_broker_h264_skipped_marker_line() -> &
     "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
 }
 
+pub(crate) fn makepad_camera2_acquisition_streaming_disabled_marker_line() -> &'static str {
+    "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=camera-streaming-disabled import=none cameraStreamingEnabled=false"
+}
+
 pub(crate) fn makepad_hardware_buffer_import_marker_line(body: &str) -> String {
     format!(
         "RUSTY_MAKEPAD_HARDWARE_BUFFER_IMPORT schema=rusty.gui.makepad.hardware_buffer_import.v1 {}",
@@ -1715,6 +1719,14 @@ mod tests {
         assert_eq!(
             makepad_camera2_acquisition_broker_h264_skipped_marker_line(),
             "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=broker-h264-enabled import=broker-h264"
+        );
+    }
+
+    #[test]
+    fn disabled_camera_streaming_skip_marker_keeps_acquisition_shape() {
+        assert_eq!(
+            makepad_camera2_acquisition_streaming_disabled_marker_line(),
+            "RUSTY_MAKEPAD_CAMERA2_ACQUISITION schema=rusty.gui.makepad.camera2_acquisition.v1 phase=start status=skipped reason=camera-streaming-disabled import=none cameraStreamingEnabled=false"
         );
     }
 

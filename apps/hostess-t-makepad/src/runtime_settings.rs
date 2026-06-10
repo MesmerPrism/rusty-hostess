@@ -40,6 +40,7 @@ pub(crate) const DEFAULT_BROKER_H264_DECODE_TIMEOUT_MS: u32 = 20_000;
 pub(crate) const DEFAULT_BROKER_H264_LIVE_STREAM: bool = true;
 pub(crate) const DEFAULT_BROKER_H264_STEREO_PAIR_ID: &str = "makepad-broker-h264-stereo-camera";
 pub(crate) const DEFAULT_BROKER_H264_STEREO_PAIR_MAX_DELTA_NS: u32 = 25_000_000;
+pub(crate) const DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED: bool = true;
 pub(crate) const DEFAULT_MAKEPAD_DIRECT_CAMERA_HARDWARE_BUFFER_EXTERNAL: bool = true;
 pub(crate) const DEFAULT_MANIFOLD_POSE_PUBLISH_ENABLED: bool = false;
 pub(crate) const DEFAULT_MANIFOLD_POSE_STREAM: &str = "stream.motion.object_pose";
@@ -134,6 +135,7 @@ pub(crate) const KEY_CAMERA_PREVIEW_FOV_Y_DEGREES: &str = "camera_preview_fov_y_
 pub(crate) const KEY_CAMERA_PREVIEW_OFFSET_Y_METERS: &str = "camera_preview_offset_y_meters";
 pub(crate) const KEY_CAMERA_RAW_OVERLAY_OVERSCAN: &str = "camera_raw_overlay_overscan";
 pub(crate) const KEY_XR_RENDER_SCALE: &str = "xr_render_scale";
+pub(crate) const KEY_MAKEPAD_CAMERA_STREAMING_ENABLED: &str = "makepad_camera_streaming_enabled";
 pub(crate) const KEY_RENDERER: &str = "renderer";
 pub(crate) const KEY_ANDROID_PACKAGER: &str = "android_packager";
 pub(crate) const KEY_MAKEPAD_REVISION: &str = "makepad_revision";
@@ -371,6 +373,15 @@ pub(crate) fn makepad_runtime_config() -> RuntimeConfig {
         ),
         RuntimeConfigSource::Environment,
     );
+    set_runtime_bool(
+        &mut config,
+        KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+        hotload_bool(
+            KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+            DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED,
+        ),
+        RuntimeConfigSource::Environment,
+    );
     let effective_settings =
         crate::makepad_effective_settings::read_selected_makepad_effective_settings();
     apply_effective_settings_runtime_overrides(&mut config, &effective_settings);
@@ -422,6 +433,14 @@ pub(crate) fn apply_effective_settings_runtime_overrides(
             RuntimeConfigSource::File,
         );
     }
+    if let Some(camera_streaming_enabled) = receipt.camera_streaming_enabled() {
+        set_runtime_bool(
+            config,
+            KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+            camera_streaming_enabled,
+            RuntimeConfigSource::File,
+        );
+    }
 }
 
 fn set_runtime_text(
@@ -446,6 +465,17 @@ fn set_runtime_float(
         .expect("runtime config keys should be public-safe constants");
 }
 
+fn set_runtime_bool(
+    config: &mut RuntimeConfig,
+    key: &'static str,
+    value: bool,
+    source: RuntimeConfigSource,
+) {
+    config
+        .set(key, RuntimeValue::Bool(value), source)
+        .expect("runtime config keys should be public-safe constants");
+}
+
 pub(crate) fn runtime_text(config: &RuntimeConfig, key: &str) -> String {
     config
         .get(key)
@@ -459,6 +489,13 @@ pub(crate) fn runtime_float(config: &RuntimeConfig, key: &str) -> f64 {
         .get(key)
         .and_then(RuntimeValue::as_float)
         .unwrap_or(0.0)
+}
+
+pub(crate) fn runtime_bool(config: &RuntimeConfig, key: &str) -> bool {
+    config
+        .get(key)
+        .and_then(RuntimeValue::as_bool)
+        .unwrap_or(false)
 }
 
 fn startup_f64(runtime_key: &'static str, env_key: &str, default: f64) -> f64 {
@@ -550,9 +587,21 @@ fn runtime_env_key(key: &str) -> String {
 
 #[cfg(any(target_os = "android", test))]
 pub(crate) fn runtime_property_names(key: &'static str) -> Vec<String> {
-    vec![RuntimeKey::new(key)
-        .expect("runtime config key should be valid")
-        .android_property(&AndroidPropertyPrefix::default())]
+    let runtime_key = RuntimeKey::new(key).expect("runtime config key should be valid");
+    let mut names = Vec::new();
+    if matches!(
+        key,
+        KEY_MAKEPAD_PROJECTION_RUNTIME_RESOLUTION_ENABLED | KEY_MAKEPAD_CAMERA_STREAMING_ENABLED
+    ) {
+        names.push(
+            runtime_key.android_property(
+                &AndroidPropertyPrefix::new("debug.rustyquest")
+                    .expect("Quest Android property prefix should be valid"),
+            ),
+        );
+    }
+    names.push(runtime_key.android_property(&AndroidPropertyPrefix::default()));
+    names
 }
 
 #[cfg(target_os = "android")]
@@ -631,6 +680,28 @@ mod tests {
     }
 
     #[test]
+    fn projection_runtime_resolution_gate_accepts_quest_prefix_first() {
+        assert_eq!(
+            runtime_property_names(KEY_MAKEPAD_PROJECTION_RUNTIME_RESOLUTION_ENABLED),
+            [
+                "debug.rustyquest.makepad.projection.runtime.resolution.enabled".to_string(),
+                "debug.rusty.makepad.projection.runtime.resolution.enabled".to_string(),
+            ]
+        );
+    }
+
+    #[test]
+    fn camera_streaming_gate_accepts_quest_prefix_first() {
+        assert_eq!(
+            runtime_property_names(KEY_MAKEPAD_CAMERA_STREAMING_ENABLED),
+            [
+                "debug.rustyquest.makepad.camera.streaming.enabled".to_string(),
+                "debug.rusty.makepad.camera.streaming.enabled".to_string(),
+            ]
+        );
+    }
+
+    #[test]
     fn effective_settings_render_scale_overrides_environment_layer() {
         let path = write_temp_json(
             "effective-settings-render-scale",
@@ -649,6 +720,27 @@ mod tests {
         apply_effective_settings_runtime_overrides(&mut config, &receipt);
 
         assert!((runtime_float(&config, KEY_XR_RENDER_SCALE) - 0.9).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn effective_settings_camera_streaming_overrides_environment_layer() {
+        let path = write_temp_json(
+            "effective-settings-camera-streaming",
+            EFFECTIVE_SETTINGS_FIXTURE,
+        );
+        let receipt =
+            crate::makepad_effective_settings::read_makepad_effective_settings_from_path(&path);
+        let mut config = RuntimeConfig::new();
+        set_runtime_bool(
+            &mut config,
+            KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
+            false,
+            RuntimeConfigSource::Environment,
+        );
+
+        apply_effective_settings_runtime_overrides(&mut config, &receipt);
+
+        assert!(runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED));
     }
 
     fn write_temp_json(name: &str, text: &str) -> PathBuf {

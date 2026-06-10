@@ -2,7 +2,8 @@ use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
 use rusty_quest_makepad_camera_shell::{
     camera_shell_runtime_bundle_from_effective_settings_json, CameraShellEffectiveConfig,
-    MeshReplayRuntime, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
+    MeshReplayRuntime, QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX,
+    REPLAY_SCHEMA_ID,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -47,9 +48,15 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     mesh_replay_speed: Option<f64>,
     mesh_replay_opacity: Option<f64>,
     render_scale: Option<f64>,
+    camera_streaming_enabled: Option<bool>,
     collision_enabled: Option<bool>,
     sdf_adf_overlay_mode: Option<String>,
+    sdf_adf_runtime_mode: Option<String>,
+    sdf_adf_unsupported_future_mode: Option<bool>,
     particles_enabled: Option<bool>,
+    matter_surface_native_runtime_configured: Option<bool>,
+    matter_surface_particle_count: Option<usize>,
+    matter_surface_leaf_triangle_count: Option<usize>,
     legacy_settings_fallback_used: bool,
     receipt_written: bool,
 }
@@ -63,12 +70,11 @@ pub(crate) struct MakepadCameraShellFeatureUniforms {
 
 impl MakepadCameraShellFeatureUniforms {
     fn from_effective_config(config: &CameraShellEffectiveConfig) -> Self {
+        let runtime_mode = SdfAdfRuntimeMode::from_overlay_mode(config.sdf_adf_overlay_mode);
         Self {
             collision_enabled: if config.collision_enabled { 1.0 } else { 0.0 },
-            sdf_adf_overlay_mode: match config.sdf_adf_overlay_mode.as_str() {
-                "sdf" => 1.0,
-                "adf" => 2.0,
-                "combined" => 3.0,
+            sdf_adf_overlay_mode: match runtime_mode {
+                SdfAdfRuntimeMode::Sdf => 1.0,
                 _ => 0.0,
             },
             particles_enabled: if config.particles_enabled { 1.0 } else { 0.0 },
@@ -84,14 +90,16 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) source_effective_settings_path: Option<String>,
     pub(crate) source_modified_ns: Option<u128>,
     pub(crate) render_scale: Option<f32>,
+    pub(crate) camera_streaming_enabled: Option<bool>,
     pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
+    pub(crate) matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
 }
 
 impl MakepadMeshReplayRuntimeSelection {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={}",
+            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={}",
             REPLAY_MARKER_PREFIX,
             REPLAY_SCHEMA_ID,
             marker_token(phase),
@@ -102,6 +110,7 @@ impl MakepadMeshReplayRuntimeSelection {
             self.source_modified_ns
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "none".to_string()),
+            self.matter_surface_runtime.is_some(),
         )
     }
 
@@ -118,7 +127,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -142,15 +151,25 @@ impl MakepadEffectiveSettingsReceipt {
             marker_f64(self.mesh_replay_speed),
             marker_f64(self.mesh_replay_opacity),
             marker_f64(self.render_scale),
+            marker_bool(self.camera_streaming_enabled),
             marker_bool(self.collision_enabled),
             marker_option(self.sdf_adf_overlay_mode.as_deref()),
+            marker_option(self.sdf_adf_runtime_mode.as_deref()),
+            marker_bool(self.sdf_adf_unsupported_future_mode),
             marker_bool(self.particles_enabled),
+            marker_bool(self.matter_surface_native_runtime_configured),
+            marker_usize(self.matter_surface_particle_count),
+            marker_usize(self.matter_surface_leaf_triangle_count),
             self.legacy_settings_fallback_used,
         )
     }
 
     pub(crate) fn render_scale(&self) -> Option<f64> {
         self.render_scale
+    }
+
+    pub(crate) fn camera_streaming_enabled(&self) -> Option<bool> {
+        self.camera_streaming_enabled
     }
 
     fn to_json_value(&self) -> Value {
@@ -177,9 +196,15 @@ impl MakepadEffectiveSettingsReceipt {
             "mesh_replay_speed": self.mesh_replay_speed,
             "mesh_replay_opacity": self.mesh_replay_opacity,
             "render_scale": self.render_scale,
+            "camera_streaming_enabled": self.camera_streaming_enabled,
             "collision_enabled": self.collision_enabled,
             "sdf_adf_overlay_mode": self.sdf_adf_overlay_mode,
+            "sdf_adf_runtime_mode": self.sdf_adf_runtime_mode,
+            "sdf_adf_unsupported_future_mode": self.sdf_adf_unsupported_future_mode,
             "particles_enabled": self.particles_enabled,
+            "matter_surface_native_runtime_configured": self.matter_surface_native_runtime_configured,
+            "matter_surface_particle_count": self.matter_surface_particle_count,
+            "matter_surface_leaf_triangle_count": self.matter_surface_leaf_triangle_count,
             "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
             "receipt_written": self.receipt_written,
         })
@@ -227,8 +252,10 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             source_effective_settings_path: None,
             source_modified_ns: None,
             render_scale: None,
+            camera_streaming_enabled: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
+            matter_surface_runtime: None,
         };
     };
     read_mesh_replay_runtime_from_path(&path)
@@ -246,8 +273,10 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 source_effective_settings_path: Some(path.display().to_string()),
                 source_modified_ns,
                 render_scale: None,
+                camera_streaming_enabled: None,
                 feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
+                matter_surface_runtime: None,
             };
         }
     };
@@ -262,8 +291,10 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 source_effective_settings_path: Some(path.display().to_string()),
                 source_modified_ns,
                 render_scale: Some(bundle.effective_config.render_scale),
+                camera_streaming_enabled: Some(bundle.effective_config.camera_streaming_enabled),
                 feature_uniforms,
                 runtime: Some(bundle.mesh_replay_runtime),
+                matter_surface_runtime: Some(bundle.matter_surface_runtime),
             }
         }
         Err(error) => MakepadMeshReplayRuntimeSelection {
@@ -273,8 +304,10 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             source_effective_settings_path: Some(path.display().to_string()),
             source_modified_ns,
             render_scale: None,
+            camera_streaming_enabled: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
+            matter_surface_runtime: None,
         },
     }
 }
@@ -313,27 +346,48 @@ fn ready_receipt(
         mesh_replay_speed,
         mesh_replay_opacity,
         render_scale,
+        camera_streaming_enabled,
         collision_enabled,
         sdf_adf_overlay_mode,
+        sdf_adf_runtime_mode,
+        sdf_adf_unsupported_future_mode,
         particles_enabled,
+        matter_surface_native_runtime_configured,
+        matter_surface_particle_count,
+        matter_surface_leaf_triangle_count,
     ) = match CameraShellEffectiveConfig::from_effective_settings_json(raw_json) {
-        Ok(config) => (
-            Some("ready".to_string()),
-            None,
-            true,
-            Some(config.replay.enabled),
-            Some(config.replay.source),
-            Some(f64::from(config.replay.speed)),
-            Some(f64::from(config.replay.opacity)),
-            Some(f64::from(config.render_scale)),
-            Some(config.collision_enabled),
-            Some(config.sdf_adf_overlay_mode.as_str().to_string()),
-            Some(config.particles_enabled),
-        ),
+        Ok(config) => {
+            let runtime_mode = SdfAdfRuntimeMode::from_overlay_mode(config.sdf_adf_overlay_mode);
+            (
+                Some("ready".to_string()),
+                None,
+                true,
+                Some(config.replay.enabled),
+                Some(config.replay.source),
+                Some(f64::from(config.replay.speed)),
+                Some(f64::from(config.replay.opacity)),
+                Some(f64::from(config.render_scale)),
+                Some(config.camera_streaming_enabled),
+                Some(config.collision_enabled),
+                Some(config.sdf_adf_overlay_mode.as_str().to_string()),
+                Some(runtime_mode.as_str().to_string()),
+                Some(runtime_mode.is_unsupported_adf_placeholder()),
+                Some(config.particles_enabled),
+                Some(config.matter_surface.enabled),
+                Some(config.matter_surface.particle_count),
+                Some(config.matter_surface.leaf_triangle_count),
+            )
+        }
         Err(error) => (
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -367,9 +421,15 @@ fn ready_receipt(
         mesh_replay_speed,
         mesh_replay_opacity,
         render_scale,
+        camera_streaming_enabled,
         collision_enabled,
         sdf_adf_overlay_mode,
+        sdf_adf_runtime_mode,
+        sdf_adf_unsupported_future_mode,
         particles_enabled,
+        matter_surface_native_runtime_configured,
+        matter_surface_particle_count,
+        matter_surface_leaf_triangle_count,
         legacy_settings_fallback_used: false,
         receipt_written: false,
     }
@@ -491,6 +551,12 @@ fn marker_bool(value: Option<bool>) -> String {
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn marker_usize(value: Option<usize>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -526,9 +592,15 @@ mod tests {
         assert!(receipt
             .render_scale
             .is_some_and(|value| (value - 0.9).abs() < 0.000_001));
-        assert_eq!(receipt.collision_enabled, Some(false));
-        assert_eq!(receipt.sdf_adf_overlay_mode.as_deref(), Some("off"));
-        assert_eq!(receipt.particles_enabled, Some(false));
+        assert_eq!(receipt.camera_streaming_enabled, Some(true));
+        assert_eq!(receipt.collision_enabled, Some(true));
+        assert_eq!(receipt.sdf_adf_overlay_mode.as_deref(), Some("sdf"));
+        assert_eq!(receipt.sdf_adf_runtime_mode.as_deref(), Some("sdf"));
+        assert_eq!(receipt.sdf_adf_unsupported_future_mode, Some(false));
+        assert_eq!(receipt.particles_enabled, Some(true));
+        assert_eq!(receipt.matter_surface_native_runtime_configured, Some(true));
+        assert_eq!(receipt.matter_surface_particle_count, Some(1000));
+        assert_eq!(receipt.matter_surface_leaf_triangle_count, Some(8));
         assert!(!receipt.legacy_settings_fallback_used);
 
         let marker = receipt.marker_line("test");
@@ -538,9 +610,13 @@ mod tests {
         assert!(marker.contains("meshReplayAdapter=rusty-quest-makepad-camera-shell"));
         assert!(marker.contains("meshReplayAdapterStatus=ready"));
         assert!(marker.contains("renderScale=0.900"));
-        assert!(marker.contains("collisionEnabled=false"));
-        assert!(marker.contains("sdfAdfOverlayMode=off"));
-        assert!(marker.contains("particlesEnabled=false"));
+        assert!(marker.contains("cameraStreamingEnabled=true"));
+        assert!(marker.contains("collisionEnabled=true"));
+        assert!(marker.contains("sdfAdfOverlayMode=sdf"));
+        assert!(marker.contains("sdfAdfRuntimeMode=sdf"));
+        assert!(marker.contains("matterSurfaceNativeRuntimeConfigured=true"));
+        assert!(marker.contains("matterSurfaceParticleCount=1000"));
+        assert!(marker.contains("particlesEnabled=true"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
     }
@@ -556,11 +632,17 @@ mod tests {
         assert!(selection.source_modified_ns.is_some());
         assert!(selection.settings_identity_changed_from(None, None));
         assert_eq!(selection.render_scale, Some(0.9));
+        assert_eq!(selection.camera_streaming_enabled, Some(true));
         assert_eq!(
             selection.feature_uniforms,
-            MakepadCameraShellFeatureUniforms::default()
+            MakepadCameraShellFeatureUniforms {
+                collision_enabled: 1.0,
+                sdf_adf_overlay_mode: 1.0,
+                particles_enabled: 1.0,
+            }
         );
         let runtime = selection.runtime.as_mut().expect("runtime selected");
+        assert!(selection.matter_surface_runtime.is_some());
         let first = runtime.step(0.0);
         assert!(first.enabled);
         assert_eq!(first.frame_index, 0);
@@ -572,17 +654,9 @@ mod tests {
 
     #[test]
     fn builds_feature_uniforms_from_canonical_effective_settings() {
-        let features_enabled = EFFECTIVE_SETTINGS_FIXTURE
-            .replace(
-                "\"setting_id\": \"makepad.collision.enabled\",\n      \"value\": false",
-                "\"setting_id\": \"makepad.collision.enabled\",\n      \"value\": true",
-            )
-            .replace("\"value\": \"off\"", "\"value\": \"combined\"")
-            .replace(
-                "\"setting_id\": \"makepad.particles.enabled\",\n      \"value\": false",
-                "\"setting_id\": \"makepad.particles.enabled\",\n      \"value\": true",
-            );
-        let path = write_temp_json("effective-settings-feature-uniforms", &features_enabled);
+        let unsupported_combined =
+            EFFECTIVE_SETTINGS_FIXTURE.replace("\"value\": \"sdf\"", "\"value\": \"combined\"");
+        let path = write_temp_json("effective-settings-feature-uniforms", &unsupported_combined);
 
         let selection = read_mesh_replay_runtime_from_path(&path);
 
@@ -590,11 +664,12 @@ mod tests {
             selection.feature_uniforms,
             MakepadCameraShellFeatureUniforms {
                 collision_enabled: 1.0,
-                sdf_adf_overlay_mode: 3.0,
+                sdf_adf_overlay_mode: 0.0,
                 particles_enabled: 1.0,
             }
         );
         assert!(selection.runtime.is_some());
+        assert!(selection.matter_surface_runtime.is_some());
     }
 
     #[test]
