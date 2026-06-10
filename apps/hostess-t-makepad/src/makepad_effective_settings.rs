@@ -1,9 +1,9 @@
 use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
 use rusty_quest_makepad_camera_shell::{
-    camera_shell_runtime_bundle_from_effective_settings_json, CameraShellEffectiveConfig,
-    MeshReplayRuntime, QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX,
-    REPLAY_SCHEMA_ID,
+    camera_shell_runtime_bundle_from_effective_settings_json_with_replay_asset_dir,
+    CameraShellEffectiveConfig, MeshReplayRuntime, QuestMakepadMatterSurfaceRuntime,
+    SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::Value;
 use std::path::{Path, PathBuf};
@@ -98,6 +98,23 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub(crate) struct MakepadEffectiveSettingsIdentity {
+    pub(crate) source_effective_settings_path: Option<String>,
+    pub(crate) source_modified_ns: Option<u128>,
+}
+
+impl MakepadEffectiveSettingsIdentity {
+    pub(crate) fn changed_from(
+        &self,
+        previous_path: Option<&str>,
+        previous_modified_ns: Option<u128>,
+    ) -> bool {
+        self.source_effective_settings_path.as_deref() != previous_path
+            || self.source_modified_ns != previous_modified_ns
+    }
+}
+
 impl MakepadMeshReplayRuntimeSelection {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
@@ -115,15 +132,6 @@ impl MakepadMeshReplayRuntimeSelection {
             self.matter_surface_runtime.is_some(),
             marker_usize(self.particle_render_draw_limit),
         )
-    }
-
-    pub(crate) fn settings_identity_changed_from(
-        &self,
-        previous_path: Option<&str>,
-        previous_modified_ns: Option<u128>,
-    ) -> bool {
-        self.source_effective_settings_path.as_deref() != previous_path
-            || self.source_modified_ns != previous_modified_ns
     }
 }
 
@@ -216,6 +224,21 @@ impl MakepadEffectiveSettingsReceipt {
     }
 }
 
+pub(crate) fn selected_makepad_effective_settings_identity() -> MakepadEffectiveSettingsIdentity {
+    selected_effective_settings_path()
+        .map(|path| makepad_effective_settings_identity_from_path(&path))
+        .unwrap_or_default()
+}
+
+pub(crate) fn makepad_effective_settings_identity_from_path(
+    path: &Path,
+) -> MakepadEffectiveSettingsIdentity {
+    MakepadEffectiveSettingsIdentity {
+        source_effective_settings_path: Some(path.display().to_string()),
+        source_modified_ns: file_modified_ns(path),
+    }
+}
+
 pub(crate) fn read_selected_makepad_effective_settings() -> MakepadEffectiveSettingsReceipt {
     let Some(path) = selected_effective_settings_path() else {
         return not_configured_receipt();
@@ -287,7 +310,11 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             };
         }
     };
-    match camera_shell_runtime_bundle_from_effective_settings_json(&text) {
+    let replay_asset_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    match camera_shell_runtime_bundle_from_effective_settings_json_with_replay_asset_dir(
+        &text,
+        replay_asset_dir,
+    ) {
         Ok(bundle) => {
             let feature_uniforms =
                 MakepadCameraShellFeatureUniforms::from_effective_config(&bundle.effective_config);
@@ -575,11 +602,18 @@ fn marker_usize(value: Option<usize>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use rusty_quest_makepad_camera_shell::CAMERA_SHELL_APP_ID;
+    use rusty_quest_makepad_camera_shell::{
+        CAMERA_SHELL_APP_ID, MESH_REPLAY_SOURCE_PUBLIC_SYNTHETIC_HAND_SEQUENCE,
+        MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_LEFT,
+        RECORDED_META_QUEST_HAND_LEFT_SEQUENCE_FILE,
+    };
     use std::time::{SystemTime, UNIX_EPOCH};
 
     const EFFECTIVE_SETTINGS_FIXTURE: &str = include_str!(
         "../../../../rusty-quest-makepad/fixtures/effective-settings/mesh-replay.effective-settings.json"
+    );
+    const SYNTHETIC_SEQUENCE_FIXTURE: &str = include_str!(
+        "../../../../rusty-quest-makepad/fixtures/mesh-replay/synthetic-hand-mesh-sequence.json"
     );
 
     #[test]
@@ -647,7 +681,7 @@ mod tests {
         assert_eq!(selection.status, "ready");
         assert!(selection.issue_code.is_none());
         assert!(selection.source_modified_ns.is_some());
-        assert!(selection.settings_identity_changed_from(None, None));
+        assert!(selection.source_effective_settings_path.is_some());
         assert_eq!(selection.render_scale, Some(0.9));
         assert_eq!(selection.camera_streaming_enabled, Some(false));
         assert_eq!(selection.particle_render_draw_limit, Some(192));
@@ -668,6 +702,96 @@ mod tests {
         assert!(marker.contains("schema=rusty.quest.makepad.mesh_replay.v1"));
         assert!(marker.contains("source=public-synthetic-hand-sequence"));
         assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn reads_effective_settings_identity_without_parsing_settings_payload() {
+        let path = write_temp_json("effective-settings-identity-only", "{not json");
+
+        let identity = makepad_effective_settings_identity_from_path(&path);
+        let expected_path = path.display().to_string();
+
+        assert_eq!(
+            identity.source_effective_settings_path.as_deref(),
+            Some(expected_path.as_str())
+        );
+        assert!(identity.source_modified_ns.is_some());
+        assert!(identity.changed_from(None, None));
+        assert!(!identity.changed_from(
+            identity.source_effective_settings_path.as_deref(),
+            identity.source_modified_ns
+        ));
+
+        let parsed = read_mesh_replay_runtime_from_path(&path);
+        assert_eq!(parsed.status, "rejected");
+        assert_eq!(parsed.issue_code.as_deref(), Some(PARSE_ISSUE));
+    }
+
+    #[test]
+    fn effective_settings_identity_changes_when_file_modified() {
+        let path = write_temp_json("effective-settings-identity-modified", "{not json");
+        let first = makepad_effective_settings_identity_from_path(&path);
+
+        wait_for_file_timestamp_tick();
+        std::fs::write(&path, EFFECTIVE_SETTINGS_FIXTURE).expect("rewrite effective settings");
+        let second = makepad_effective_settings_identity_from_path(&path);
+
+        assert_eq!(
+            second.source_effective_settings_path,
+            first.source_effective_settings_path
+        );
+        assert!(second.changed_from(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns
+        ));
+    }
+
+    #[test]
+    fn builds_recorded_replay_runtime_from_staged_sequence() {
+        let recorded_settings = EFFECTIVE_SETTINGS_FIXTURE.replace(
+            MESH_REPLAY_SOURCE_PUBLIC_SYNTHETIC_HAND_SEQUENCE,
+            MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_LEFT,
+        );
+        let path = write_temp_json("recorded-effective-settings-runtime", &recorded_settings);
+        write_mesh_replay_asset(
+            &path,
+            RECORDED_META_QUEST_HAND_LEFT_SEQUENCE_FILE,
+            SYNTHETIC_SEQUENCE_FIXTURE,
+        );
+
+        let mut selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(selection.status, "ready");
+        assert!(selection.issue_code.is_none());
+        assert!(selection.matter_surface_runtime.is_some());
+        let runtime = selection.runtime.as_mut().expect("runtime selected");
+        let first = runtime.step(0.0);
+        assert!(first.enabled);
+        let marker = runtime.config_marker_line("recorded-source-test");
+        assert!(marker.contains("source=recorded-meta-quest-hand-left"));
+        assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn recorded_replay_runtime_rejects_missing_staged_sequence() {
+        let recorded_settings = EFFECTIVE_SETTINGS_FIXTURE.replace(
+            MESH_REPLAY_SOURCE_PUBLIC_SYNTHETIC_HAND_SEQUENCE,
+            MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_LEFT,
+        );
+        let path = write_temp_json(
+            "recorded-effective-settings-missing-asset",
+            &recorded_settings,
+        );
+
+        let selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(selection.status, "rejected");
+        assert!(selection.runtime.is_none());
+        assert_eq!(selection.issue_code.as_deref(), Some(PARSE_ISSUE));
+        assert!(selection
+            .issue_evidence
+            .as_deref()
+            .is_some_and(|error| error.contains(RECORDED_META_QUEST_HAND_LEFT_SEQUENCE_FILE)));
     }
 
     #[test]
@@ -768,5 +892,18 @@ mod tests {
         let path = root.join("settings.json");
         std::fs::write(&path, text).expect("write effective settings fixture");
         path
+    }
+
+    fn wait_for_file_timestamp_tick() {
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+
+    fn write_mesh_replay_asset(settings_path: &Path, file_name: &str, text: &str) {
+        let mesh_replay_dir = settings_path
+            .parent()
+            .expect("settings path has parent")
+            .join("mesh-replay");
+        std::fs::create_dir_all(&mesh_replay_dir).expect("create mesh replay dir");
+        std::fs::write(mesh_replay_dir.join(file_name), text).expect("write mesh replay asset");
     }
 }

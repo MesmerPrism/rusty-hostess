@@ -128,7 +128,8 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms,
-    QuestMakepadMatterSurfaceRuntime, QuestMakepadWorldParticleBatch,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
+    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldParticleBatch,
     QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
     DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
@@ -1617,9 +1618,11 @@ pub struct App {
     #[rust]
     mesh_replay_runtime: Option<MeshReplayRuntime>,
     #[rust]
-    matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
+    matter_surface_worker: Option<QuestMakepadMatterSurfaceWorker>,
     #[rust]
     matter_surface_frame_markers_emitted: usize,
+    #[rust]
+    matter_surface_worker_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3437,16 +3440,18 @@ impl App {
         phase: &str,
         force: bool,
     ) -> bool {
-        let selection = makepad_effective_settings::read_selected_mesh_replay_runtime();
-        if !force
-            && !selection.settings_identity_changed_from(
+        if !force {
+            let identity =
+                makepad_effective_settings::selected_makepad_effective_settings_identity();
+            if !identity.changed_from(
                 self.mesh_replay_effective_settings_path.as_deref(),
                 self.current_mesh_replay_effective_settings_modified_ns(),
-            )
-        {
-            return false;
+            ) {
+                return false;
+            }
         }
 
+        let selection = makepad_effective_settings::read_selected_mesh_replay_runtime();
         let runtime_ready = selection.runtime.is_some();
         let marker_line = if selection.runtime.is_none() {
             Some(selection.marker_line(phase))
@@ -3470,8 +3475,11 @@ impl App {
         self.matter_world_particle_draw_limit_configured =
             selection.particle_render_draw_limit.is_some();
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
-        self.matter_surface_runtime = selection.matter_surface_runtime;
+        self.matter_surface_worker = selection
+            .matter_surface_runtime
+            .map(QuestMakepadMatterSurfaceWorker::from_runtime);
         self.matter_surface_frame_markers_emitted = 0;
+        self.matter_surface_worker_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_last_step_seconds = f64::NEG_INFINITY;
@@ -4951,60 +4959,116 @@ impl App {
         phase: &str,
         update_panel_overlay: bool,
     ) -> MatterSurfacePanelOverlayFrame {
-        if now_seconds.is_finite()
+        let should_submit = !(now_seconds.is_finite()
             && self.matter_surface_last_step_seconds.is_finite()
             && now_seconds - self.matter_surface_last_step_seconds
-                < MATTER_SURFACE_STEP_INTERVAL_SECONDS
-        {
-            return self.matter_surface_cached_panel_overlay_frame.clone();
+                < MATTER_SURFACE_STEP_INTERVAL_SECONDS);
+
+        if should_submit {
+            let delta_seconds =
+                if now_seconds.is_finite() && self.matter_surface_last_step_seconds.is_finite() {
+                    (now_seconds - self.matter_surface_last_step_seconds).clamp(0.0, 0.25) as f32
+                } else {
+                    1.0 / 60.0
+                };
+            if self.submit_matter_surface_worker_for_evidence(phase, delta_seconds) {
+                self.matter_surface_last_step_seconds = now_seconds;
+            }
         }
 
-        let delta_seconds =
-            if now_seconds.is_finite() && self.matter_surface_last_step_seconds.is_finite() {
-                (now_seconds - self.matter_surface_last_step_seconds).clamp(0.0, 0.25) as f32
-            } else {
-                1.0 / 60.0
-            };
-        let frame = self.step_matter_surface_runtime_for_evidence(
-            cx,
-            phase,
-            delta_seconds,
-            update_panel_overlay,
-        );
-        self.matter_surface_last_step_seconds = now_seconds;
-        self.matter_surface_cached_panel_overlay_frame = frame.clone();
-        frame
+        if let Some(frame) =
+            self.consume_matter_surface_worker_output(cx, phase, update_panel_overlay)
+        {
+            self.matter_surface_cached_panel_overlay_frame = frame.clone();
+            return frame;
+        }
+
+        self.matter_surface_cached_panel_overlay_frame.clone()
     }
 
-    fn step_matter_surface_runtime_for_evidence(
+    fn submit_matter_surface_worker_for_evidence(
         &mut self,
-        cx: &mut Cx,
         phase: &str,
         delta_seconds: f32,
-        update_panel_overlay: bool,
-    ) -> MatterSurfacePanelOverlayFrame {
+    ) -> bool {
         let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
-            return MatterSurfacePanelOverlayFrame::default();
+            return false;
         };
-        let Some(matter_runtime) = self.matter_surface_runtime.as_mut() else {
+        let Some(worker) = self.matter_surface_worker.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
-            return MatterSurfacePanelOverlayFrame::default();
+            return false;
         };
         let probe = MatterSurfaceContactProbe::sphere(
             "hostess.camera_shell.center_probe",
             replay_runtime.sequence().bounds_center(),
             replay_runtime.sequence().bounds_radius() * 0.5,
         );
-        let Ok(frame) = matter_runtime.step_from_replay(replay_runtime, delta_seconds, &[probe])
-        else {
+        match worker.submit_replay_frame(phase, replay_runtime, delta_seconds, &[probe]) {
+            Ok(_) => true,
+            Err(error) => {
+                self.matter_surface_cached_world_particle_batch = None;
+                if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+                    emit_marker_line(&format!(
+                        "RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER schema=rusty.quest.makepad.matter_surface_worker.v1 phase={} status=error mode=latest-wins workerThread=true renderThreadBlocking=false issue={}",
+                        marker_token(phase),
+                        marker_token(&error.to_string()),
+                    ));
+                    self.matter_surface_worker_markers_emitted += 1;
+                }
+                false
+            }
+        }
+    }
+
+    fn consume_matter_surface_worker_output(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        update_panel_overlay: bool,
+    ) -> Option<MatterSurfacePanelOverlayFrame> {
+        let output = self
+            .matter_surface_worker
+            .as_ref()
+            .and_then(|worker| worker.take_latest_output())?;
+
+        if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            emit_marker_line(&output.marker_line(phase));
+            self.matter_surface_worker_markers_emitted += 1;
+        }
+
+        match output {
+            QuestMakepadMatterSurfaceWorkerOutput::Frame(worker_frame) => {
+                Some(self.apply_matter_surface_worker_frame(
+                    cx,
+                    phase,
+                    worker_frame,
+                    update_panel_overlay,
+                ))
+            }
+            QuestMakepadMatterSurfaceWorkerOutput::Error(_error) => {
+                self.matter_surface_cached_world_particle_batch = None;
+                None
+            }
+        }
+    }
+
+    fn apply_matter_surface_worker_frame(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        worker_frame: QuestMakepadMatterSurfaceWorkerFrame,
+        update_panel_overlay: bool,
+    ) -> MatterSurfacePanelOverlayFrame {
+        let frame = worker_frame.frame;
+        if self.matter_surface_frame_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            emit_marker_line(&worker_frame.runtime_marker_line);
+            self.matter_surface_frame_markers_emitted += 1;
+        }
+        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
             return MatterSurfacePanelOverlayFrame::default();
         };
-        if self.matter_surface_frame_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            emit_marker_line(&matter_runtime.marker_line(phase, &frame));
-            self.matter_surface_frame_markers_emitted += 1;
-        }
         let bounds_min = replay_runtime.sequence().bounds_min();
         let bounds_max = replay_runtime.sequence().bounds_max();
         let draw_limit = self.current_matter_world_particle_draw_limit();
