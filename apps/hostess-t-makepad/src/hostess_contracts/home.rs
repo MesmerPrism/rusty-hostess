@@ -1,29 +1,34 @@
 use super::Vec2;
 
-/// Versioned schema id for home panel descriptors.
-pub const HOME_PANEL_DESCRIPTOR_SCHEMA: &str = "rusty.xr.home.panel.v1";
+/// Legacy serialized schema id for home panel descriptors.
+pub const LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA: &str = "rusty.xr.home.panel.v1";
 
-/// Versioned schema id for home session state.
-pub const HOME_SESSION_STATE_SCHEMA: &str = "rusty.xr.home.state.v1";
+/// Legacy serialized schema id for home session state.
+pub const LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA: &str = "rusty.xr.home.state.v1";
 
-/// Versioned schema id for launcher entries.
-pub const HOME_LAUNCHER_ENTRY_SCHEMA: &str = "rusty.xr.home.launcher_entry.v1";
+/// Legacy serialized schema id for launcher entries.
+pub const LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA: &str = "rusty.xr.home.launcher_entry.v1";
 
-/// Versioned schema id for settings shortcut descriptors.
-pub const HOME_SETTINGS_SHORTCUT_SCHEMA: &str = "rusty.xr.home.settings_shortcut.v1";
+/// Legacy serialized schema id for settings shortcut descriptors.
+pub const LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA: &str =
+    "rusty.xr.home.settings_shortcut.v1";
 
-/// Versioned schema id for focus recovery events.
-pub const HOME_FOCUS_RECOVERY_EVENT_SCHEMA: &str = "rusty.xr.home.focus_recovery_event.v1";
+/// Legacy serialized schema id for focus recovery events.
+pub const LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA: &str =
+    "rusty.xr.home.focus_recovery_event.v1";
 
-/// Versioned schema id for Rusty Kiosk control-plane snapshots.
-pub const KIOSK_CONTROL_PLANE_STATUS_SCHEMA: &str = "rusty.xr.kiosk.control_plane.v1";
+/// Legacy serialized schema id for Rusty Kiosk control-plane snapshots.
+pub const LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA: &str =
+    "rusty.xr.kiosk.control_plane.v1";
 
-/// Versioned schema id for the command evidence embedded in control-plane snapshots.
-pub const KIOSK_COMMAND_EVIDENCE_SCHEMA: &str = "rusty.xr.kiosk.command_evidence.v1";
+/// Legacy serialized schema id for command evidence embedded in control-plane snapshots.
+pub const LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA: &str =
+    "rusty.xr.kiosk.command_evidence.v1";
 
-/// Versioned schema id for run records that tie API, CLI, MCP, and fallback
+/// Legacy serialized schema id for run records that tie API, CLI, MCP, and fallback
 /// command paths to before/after kiosk state.
-pub const KIOSK_COMMAND_RUN_RECORD_SCHEMA: &str = "rusty.xr.kiosk.command_run_record.v1";
+pub const LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA: &str =
+    "rusty.xr.kiosk.command_run_record.v1";
 
 /// High-level mode for a Rusty Kiosk, developer-home, or broker surface.
 ///
@@ -103,7 +108,7 @@ pub struct HomePanelDescriptor {
 impl HomePanelDescriptor {
     pub fn new(panel_id: impl Into<String>, title: impl Into<String>, kind: HomePanelKind) -> Self {
         Self {
-            schema: HOME_PANEL_DESCRIPTOR_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA.to_string(),
             panel_id: panel_id.into(),
             title: title.into(),
             kind,
@@ -150,7 +155,7 @@ impl HomePanelDescriptor {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == HOME_PANEL_DESCRIPTOR_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA
             && stable_id(&self.panel_id)
             && non_empty(&self.title)
             && size_range_valid(self.default_size_m, self.min_size_m, self.max_size_m)
@@ -194,7 +199,7 @@ pub struct LauncherEntry {
 impl LauncherEntry {
     pub fn new(package_name: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            schema: HOME_LAUNCHER_ENTRY_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA.to_string(),
             package_name: package_name.into(),
             label: label.into(),
             launch_component: None,
@@ -231,7 +236,7 @@ impl LauncherEntry {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == HOME_LAUNCHER_ENTRY_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA
             && package_like(&self.package_name)
             && non_empty(&self.label)
             && self
@@ -289,7 +294,7 @@ impl SettingsShortcutDescriptor {
         category: SettingsShortcutCategory,
     ) -> Self {
         Self {
-            schema: HOME_SETTINGS_SHORTCUT_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA.to_string(),
             shortcut_id: shortcut_id.into(),
             label: label.into(),
             android_action: android_action.into(),
@@ -316,7 +321,7 @@ impl SettingsShortcutDescriptor {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == HOME_SETTINGS_SHORTCUT_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA
             && stable_id(&self.shortcut_id)
             && non_empty(&self.label)
             && android_action_like(&self.android_action)
@@ -490,7 +495,7 @@ pub struct HomeSessionState {
 impl HomeSessionState {
     pub fn new(mode: HomeMode) -> Self {
         Self {
-            schema: HOME_SESSION_STATE_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA.to_string(),
             mode,
             active_panels: Vec::new(),
             last_external_launch: None,
@@ -524,7 +529,7 @@ impl HomeSessionState {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == HOME_SESSION_STATE_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA
             && self
                 .active_panels
                 .iter()
@@ -679,7 +684,7 @@ pub struct KioskCommandEvidence {
 impl KioskCommandEvidence {
     pub fn new(command_goal: impl Into<String>, provider: KioskCommandProvider) -> Self {
         Self {
-            schema: KIOSK_COMMAND_EVIDENCE_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA.to_string(),
             command_goal: command_goal.into(),
             provider,
             preferred_command: None,
@@ -722,7 +727,7 @@ impl KioskCommandEvidence {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == KIOSK_COMMAND_EVIDENCE_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA
             && stable_id(&self.command_goal)
             && self
                 .preferred_command
@@ -782,7 +787,7 @@ impl KioskCommandRunRecord {
         primary: KioskCommandEvidence,
     ) -> Self {
         Self {
-            schema: KIOSK_COMMAND_RUN_RECORD_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA.to_string(),
             run_id: run_id.into(),
             command_goal: command_goal.into(),
             surface_intent: KioskSurfaceIntent::UnknownSurface,
@@ -842,7 +847,7 @@ impl KioskCommandRunRecord {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == KIOSK_COMMAND_RUN_RECORD_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA
             && stable_id(&self.run_id)
             && stable_id(&self.command_goal)
             && self.primary.command_goal == self.command_goal
@@ -904,7 +909,7 @@ pub struct KioskControlPlaneStatus {
 impl KioskControlPlaneStatus {
     pub fn broker_panel_2d() -> Self {
         Self {
-            schema: KIOSK_CONTROL_PLANE_STATUS_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA.to_string(),
             phase: KioskControlPlanePhase::BrokerPanel2d,
             surface_intent: KioskSurfaceIntent::RustyKioskDefault,
             home_mode: HomeMode::Normal2d,
@@ -1021,7 +1026,7 @@ impl KioskControlPlaneStatus {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == KIOSK_CONTROL_PLANE_STATUS_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA
             && (!self.phase.has_app_owned_immersive_home() || self.immersive_home_visible)
             && (!self.continuous_adb_shell_required || self.shell_helper_connected)
             && (!self.meta_menu_active || self.surface_intent.is_meta_surface())
@@ -1111,7 +1116,7 @@ impl FocusRecoveryEvent {
         reason: impl Into<String>,
     ) -> Self {
         Self {
-            schema: HOME_FOCUS_RECOVERY_EVENT_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA.to_string(),
             event_id: event_id.into(),
             policy,
             action,
@@ -1145,7 +1150,7 @@ impl FocusRecoveryEvent {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == HOME_FOCUS_RECOVERY_EVENT_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA
             && stable_id(&self.event_id)
             && non_empty(&self.reason)
             && self

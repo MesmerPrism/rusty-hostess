@@ -458,8 +458,15 @@ impl Default for CameraTextureTransform {
     }
 }
 
-pub const SOURCE_SAMPLING_CONTRACT_SCHEMA: &str = "rusty.xr.source-sampling-contract.v1";
-pub const CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA: &str = "rusty.xr.camera-texture-lane-contract.v1";
+/// Legacy schema id for source-sampling contracts kept for serialized compatibility.
+pub const LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA: &str =
+    "rusty.xr.source-sampling-contract.v1";
+/// Legacy schema id for camera texture lane contracts kept for serialized compatibility.
+pub const LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA: &str =
+    "rusty.xr.camera-texture-lane-contract.v1";
+/// Legacy schema id for camera-source diagnostics kept for serialized compatibility.
+pub const LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA: &str =
+    "rusty.xr.camera-source-diagnostics.v1";
 
 /// Normalized UV rectangle in the source image domain.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -620,7 +627,7 @@ impl SourceSamplingContract {
         transform_stage: SourceSamplingTransformStage,
     ) -> Self {
         Self {
-            schema_version: SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string(),
+            schema_version: LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string(),
             backend: backend.into(),
             mode: mode.into(),
             source_eye_mapping,
@@ -683,7 +690,7 @@ impl SourceSamplingContract {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema_version == SOURCE_SAMPLING_CONTRACT_SCHEMA
+        self.schema_version == LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA
             && !self.backend.trim().is_empty()
             && !self.mode.trim().is_empty()
             && self.content_uv_rect.is_valid()
@@ -1227,7 +1234,7 @@ impl CameraTextureLaneContract {
         resource: CameraTextureLaneResource,
     ) -> Self {
         Self {
-            schema_version: CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string(),
+            schema_version: LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string(),
             lane_kind,
             source,
             resource,
@@ -1269,7 +1276,7 @@ impl CameraTextureLaneContract {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema_version == CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
+        self.schema_version == LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
             && self.source.is_valid()
             && self.resource.is_valid()
             && self.transform.is_valid()
@@ -2622,7 +2629,7 @@ mod tests {
     #[test]
     fn camera_source_diagnostics_round_trip_with_serde() {
         let report = CameraSourceDiagnosticsReport {
-            schema_version: "rusty.xr.camera-source-diagnostics.v1".to_string(),
+            schema_version: LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA.to_string(),
             requested_tier: Some("camera-source-diagnostics".to_string()),
             selected_provider: Some("logical-physical".to_string()),
             fallback_reason: Some("selected logical-physical 0a/0b".to_string()),

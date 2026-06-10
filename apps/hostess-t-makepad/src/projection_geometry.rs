@@ -2231,7 +2231,7 @@ pub(crate) fn makepad_projection_target_marker_fields() -> String {
         )),
         projection_canvas_mode,
         projection_surface_aspect_contract,
-        crate::hostess_camera_model::TARGET_SCREEN_FOOTPRINT_SCHEMA,
+        crate::hostess_camera_model::LEGACY_RUSTY_XR_TARGET_SCREEN_FOOTPRINT_SCHEMA,
         target_screen_uv_rect_token(target_footprint.left_rect),
         target_screen_uv_rect_token(target_footprint.right_rect),
         if target_footprint.from_metadata {

@@ -1,10 +1,11 @@
 use super::{ImageSize, StereoMediaLayout};
 
-/// Versioned schema id for generic effect-stack descriptors.
-pub const EFFECT_STACK_DESCRIPTOR_SCHEMA: &str = "rusty.xr.effect_stack.descriptor.v1";
+/// Legacy serialized schema id for generic effect-stack descriptors.
+pub const LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA: &str =
+    "rusty.xr.effect_stack.descriptor.v1";
 
-/// Versioned schema id for generic effect-stack comparison reports.
-pub const EFFECT_STACK_COMPARISON_REPORT_SCHEMA: &str =
+/// Legacy serialized schema id for generic effect-stack comparison reports.
+pub const LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA: &str =
     "rusty.xr.effect_stack.comparison_report.v1";
 
 /// Public category for a renderer-owned image-processing pass.
@@ -288,7 +289,7 @@ pub struct EffectStackDescriptor {
 impl EffectStackDescriptor {
     pub fn new(stack_id: impl Into<String>, source_size: ImageSize) -> Self {
         Self {
-            schema: EFFECT_STACK_DESCRIPTOR_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA.to_string(),
             stack_id: stack_id.into(),
             source_size,
             source_layout: StereoMediaLayout::Mono,
@@ -319,7 +320,7 @@ impl EffectStackDescriptor {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == EFFECT_STACK_DESCRIPTOR_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA
             && stable_id(&self.stack_id)
             && self.source_size.is_non_empty()
             && !self.passes.is_empty()
@@ -573,7 +574,7 @@ impl EffectStackComparisonReport {
         candidate_label: impl Into<String>,
     ) -> Self {
         Self {
-            schema: EFFECT_STACK_COMPARISON_REPORT_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA.to_string(),
             report_id: report_id.into(),
             stack_id: stack_id.into(),
             reference_label: reference_label.into(),
@@ -588,7 +589,7 @@ impl EffectStackComparisonReport {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == EFFECT_STACK_COMPARISON_REPORT_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA
             && stable_id(&self.report_id)
             && stable_id(&self.stack_id)
             && non_empty(&self.reference_label)

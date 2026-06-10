@@ -2,9 +2,9 @@
 //!
 //! This module owns camera math that is public and app-neutral: intrinsics
 //! scaling, pinhole projection/back-projection, and timestamp matching.
-//! Existing `rusty.xr.*` schema identifiers below are serialized compatibility
-//! values; the active module name is Hostess-local until the contracts move to
-//! their Morphospace owner crates.
+//! Existing `rusty.xr.*` schema identifiers below are explicit
+//! `LEGACY_RUSTY_XR_*` serialized compatibility values; the active module name
+//! is Hostess-local until the contracts move to their Morphospace owner crates.
 //!
 //! Enable the `serde` feature to serialize helper result types; camera metadata
 //! serialization is forwarded through `hostess-contracts/serde`.
@@ -36,15 +36,16 @@ pub use crate::hostess_contracts::{
 /// Crate version exposed for lightweight smoke checks.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Versioned schema id for metadata-authored screen target footprints.
-pub const TARGET_SCREEN_FOOTPRINT_SCHEMA: &str = "rusty.xr.target_screen_footprint.v1";
+/// Legacy schema id for metadata-authored screen target footprints.
+pub const LEGACY_RUSTY_XR_TARGET_SCREEN_FOOTPRINT_SCHEMA: &str =
+    "rusty.xr.target_screen_footprint.v1";
 
-/// Versioned schema id for diagnostic region colors used by projection lanes.
-pub const TARGET_FOOTPRINT_DEBUG_REGION_COLORS_SCHEMA: &str =
+/// Legacy schema id for diagnostic region colors used by projection lanes.
+pub const LEGACY_RUSTY_XR_TARGET_FOOTPRINT_DEBUG_REGION_COLORS_SCHEMA: &str =
     "rusty.xr.target_footprint_debug_region_colors.v1";
 
-/// Versioned schema id for the source-to-target sampling mode carried by stream metadata.
-pub const SOURCE_SAMPLING_MODE_SCHEMA: &str = "rusty.xr.source_sampling_mode.v1";
+/// Legacy schema id for source-to-target sampling mode carried by stream metadata.
+pub const LEGACY_RUSTY_XR_SOURCE_SAMPLING_MODE_SCHEMA: &str = "rusty.xr.source_sampling_mode.v1";
 
 /// Source raster is placed in the metadata-authored target footprint as local 0..1 UV.
 pub const SOURCE_SAMPLING_MODE_TARGET_LOCAL_RASTER: &str = "target-local-raster";
@@ -313,8 +314,9 @@ impl SourcePixelWindow {
     }
 }
 
-/// Versioned schema id for renderer-neutral video projection geometry logs.
-pub const VIDEO_PROJECTION_GEOMETRY_SCHEMA: &str = "rusty.xr.video_projection_geometry.v1";
+/// Legacy schema id for renderer-neutral video projection geometry logs.
+pub const LEGACY_RUSTY_XR_VIDEO_PROJECTION_GEOMETRY_SCHEMA: &str =
+    "rusty.xr.video_projection_geometry.v1";
 
 /// Explicit source-to-surface mapping behavior requested by a video feed.
 ///
@@ -487,7 +489,7 @@ pub fn target_footprint_debug_region_marker_fields() -> String {
     ];
     let mut fields = format!(
         "targetFootprintDebugRegionColorsSchema={}",
-        TARGET_FOOTPRINT_DEBUG_REGION_COLORS_SCHEMA
+        LEGACY_RUSTY_XR_TARGET_FOOTPRINT_DEBUG_REGION_COLORS_SCHEMA
     );
     for region in regions {
         fields.push(' ');
@@ -900,7 +902,7 @@ impl PerEyeVideoProjectionPlan {
         let inner = rect_xywh(self.border.feed_screen_uv_rect);
         format!(
             "{prefix}ProjectionGeometrySchema={} {prefix}ProjectionMapping={} {prefix}SurfaceCoverageScreenUvRect={} {prefix}FeedPlacementScreenUvRect={} {prefix}BorderOuterScreenUvRect={} {prefix}BorderInnerScreenUvRect={} {prefix}BorderRegionSemantics=surface_minus_feed {prefix}BorderFillPolicy={} {prefix}SourceValidUvRect={} {prefix}ExpectedSourceValidScreenUvRect={} {prefix}SourceValidActiveFraction={:.6}",
-            VIDEO_PROJECTION_GEOMETRY_SCHEMA,
+            LEGACY_RUSTY_XR_VIDEO_PROJECTION_GEOMETRY_SCHEMA,
             self.mapping.stable_id(),
             uv_rect_token(surface),
             uv_rect_token(feed),

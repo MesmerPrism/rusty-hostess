@@ -52,7 +52,9 @@ pub use camera::{
     StereoCameraCalibrationProfile, StereoCameraCandidateDiagnostic, StereoCameraFrameMetadata,
     StereoCameraFramePair, StereoSourceEyeMapping, TemporalProjectionEdgeMode,
     TemporalProjectionMetrics, TemporalProjectionMode, TemporalProjectionPolicy,
-    VisualProjectionState, CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA, SOURCE_SAMPLING_CONTRACT_SCHEMA,
+    VisualProjectionState, LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA,
+    LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA,
+    LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA,
 };
 pub use depth::{
     depth_view_position_from_uv, reference_space_point_from_depth_uv,
@@ -61,13 +63,14 @@ pub use depth::{
     DepthSampleIdentityPolicy, DepthViewDescriptor, DepthWorldSpaceContract,
     DepthWorldSpaceMetricRange, DepthWorldSpaceRenderPath, DepthWorldSpaceSourceKind,
     DepthWorldSpaceStageEvidence, DepthWorldSpaceStageKind, EnvironmentDepthState,
-    DEPTH_WORLD_SPACE_CONTRACT_SCHEMA,
+    LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA,
 };
 pub use effect_stack::{
     EffectBufferDescriptor, EffectBufferFormat, EffectDiagnosticLayer, EffectLayerComparison,
     EffectLayerComparisonMetrics, EffectLayerMetrics, EffectPassDescriptor, EffectPassInput,
     EffectPassInputRole, EffectPassKind, EffectStackComparisonReport, EffectStackDescriptor,
-    EFFECT_STACK_COMPARISON_REPORT_SCHEMA, EFFECT_STACK_DESCRIPTOR_SCHEMA,
+    LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA,
+    LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA,
 };
 pub use hand::{
     HandJointName, HandJointPose, HandJointSnapshot, HandMeshError, HandMeshSnapshot, Handedness,
@@ -79,10 +82,12 @@ pub use home::{
     HomeSessionState, HomeSupervisorPolicy, HomeSupervisorState, KioskCommandEvidence,
     KioskCommandOutcome, KioskCommandProvider, KioskCommandRunRecord, KioskControlPlanePhase,
     KioskControlPlaneStatus, KioskSurfaceIntent, LauncherEntry, LauncherEntrySource,
-    SettingsShortcutCategory, SettingsShortcutDescriptor, HOME_FOCUS_RECOVERY_EVENT_SCHEMA,
-    HOME_LAUNCHER_ENTRY_SCHEMA, HOME_PANEL_DESCRIPTOR_SCHEMA, HOME_SESSION_STATE_SCHEMA,
-    HOME_SETTINGS_SHORTCUT_SCHEMA, KIOSK_COMMAND_EVIDENCE_SCHEMA, KIOSK_COMMAND_RUN_RECORD_SCHEMA,
-    KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
+    SettingsShortcutCategory, SettingsShortcutDescriptor,
+    LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA, LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA,
+    LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA, LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA,
+    LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA, LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA,
+    LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA,
+    LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
 };
 pub use interaction::{
     HandInfluencePoint, HandMenuActivation, HandMenuAnchor, InteractionRay, XrCanvasHit,
@@ -108,7 +113,7 @@ pub use projection_matrix::{
     ProjectionFootprintRowSpan, ProjectionFootprintSummary, ProjectionGuideDomain,
     ProjectionMatrixLaneKind, ProjectionMatrixLaneReport, ProjectionPerformanceMatrixPacket,
     ProjectionPerformanceScorecard, ProjectionStageKind, ProjectionStageTokenRow,
-    PROJECTION_PERFORMANCE_MATRIX_SCHEMA,
+    LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA,
 };
 pub use render::{
     ColorRgba, CounterSample, CounterValue, RenderCoordinateSpace, RenderPayload, RenderPoint,

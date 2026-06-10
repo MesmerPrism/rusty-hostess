@@ -1,7 +1,8 @@
 use super::{CameraExtrinsics, Eye, FieldOfView, ImageSize, Pose, Vec2, Vec3};
 
-/// Versioned schema id for depth/world-space contract packets.
-pub const DEPTH_WORLD_SPACE_CONTRACT_SCHEMA: &str = "rusty.xr.depth_world_space_contract.v1";
+/// Legacy serialized schema id for depth/world-space contract packets.
+pub const LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA: &str =
+    "rusty.xr.depth_world_space_contract.v1";
 
 /// Public depth payload interpretation.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -277,7 +278,7 @@ impl DepthWorldSpaceContract {
         right_depth_view: DepthViewDescriptor,
     ) -> Self {
         Self {
-            schema: DEPTH_WORLD_SPACE_CONTRACT_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA.to_string(),
             contract_id: contract_id.into(),
             source_kind: DepthWorldSpaceSourceKind::RuntimeEnvironmentDepth,
             render_path,
@@ -344,7 +345,7 @@ impl DepthWorldSpaceContract {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == DEPTH_WORLD_SPACE_CONTRACT_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA
             && non_empty(&self.contract_id)
             && self.depth_payload.is_valid()
             && self.depth_range.is_valid()

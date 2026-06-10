@@ -1,7 +1,7 @@
 use crate::camera_texture_path::MakepadCameraTexturePath;
 use crate::hostess_camera_model::{
     rect_xywh, target_footprint_debug_region_marker_fields, uv_rect_token, Rect2,
-    SourceSamplingMode, Vec2, TARGET_SCREEN_FOOTPRINT_SCHEMA,
+    SourceSamplingMode, Vec2, LEGACY_RUSTY_XR_TARGET_SCREEN_FOOTPRINT_SCHEMA,
 };
 use crate::makepad_widgets::makepad_platform::event::video_playback::VideoTextureUpdateMetadata;
 use serde_json::Value as JsonValue;
@@ -37,7 +37,7 @@ impl MakepadTargetScreenFootprintPair {
     pub(crate) fn marker_fields(self) -> String {
         format!(
             "targetFootprintSchema={} targetCoordinateSpace=display-eye-screen-uv leftTargetScreenUvRect={} rightTargetScreenUvRect={} targetClipPolicy=clip-to-visible-eye targetFootprintMetadataSource={} targetFootprintDefault={} effectBoundary=target-footprint borderRegionSemantics=visible-render-surface-minus-target-footprint sourceInvalidSemantics=homography-path-only-target-local-stretch-clamps-edge-sample {}",
-            TARGET_SCREEN_FOOTPRINT_SCHEMA,
+            LEGACY_RUSTY_XR_TARGET_SCREEN_FOOTPRINT_SCHEMA,
             target_screen_uv_rect_token(self.left_rect),
             target_screen_uv_rect_token(self.right_rect),
             if self.from_metadata {
@@ -1568,7 +1568,7 @@ pub(crate) fn stream_header_metadata_marker_fields(
             metadata
                 .target_footprint_schema
                 .as_deref()
-                .unwrap_or(TARGET_SCREEN_FOOTPRINT_SCHEMA)
+                .unwrap_or(LEGACY_RUSTY_XR_TARGET_SCREEN_FOOTPRINT_SCHEMA)
         ),
         marker_token(&metadata.target_coordinate_space),
         optional_target_screen_uv_rect_token(metadata.target_screen_uv_rect),

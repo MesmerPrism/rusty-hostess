@@ -1,7 +1,8 @@
 use super::{Eye, ImageSize};
 
-/// Versioned schema id for renderer-neutral projection/performance matrix packets.
-pub const PROJECTION_PERFORMANCE_MATRIX_SCHEMA: &str = "rusty.xr.projection_performance_matrix.v1";
+/// Legacy serialized schema id for renderer-neutral projection/performance matrix packets.
+pub const LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA: &str =
+    "rusty.xr.projection_performance_matrix.v1";
 
 /// Coarse renderer or ingestion lane class used by comparison packets.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
@@ -509,7 +510,7 @@ pub struct ProjectionPerformanceMatrixPacket {
 impl ProjectionPerformanceMatrixPacket {
     pub fn new(packet_id: impl Into<String>, source: MatrixSyntheticVideoSource) -> Self {
         Self {
-            schema: PROJECTION_PERFORMANCE_MATRIX_SCHEMA.to_string(),
+            schema: LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA.to_string(),
             packet_id: packet_id.into(),
             source,
             lanes: Vec::new(),
@@ -534,7 +535,7 @@ impl ProjectionPerformanceMatrixPacket {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == PROJECTION_PERFORMANCE_MATRIX_SCHEMA
+        self.schema == LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA
             && stable_id(&self.packet_id)
             && self.source.is_valid()
             && !self.lanes.is_empty()
