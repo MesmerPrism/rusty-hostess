@@ -298,6 +298,7 @@ mod tests {
     fn rasterizes_visible_center_particle() {
         let upload = QuestMakepadParticleUpload {
             schema_id: "test".to_owned(),
+            source_rows: 1,
             rows: vec![row_at(0.0, 0.0)],
         };
         let mut pixels = Vec::new();
@@ -314,6 +315,7 @@ mod tests {
     fn rasterizer_reports_empty_upload_without_pixels() {
         let upload = QuestMakepadParticleUpload {
             schema_id: "test".to_owned(),
+            source_rows: 0,
             rows: Vec::new(),
         };
         let mut pixels = Vec::new();
@@ -331,6 +333,7 @@ mod tests {
         row.color[3] = 0.0;
         let upload = QuestMakepadParticleUpload {
             schema_id: "test".to_owned(),
+            source_rows: 1,
             rows: vec![row],
         };
         let mut pixels = Vec::new();

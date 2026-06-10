@@ -142,4 +142,14 @@ particle count. The 2026-06-10 disabled-refresh Rayon/4 sweep at
 `animation_mode=static-ring`, and `size_scale=0.2`. App-owned cadence stayed
 `90.0` Hz, texture upload bytes stayed `0`, and GPU repaint stayed about
 `0.4`-`1.2 ms`; the remaining scaling pressure was Matter particle stepping
-plus CPU payload/visual packing, not GPU rendering.
+plus CPU payload/visual packing, not GPU rendering. Current Quest-Makepad
+adapters apply `makepad.particles.render.draw_limit` before Optics visual-frame
+resolution and Makepad row packing. Interpret `particleCount` and
+`particleSourceRows` as full Matter source counts, `particleRows` as capped
+visual rows, and `particleVisualRowLimit` as the effective cap. Hostess world
+draw evidence should still report full `sourceRows`, drawn instances, and
+`droppedRows`. A focused 2026-06-11 headset run at `32768` source particles
+with draw limit `8192` confirmed payload/visual/upload work now scales with the
+cap (`9.823` / `10.474` / `0.280 ms` means) while `particleStepMs` still
+reflects full Matter compute. Evidence:
+`S:\Work\tmp\quest-makepad-visual-row-cap-density-20260611-0013`.
