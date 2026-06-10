@@ -52,3 +52,47 @@ cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 
 For live captures, write raw run artifacts outside the repo and commit only
 generic code or sanitized sample fixtures.
+
+## Quest Makepad APK Route
+
+For Hostess T Makepad Quest validation, build from
+`apps\hostess-t-makepad` with the Morphospace Makepad Quest variant. Do not
+add an app-local `resources\android\AndroidManifest.xml.template` just to
+remove permissions; an incomplete custom manifest can remove required
+`MakepadAppXr`/OpenXR Quest metadata and leave the headset stuck on the loading
+screen.
+
+Use the Work SSD Quest toolchain and the installed `cargo-makepad` from the
+active Makepad fork:
+
+```powershell
+& 'S:\Work\tools\Quest\Use-QuestTooling.ps1'
+cargo install --path S:\Work\repos\active\makepad-morphospace\tools\cargo_makepad --force
+cd S:\Work\repos\active\rusty-hostess\apps\hostess-t-makepad
+cargo makepad android --variant=quest --abi=aarch64 --sdk-path="$env:ANDROID_HOME" --package-name=io.github.mesmerprism.rustyhostess.makepad --app-label="Rusty Hostess Makepad" --quest-camera-permissions=false build -p hostess-t-makepad
+```
+
+The expected APK is
+`apps\hostess-t-makepad\target\android\makepad-android-apk\hostess_t_makepad\apk\rustyhostessmakepad.apk`.
+The `--variant=quest` flag is required for `.MakepadAppXr` and OpenXR broker
+queries. The explicit package id keeps app-private settings staging aligned
+with Hostess runtime reads. `--quest-camera-permissions=false` is the clean
+camera-free path for particle-only tests; it preserves the generated Quest
+manifest while omitting Android/headset/spatial camera permissions.
+
+Stage effective settings into the app-private path before judging runtime
+behavior:
+
+```powershell
+$adb = $env:RUSTY_XR_ADB
+$package = 'io.github.mesmerprism.rustyhostess.makepad'
+& $adb push S:\Work\repos\active\rusty-quest-makepad\fixtures\effective-settings\mesh-replay.effective-settings.json /data/local/tmp/makepad-effective-settings.json
+& $adb shell "run-as $package sh -c 'mkdir -p files/hostess-t/settings && cp /data/local/tmp/makepad-effective-settings.json files/hostess-t/settings/makepad-effective-settings.json'"
+& $adb shell am start -W -n "$package/.MakepadAppXr"
+```
+
+For camera-free particle runs, evidence should include no packaged
+`android.permission.CAMERA`, no `horizonos.permission.HEADSET_CAMERA`, no
+`horizonos.permission.SPATIAL_CAMERA`, `RUSTY_MAKEPAD_CAMERA2_ACQUISITION`
+with `status=skipped reason=camera-streaming-disabled`, Matter runtime markers,
+and `RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW`.

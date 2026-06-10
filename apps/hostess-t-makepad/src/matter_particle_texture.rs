@@ -290,6 +290,7 @@ mod tests {
             position_radius: [x, y, 0.0, 0.05],
             color: [1.0, 0.92, 0.30, 0.85],
             normal_frame: [0.0, 0.0, 1.0, 0.0],
+            aux: [0.0, 0.0, 0.0, 0.0],
         }
     }
 

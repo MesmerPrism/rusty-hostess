@@ -734,13 +734,13 @@ mod tests {
         set_runtime_bool(
             &mut config,
             KEY_MAKEPAD_CAMERA_STREAMING_ENABLED,
-            false,
+            true,
             RuntimeConfigSource::Environment,
         );
 
         apply_effective_settings_runtime_overrides(&mut config, &receipt);
 
-        assert!(runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED));
+        assert!(!runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED));
     }
 
     fn write_temp_json(name: &str, text: &str) -> PathBuf {

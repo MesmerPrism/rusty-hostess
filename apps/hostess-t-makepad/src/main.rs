@@ -125,7 +125,8 @@ use projection_target_controls::{
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms,
     QuestMakepadMatterSurfaceRuntime, QuestMakepadWorldParticleBatch,
-    QuestMakepadWorldParticlePlacement, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -168,7 +169,7 @@ const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
 const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
 const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
-const MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT: usize = 96;
+const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = 512;
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
 const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
@@ -1625,6 +1626,10 @@ pub struct App {
     #[rust]
     matter_particle_texture: MatterParticleTextureRenderer,
     #[rust]
+    matter_world_particle_draw_limit: usize,
+    #[rust]
+    matter_world_particle_draw_limit_configured: bool,
+    #[rust]
     camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
     #[rust]
     camera_shell_effective_render_scale: f32,
@@ -2239,6 +2244,8 @@ pub struct MakepadMatterParticleCloud {
     draw_cube: DrawCube,
     #[rust]
     batch: Option<QuestMakepadWorldParticleBatch>,
+    #[rust]
+    draw_limit: usize,
     #[cast]
     #[deref]
     node: XrNode,
@@ -2249,11 +2256,14 @@ impl MakepadMatterParticleCloud {
         &mut self,
         cx: &mut Cx,
         batch: Option<QuestMakepadWorldParticleBatch>,
+        draw_limit: usize,
     ) {
-        if self.batch == batch {
+        let draw_limit = draw_limit.min(MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX);
+        if self.batch == batch && self.draw_limit == draw_limit {
             return;
         }
         self.batch = batch;
+        self.draw_limit = draw_limit;
         self.node.redraw(cx);
     }
 
@@ -2315,11 +2325,7 @@ impl Widget for MakepadMatterParticleCloud {
 
         let transform = xr_widget_world_transform(cx, scope, self.widget_uid(), &self.node);
         self.draw_cube.begin_many_instances(cx);
-        for instance in batch
-            .instances
-            .iter()
-            .take(MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT)
-        {
+        for instance in batch.instances.iter().take(self.draw_limit) {
             self.draw_particle_billboard(
                 cx,
                 transform,
@@ -3558,6 +3564,12 @@ impl App {
         self.camera_shell_effective_camera_streaming_enabled = selection
             .camera_streaming_enabled
             .unwrap_or(DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED);
+        self.matter_world_particle_draw_limit = selection
+            .particle_render_draw_limit
+            .unwrap_or(DEFAULT_PARTICLE_RENDER_DRAW_LIMIT)
+            .min(MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX);
+        self.matter_world_particle_draw_limit_configured =
+            selection.particle_render_draw_limit.is_some();
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
         self.matter_surface_runtime = selection.matter_surface_runtime;
         self.matter_surface_frame_markers_emitted = 0;
@@ -3586,13 +3598,15 @@ impl App {
 
     fn camera_shell_feature_uniform_marker_line(&self, phase: &str) -> String {
         format!(
-            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} renderScale={} sourcePath={}",
+            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderDrawLimitSource={} renderScale={} sourcePath={}",
             marker_token(phase),
             self.camera_shell_feature_uniforms.collision_enabled >= 0.5,
             marker_token(camera_shell_sdf_adf_mode_token(
                 self.camera_shell_feature_uniforms.sdf_adf_overlay_mode,
             )),
             self.camera_shell_feature_uniforms.particles_enabled >= 0.5,
+            self.current_matter_world_particle_draw_limit(),
+            self.matter_world_particle_draw_limit_source(),
             marker_f32_token(self.current_camera_shell_effective_render_scale()),
             marker_token(
                 self.mesh_replay_effective_settings_path
@@ -3607,6 +3621,23 @@ impl App {
             Some(self.camera_shell_effective_render_scale)
         } else {
             None
+        }
+    }
+
+    fn current_matter_world_particle_draw_limit(&self) -> usize {
+        if self.matter_world_particle_draw_limit_configured {
+            self.matter_world_particle_draw_limit
+                .min(MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX)
+        } else {
+            DEFAULT_PARTICLE_RENDER_DRAW_LIMIT.min(MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX)
+        }
+    }
+
+    fn matter_world_particle_draw_limit_source(&self) -> &'static str {
+        if self.matter_world_particle_draw_limit_configured {
+            "effective-settings"
+        } else {
+            "default"
         }
     }
 
@@ -5077,11 +5108,12 @@ impl App {
         }
         let bounds_min = replay_runtime.sequence().bounds_min();
         let bounds_max = replay_runtime.sequence().bounds_max();
+        let draw_limit = self.current_matter_world_particle_draw_limit();
         let world_batch = frame.world_particle_batch(
             bounds_min,
             bounds_max,
             Self::matter_world_particle_placement(),
-            MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT,
+            draw_limit,
         );
         if self.matter_surface_world_particle_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
             if let Some(world_batch) = world_batch.as_ref() {
@@ -5127,20 +5159,24 @@ impl App {
 
     fn apply_matter_world_particles_to_cloud(&mut self, cx: &mut Cx, phase: &str) {
         let batch = self.matter_surface_cached_world_particle_batch.clone();
+        let draw_limit = self.current_matter_world_particle_draw_limit();
+        let draw_limit_source = self.matter_world_particle_draw_limit_source();
         let cloud_ref = self.ui.widget(cx, ids!(matter_particle_cloud));
         let Some(mut cloud) = cloud_ref.borrow_mut::<MakepadMatterParticleCloud>() else {
             if self.matter_surface_world_particle_draw_markers_emitted
                 < MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
             {
                 emit_marker_line(&format!(
-                    "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=error renderer=makepad-xr-procedural-ring-billboard issue=matter_particle_cloud_widget_missing billboardRenderer=true finalTextureAtlasRenderer=false",
+                    "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=error renderer=makepad-xr-procedural-ring-billboard issue=matter_particle_cloud_widget_missing configuredDrawLimit={} drawLimitSource={} billboardRenderer=true finalTextureAtlasRenderer=false",
                     marker_token(phase),
+                    draw_limit,
+                    draw_limit_source,
                 ));
                 self.matter_surface_world_particle_draw_markers_emitted += 1;
             }
             return;
         };
-        cloud.set_world_particle_batch(cx, batch.clone());
+        cloud.set_world_particle_batch(cx, batch.clone(), draw_limit);
 
         if self.matter_surface_world_particle_draw_markers_emitted
             >= MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
@@ -5149,28 +5185,29 @@ impl App {
         }
         let Some(batch) = batch else {
             emit_marker_line(&format!(
-                "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=waiting renderer=makepad-xr-procedural-ring-billboard sourceSchema=none drawnInstances=0 billboardRenderer=true finalTextureAtlasRenderer=false",
+                "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=waiting renderer=makepad-xr-procedural-ring-billboard sourceSchema=none configuredDrawLimit={} drawLimitSource={} drawnInstances=0 billboardRenderer=true finalTextureAtlasRenderer=false",
                 marker_token(phase),
+                draw_limit,
+                draw_limit_source,
             ));
             self.matter_surface_world_particle_draw_markers_emitted += 1;
             return;
         };
-        let drawn_instances = batch
-            .instances
-            .len()
-            .min(MATTER_WORLD_PARTICLE_DRAW_INSTANCE_LIMIT);
+        let drawn_instances = batch.instances.len().min(draw_limit);
         let content_center_distance = (batch.content_center[0] * batch.content_center[0]
             + batch.content_center[1] * batch.content_center[1]
             + batch.content_center[2] * batch.content_center[2])
             .sqrt();
         emit_marker_line(&format!(
-            "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=ready renderer=makepad-xr-procedural-ring-billboard renderMode={} animationMode=procedural-morph-ring animationSource=rusty-optics-particle-visual-frame borrowedVisualReference=rusty-viscereality-billboard-ring sourceSchema={} coordinateSpace={} sourceRows={} instanceRows={} drawnInstances={} droppedRows={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} billboardRenderer=true finalTextureAtlasRenderer=false",
+            "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=ready renderer=makepad-xr-procedural-ring-billboard renderMode={} animationMode=procedural-morph-ring animationSource=rusty-optics-particle-visual-frame borrowedVisualReference=rusty-viscereality-billboard-ring sourceSchema={} coordinateSpace={} sourceRows={} instanceRows={} configuredDrawLimit={} drawLimitSource={} drawnInstances={} droppedRows={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} billboardRenderer=true finalTextureAtlasRenderer=false",
             marker_token(phase),
             marker_token(&batch.render_mode),
             marker_token(&batch.source_schema_id),
             marker_token(&batch.coordinate_space),
             batch.source_rows,
             batch.instances.len(),
+            draw_limit,
+            draw_limit_source,
             drawn_instances,
             batch.dropped_rows,
             batch.content_center[0],
@@ -5847,6 +5884,13 @@ impl App {
     }
 
     fn begin_camera_streaming_startup(&mut self, cx: &mut Cx) {
+        if !self.current_camera_streaming_enabled() {
+            if !self.camera_streaming_disabled_logged {
+                self.camera_streaming_disabled_logged = true;
+                emit_marker_line(makepad_camera2_acquisition_streaming_disabled_marker_line());
+            }
+            return;
+        }
         if self.paired_import_started || self.paired_import_finished {
             return;
         }
