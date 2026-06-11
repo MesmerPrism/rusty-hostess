@@ -87,6 +87,9 @@ Hostess staging helper; it stages through `/data/local/tmp` and then uses
 `/sdcard/Android/data/<package>/files` as the app/ADB handoff path for these
 payloads; current Quest builds can let ADB write that tree while the app or
 `run-as` cannot read it reliably.
+The helper intentionally avoids `run-as ... sh -c` command strings because ADB
+remote-shell quoting can split the script and run later copy commands outside
+the app UID.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Stage-HostessMakepadSettings.ps1 `
@@ -99,7 +102,8 @@ For a single effective-settings file, the equivalent app-private copy is:
 $adb = $env:RUSTY_XR_ADB
 $package = 'io.github.mesmerprism.rustyhostess.makepad'
 & $adb push S:\Work\repos\active\rusty-quest-makepad\fixtures\effective-settings\mesh-replay.effective-settings.json /data/local/tmp/makepad-effective-settings.json
-& $adb shell "run-as $package sh -c 'mkdir -p files/hostess-t/settings && cp /data/local/tmp/makepad-effective-settings.json files/hostess-t/settings/makepad-effective-settings.json'"
+& $adb shell run-as $package mkdir -p files/hostess-t/settings
+& $adb shell run-as $package cp /data/local/tmp/makepad-effective-settings.json files/hostess-t/settings/makepad-effective-settings.json
 & $adb shell am start -W -n "$package/.MakepadAppXr"
 ```
 

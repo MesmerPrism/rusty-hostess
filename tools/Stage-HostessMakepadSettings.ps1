@@ -171,9 +171,14 @@ if (-not $DryRun) {
         "shell", "chmod", "-R", "755", $RemoteTmp
     )
 
-    $CopyCommand = "rm -rf '$InternalSettingsDir'; mkdir -p '$InternalSettingsDir'; cp -R '$RemoteTmp/.' '$InternalSettingsDir/'"
+    Invoke-Checked "clear internal staged payload" $ResolvedAdb @(
+        "shell", "run-as", $Package, "rm", "-rf", $InternalSettingsDir
+    )
+    Invoke-Checked "create internal settings directory" $ResolvedAdb @(
+        "shell", "run-as", $Package, "mkdir", "-p", $InternalSettingsDir
+    )
     Invoke-Checked "copy staged payload into app-private files" $ResolvedAdb @(
-        "shell", "run-as", $Package, "sh", "-c", $CopyCommand
+        "shell", "run-as", $Package, "cp", "-R", "$RemoteTmp/.", "$InternalSettingsDir/"
     )
 
     $ListOutput = & $ResolvedAdb @(
