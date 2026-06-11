@@ -154,9 +154,10 @@ a completed Matter surface frame carries recorded-hand skinning probe input.
 Hostess only converts the four bounded adapter samples into the generic
 Makepad XR/Vulkan f32 skinning probe and records the readback marker from
 Quest-Makepad; Matter remains the CPU skinning oracle and Quest-Makepad owns
-the marker contract. The marker must keep `jointMatrixSkinningKernel=false`,
-`meshToSdfKernel=false`, `gpuComputeReady=false`, and
-`highRateJsonPayload=false` until later GPU skinning/SDF slices are validated.
+the marker contract. The marker must report `jointMatrixSkinningKernel=true`,
+but still keep `meshToSdfKernel=false`, `gpuComputeReady=false`, and
+`highRateJsonPayload=false` until full-mesh resident skinning and GPU
+mesh-to-SDF slices are validated.
 Implementation lives outside the app root: `matter_surface_runtime.rs` owns
 worker submission, bounded GPU-probe evidence, and world particle/ADF draw
 evidence; `matter_surface_gpu.rs` owns the bounded Makepad XR/Vulkan sample

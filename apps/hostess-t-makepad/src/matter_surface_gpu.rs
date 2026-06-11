@@ -59,12 +59,26 @@ pub(crate) fn gpu_skinning_probe_marker_line(
 fn makepad_skinning_sample(
     sample: QuestMakepadGpuSkinningProbeSample,
 ) -> XrGpuF32SkinningProbeSample {
+    let matrices = sample.joint_matrices;
     XrGpuF32SkinningProbeSample {
         bind_position: sample.bind_position,
-        delta0_weight: sample.delta0_weight,
-        delta1_weight: sample.delta1_weight,
-        delta2_weight: sample.delta2_weight,
-        delta3_weight: sample.delta3_weight,
+        joint_weights: sample.joint_weights,
+        matrix0_row0: matrices[0][0],
+        matrix0_row1: matrices[0][1],
+        matrix0_row2: matrices[0][2],
+        matrix0_row3: matrices[0][3],
+        matrix1_row0: matrices[1][0],
+        matrix1_row1: matrices[1][1],
+        matrix1_row2: matrices[1][2],
+        matrix1_row3: matrices[1][3],
+        matrix2_row0: matrices[2][0],
+        matrix2_row1: matrices[2][1],
+        matrix2_row2: matrices[2][2],
+        matrix2_row3: matrices[2][3],
+        matrix3_row0: matrices[3][0],
+        matrix3_row1: matrices[3][1],
+        matrix3_row2: matrices[3][2],
+        matrix3_row3: matrices[3][3],
         expected_position: sample.expected_position,
     }
 }
