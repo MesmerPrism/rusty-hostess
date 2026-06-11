@@ -149,6 +149,15 @@ CPU oracle. The marker must keep `gpuComputeReady=false`,
 `computeKernel=false`, and `highRateJsonPayload=false` until a real
 field/particle GPU kernel is validated against Matter.
 
+Hostess may also emit one `RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE` marker when
+a completed Matter surface frame carries recorded-hand skinning probe input.
+Hostess only converts the four bounded adapter samples into the generic
+Makepad XR/Vulkan f32 skinning probe and records the readback marker from
+Quest-Makepad; Matter remains the CPU skinning oracle and Quest-Makepad owns
+the marker contract. The marker must keep `jointMatrixSkinningKernel=false`,
+`meshToSdfKernel=false`, `gpuComputeReady=false`, and
+`highRateJsonPayload=false` until later GPU skinning/SDF slices are validated.
+
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
 `AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.

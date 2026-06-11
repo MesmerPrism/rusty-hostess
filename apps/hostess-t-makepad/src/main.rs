@@ -16,6 +16,7 @@ mod makepad_runtime_config;
 mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
+mod matter_surface_gpu;
 mod matter_surface_uniforms;
 mod matter_world_adf_debug;
 mod matter_world_particle_billboard;
@@ -41,6 +42,7 @@ use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
 use matter_particle_texture::{
     MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
 };
+use matter_surface_gpu::gpu_skinning_probe_marker_line;
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use matter_world_adf_debug::{
     MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
@@ -1666,6 +1668,8 @@ pub struct App {
     matter_surface_gpu_oracle_compute_probe_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_field_force_probe_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_skinning_probe_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3579,6 +3583,7 @@ impl App {
         self.matter_surface_gpu_storage_probe_markers_emitted = 0;
         self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
         self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5339,6 +5344,16 @@ impl App {
                             self.matter_surface_gpu_field_force_probe_markers_emitted += 1;
                         }
                     }
+                }
+            }
+        }
+        if gpu_probe_steady_state_ready
+            && self.matter_surface_gpu_skinning_probe_markers_emitted == 0
+        {
+            if let Some(input) = frame.gpu_skinning_probe.as_ref() {
+                if let Some(marker) = gpu_skinning_probe_marker_line(cx, input, phase) {
+                    emit_marker_line(&marker);
+                    self.matter_surface_gpu_skinning_probe_markers_emitted += 1;
                 }
             }
         }
