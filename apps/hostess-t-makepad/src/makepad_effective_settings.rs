@@ -73,6 +73,9 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
     matter_surface_particle_distance_refresh_policy: Option<String>,
+    matter_surface_particle_force_source: Option<String>,
+    matter_surface_particle_force_update_interval_frames: Option<usize>,
+    matter_surface_particle_force_compare_probe_count: Option<usize>,
     matter_surface_particle_execution_backend: Option<String>,
     matter_surface_particle_execution_batch_size: Option<usize>,
     matter_surface_particle_execution_max_threads: Option<usize>,
@@ -165,7 +168,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleForceSource={} matterSurfaceParticleForceUpdateIntervalFrames={} matterSurfaceParticleForceCompareProbeCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -207,6 +210,9 @@ impl MakepadEffectiveSettingsReceipt {
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
             marker_option(self.matter_surface_particle_distance_refresh_policy.as_deref()),
+            marker_option(self.matter_surface_particle_force_source.as_deref()),
+            marker_usize(self.matter_surface_particle_force_update_interval_frames),
+            marker_usize(self.matter_surface_particle_force_compare_probe_count),
             marker_option(self.matter_surface_particle_execution_backend.as_deref()),
             marker_usize(self.matter_surface_particle_execution_batch_size),
             marker_usize(self.matter_surface_particle_execution_max_threads),
@@ -368,6 +374,21 @@ impl MakepadEffectiveSettingsReceipt {
             &mut object,
             "matter_surface_particle_distance_refresh_policy",
             &self.matter_surface_particle_distance_refresh_policy,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_force_source",
+            &self.matter_surface_particle_force_source,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_force_update_interval_frames",
+            self.matter_surface_particle_force_update_interval_frames,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_force_compare_probe_count",
+            self.matter_surface_particle_force_compare_probe_count,
         );
         insert_json_field!(
             &mut object,
@@ -589,6 +610,9 @@ fn ready_receipt(
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
+        matter_surface_particle_force_source,
+        matter_surface_particle_force_update_interval_frames,
+        matter_surface_particle_force_compare_probe_count,
         matter_surface_particle_execution_backend,
         matter_surface_particle_execution_batch_size,
         matter_surface_particle_execution_max_threads,
@@ -639,6 +663,20 @@ fn ready_receipt(
                 Some(
                     config
                         .matter_surface
+                        .particle_force_source
+                        .marker_value()
+                        .to_string(),
+                ),
+                Some(
+                    config
+                        .matter_surface
+                        .particle_force_update_interval_frames
+                        .get(),
+                ),
+                Some(config.matter_surface.particle_force_compare_probe_count),
+                Some(
+                    config
+                        .matter_surface
                         .particle_execution_backend
                         .marker_value()
                         .to_string(),
@@ -655,6 +693,9 @@ fn ready_receipt(
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -725,6 +766,9 @@ fn ready_receipt(
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
+        matter_surface_particle_force_source,
+        matter_surface_particle_force_update_interval_frames,
+        matter_surface_particle_force_compare_probe_count,
         matter_surface_particle_execution_backend,
         matter_surface_particle_execution_batch_size,
         matter_surface_particle_execution_max_threads,
@@ -937,6 +981,18 @@ mod tests {
             Some("step-only")
         );
         assert_eq!(
+            receipt.matter_surface_particle_force_source.as_deref(),
+            Some("mesh-distance")
+        );
+        assert_eq!(
+            receipt.matter_surface_particle_force_update_interval_frames,
+            Some(1)
+        );
+        assert_eq!(
+            receipt.matter_surface_particle_force_compare_probe_count,
+            Some(0)
+        );
+        assert_eq!(
             receipt.matter_surface_particle_execution_backend.as_deref(),
             Some("serial")
         );
@@ -970,6 +1026,9 @@ mod tests {
         assert!(marker.contains("matterSurfaceSdfAdfDebugUpdateIntervalFrames=1"));
         assert!(marker.contains("matterSurfaceParticleCount=1000"));
         assert!(marker.contains("matterSurfaceParticleDistanceRefreshPolicy=step-only"));
+        assert!(marker.contains("matterSurfaceParticleForceSource=mesh-distance"));
+        assert!(marker.contains("matterSurfaceParticleForceUpdateIntervalFrames=1"));
+        assert!(marker.contains("matterSurfaceParticleForceCompareProbeCount=0"));
         assert!(marker.contains("matterSurfaceParticleExecutionBackend=serial"));
         assert!(marker.contains("matterSurfaceParticleExecutionBatchSize=256"));
         assert!(marker.contains("matterSurfaceParticleExecutionMaxThreads=none"));
@@ -985,6 +1044,18 @@ mod tests {
         assert_eq!(
             json["matter_surface_sdf_adf_debug_update_interval_frames"],
             serde_json::json!(1)
+        );
+        assert_eq!(
+            json["matter_surface_particle_force_source"],
+            serde_json::json!("mesh-distance")
+        );
+        assert_eq!(
+            json["matter_surface_particle_force_update_interval_frames"],
+            serde_json::json!(1)
+        );
+        assert_eq!(
+            json["matter_surface_particle_force_compare_probe_count"],
+            serde_json::json!(0)
         );
     }
 

@@ -152,7 +152,20 @@ resolution and Makepad row packing. Interpret `particleCount` and
 `particleSourceRows` as full Matter source counts, `particleRows` as capped
 visual rows, and `particleVisualRowLimit` as the effective cap. Hostess world
 draw evidence should still report full `sourceRows`, drawn instances, and
-`droppedRows`. A focused 2026-06-11 headset run at `32768` source particles
+`droppedRows`.
+
+For force-source cadence experiments, Hostess only echoes the effective
+settings parsed by Quest-Makepad. Evidence should include
+`matterSurfaceParticleForceSource`,
+`matterSurfaceParticleForceUpdateIntervalFrames`, and
+`matterSurfaceParticleForceCompareProbeCount` in
+`RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS`, plus the Quest-Makepad runtime
+markers `particleForceSource`, `particleForceSourceStatus`,
+`particleForceRefresh`, `particleSamplingAuthority`, `particleFieldSource`,
+and `sdfAdfDebugParticleAuthority`. Normal profiles select exactly one force
+authority at a time; nonzero compare-probe counts are bounded diagnostics only.
+
+A focused 2026-06-11 headset run at `32768` source particles
 with draw limit `8192` confirmed payload/visual/upload work now scales with the
 cap (`9.823` / `10.474` / `0.280 ms` means) while `particleStepMs` still
 reflects full Matter compute. Evidence:
