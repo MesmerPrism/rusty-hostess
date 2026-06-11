@@ -140,6 +140,15 @@ eligibility/readback contract for a future Makepad command encoder, not a GPU
 compute proof; it keeps `gpuComputeReady=false`, `computeKernel=false`, and
 `highRateJsonPayload=false`.
 
+Hostess may emit one `RUSTY_QUEST_MAKEPAD_GPU_STORAGE_PROBE` marker when the
+Makepad XR backend returns a bounded storage-buffer readback result for an
+eligible compute preflight. This is the first real command-buffer/readback
+resource proof: Hostess records the result, but Quest-Makepad owns the marker
+contract, Makepad owns the generic Vulkan probe API, and Matter remains the
+CPU oracle. The marker must keep `gpuComputeReady=false`,
+`computeKernel=false`, and `highRateJsonPayload=false` until a real
+field/particle GPU kernel is validated against Matter.
+
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
 `AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.

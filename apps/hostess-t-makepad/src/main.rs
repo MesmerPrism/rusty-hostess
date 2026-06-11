@@ -134,13 +134,15 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadGpuComputePreflight, QuestMakepadGpuResidencyProof,
-    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
-    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
-    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
-    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
-    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+    QuestMakepadGpuComputePreflight, QuestMakepadGpuResidencyProof, QuestMakepadGpuStorageProbe,
+    QuestMakepadGpuStorageProbeReadback, QuestMakepadMatterSurfaceWorker,
+    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
+    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldAdfDebugPlacement,
+    QuestMakepadWorldParticleBatch, QuestMakepadWorldParticlePlacement,
+    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_PARTICLE_RENDER_SIZE_SCALE, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+    QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES, QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
     QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE,
@@ -1653,6 +1655,8 @@ pub struct App {
     matter_surface_worker_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_compute_preflight_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_storage_probe_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3563,6 +3567,7 @@ impl App {
         self.matter_surface_frame_markers_emitted = 0;
         self.matter_surface_worker_markers_emitted = 0;
         self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
+        self.matter_surface_gpu_storage_probe_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5184,13 +5189,38 @@ impl App {
             emit_marker_line(&worker_frame.runtime_marker_line);
             self.matter_surface_frame_markers_emitted += 1;
         }
+        let gpu_compute_preflight = QuestMakepadGpuComputePreflight::from_frame(
+            &frame,
+            QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+        );
         if self.matter_surface_gpu_compute_preflight_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            if let Some(preflight) = QuestMakepadGpuComputePreflight::from_frame(
-                &frame,
-                QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
-            ) {
+            if let Some(preflight) = gpu_compute_preflight.as_ref() {
                 emit_marker_line(&preflight.marker_line(phase));
                 self.matter_surface_gpu_compute_preflight_markers_emitted += 1;
+            }
+        }
+        if self.matter_surface_gpu_storage_probe_markers_emitted == 0 {
+            if let Some(preflight) = gpu_compute_preflight.as_ref() {
+                if let Some(readback) = cx.xr_gpu_storage_buffer_probe(
+                    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES,
+                    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
+                ) {
+                    let probe = QuestMakepadGpuStorageProbe::from_preflight(
+                        preflight,
+                        QuestMakepadGpuStorageProbeReadback {
+                            requested_bytes: readback.requested_bytes,
+                            storage_buffer_bytes: readback.storage_buffer_bytes,
+                            readback_bytes: readback.readback_bytes,
+                            pattern: readback.pattern,
+                            first_word: readback.first_word,
+                            word_count: readback.word_count,
+                            mismatched_words: readback.mismatched_words,
+                            elapsed_ms: readback.elapsed_ms,
+                        },
+                    );
+                    emit_marker_line(&probe.marker_line(phase));
+                    self.matter_surface_gpu_storage_probe_markers_emitted += 1;
+                }
             }
         }
         let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {

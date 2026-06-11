@@ -196,6 +196,17 @@ This marker is an eligibility/readback-boundary record only:
 install/test/evidence shell and must not own field semantics, compute kernels,
 or high-rate GPU buffer/control payloads.
 
+For the storage-buffer command/readback phase, Hostess may emit
+`RUSTY_QUEST_MAKEPAD_GPU_STORAGE_PROBE` only after an eligible preflight and a
+Makepad XR/Vulkan readback result. This proves a small storage-buffer
+fill/copy/readback command path, not GPU field-force compute. Keep
+`readbackMatched=true`, `commandEncoderSubmitted=true`,
+`storageBufferResident=true`, and `gpuCommandExecuted=true` as evidence fields
+when the probe succeeds, but keep `gpuComputeReady=false`,
+`computeKernel=false`, and `highRateJsonPayload=false`. Hostess must not route
+particle rows, SDF/ADF fields, mesh frames, or GPU buffers through settings or
+control JSON.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against
