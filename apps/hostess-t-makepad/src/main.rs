@@ -5248,6 +5248,13 @@ impl App {
                             expected_words: readback.expected_words,
                             word_count: readback.word_count,
                             mismatched_words: readback.mismatched_words,
+                            queue_submit_serial: readback.queue_submit_serial,
+                            fence_serial: readback.fence_serial,
+                            resource_generation: readback.resource_generation,
+                            pending_retire_count: readback.pending_retire_count,
+                            retained_resource_count: readback.retained_resource_count,
+                            retired_after_fence_count: readback.retired_after_fence_count,
+                            queue_wait_idle_performed: readback.queue_wait_idle_performed,
                             elapsed_ms: readback.elapsed_ms,
                         },
                     );
