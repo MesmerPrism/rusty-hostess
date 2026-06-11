@@ -1660,6 +1660,8 @@ pub struct App {
     #[rust]
     matter_surface_gpu_skinning_probe_markers_emitted: usize,
     #[rust]
+    matter_surface_gpu_skinning_mesh_probe_markers_emitted: usize,
+    #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_draw_markers_emitted: usize,
@@ -3553,6 +3555,7 @@ impl App {
         self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
         self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
         self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_mesh_probe_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;

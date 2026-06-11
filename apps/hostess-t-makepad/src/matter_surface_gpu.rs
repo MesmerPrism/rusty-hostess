@@ -1,10 +1,15 @@
 use makepad_widgets::makepad_platform::{
-    XrGpuF32SkinningProbeSample, XR_GPU_F32_SKINNING_PROBE_SAMPLES,
+    XrGpuF32SkinningMeshVertex, XrGpuF32SkinningProbeSample, XrGpuSkinningMeshTriangle,
+    XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES, XR_GPU_F32_SKINNING_PROBE_SAMPLES,
 };
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
+    QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
+    QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
     QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
     QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
+    QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_DEFAULT_TOLERANCE,
+    QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_SKINNING_PROBE_DEFAULT_TOLERANCE, QUEST_MAKEPAD_GPU_SKINNING_PROBE_SAMPLES,
 };
 
@@ -56,6 +61,85 @@ pub(crate) fn gpu_skinning_probe_marker_line(
     Some(probe.marker_line(phase))
 }
 
+pub(crate) fn gpu_skinning_mesh_probe_marker_line(
+    cx: &mut Cx,
+    input: &QuestMakepadGpuSkinningMeshProbeInput,
+    phase: &str,
+) -> Option<String> {
+    let sample_count = input
+        .sample_count
+        .min(QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_SAMPLES)
+        .min(XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES);
+    if sample_count == 0 || input.vertices.is_empty() || input.triangles.is_empty() {
+        return None;
+    }
+
+    let vertices = input
+        .vertices
+        .iter()
+        .copied()
+        .map(makepad_skinning_mesh_vertex)
+        .collect::<Vec<_>>();
+    let triangles = input
+        .triangles
+        .iter()
+        .copied()
+        .map(makepad_skinning_mesh_triangle)
+        .collect::<Vec<_>>();
+    let mut sample_vertex_indices = [0_u32; XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES];
+    for (target, source) in sample_vertex_indices
+        .iter_mut()
+        .zip(input.sample_vertex_indices.iter())
+        .take(sample_count)
+    {
+        *target = u32::try_from(*source).ok()?;
+    }
+
+    let readback = cx.xr_gpu_f32_skinning_mesh_probe(
+        &vertices,
+        &triangles,
+        sample_vertex_indices,
+        sample_count,
+        QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_DEFAULT_TOLERANCE,
+    )?;
+    let mut readback_sample_indices = [0_usize; QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_SAMPLES];
+    for (target, source) in readback_sample_indices
+        .iter_mut()
+        .zip(readback.sample_vertex_indices.iter())
+        .take(
+            readback
+                .sample_count
+                .min(QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_SAMPLES),
+        )
+    {
+        *target = *source as usize;
+    }
+    let probe = QuestMakepadGpuSkinningMeshProbe::from_input(
+        input,
+        QuestMakepadGpuSkinningMeshProbeReadback {
+            vertex_count: readback.vertex_count,
+            triangle_count: readback.triangle_count,
+            index_count: readback.index_count,
+            checked_position_components: readback.checked_position_components,
+            mismatched_position_components: readback.mismatched_position_components,
+            mismatched_triangle_indices: readback.mismatched_triangle_indices,
+            max_abs_error: readback.max_abs_error,
+            tolerance: readback.tolerance,
+            sample_count: readback.sample_count,
+            sample_vertex_indices: readback_sample_indices,
+            queue_submit_serial: readback.queue_submit_serial,
+            fence_serial: readback.fence_serial,
+            resource_generation: readback.resource_generation,
+            pending_retire_count: readback.pending_retire_count,
+            retained_resource_count: readback.retained_resource_count,
+            retired_after_fence_count: readback.retired_after_fence_count,
+            queue_wait_idle_performed: readback.queue_wait_idle_performed,
+            elapsed_ms: readback.elapsed_ms,
+        },
+    );
+    Some(probe.marker_line(phase))
+}
+
 fn makepad_skinning_sample(
     sample: QuestMakepadGpuSkinningProbeSample,
 ) -> XrGpuF32SkinningProbeSample {
@@ -80,5 +164,43 @@ fn makepad_skinning_sample(
         matrix3_row2: matrices[3][2],
         matrix3_row3: matrices[3][3],
         expected_position: sample.expected_position,
+    }
+}
+
+fn makepad_skinning_mesh_vertex(
+    vertex: QuestMakepadGpuSkinningMeshVertex,
+) -> XrGpuF32SkinningMeshVertex {
+    let matrices = vertex.joint_matrices;
+    XrGpuF32SkinningMeshVertex {
+        bind_position: vertex.bind_position,
+        joint_weights: vertex.joint_weights,
+        matrix0_row0: matrices[0][0],
+        matrix0_row1: matrices[0][1],
+        matrix0_row2: matrices[0][2],
+        matrix0_row3: matrices[0][3],
+        matrix1_row0: matrices[1][0],
+        matrix1_row1: matrices[1][1],
+        matrix1_row2: matrices[1][2],
+        matrix1_row3: matrices[1][3],
+        matrix2_row0: matrices[2][0],
+        matrix2_row1: matrices[2][1],
+        matrix2_row2: matrices[2][2],
+        matrix2_row3: matrices[2][3],
+        matrix3_row0: matrices[3][0],
+        matrix3_row1: matrices[3][1],
+        matrix3_row2: matrices[3][2],
+        matrix3_row3: matrices[3][3],
+        expected_position: vertex.expected_position,
+    }
+}
+
+fn makepad_skinning_mesh_triangle(indices: [u32; 3]) -> XrGpuSkinningMeshTriangle {
+    XrGpuSkinningMeshTriangle {
+        indices: [
+            indices[0],
+            indices[1],
+            indices[2],
+            indices[0] ^ indices[1] ^ indices[2],
+        ],
     }
 }
