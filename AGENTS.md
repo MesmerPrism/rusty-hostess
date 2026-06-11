@@ -91,6 +91,12 @@ $package = 'io.github.mesmerprism.rustyhostess.makepad'
 & $adb shell am start -W -n "$package/.MakepadAppXr"
 ```
 
+Launch the generated Quest/XR activity as `$package/.MakepadAppXr` for headset
+evidence. `$package/.MakepadApp` is the Android launcher activity and can be
+useful for fallback checks, but it is not the canonical Quest evidence launch.
+Do not use the old `dev.makepad.android.MakepadApp` component for this
+generated Morphospace package; it does not exist in the Hostess APK.
+
 For camera-free particle runs, evidence should include no packaged
 `android.permission.CAMERA`, no `horizonos.permission.HEADSET_CAMERA`, no
 `horizonos.permission.SPATIAL_CAMERA`, `RUSTY_MAKEPAD_CAMERA2_ACQUISITION`
@@ -171,6 +177,18 @@ be `matter-sdf-field-sampler` or `matter-adf-field-sampler`, and
 driven by Hostess or Quest-Makepad debug visual payloads. In field modes,
 `particleForceRefresh=reused` means the cached Matter field was reused while
 particles still sampled it for the current step.
+
+The 2026-06-11 indexed ADF pre-GPU sweep at
+`S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
+current evidence baseline. At 1024 Matter particles / 1024 visual rows against
+the recorded Meta Quest hand mesh, `sdf-field` averaged `5.466 ms` overall and
+`2.181 ms` on reused cached-field steps; indexed `adf-field` averaged
+`6.922 ms` overall and `4.141 ms` reused, improving the previous ADF reused
+mean by about `12.5%` but remaining slower than SDF. XR-activity extended
+captures held `xrEffectiveFrameRateHz=89.99`, `xrRepaintTextureUploadBytes=0`,
+and GPU repaint around `0.42 ms`. Treat this as the stop point for default CPU
+ADF micro-tuning before the GPU-backed phase unless a correctness or evidence
+marker bug appears.
 
 A focused 2026-06-11 headset run at `32768` source particles
 with draw limit `8192` confirmed payload/visual/upload work now scales with the
