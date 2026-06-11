@@ -207,6 +207,16 @@ when the probe succeeds, but keep `gpuComputeReady=false`,
 particle rows, SDF/ADF fields, mesh frames, or GPU buffers through settings or
 control JSON.
 
+For the recorded-hand skinning checkpoint, Hostess may emit
+`RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE` only when a completed Matter surface
+frame carries bounded recorded-hand skinning probe input from Quest-Makepad.
+Implementation belongs in named modules: `matter_surface_runtime.rs` owns
+worker submission, GPU-probe evidence, and world draw evidence;
+`matter_surface_gpu.rs` owns bounded Makepad XR/Vulkan sample conversion; and
+`recorded_hand_surface.rs` owns staged bind-rig plus compact joint-frame
+loading. Keep `main.rs` as app-shell wiring and do not route high-rate hand,
+mesh, field, particle, or GPU-buffer payloads through settings/control JSON.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against

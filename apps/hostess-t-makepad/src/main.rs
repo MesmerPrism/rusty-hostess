@@ -17,6 +17,7 @@ mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_gpu;
+mod matter_surface_runtime;
 mod matter_surface_uniforms;
 mod matter_world_adf_debug;
 mod matter_world_particle_billboard;
@@ -24,6 +25,7 @@ mod projection_geometry;
 mod projection_runtime;
 mod projection_settings;
 mod projection_target_controls;
+mod recorded_hand_surface;
 mod runtime_settings;
 mod shell_contract;
 mod shell_runtime_capabilities;
@@ -42,12 +44,9 @@ use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
 use matter_particle_texture::{
     MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
 };
-use matter_surface_gpu::gpu_skinning_probe_marker_line;
+use matter_surface_runtime::MatterSurfacePanelOverlayFrame;
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
-use matter_world_adf_debug::{
-    MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
-    HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
-};
+use matter_world_adf_debug::{MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX};
 use matter_world_particle_billboard::{
     MatterWorldParticleBillboardCloud, HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX,
 };
@@ -72,6 +71,7 @@ use projection_runtime::{
     makepad_projection_runtime_resolution_enabled,
 };
 use projection_settings::*;
+use recorded_hand_surface::RecordedHandSurfaceSource;
 use runtime_settings::*;
 #[cfg(target_os = "android")]
 use source_metadata::{broker_projection_plan_decision, BrokerProjectionPlanKind};
@@ -117,7 +117,6 @@ use makepad_widgets::makepad_platform::{
     video::VideoInputsEvent,
     CxMediaApi, TextureFormat, TextureId, TextureUpdated,
 };
-use makepad_widgets::makepad_platform::{XrGpuF32ForceProbeSample, XR_GPU_F32_FORCE_PROBE_SAMPLES};
 use makepad_widgets::*;
 use makepad_xr::scene::{xr_widget_world_transform, XrNode};
 use manifold_breath_feedback::{
@@ -136,22 +135,10 @@ use projection_target_controls::{
     makepad_projection_target_scale_step, PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
 };
 use rusty_quest_makepad_camera_shell::{
-    MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadGpuComputePreflight, QuestMakepadGpuFieldForceProbe,
-    QuestMakepadGpuFieldForceProbeReadback, QuestMakepadGpuOracleComputeProbe,
-    QuestMakepadGpuOracleComputeProbeReadback, QuestMakepadGpuResidencyProof,
-    QuestMakepadGpuStorageProbe, QuestMakepadGpuStorageProbeReadback,
-    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
-    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
-    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
+    MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadWorldAdfDebugBatch,
+    QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
     DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
-    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
-    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES, QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
-    QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
-    QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
-    QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE,
-    QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -1655,6 +1642,8 @@ pub struct App {
     #[rust]
     mesh_replay_runtime: Option<MeshReplayRuntime>,
     #[rust]
+    recorded_hand_surface_source: Option<RecordedHandSurfaceSource>,
+    #[rust]
     matter_surface_worker: Option<QuestMakepadMatterSurfaceWorker>,
     #[rust]
     matter_surface_frame_markers_emitted: usize,
@@ -1944,12 +1933,6 @@ pub struct App {
     cadence_left_last_position_ms: u128,
     #[rust]
     cadence_right_last_position_ms: u128,
-}
-
-#[derive(Clone, Debug, Default)]
-struct MatterSurfacePanelOverlayFrame {
-    uniforms: MakepadMatterSurfaceUniforms,
-    particle_texture: MatterParticleTextureFrame,
 }
 
 #[derive(Script, ScriptHook, Debug)]
@@ -3496,20 +3479,6 @@ impl App {
         ));
     }
 
-    fn matter_world_particle_placement() -> QuestMakepadWorldParticlePlacement {
-        QuestMakepadWorldParticlePlacement::content_local(
-            MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
-            DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
-        )
-    }
-
-    fn matter_world_adf_debug_placement() -> QuestMakepadWorldAdfDebugPlacement {
-        QuestMakepadWorldAdfDebugPlacement::content_local(
-            MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
-            DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
-        )
-    }
-
     fn initialize_hostess_shell_contract(&mut self) {
         self.shell_contract_read = shell_contract::read_selected_makepad_shell_contract();
         let _ = shell_contract::write_selected_makepad_shell_contract_read_receipt(
@@ -3596,12 +3565,34 @@ impl App {
         self.matter_surface_cached_world_adf_debug_batch = None;
         self.matter_particle_texture.reset_markers();
         self.mesh_replay_runtime = selection.runtime;
+        self.recorded_hand_surface_source = self
+            .mesh_replay_runtime
+            .as_ref()
+            .and_then(|runtime| {
+                match RecordedHandSurfaceSource::from_replay_runtime(
+                    selection.source_effective_settings_path.as_deref(),
+                    runtime,
+                ) {
+                    Ok(source) => source,
+                    Err(error) => {
+                        emit_marker_line(&format!(
+                            "RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_SOURCE schema=rusty.hostess.makepad.recorded_hand_surface_source.v1 phase={} status=error issue={}",
+                            marker_token(phase),
+                            marker_token(&error),
+                        ));
+                        None
+                    }
+                }
+            });
 
         if let Some(marker_line) = marker_line {
             emit_marker_line(&marker_line);
         }
         if runtime_ready {
             emit_marker_line(&self.camera_shell_feature_uniform_marker_line(phase));
+        }
+        if let Some(source) = self.recorded_hand_surface_source.as_ref() {
+            emit_marker_line(&source.marker_line(phase));
         }
         if let Some(runtime) = self.mesh_replay_runtime.as_mut() {
             runtime.step(0.0);
@@ -5088,320 +5079,6 @@ impl App {
         self.apply_matter_world_adf_debug_to_cells(cx, "cadence");
     }
 
-    fn update_matter_surface_runtime_for_evidence(
-        &mut self,
-        cx: &mut Cx,
-        now_seconds: f64,
-        phase: &str,
-        update_panel_overlay: bool,
-    ) -> MatterSurfacePanelOverlayFrame {
-        let should_submit = !(now_seconds.is_finite()
-            && self.matter_surface_last_step_seconds.is_finite()
-            && now_seconds - self.matter_surface_last_step_seconds
-                < MATTER_SURFACE_STEP_INTERVAL_SECONDS);
-
-        if should_submit {
-            let delta_seconds =
-                if now_seconds.is_finite() && self.matter_surface_last_step_seconds.is_finite() {
-                    (now_seconds - self.matter_surface_last_step_seconds).clamp(0.0, 0.25) as f32
-                } else {
-                    1.0 / 60.0
-                };
-            if self.submit_matter_surface_worker_for_evidence(phase, delta_seconds) {
-                self.matter_surface_last_step_seconds = now_seconds;
-            }
-        }
-
-        if let Some(frame) =
-            self.consume_matter_surface_worker_output(cx, phase, update_panel_overlay)
-        {
-            self.matter_surface_cached_panel_overlay_frame = frame.clone();
-            return frame;
-        }
-
-        self.matter_surface_cached_panel_overlay_frame.clone()
-    }
-
-    fn submit_matter_surface_worker_for_evidence(
-        &mut self,
-        phase: &str,
-        delta_seconds: f32,
-    ) -> bool {
-        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
-            self.matter_surface_cached_world_particle_batch = None;
-            self.matter_surface_cached_world_adf_debug_batch = None;
-            return false;
-        };
-        let Some(worker) = self.matter_surface_worker.as_ref() else {
-            self.matter_surface_cached_world_particle_batch = None;
-            self.matter_surface_cached_world_adf_debug_batch = None;
-            return false;
-        };
-        let probe = MatterSurfaceContactProbe::sphere(
-            "hostess.camera_shell.center_probe",
-            replay_runtime.sequence().bounds_center(),
-            replay_runtime.sequence().bounds_radius() * 0.5,
-        );
-        match worker.submit_replay_frame(phase, replay_runtime, delta_seconds, &[probe]) {
-            Ok(_) => true,
-            Err(error) => {
-                self.matter_surface_cached_world_particle_batch = None;
-                self.matter_surface_cached_world_adf_debug_batch = None;
-                if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-                    emit_marker_line(&format!(
-                        "RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER schema=rusty.quest.makepad.matter_surface_worker.v1 phase={} status=error mode=latest-wins workerThread=true renderThreadBlocking=false issue={}",
-                        marker_token(phase),
-                        marker_token(&error.to_string()),
-                    ));
-                    self.matter_surface_worker_markers_emitted += 1;
-                }
-                false
-            }
-        }
-    }
-
-    fn consume_matter_surface_worker_output(
-        &mut self,
-        cx: &mut Cx,
-        phase: &str,
-        update_panel_overlay: bool,
-    ) -> Option<MatterSurfacePanelOverlayFrame> {
-        let output = self
-            .matter_surface_worker
-            .as_ref()
-            .and_then(|worker| worker.take_latest_output())?;
-
-        if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            emit_marker_line(&output.marker_line(phase));
-            self.matter_surface_worker_markers_emitted += 1;
-        }
-
-        match output {
-            QuestMakepadMatterSurfaceWorkerOutput::Frame(worker_frame) => {
-                Some(self.apply_matter_surface_worker_frame(
-                    cx,
-                    phase,
-                    worker_frame,
-                    update_panel_overlay,
-                ))
-            }
-            QuestMakepadMatterSurfaceWorkerOutput::Error(_error) => {
-                self.matter_surface_cached_world_particle_batch = None;
-                self.matter_surface_cached_world_adf_debug_batch = None;
-                None
-            }
-        }
-    }
-
-    fn apply_matter_surface_worker_frame(
-        &mut self,
-        cx: &mut Cx,
-        phase: &str,
-        worker_frame: QuestMakepadMatterSurfaceWorkerFrame,
-        update_panel_overlay: bool,
-    ) -> MatterSurfacePanelOverlayFrame {
-        let frame = worker_frame.frame;
-        if self.matter_surface_frame_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            emit_marker_line(&worker_frame.runtime_marker_line);
-            self.matter_surface_frame_markers_emitted += 1;
-        }
-        let gpu_compute_preflight = QuestMakepadGpuComputePreflight::from_frame(
-            &frame,
-            QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
-        );
-        if self.matter_surface_gpu_compute_preflight_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            if let Some(preflight) = gpu_compute_preflight.as_ref() {
-                emit_marker_line(&preflight.marker_line(phase));
-                self.matter_surface_gpu_compute_preflight_markers_emitted += 1;
-            }
-        }
-        let gpu_probe_steady_state_ready = self.cadence_started
-            && self.cadence_frame_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
-            && self.cadence_xr_update_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
-            && self.cadence_draw_event_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES;
-        if gpu_probe_steady_state_ready
-            && self.matter_surface_gpu_storage_probe_markers_emitted == 0
-        {
-            if let Some(preflight) = gpu_compute_preflight.as_ref() {
-                if let Some(readback) = cx.xr_gpu_storage_buffer_probe(
-                    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES,
-                    QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
-                ) {
-                    let probe = QuestMakepadGpuStorageProbe::from_preflight(
-                        preflight,
-                        QuestMakepadGpuStorageProbeReadback {
-                            requested_bytes: readback.requested_bytes,
-                            storage_buffer_bytes: readback.storage_buffer_bytes,
-                            readback_bytes: readback.readback_bytes,
-                            pattern: readback.pattern,
-                            first_word: readback.first_word,
-                            word_count: readback.word_count,
-                            mismatched_words: readback.mismatched_words,
-                            elapsed_ms: readback.elapsed_ms,
-                        },
-                    );
-                    emit_marker_line(&probe.marker_line(phase));
-                    self.matter_surface_gpu_storage_probe_markers_emitted += 1;
-                }
-            }
-        }
-        if gpu_probe_steady_state_ready
-            && self.matter_surface_gpu_oracle_compute_probe_markers_emitted == 0
-        {
-            if let Some(preflight) = gpu_compute_preflight.as_ref() {
-                let input_words = preflight.oracle_compute_probe_words();
-                if let Some(readback) = cx.xr_gpu_u32_compute_probe(input_words) {
-                    let probe = QuestMakepadGpuOracleComputeProbe::from_preflight(
-                        preflight,
-                        QuestMakepadGpuOracleComputeProbeReadback {
-                            input_words: readback.input_words,
-                            output_words: readback.output_words,
-                            expected_words: readback.expected_words,
-                            word_count: readback.word_count,
-                            mismatched_words: readback.mismatched_words,
-                            queue_submit_serial: readback.queue_submit_serial,
-                            fence_serial: readback.fence_serial,
-                            resource_generation: readback.resource_generation,
-                            pending_retire_count: readback.pending_retire_count,
-                            retained_resource_count: readback.retained_resource_count,
-                            retired_after_fence_count: readback.retired_after_fence_count,
-                            queue_wait_idle_performed: readback.queue_wait_idle_performed,
-                            elapsed_ms: readback.elapsed_ms,
-                        },
-                    );
-                    emit_marker_line(&probe.marker_line(phase));
-                    self.matter_surface_gpu_oracle_compute_probe_markers_emitted += 1;
-                }
-            }
-        }
-        if gpu_probe_steady_state_ready
-            && self.matter_surface_gpu_field_force_probe_markers_emitted == 0
-        {
-            if let Some(preflight) = gpu_compute_preflight.as_ref() {
-                if let Some(force_probe) = frame
-                    .particle_step
-                    .as_ref()
-                    .and_then(|diagnostics| diagnostics.particle_force_probe.as_ref())
-                {
-                    let mut samples =
-                        [XrGpuF32ForceProbeSample::default(); XR_GPU_F32_FORCE_PROBE_SAMPLES];
-                    let sample_count = force_probe
-                        .samples
-                        .len()
-                        .min(XR_GPU_F32_FORCE_PROBE_SAMPLES);
-                    for (target, source) in samples
-                        .iter_mut()
-                        .zip(force_probe.samples.iter())
-                        .take(sample_count)
-                    {
-                        *target = XrGpuF32ForceProbeSample {
-                            position_radius: [
-                                source.position.x,
-                                source.position.y,
-                                source.position.z,
-                                source.radius,
-                            ],
-                            distance_target_strength: [
-                                source.distance,
-                                source.target_distance,
-                                force_probe.attraction_strength,
-                                0.0,
-                            ],
-                            outward: [source.outward.x, source.outward.y, source.outward.z, 0.0],
-                            expected_acceleration: [
-                                source.expected_acceleration.x,
-                                source.expected_acceleration.y,
-                                source.expected_acceleration.z,
-                                0.0,
-                            ],
-                        };
-                    }
-                    if sample_count > 0 {
-                        if let Some(readback) = cx.xr_gpu_f32_force_probe(
-                            samples,
-                            sample_count,
-                            MATTER_SURFACE_GPU_FORCE_PROBE_TOLERANCE,
-                        ) {
-                            let probe = QuestMakepadGpuFieldForceProbe::from_preflight(
-                                preflight,
-                                QuestMakepadGpuFieldForceProbeReadback {
-                                    sample_count: readback.sample_count,
-                                    component_count: readback.component_count,
-                                    mismatched_components: readback.mismatched_components,
-                                    max_abs_error: readback.max_abs_error,
-                                    tolerance: readback.tolerance,
-                                    queue_submit_serial: readback.queue_submit_serial,
-                                    fence_serial: readback.fence_serial,
-                                    resource_generation: readback.resource_generation,
-                                    pending_retire_count: readback.pending_retire_count,
-                                    retained_resource_count: readback.retained_resource_count,
-                                    retired_after_fence_count: readback.retired_after_fence_count,
-                                    queue_wait_idle_performed: readback.queue_wait_idle_performed,
-                                    elapsed_ms: readback.elapsed_ms,
-                                },
-                            );
-                            emit_marker_line(&probe.marker_line(phase));
-                            self.matter_surface_gpu_field_force_probe_markers_emitted += 1;
-                        }
-                    }
-                }
-            }
-        }
-        if gpu_probe_steady_state_ready
-            && self.matter_surface_gpu_skinning_probe_markers_emitted == 0
-        {
-            if let Some(input) = frame.gpu_skinning_probe.as_ref() {
-                if let Some(marker) = gpu_skinning_probe_marker_line(cx, input, phase) {
-                    emit_marker_line(&marker);
-                    self.matter_surface_gpu_skinning_probe_markers_emitted += 1;
-                }
-            }
-        }
-        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
-            self.matter_surface_cached_world_particle_batch = None;
-            self.matter_surface_cached_world_adf_debug_batch = None;
-            return MatterSurfacePanelOverlayFrame::default();
-        };
-        let bounds_min = replay_runtime.sequence().bounds_min();
-        let bounds_max = replay_runtime.sequence().bounds_max();
-        let draw_limit = self.current_matter_world_particle_draw_limit();
-        let world_batch = frame.world_particle_batch(
-            bounds_min,
-            bounds_max,
-            Self::matter_world_particle_placement(),
-            draw_limit,
-        );
-        if self.matter_surface_world_particle_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            if let Some(world_batch) = world_batch.as_ref() {
-                emit_marker_line(&world_batch.marker_line(phase));
-                self.matter_surface_world_particle_markers_emitted += 1;
-            }
-        }
-        self.matter_surface_cached_world_particle_batch = world_batch;
-        let world_adf_debug = frame.world_adf_debug_batch(
-            Self::matter_world_adf_debug_placement(),
-            MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
-        );
-        if self.matter_surface_world_adf_debug_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-            if let Some(world_adf_debug) = world_adf_debug.as_ref() {
-                emit_marker_line(&world_adf_debug.marker_line(phase));
-                self.matter_surface_world_adf_debug_markers_emitted += 1;
-            }
-        }
-        self.matter_surface_cached_world_adf_debug_batch = world_adf_debug;
-        if !update_panel_overlay {
-            return MatterSurfacePanelOverlayFrame::default();
-        }
-        let uniforms = MakepadMatterSurfaceUniforms::from_frame(&frame, bounds_min, bounds_max);
-        let particle_texture = self
-            .matter_particle_texture
-            .update_from_frame(cx, &frame, bounds_min, bounds_max, phase);
-        MatterSurfacePanelOverlayFrame {
-            uniforms,
-            particle_texture,
-        }
-    }
-
     fn apply_mesh_replay_uniforms_to_panel(
         &mut self,
         cx: &mut Cx,
@@ -5422,166 +5099,6 @@ impl App {
             particle_texture_frame,
         );
         true
-    }
-
-    fn apply_matter_world_particles_to_cloud(&mut self, cx: &mut Cx, phase: &str) {
-        let batch = self.matter_surface_cached_world_particle_batch.clone();
-        let draw_limit = self.current_matter_world_particle_draw_limit();
-        let draw_limit_source = self.matter_world_particle_draw_limit_source();
-        let animation_mode = self.current_matter_world_particle_animation_mode();
-        let size_scale = self.current_matter_world_particle_size_scale();
-        let cloud_ref = self.ui.widget(cx, ids!(matter_particle_cloud));
-        let Some(mut cloud) = cloud_ref.borrow_mut::<MatterWorldParticleBillboardCloud>() else {
-            if self.matter_surface_world_particle_draw_markers_emitted
-                < MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
-            {
-                emit_marker_line(&format!(
-                    "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=error renderer={} issue=matter_world_particle_billboard_cloud_widget_missing configuredDrawLimit={} drawLimitSource={} billboardRenderer=true finalTextureAtlasRenderer=false",
-                    marker_token(phase),
-                    marker_token(QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID),
-                    draw_limit,
-                    draw_limit_source,
-                ));
-                self.matter_surface_world_particle_draw_markers_emitted += 1;
-            }
-            return;
-        };
-        cloud.set_world_particle_batch(cx, batch.clone(), draw_limit, size_scale, animation_mode);
-
-        if self.matter_surface_world_particle_draw_markers_emitted
-            >= MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT
-        {
-            return;
-        }
-        let Some(batch) = batch else {
-            if !self.matter_surface_world_particle_draw_waiting_marker_emitted {
-                emit_marker_line(&format!(
-                    "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=waiting renderer={} sourceSchema=none configuredDrawLimit={} drawLimitSource={} drawnInstances=0 billboardRenderer=true finalTextureAtlasRenderer=false",
-                    marker_token(phase),
-                    marker_token(QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID),
-                    draw_limit,
-                    draw_limit_source,
-                ));
-                self.matter_surface_world_particle_draw_waiting_marker_emitted = true;
-            }
-            return;
-        };
-        let drawn_instances = batch.instances.len().min(draw_limit);
-        let content_center_distance = (batch.content_center[0] * batch.content_center[0]
-            + batch.content_center[1] * batch.content_center[1]
-            + batch.content_center[2] * batch.content_center[2])
-            .sqrt();
-        emit_marker_line(&format!(
-            "RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW schema=rusty.hostess.makepad.world_particle_draw.v1 phase={} status=ready renderer={} renderMode={} animationMode={} animationSource={} borrowedVisualReference={} particleSizeScale={} particleSizeScaleSource={} sourceSchema={} coordinateSpace={} sourceRows={} instanceRows={} configuredDrawLimit={} drawLimitSource={} drawnInstances={} droppedRows={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} billboardRenderer=true finalTextureAtlasRenderer=false",
-            marker_token(phase),
-            marker_token(QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID),
-            marker_token(&batch.render_mode),
-            marker_token(animation_mode.as_str()),
-            marker_token(QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE),
-            marker_token(QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE),
-            marker_f32_token(Some(size_scale)),
-            self.matter_world_particle_size_scale_source(),
-            marker_token(&batch.source_schema_id),
-            marker_token(&batch.coordinate_space),
-            batch.source_rows,
-            batch.instances.len(),
-            draw_limit,
-            draw_limit_source,
-            drawn_instances,
-            batch.dropped_rows,
-            batch.content_center[0],
-            batch.content_center[1],
-            batch.content_center[2],
-            batch.content_radius,
-            content_center_distance,
-            MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
-        ));
-        emit_marker_line(
-            &QuestMakepadGpuResidencyProof::from_world_particle_batch(
-                &batch,
-                drawn_instances,
-                QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID,
-            )
-            .marker_line(phase),
-        );
-        self.matter_surface_world_particle_draw_markers_emitted += 1;
-    }
-
-    fn apply_matter_world_adf_debug_to_cells(&mut self, cx: &mut Cx, phase: &str) {
-        let batch = self.matter_surface_cached_world_adf_debug_batch.clone();
-        let draw_limit = MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
-        let cells_ref = self.ui.widget(cx, ids!(matter_adf_debug_cells));
-        let Some(mut cells) = cells_ref.borrow_mut::<MatterWorldAdfDebugCells>() else {
-            if self.matter_surface_world_adf_debug_draw_markers_emitted
-                < MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT
-            {
-                emit_marker_line(&format!(
-                    "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=error renderer={} issue=matter_world_adf_debug_cells_widget_missing configuredDrawLimit={}",
-                    marker_token(phase),
-                    marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
-                    draw_limit,
-                ));
-                self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
-            }
-            return;
-        };
-        cells.set_world_adf_debug_batch(cx, batch.clone(), draw_limit);
-
-        if self.matter_surface_world_adf_debug_draw_markers_emitted
-            >= MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT
-        {
-            return;
-        }
-        let Some(batch) = batch else {
-            if !self.matter_surface_world_adf_debug_draw_waiting_marker_emitted {
-                emit_marker_line(&format!(
-                    "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=waiting renderer={} sourceSchema=none configuredDrawLimit={} drawnCells=0",
-                    marker_token(phase),
-                    marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
-                    draw_limit,
-                ));
-                self.matter_surface_world_adf_debug_draw_waiting_marker_emitted = true;
-            }
-            return;
-        };
-        let drawn_cells = batch.cells.len().min(draw_limit);
-        let content_center_distance = (batch.content_center[0] * batch.content_center[0]
-            + batch.content_center[1] * batch.content_center[1]
-            + batch.content_center[2] * batch.content_center[2])
-            .sqrt();
-        emit_marker_line(&format!(
-            "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=ready renderer={} renderMode={} sourceSchema={} sourceVisualSchema={} coordinateSpace={} sourceCells={} cellRows={} configuredDrawLimit={} drawnCells={} droppedCells={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} dataPlane=makepad-world-adf-debug-cells",
-            marker_token(phase),
-            marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
-            marker_token(if batch.render_mode.is_empty() {
-                QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE
-            } else {
-                &batch.render_mode
-            }),
-            marker_token(&batch.source_schema_id),
-            marker_token(&batch.source_visual_schema_id),
-            marker_token(&batch.coordinate_space),
-            batch.source_cells,
-            batch.cells.len(),
-            draw_limit,
-            drawn_cells,
-            batch.dropped_cells,
-            batch.content_center[0],
-            batch.content_center[1],
-            batch.content_center[2],
-            batch.content_radius,
-            content_center_distance,
-            MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
-        ));
-        emit_marker_line(
-            &QuestMakepadGpuResidencyProof::from_world_adf_debug_batch(
-                &batch,
-                drawn_cells,
-                HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
-            )
-            .marker_line(phase),
-        );
-        self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
     }
 
     fn apply_camera_shell_render_scale(&self, cx: &mut Cx, phase: &str) {

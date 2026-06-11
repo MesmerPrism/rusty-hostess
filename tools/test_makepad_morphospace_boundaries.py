@@ -42,19 +42,26 @@ class MakepadMorphospaceBoundaryTests(unittest.TestCase):
 
     def test_hostess_uses_quest_makepad_billboard_renderer_boundary(self):
         main = (HOSTESS_MAKEPAD_SRC / "main.rs").read_text(encoding="utf-8")
+        runtime = (HOSTESS_MAKEPAD_SRC / "matter_surface_runtime.rs").read_text(
+            encoding="utf-8"
+        )
         widget = (HOSTESS_MAKEPAD_SRC / "matter_world_particle_billboard.rs").read_text(
             encoding="utf-8"
         )
 
         self.assertIn("mod matter_world_particle_billboard;", main)
+        self.assertIn("mod matter_surface_runtime;", main)
         self.assertIn("MatterWorldParticleBillboardCloud", main)
-        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID", main)
-        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE", main)
-        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE", main)
+        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID", runtime)
+        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE", runtime)
+        self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE", runtime)
         self.assertIn("DEFAULT_PARTICLE_RENDER_ANIMATION_MODE", main)
         self.assertNotIn('"makepad-xr-procedural-ring-billboard"', main)
         self.assertNotIn('"procedural-morph-ring"', main)
         self.assertNotIn('"rusty-viscereality-billboard-ring"', main)
+        self.assertNotIn('"makepad-xr-procedural-ring-billboard"', runtime)
+        self.assertNotIn('"procedural-morph-ring"', runtime)
+        self.assertNotIn('"rusty-viscereality-billboard-ring"', runtime)
         self.assertIn("Hostess-local Makepad smoke renderer", widget)
         self.assertIn("reusable renderer should move", widget)
 

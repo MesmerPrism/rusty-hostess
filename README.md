@@ -157,6 +157,11 @@ Quest-Makepad; Matter remains the CPU skinning oracle and Quest-Makepad owns
 the marker contract. The marker must keep `jointMatrixSkinningKernel=false`,
 `meshToSdfKernel=false`, `gpuComputeReady=false`, and
 `highRateJsonPayload=false` until later GPU skinning/SDF slices are validated.
+Implementation lives outside the app root: `matter_surface_runtime.rs` owns
+worker submission, bounded GPU-probe evidence, and world particle/ADF draw
+evidence; `matter_surface_gpu.rs` owns the bounded Makepad XR/Vulkan sample
+conversion; `recorded_hand_surface.rs` owns loading staged bind-rig plus
+compact joint-frame recordings. Keep `main.rs` as app-shell wiring.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
