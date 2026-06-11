@@ -134,14 +134,15 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadGpuComputePreflight, QuestMakepadGpuResidencyProof, QuestMakepadGpuStorageProbe,
-    QuestMakepadGpuStorageProbeReadback, QuestMakepadMatterSurfaceWorker,
-    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
-    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldAdfDebugPlacement,
-    QuestMakepadWorldParticleBatch, QuestMakepadWorldParticlePlacement,
-    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
-    DEFAULT_PARTICLE_RENDER_SIZE_SCALE, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
-    QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+    QuestMakepadGpuComputePreflight, QuestMakepadGpuOracleComputeProbe,
+    QuestMakepadGpuOracleComputeProbeReadback, QuestMakepadGpuResidencyProof,
+    QuestMakepadGpuStorageProbe, QuestMakepadGpuStorageProbeReadback,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
+    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
+    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
+    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
+    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
     QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES, QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
     QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
@@ -189,6 +190,7 @@ const FRAME_ADOPTION_MARKER_LIMIT: usize = 24;
 const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
 const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
 const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
+const MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 900;
 const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX;
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
@@ -1657,6 +1659,8 @@ pub struct App {
     matter_surface_gpu_compute_preflight_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_storage_probe_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_oracle_compute_probe_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3568,6 +3572,7 @@ impl App {
         self.matter_surface_worker_markers_emitted = 0;
         self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
         self.matter_surface_gpu_storage_probe_markers_emitted = 0;
+        self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5199,7 +5204,13 @@ impl App {
                 self.matter_surface_gpu_compute_preflight_markers_emitted += 1;
             }
         }
-        if self.matter_surface_gpu_storage_probe_markers_emitted == 0 {
+        let gpu_probe_steady_state_ready = self.cadence_started
+            && self.cadence_frame_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
+            && self.cadence_xr_update_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
+            && self.cadence_draw_event_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES;
+        if gpu_probe_steady_state_ready
+            && self.matter_surface_gpu_storage_probe_markers_emitted == 0
+        {
             if let Some(preflight) = gpu_compute_preflight.as_ref() {
                 if let Some(readback) = cx.xr_gpu_storage_buffer_probe(
                     QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES,
@@ -5220,6 +5231,28 @@ impl App {
                     );
                     emit_marker_line(&probe.marker_line(phase));
                     self.matter_surface_gpu_storage_probe_markers_emitted += 1;
+                }
+            }
+        }
+        if gpu_probe_steady_state_ready
+            && self.matter_surface_gpu_oracle_compute_probe_markers_emitted == 0
+        {
+            if let Some(preflight) = gpu_compute_preflight.as_ref() {
+                let input_words = preflight.oracle_compute_probe_words();
+                if let Some(readback) = cx.xr_gpu_u32_compute_probe(input_words) {
+                    let probe = QuestMakepadGpuOracleComputeProbe::from_preflight(
+                        preflight,
+                        QuestMakepadGpuOracleComputeProbeReadback {
+                            input_words: readback.input_words,
+                            output_words: readback.output_words,
+                            expected_words: readback.expected_words,
+                            word_count: readback.word_count,
+                            mismatched_words: readback.mismatched_words,
+                            elapsed_ms: readback.elapsed_ms,
+                        },
+                    );
+                    emit_marker_line(&probe.marker_line(phase));
+                    self.matter_surface_gpu_oracle_compute_probe_markers_emitted += 1;
                 }
             }
         }
