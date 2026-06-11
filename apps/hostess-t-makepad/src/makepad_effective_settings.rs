@@ -69,6 +69,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     matter_surface_adf_max_depth: Option<u32>,
     matter_surface_adf_max_cells: Option<usize>,
     matter_surface_adf_error_tolerance: Option<f64>,
+    matter_surface_sdf_adf_debug_update_interval_frames: Option<usize>,
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
     matter_surface_particle_distance_refresh_policy: Option<String>,
@@ -164,7 +165,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -202,6 +203,7 @@ impl MakepadEffectiveSettingsReceipt {
             marker_u32(self.matter_surface_adf_max_depth),
             marker_usize(self.matter_surface_adf_max_cells),
             marker_f64(self.matter_surface_adf_error_tolerance),
+            marker_usize(self.matter_surface_sdf_adf_debug_update_interval_frames),
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
             marker_option(self.matter_surface_particle_distance_refresh_policy.as_deref()),
@@ -346,6 +348,11 @@ impl MakepadEffectiveSettingsReceipt {
             &mut object,
             "matter_surface_adf_error_tolerance",
             self.matter_surface_adf_error_tolerance,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_sdf_adf_debug_update_interval_frames",
+            self.matter_surface_sdf_adf_debug_update_interval_frames,
         );
         insert_json_field!(
             &mut object,
@@ -578,6 +585,7 @@ fn ready_receipt(
         matter_surface_adf_max_depth,
         matter_surface_adf_max_cells,
         matter_surface_adf_error_tolerance,
+        matter_surface_sdf_adf_debug_update_interval_frames,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
@@ -613,6 +621,12 @@ fn ready_receipt(
                 Some(f64::from(
                     config.matter_surface.adf_debug_config.error_tolerance,
                 )),
+                Some(
+                    config
+                        .matter_surface
+                        .sdf_adf_debug_update_interval_frames
+                        .get(),
+                ),
                 Some(config.matter_surface.particle_count),
                 Some(config.matter_surface.leaf_triangle_count),
                 Some(
@@ -641,6 +655,7 @@ fn ready_receipt(
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
             None,
             None,
             None,
@@ -706,6 +721,7 @@ fn ready_receipt(
         matter_surface_adf_max_depth,
         matter_surface_adf_max_cells,
         matter_surface_adf_error_tolerance,
+        matter_surface_sdf_adf_debug_update_interval_frames,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
@@ -908,6 +924,10 @@ mod tests {
         );
         assert_eq!(receipt.particle_render_size_scale, Some(1.0));
         assert_eq!(receipt.matter_surface_native_runtime_configured, Some(true));
+        assert_eq!(
+            receipt.matter_surface_sdf_adf_debug_update_interval_frames,
+            Some(1)
+        );
         assert_eq!(receipt.matter_surface_particle_count, Some(1000));
         assert_eq!(receipt.matter_surface_leaf_triangle_count, Some(8));
         assert_eq!(
@@ -947,6 +967,7 @@ mod tests {
         assert!(marker.contains("matterSurfaceAdfMaxDepth=4"));
         assert!(marker.contains("matterSurfaceAdfMaxCells=4096"));
         assert!(marker.contains("matterSurfaceAdfErrorTolerance=0.025"));
+        assert!(marker.contains("matterSurfaceSdfAdfDebugUpdateIntervalFrames=1"));
         assert!(marker.contains("matterSurfaceParticleCount=1000"));
         assert!(marker.contains("matterSurfaceParticleDistanceRefreshPolicy=step-only"));
         assert!(marker.contains("matterSurfaceParticleExecutionBackend=serial"));
@@ -959,6 +980,12 @@ mod tests {
         assert!(marker.contains("particleRenderSizeScale=1.000"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
+
+        let json = receipt.to_json_value();
+        assert_eq!(
+            json["matter_surface_sdf_adf_debug_update_interval_frames"],
+            serde_json::json!(1)
+        );
     }
 
     #[test]
@@ -980,6 +1007,10 @@ mod tests {
         assert!(receipt
             .matter_surface_adf_error_tolerance
             .is_some_and(|value| (value - 0.025).abs() < 0.000_001));
+        assert_eq!(
+            receipt.matter_surface_sdf_adf_debug_update_interval_frames,
+            Some(1)
+        );
 
         let marker = receipt.marker_line("test-adf");
         assert!(marker.contains("sdfAdfOverlayMode=adf"));
@@ -990,6 +1021,7 @@ mod tests {
         assert!(marker.contains("matterSurfaceAdfMaxDepth=4"));
         assert!(marker.contains("matterSurfaceAdfMaxCells=4096"));
         assert!(marker.contains("matterSurfaceAdfErrorTolerance=0.025"));
+        assert!(marker.contains("matterSurfaceSdfAdfDebugUpdateIntervalFrames=1"));
 
         let selection = read_mesh_replay_runtime_from_path(&path);
         assert_eq!(
