@@ -182,3 +182,12 @@ The run showed eight ADF-ready Matter runtime markers, camera acquisition
 skipped because streaming was disabled, camera discovery disabled, no packaged
 camera permissions, no camera-permission failures, and strict fatal/ANR count
 zero.
+Hostess ADF world debug drawing lives in
+`apps/hostess-t-makepad/src/matter_world_adf_debug.rs`. It consumes
+`QuestMakepadWorldAdfDebugBatch` and should emit
+`RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW` with
+`renderer=hostess-makepad-adf-debug-cell-boxes`,
+`renderMode=adf-debug-cell-boxes`, `cellRows`, `drawnCells`, `droppedCells`,
+and `dataPlane=makepad-world-adf-debug-cells`. Keep this renderer a
+Makepad/Hostess evidence consumer only; ADF construction and interpretation
+remain Matter/Optics/Quest-Makepad adapter responsibilities.

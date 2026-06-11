@@ -120,6 +120,12 @@ proved through compact runtime markers such as `adfDebugEnabled`,
 a gated future mode until simultaneous SDF plus ADF output is intentionally
 supported. Hostess records and renders adapter outputs; it does not own ADF
 truth or parse high-rate ADF leaf cells through settings JSON.
+The Makepad world-object ADF debug smoke renderer lives in
+`apps/hostess-t-makepad/src/matter_world_adf_debug.rs`. It consumes
+`QuestMakepadWorldAdfDebugBatch` rows and emits
+`RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW` evidence with
+`renderer=hostess-makepad-adf-debug-cell-boxes`; it must remain a renderer-only
+consumer of the Quest-Makepad adapter output.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256

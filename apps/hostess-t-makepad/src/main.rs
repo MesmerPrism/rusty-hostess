@@ -17,6 +17,7 @@ mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_uniforms;
+mod matter_world_adf_debug;
 mod matter_world_particle_billboard;
 mod projection_geometry;
 mod projection_runtime;
@@ -41,6 +42,10 @@ use matter_particle_texture::{
     MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
 };
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
+use matter_world_adf_debug::{
+    MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
+    HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
+};
 use matter_world_particle_billboard::{
     MatterWorldParticleBillboardCloud, HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX,
 };
@@ -130,10 +135,12 @@ use projection_target_controls::{
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
     QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
-    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldParticleBatch,
+    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
+    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
     QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
     DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
-    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
+    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
+    QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID,
 };
@@ -180,6 +187,8 @@ const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
 const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX;
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
+const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
+const MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT: usize = 8;
 const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
 const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
 const MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS: f32 = 0.50;
@@ -1545,6 +1554,17 @@ script_mod! {
         }
     }
 
+    mod.widgets.MatterWorldAdfDebugCellsBase = #(MatterWorldAdfDebugCells::register_widget(vm))
+    mod.widgets.MatterWorldAdfDebugCells = set_type_default() do mod.widgets.MatterWorldAdfDebugCellsBase{
+        body: mod.widgets.XrBodyKind.Fixed
+        shared_object_policy: mod.widgets.XrSharedObjectPolicy.None
+        draw_cube +: {
+            alpha_blend: true
+            backface_culling: false
+            light_dir: vec3(0.35, 0.55, 1.0)
+        }
+    }
+
     startup() do #(App::script_component(vm)){
         ui: XrRoot{
             window.inner_size: vec2(760, 480)
@@ -1566,6 +1586,11 @@ script_mod! {
                 }
 
                 matter_particle_cloud := mod.widgets.MatterWorldParticleBillboardCloud{
+                    body: mod.widgets.XrBodyKind.Fixed
+                    pos: vec3(0.0, 0.0, 0.0)
+                }
+
+                matter_adf_debug_cells := mod.widgets.MatterWorldAdfDebugCells{
                     body: mod.widgets.XrBodyKind.Fixed
                     pos: vec3(0.0, 0.0, 0.0)
                 }
@@ -1631,11 +1656,19 @@ pub struct App {
     #[rust]
     matter_surface_world_particle_draw_waiting_marker_emitted: bool,
     #[rust]
+    matter_surface_world_adf_debug_markers_emitted: usize,
+    #[rust]
+    matter_surface_world_adf_debug_draw_markers_emitted: usize,
+    #[rust]
+    matter_surface_world_adf_debug_draw_waiting_marker_emitted: bool,
+    #[rust]
     matter_surface_last_step_seconds: f64,
     #[rust]
     matter_surface_cached_panel_overlay_frame: MatterSurfacePanelOverlayFrame,
     #[rust]
     matter_surface_cached_world_particle_batch: Option<QuestMakepadWorldParticleBatch>,
+    #[rust]
+    matter_surface_cached_world_adf_debug_batch: Option<QuestMakepadWorldAdfDebugBatch>,
     #[rust]
     matter_particle_texture: MatterParticleTextureRenderer,
     #[rust]
@@ -3449,6 +3482,13 @@ impl App {
         )
     }
 
+    fn matter_world_adf_debug_placement() -> QuestMakepadWorldAdfDebugPlacement {
+        QuestMakepadWorldAdfDebugPlacement::content_local(
+            MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
+            DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+        )
+    }
+
     fn initialize_hostess_shell_contract(&mut self) {
         self.shell_contract_read = shell_contract::read_selected_makepad_shell_contract();
         let _ = shell_contract::write_selected_makepad_shell_contract_read_receipt(
@@ -3521,9 +3561,13 @@ impl App {
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
+        self.matter_surface_world_adf_debug_markers_emitted = 0;
+        self.matter_surface_world_adf_debug_draw_markers_emitted = 0;
+        self.matter_surface_world_adf_debug_draw_waiting_marker_emitted = false;
         self.matter_surface_last_step_seconds = f64::NEG_INFINITY;
         self.matter_surface_cached_panel_overlay_frame = MatterSurfacePanelOverlayFrame::default();
         self.matter_surface_cached_world_particle_batch = None;
+        self.matter_surface_cached_world_adf_debug_batch = None;
         self.matter_particle_texture.reset_markers();
         self.mesh_replay_runtime = selection.runtime;
 
@@ -5015,6 +5059,7 @@ impl App {
             );
         }
         self.apply_matter_world_particles_to_cloud(cx, "cadence");
+        self.apply_matter_world_adf_debug_to_cells(cx, "cadence");
     }
 
     fn update_matter_surface_runtime_for_evidence(
@@ -5058,10 +5103,12 @@ impl App {
     ) -> bool {
         let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
+            self.matter_surface_cached_world_adf_debug_batch = None;
             return false;
         };
         let Some(worker) = self.matter_surface_worker.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
+            self.matter_surface_cached_world_adf_debug_batch = None;
             return false;
         };
         let probe = MatterSurfaceContactProbe::sphere(
@@ -5073,6 +5120,7 @@ impl App {
             Ok(_) => true,
             Err(error) => {
                 self.matter_surface_cached_world_particle_batch = None;
+                self.matter_surface_cached_world_adf_debug_batch = None;
                 if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
                     emit_marker_line(&format!(
                         "RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER schema=rusty.quest.makepad.matter_surface_worker.v1 phase={} status=error mode=latest-wins workerThread=true renderThreadBlocking=false issue={}",
@@ -5113,6 +5161,7 @@ impl App {
             }
             QuestMakepadMatterSurfaceWorkerOutput::Error(_error) => {
                 self.matter_surface_cached_world_particle_batch = None;
+                self.matter_surface_cached_world_adf_debug_batch = None;
                 None
             }
         }
@@ -5132,6 +5181,7 @@ impl App {
         }
         let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
+            self.matter_surface_cached_world_adf_debug_batch = None;
             return MatterSurfacePanelOverlayFrame::default();
         };
         let bounds_min = replay_runtime.sequence().bounds_min();
@@ -5150,6 +5200,17 @@ impl App {
             }
         }
         self.matter_surface_cached_world_particle_batch = world_batch;
+        let world_adf_debug = frame.world_adf_debug_batch(
+            Self::matter_world_adf_debug_placement(),
+            MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
+        );
+        if self.matter_surface_world_adf_debug_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            if let Some(world_adf_debug) = world_adf_debug.as_ref() {
+                emit_marker_line(&world_adf_debug.marker_line(phase));
+                self.matter_surface_world_adf_debug_markers_emitted += 1;
+            }
+        }
+        self.matter_surface_cached_world_adf_debug_batch = world_adf_debug;
         if !update_panel_overlay {
             return MatterSurfacePanelOverlayFrame::default();
         }
@@ -5258,6 +5319,75 @@ impl App {
             MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
         ));
         self.matter_surface_world_particle_draw_markers_emitted += 1;
+    }
+
+    fn apply_matter_world_adf_debug_to_cells(&mut self, cx: &mut Cx, phase: &str) {
+        let batch = self.matter_surface_cached_world_adf_debug_batch.clone();
+        let draw_limit = MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
+        let cells_ref = self.ui.widget(cx, ids!(matter_adf_debug_cells));
+        let Some(mut cells) = cells_ref.borrow_mut::<MatterWorldAdfDebugCells>() else {
+            if self.matter_surface_world_adf_debug_draw_markers_emitted
+                < MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT
+            {
+                emit_marker_line(&format!(
+                    "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=error renderer={} issue=matter_world_adf_debug_cells_widget_missing configuredDrawLimit={}",
+                    marker_token(phase),
+                    marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
+                    draw_limit,
+                ));
+                self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
+            }
+            return;
+        };
+        cells.set_world_adf_debug_batch(cx, batch.clone(), draw_limit);
+
+        if self.matter_surface_world_adf_debug_draw_markers_emitted
+            >= MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT
+        {
+            return;
+        }
+        let Some(batch) = batch else {
+            if !self.matter_surface_world_adf_debug_draw_waiting_marker_emitted {
+                emit_marker_line(&format!(
+                    "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=waiting renderer={} sourceSchema=none configuredDrawLimit={} drawnCells=0",
+                    marker_token(phase),
+                    marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
+                    draw_limit,
+                ));
+                self.matter_surface_world_adf_debug_draw_waiting_marker_emitted = true;
+            }
+            return;
+        };
+        let drawn_cells = batch.cells.len().min(draw_limit);
+        let content_center_distance = (batch.content_center[0] * batch.content_center[0]
+            + batch.content_center[1] * batch.content_center[1]
+            + batch.content_center[2] * batch.content_center[2])
+            .sqrt();
+        emit_marker_line(&format!(
+            "RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW schema=rusty.hostess.makepad.world_adf_debug_draw.v1 phase={} status=ready renderer={} renderMode={} sourceSchema={} sourceVisualSchema={} coordinateSpace={} sourceCells={} cellRows={} configuredDrawLimit={} drawnCells={} droppedCells={} contentCenter={:.6},{:.6},{:.6} contentRadius={:.6} contentCenterLocalDistanceMeters={:.3} expectedStartHeadDistanceMeters={:.3} dataPlane=makepad-world-adf-debug-cells",
+            marker_token(phase),
+            marker_token(HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID),
+            marker_token(if batch.render_mode.is_empty() {
+                QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE
+            } else {
+                &batch.render_mode
+            }),
+            marker_token(&batch.source_schema_id),
+            marker_token(&batch.source_visual_schema_id),
+            marker_token(&batch.coordinate_space),
+            batch.source_cells,
+            batch.cells.len(),
+            draw_limit,
+            drawn_cells,
+            batch.dropped_cells,
+            batch.content_center[0],
+            batch.content_center[1],
+            batch.content_center[2],
+            batch.content_radius,
+            content_center_distance,
+            MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
+        ));
+        self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
     }
 
     fn apply_camera_shell_render_scale(&self, cx: &mut Cx, phase: &str) {
