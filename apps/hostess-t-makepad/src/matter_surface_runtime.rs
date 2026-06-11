@@ -10,7 +10,8 @@ use crate::makepad_widgets::makepad_platform::{
 use crate::makepad_widgets::*;
 use crate::matter_particle_texture::MatterParticleTextureFrame;
 use crate::matter_surface_gpu::{
-    gpu_skinning_mesh_probe_marker_line, gpu_skinning_probe_marker_line,
+    gpu_mesh_sdf_probe_marker_line, gpu_skinning_mesh_probe_marker_line,
+    gpu_skinning_probe_marker_line,
 };
 use crate::matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use crate::matter_world_adf_debug::{
@@ -355,6 +356,16 @@ impl App {
                 if let Some(marker) = gpu_skinning_mesh_probe_marker_line(cx, input, phase) {
                     emit_marker_line(&marker);
                     self.matter_surface_gpu_skinning_mesh_probe_markers_emitted += 1;
+                }
+            }
+        }
+        if gpu_probe_steady_state_ready
+            && self.matter_surface_gpu_mesh_sdf_probe_markers_emitted == 0
+        {
+            if let Some(input) = frame.gpu_mesh_sdf_probe.as_ref() {
+                if let Some(marker) = gpu_mesh_sdf_probe_marker_line(cx, input, phase) {
+                    emit_marker_line(&marker);
+                    self.matter_surface_gpu_mesh_sdf_probe_markers_emitted += 1;
                 }
             }
         }
