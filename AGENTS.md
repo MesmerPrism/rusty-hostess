@@ -164,6 +164,13 @@ markers `particleForceSource`, `particleForceSourceStatus`,
 `particleForceRefresh`, `particleSamplingAuthority`, `particleFieldSource`,
 and `sdfAdfDebugParticleAuthority`. Normal profiles select exactly one force
 authority at a time; nonzero compare-probe counts are bounded diagnostics only.
+For `sdf-field` and `adf-field`, `particleForceSourceStatus=ready` proves the
+Matter-owned CPU reference field was used; `particleSamplingAuthority` should
+be `matter-sdf-field-sampler` or `matter-adf-field-sampler`, and
+`sdfAdfDebugParticleAuthority=false` must remain true because particles are not
+driven by Hostess or Quest-Makepad debug visual payloads. In field modes,
+`particleForceRefresh=reused` means the cached Matter field was reused while
+particles still sampled it for the current step.
 
 A focused 2026-06-11 headset run at `32768` source particles
 with draw limit `8192` confirmed payload/visual/upload work now scales with the
