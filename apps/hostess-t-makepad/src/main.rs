@@ -115,6 +115,7 @@ use makepad_widgets::makepad_platform::{
     video::VideoInputsEvent,
     CxMediaApi, TextureFormat, TextureId, TextureUpdated,
 };
+use makepad_widgets::makepad_platform::{XrGpuF32ForceProbeSample, XR_GPU_F32_FORCE_PROBE_SAMPLES};
 use makepad_widgets::*;
 use makepad_xr::scene::{xr_widget_world_transform, XrNode};
 use manifold_breath_feedback::{
@@ -134,7 +135,8 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadGpuComputePreflight, QuestMakepadGpuOracleComputeProbe,
+    QuestMakepadGpuComputePreflight, QuestMakepadGpuFieldForceProbe,
+    QuestMakepadGpuFieldForceProbeReadback, QuestMakepadGpuOracleComputeProbe,
     QuestMakepadGpuOracleComputeProbeReadback, QuestMakepadGpuResidencyProof,
     QuestMakepadGpuStorageProbe, QuestMakepadGpuStorageProbeReadback,
     QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
@@ -191,6 +193,7 @@ const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
 const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
 const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
 const MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 900;
+const MATTER_SURFACE_GPU_FORCE_PROBE_TOLERANCE: f32 = 0.0001;
 const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX;
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
@@ -1661,6 +1664,8 @@ pub struct App {
     matter_surface_gpu_storage_probe_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_oracle_compute_probe_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_field_force_probe_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3573,6 +3578,7 @@ impl App {
         self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
         self.matter_surface_gpu_storage_probe_markers_emitted = 0;
         self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
+        self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5260,6 +5266,79 @@ impl App {
                     );
                     emit_marker_line(&probe.marker_line(phase));
                     self.matter_surface_gpu_oracle_compute_probe_markers_emitted += 1;
+                }
+            }
+        }
+        if gpu_probe_steady_state_ready
+            && self.matter_surface_gpu_field_force_probe_markers_emitted == 0
+        {
+            if let Some(preflight) = gpu_compute_preflight.as_ref() {
+                if let Some(force_probe) = frame
+                    .particle_step
+                    .as_ref()
+                    .and_then(|diagnostics| diagnostics.particle_force_probe.as_ref())
+                {
+                    let mut samples =
+                        [XrGpuF32ForceProbeSample::default(); XR_GPU_F32_FORCE_PROBE_SAMPLES];
+                    let sample_count = force_probe
+                        .samples
+                        .len()
+                        .min(XR_GPU_F32_FORCE_PROBE_SAMPLES);
+                    for (target, source) in samples
+                        .iter_mut()
+                        .zip(force_probe.samples.iter())
+                        .take(sample_count)
+                    {
+                        *target = XrGpuF32ForceProbeSample {
+                            position_radius: [
+                                source.position.x,
+                                source.position.y,
+                                source.position.z,
+                                source.radius,
+                            ],
+                            distance_target_strength: [
+                                source.distance,
+                                source.target_distance,
+                                force_probe.attraction_strength,
+                                0.0,
+                            ],
+                            outward: [source.outward.x, source.outward.y, source.outward.z, 0.0],
+                            expected_acceleration: [
+                                source.expected_acceleration.x,
+                                source.expected_acceleration.y,
+                                source.expected_acceleration.z,
+                                0.0,
+                            ],
+                        };
+                    }
+                    if sample_count > 0 {
+                        if let Some(readback) = cx.xr_gpu_f32_force_probe(
+                            samples,
+                            sample_count,
+                            MATTER_SURFACE_GPU_FORCE_PROBE_TOLERANCE,
+                        ) {
+                            let probe = QuestMakepadGpuFieldForceProbe::from_preflight(
+                                preflight,
+                                QuestMakepadGpuFieldForceProbeReadback {
+                                    sample_count: readback.sample_count,
+                                    component_count: readback.component_count,
+                                    mismatched_components: readback.mismatched_components,
+                                    max_abs_error: readback.max_abs_error,
+                                    tolerance: readback.tolerance,
+                                    queue_submit_serial: readback.queue_submit_serial,
+                                    fence_serial: readback.fence_serial,
+                                    resource_generation: readback.resource_generation,
+                                    pending_retire_count: readback.pending_retire_count,
+                                    retained_resource_count: readback.retained_resource_count,
+                                    retired_after_fence_count: readback.retired_after_fence_count,
+                                    queue_wait_idle_performed: readback.queue_wait_idle_performed,
+                                    elapsed_ms: readback.elapsed_ms,
+                                },
+                            );
+                            emit_marker_line(&probe.marker_line(phase));
+                            self.matter_surface_gpu_field_force_probe_markers_emitted += 1;
+                        }
+                    }
                 }
             }
         }
