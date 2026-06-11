@@ -134,12 +134,13 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
-    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
-    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
-    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
-    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
+    QuestMakepadGpuResidencyProof, QuestMakepadMatterSurfaceWorker,
+    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
+    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldAdfDebugPlacement,
+    QuestMakepadWorldParticleBatch, QuestMakepadWorldParticlePlacement,
+    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_PARTICLE_RENDER_SIZE_SCALE, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+    QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID,
@@ -5318,6 +5319,14 @@ impl App {
             content_center_distance,
             MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
         ));
+        emit_marker_line(
+            &QuestMakepadGpuResidencyProof::from_world_particle_batch(
+                &batch,
+                drawn_instances,
+                QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID,
+            )
+            .marker_line(phase),
+        );
         self.matter_surface_world_particle_draw_markers_emitted += 1;
     }
 
@@ -5387,6 +5396,14 @@ impl App {
             content_center_distance,
             MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
         ));
+        emit_marker_line(
+            &QuestMakepadGpuResidencyProof::from_world_adf_debug_batch(
+                &batch,
+                drawn_cells,
+                HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
+            )
+            .marker_line(phase),
+        );
         self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
     }
 

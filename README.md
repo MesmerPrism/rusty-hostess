@@ -126,6 +126,13 @@ The Makepad world-object ADF debug smoke renderer lives in
 `RUSTY_QUEST_MAKEPAD_WORLD_ADF_DEBUG_DRAW` evidence with
 `renderer=hostess-makepad-adf-debug-cell-boxes`; it must remain a renderer-only
 consumer of the Quest-Makepad adapter output.
+Hostess also emits `RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY` when bounded
+world-particle or ADF debug batches are submitted to Makepad instanced draw
+buffers. This is the first render-plane GPU residency proof for the
+particle/SDF/ADF path: Matter remains the CPU oracle, Hostess does not own GPU
+compute, and high-rate rows or future buffers stay out of settings/control
+JSON. Pair this marker with cadence evidence such as
+`xrRepaintGeometryUploadBytes`, `xrRepaintInstances`, and `xrRepaintGpuMs`.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256

@@ -178,6 +178,14 @@ driven by Hostess or Quest-Makepad debug visual payloads. In field modes,
 `particleForceRefresh=reused` means the cached Matter field was reused while
 particles still sampled it for the current step.
 
+For the first GPU-backed residency phase, Hostess emits
+`RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY` only when bounded Quest-Makepad world
+particle or ADF debug batches are submitted to Makepad instanced draw buffers.
+This marker is render-plane adoption evidence, not GPU compute and not Matter
+truth. Pair it with cadence markers for `xrRepaintGeometryUploadBytes`,
+`xrRepaintInstances`, and `xrRepaintGpuMs`, and keep particle rows, ADF cells,
+mesh frames, and future GPU buffers out of settings/control JSON.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against
