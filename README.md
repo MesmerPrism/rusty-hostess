@@ -114,10 +114,20 @@ Collision, SDF, ADF, and particle controls are also sourced from the same
 effective-settings report. Hostess now consumes the camera-shell adapter's
 native Matter-surface runtime boundary and records receipt evidence for the
 derived Matter config. Only the `sdf` mode activates the SDF feature uniform;
-`adf` and `combined` are logged as unsupported future placeholders until Matter
-owns a real ADF contract. The remaining render-integration slice is to replace
-the procedural shader collision/SDF/particle scaffolds with the adapter's
-Matter-backed upload rows.
+`adf` activates the Quest-Makepad Matter/Optics ADF debug adapter path and is
+proved through compact runtime markers such as `adfDebugEnabled`,
+`adfStatus`, `adfCells`, `adfBuildMs`, and `adfVisualMs`. `combined` remains
+a gated future mode until simultaneous SDF plus ADF output is intentionally
+supported. Hostess records and renders adapter outputs; it does not own ADF
+truth or parse high-rate ADF leaf cells through settings JSON.
+
+The first camera-free Quest ADF proof is recorded at
+`S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
+`AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.
+That run used generated/local effective settings selecting
+`makepad.sdf_adf.overlay_mode=adf`, staged recorded mesh replay files as
+app-private data-plane assets, and logged ADF-ready Matter runtime markers
+without camera permissions or camera discovery.
 
 Live evidence, including runtime processor-module metrics, is validated with:
 

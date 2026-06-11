@@ -5,7 +5,7 @@ use rusty_quest_makepad_camera_shell::{
     CameraShellEffectiveConfig, MeshReplayRuntime, ParticleRenderAnimationMode,
     QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
@@ -17,6 +17,13 @@ const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
 const SCHEMA_ISSUE: &str = "hostess.issue.makepad_effective_settings_schema";
 const MESH_REPLAY_ADAPTER: &str = "rusty-quest-makepad-camera-shell";
+
+macro_rules! insert_json_field {
+    ($object:expr, $key:expr, $value:expr $(,)?) => {{
+        let value = serde_json::to_value(&$value).unwrap_or(Value::Null);
+        $object.insert($key.to_string(), value);
+    }};
+}
 
 #[cfg(target_os = "android")]
 const ANDROID_INTERNAL_SETTINGS_ROOT: &str =
@@ -58,6 +65,10 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     particle_render_animation_mode: Option<String>,
     particle_render_size_scale: Option<f64>,
     matter_surface_native_runtime_configured: Option<bool>,
+    matter_surface_adf_debug_enabled: Option<bool>,
+    matter_surface_adf_max_depth: Option<u32>,
+    matter_surface_adf_max_cells: Option<usize>,
+    matter_surface_adf_error_tolerance: Option<f64>,
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
     matter_surface_particle_distance_refresh_policy: Option<String>,
@@ -83,6 +94,7 @@ impl MakepadCameraShellFeatureUniforms {
             collision_enabled: if config.collision_enabled { 1.0 } else { 0.0 },
             sdf_adf_overlay_mode: match runtime_mode {
                 SdfAdfRuntimeMode::Sdf => 1.0,
+                SdfAdfRuntimeMode::Adf => 2.0,
                 _ => 0.0,
             },
             particles_enabled: if config.particles_enabled { 1.0 } else { 0.0 },
@@ -152,7 +164,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -186,6 +198,10 @@ impl MakepadEffectiveSettingsReceipt {
             marker_option(self.particle_render_animation_mode.as_deref()),
             marker_f64(self.particle_render_size_scale),
             marker_bool(self.matter_surface_native_runtime_configured),
+            marker_bool(self.matter_surface_adf_debug_enabled),
+            marker_u32(self.matter_surface_adf_max_depth),
+            marker_usize(self.matter_surface_adf_max_cells),
+            marker_f64(self.matter_surface_adf_error_tolerance),
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
             marker_option(self.matter_surface_particle_distance_refresh_policy.as_deref()),
@@ -206,49 +222,173 @@ impl MakepadEffectiveSettingsReceipt {
     }
 
     fn to_json_value(&self) -> Value {
-        serde_json::json!({
-            "$schema": EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
-            "status": self.status,
-            "issue_code": self.issue_code,
-            "issue_evidence": self.issue_evidence,
-            "source_effective_settings_path": self.source_effective_settings_path,
-            "source_effective_settings_schema": self.source_effective_settings_schema,
-            "source_app_id": self.source_app_id,
-            "source_surface_schema": self.source_surface_schema,
-            "source_surface_version": self.source_surface_version,
-            "source_revision": self.source_revision,
-            "source_generated_at": self.source_generated_at,
-            "setting_count": self.setting_count,
-            "canonical_effective_settings_consumed": self.canonical_effective_settings_consumed,
-            "mesh_replay_settings_present": self.mesh_replay_settings_present,
-            "mesh_replay_adapter": self.mesh_replay_adapter,
-            "mesh_replay_adapter_status": self.mesh_replay_adapter_status,
-            "mesh_replay_adapter_error": self.mesh_replay_adapter_error,
-            "mesh_replay_enabled": self.mesh_replay_enabled,
-            "mesh_replay_source": self.mesh_replay_source,
-            "mesh_replay_speed": self.mesh_replay_speed,
-            "mesh_replay_opacity": self.mesh_replay_opacity,
-            "render_scale": self.render_scale,
-            "camera_streaming_enabled": self.camera_streaming_enabled,
-            "collision_enabled": self.collision_enabled,
-            "sdf_adf_overlay_mode": self.sdf_adf_overlay_mode,
-            "sdf_adf_runtime_mode": self.sdf_adf_runtime_mode,
-            "sdf_adf_unsupported_future_mode": self.sdf_adf_unsupported_future_mode,
-            "particles_enabled": self.particles_enabled,
-            "particle_render_draw_limit": self.particle_render_draw_limit,
-            "particle_render_animation_mode": self.particle_render_animation_mode,
-            "particle_render_size_scale": self.particle_render_size_scale,
-            "matter_surface_native_runtime_configured": self.matter_surface_native_runtime_configured,
-            "matter_surface_particle_count": self.matter_surface_particle_count,
-            "matter_surface_leaf_triangle_count": self.matter_surface_leaf_triangle_count,
-            "matter_surface_particle_distance_refresh_policy": self.matter_surface_particle_distance_refresh_policy,
-            "matter_surface_particle_execution_backend": self.matter_surface_particle_execution_backend,
-            "matter_surface_particle_execution_batch_size": self.matter_surface_particle_execution_batch_size,
-            "matter_surface_particle_execution_max_threads": self.matter_surface_particle_execution_max_threads,
-            "matter_surface_particle_max_frame_delta_seconds": self.matter_surface_particle_max_frame_delta_seconds,
-            "legacy_settings_fallback_used": self.legacy_settings_fallback_used,
-            "receipt_written": self.receipt_written,
-        })
+        let mut object = Map::new();
+        insert_json_field!(&mut object, "$schema", EFFECTIVE_SETTINGS_RECEIPT_SCHEMA);
+        insert_json_field!(&mut object, "status", &self.status);
+        insert_json_field!(&mut object, "issue_code", &self.issue_code);
+        insert_json_field!(&mut object, "issue_evidence", &self.issue_evidence);
+        insert_json_field!(
+            &mut object,
+            "source_effective_settings_path",
+            &self.source_effective_settings_path,
+        );
+        insert_json_field!(
+            &mut object,
+            "source_effective_settings_schema",
+            &self.source_effective_settings_schema,
+        );
+        insert_json_field!(&mut object, "source_app_id", &self.source_app_id);
+        insert_json_field!(
+            &mut object,
+            "source_surface_schema",
+            &self.source_surface_schema,
+        );
+        insert_json_field!(
+            &mut object,
+            "source_surface_version",
+            self.source_surface_version,
+        );
+        insert_json_field!(&mut object, "source_revision", self.source_revision);
+        insert_json_field!(
+            &mut object,
+            "source_generated_at",
+            &self.source_generated_at,
+        );
+        insert_json_field!(&mut object, "setting_count", self.setting_count);
+        insert_json_field!(
+            &mut object,
+            "canonical_effective_settings_consumed",
+            self.canonical_effective_settings_consumed,
+        );
+        insert_json_field!(
+            &mut object,
+            "mesh_replay_settings_present",
+            self.mesh_replay_settings_present,
+        );
+        insert_json_field!(
+            &mut object,
+            "mesh_replay_adapter",
+            &self.mesh_replay_adapter,
+        );
+        insert_json_field!(
+            &mut object,
+            "mesh_replay_adapter_status",
+            &self.mesh_replay_adapter_status,
+        );
+        insert_json_field!(
+            &mut object,
+            "mesh_replay_adapter_error",
+            &self.mesh_replay_adapter_error,
+        );
+        insert_json_field!(&mut object, "mesh_replay_enabled", self.mesh_replay_enabled);
+        insert_json_field!(&mut object, "mesh_replay_source", &self.mesh_replay_source);
+        insert_json_field!(&mut object, "mesh_replay_speed", self.mesh_replay_speed);
+        insert_json_field!(&mut object, "mesh_replay_opacity", self.mesh_replay_opacity);
+        insert_json_field!(&mut object, "render_scale", self.render_scale);
+        insert_json_field!(
+            &mut object,
+            "camera_streaming_enabled",
+            self.camera_streaming_enabled,
+        );
+        insert_json_field!(&mut object, "collision_enabled", self.collision_enabled);
+        insert_json_field!(
+            &mut object,
+            "sdf_adf_overlay_mode",
+            &self.sdf_adf_overlay_mode,
+        );
+        insert_json_field!(
+            &mut object,
+            "sdf_adf_runtime_mode",
+            &self.sdf_adf_runtime_mode,
+        );
+        insert_json_field!(
+            &mut object,
+            "sdf_adf_unsupported_future_mode",
+            self.sdf_adf_unsupported_future_mode,
+        );
+        insert_json_field!(&mut object, "particles_enabled", self.particles_enabled);
+        insert_json_field!(
+            &mut object,
+            "particle_render_draw_limit",
+            self.particle_render_draw_limit,
+        );
+        insert_json_field!(
+            &mut object,
+            "particle_render_animation_mode",
+            &self.particle_render_animation_mode,
+        );
+        insert_json_field!(
+            &mut object,
+            "particle_render_size_scale",
+            self.particle_render_size_scale,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_native_runtime_configured",
+            self.matter_surface_native_runtime_configured,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_adf_debug_enabled",
+            self.matter_surface_adf_debug_enabled,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_adf_max_depth",
+            self.matter_surface_adf_max_depth,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_adf_max_cells",
+            self.matter_surface_adf_max_cells,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_adf_error_tolerance",
+            self.matter_surface_adf_error_tolerance,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_count",
+            self.matter_surface_particle_count,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_leaf_triangle_count",
+            self.matter_surface_leaf_triangle_count,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_distance_refresh_policy",
+            &self.matter_surface_particle_distance_refresh_policy,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_execution_backend",
+            &self.matter_surface_particle_execution_backend,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_execution_batch_size",
+            self.matter_surface_particle_execution_batch_size,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_execution_max_threads",
+            self.matter_surface_particle_execution_max_threads,
+        );
+        insert_json_field!(
+            &mut object,
+            "matter_surface_particle_max_frame_delta_seconds",
+            self.matter_surface_particle_max_frame_delta_seconds,
+        );
+        insert_json_field!(
+            &mut object,
+            "legacy_settings_fallback_used",
+            self.legacy_settings_fallback_used,
+        );
+        insert_json_field!(&mut object, "receipt_written", self.receipt_written);
+        Value::Object(object)
     }
 }
 
@@ -434,6 +574,10 @@ fn ready_receipt(
         particle_render_animation_mode,
         particle_render_size_scale,
         matter_surface_native_runtime_configured,
+        matter_surface_adf_debug_enabled,
+        matter_surface_adf_max_depth,
+        matter_surface_adf_max_cells,
+        matter_surface_adf_error_tolerance,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
@@ -463,6 +607,12 @@ fn ready_receipt(
                 Some(config.particle_render_animation_mode.as_str().to_string()),
                 Some(f64::from(config.particle_render_size_scale)),
                 Some(config.matter_surface.enabled),
+                Some(config.matter_surface.adf_debug_enabled),
+                Some(config.matter_surface.adf_debug_config.max_depth),
+                Some(config.matter_surface.adf_debug_config.max_cells),
+                Some(f64::from(
+                    config.matter_surface.adf_debug_config.error_tolerance,
+                )),
                 Some(config.matter_surface.particle_count),
                 Some(config.matter_surface.leaf_triangle_count),
                 Some(
@@ -491,6 +641,10 @@ fn ready_receipt(
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
+            None,
+            None,
+            None,
             None,
             None,
             None,
@@ -548,6 +702,10 @@ fn ready_receipt(
         particle_render_animation_mode,
         particle_render_size_scale,
         matter_surface_native_runtime_configured,
+        matter_surface_adf_debug_enabled,
+        matter_surface_adf_max_depth,
+        matter_surface_adf_max_cells,
+        matter_surface_adf_error_tolerance,
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
@@ -683,6 +841,12 @@ fn marker_bool(value: Option<bool>) -> String {
         .unwrap_or_else(|| "none".to_string())
 }
 
+fn marker_u32(value: Option<u32>) -> String {
+    value
+        .map(|value| value.to_string())
+        .unwrap_or_else(|| "none".to_string())
+}
+
 fn marker_usize(value: Option<usize>) -> String {
     value
         .map(|value| value.to_string())
@@ -779,6 +943,10 @@ mod tests {
         assert!(marker.contains("sdfAdfOverlayMode=sdf"));
         assert!(marker.contains("sdfAdfRuntimeMode=sdf"));
         assert!(marker.contains("matterSurfaceNativeRuntimeConfigured=true"));
+        assert!(marker.contains("matterSurfaceAdfDebugEnabled=false"));
+        assert!(marker.contains("matterSurfaceAdfMaxDepth=4"));
+        assert!(marker.contains("matterSurfaceAdfMaxCells=4096"));
+        assert!(marker.contains("matterSurfaceAdfErrorTolerance=0.025"));
         assert!(marker.contains("matterSurfaceParticleCount=1000"));
         assert!(marker.contains("matterSurfaceParticleDistanceRefreshPolicy=step-only"));
         assert!(marker.contains("matterSurfaceParticleExecutionBackend=serial"));
@@ -791,6 +959,48 @@ mod tests {
         assert!(marker.contains("particleRenderSizeScale=1.000"));
         assert!(!marker.contains("rustyxr"));
         assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn adf_effective_settings_select_matter_adf_debug() {
+        let adf_settings =
+            EFFECTIVE_SETTINGS_FIXTURE.replace("\"value\": \"sdf\"", "\"value\": \"adf\"");
+        let path = write_temp_json("effective-settings-adf", &adf_settings);
+
+        let receipt = read_makepad_effective_settings_from_path(&path);
+
+        assert_eq!(receipt.status, "ready");
+        assert_eq!(receipt.sdf_adf_overlay_mode.as_deref(), Some("adf"));
+        assert_eq!(receipt.sdf_adf_runtime_mode.as_deref(), Some("adf"));
+        assert_eq!(receipt.sdf_adf_unsupported_future_mode, Some(false));
+        assert_eq!(receipt.matter_surface_native_runtime_configured, Some(true));
+        assert_eq!(receipt.matter_surface_adf_debug_enabled, Some(true));
+        assert_eq!(receipt.matter_surface_adf_max_depth, Some(4));
+        assert_eq!(receipt.matter_surface_adf_max_cells, Some(4096));
+        assert!(receipt
+            .matter_surface_adf_error_tolerance
+            .is_some_and(|value| (value - 0.025).abs() < 0.000_001));
+
+        let marker = receipt.marker_line("test-adf");
+        assert!(marker.contains("sdfAdfOverlayMode=adf"));
+        assert!(marker.contains("sdfAdfRuntimeMode=adf"));
+        assert!(marker.contains("sdfAdfUnsupportedFutureMode=false"));
+        assert!(marker.contains("matterSurfaceNativeRuntimeConfigured=true"));
+        assert!(marker.contains("matterSurfaceAdfDebugEnabled=true"));
+        assert!(marker.contains("matterSurfaceAdfMaxDepth=4"));
+        assert!(marker.contains("matterSurfaceAdfMaxCells=4096"));
+        assert!(marker.contains("matterSurfaceAdfErrorTolerance=0.025"));
+
+        let selection = read_mesh_replay_runtime_from_path(&path);
+        assert_eq!(
+            selection.feature_uniforms,
+            MakepadCameraShellFeatureUniforms {
+                collision_enabled: 1.0,
+                sdf_adf_overlay_mode: 2.0,
+                particles_enabled: 1.0,
+            }
+        );
+        assert!(selection.matter_surface_runtime.is_some());
     }
 
     #[test]

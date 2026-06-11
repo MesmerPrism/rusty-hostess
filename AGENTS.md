@@ -161,3 +161,24 @@ A follow-up Matter hot-path allocation cleanup, validated in
 `S:\Work\tmp\quest-makepad-hotpath-allocation-density-20260611-0044`,
 reduced the same `32768`/`8192` profile's `particleStepMs` mean from
 `433.741` to `404.871` without changing particle truth or visual cap markers.
+
+For the first ADF headset proof, patch only generated/local effective settings
+with `makepad.sdf_adf.overlay_mode=adf`. Keep camera streaming off and use the
+camera-free APK route with `--quest-camera-permissions=false`. Evidence should
+include `RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS` with
+`sdfAdfRuntimeMode=adf`, `matterSurfaceAdfDebugEnabled=true`, and the default
+ADF config fields, followed by `RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_RUNTIME`
+with `nativeMatterRuntime=true`, `wasmRuntimeUsed=false`,
+`shaderScaffoldUsed=false`, `adfDebugEnabled=true`, `adfStatus=ready`,
+`adfSchema=rusty.quest.makepad.matter_adf_debug.v1`, and
+`adfVisualSchema=rusty.optics.adf.debug.visual.v1`. Hostess must consume the
+Quest-Makepad adapter boundary only; do not move ADF leaf cells into
+effective settings, Android properties, command JSON, or Hostess-local math.
+The first proof passed on 2026-06-11 with APK SHA256
+`AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.
+Evidence:
+`S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006`.
+The run showed eight ADF-ready Matter runtime markers, camera acquisition
+skipped because streaming was disabled, camera discovery disabled, no packaged
+camera permissions, no camera-permission failures, and strict fatal/ANR count
+zero.

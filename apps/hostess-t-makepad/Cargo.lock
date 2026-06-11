@@ -1054,6 +1054,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rusty-matter-adf"
+version = "0.1.0"
+dependencies = [
+ "rusty-matter-model",
+ "rusty-matter-sdf",
+]
+
+[[package]]
 name = "rusty-matter-batch"
 version = "0.1.0"
 dependencies = [
@@ -1093,6 +1101,7 @@ dependencies = [
 name = "rusty-matter-sdf"
 version = "0.1.0"
 dependencies = [
+ "rusty-matter-batch",
  "rusty-matter-model",
 ]
 
@@ -1111,6 +1120,7 @@ dependencies = [
 name = "rusty-optics-mesh"
 version = "0.1.0"
 dependencies = [
+ "rusty-matter-adf",
  "rusty-matter-fields",
  "rusty-matter-mesh",
  "rusty-matter-model",
@@ -1154,6 +1164,7 @@ dependencies = [
 name = "rusty-quest-makepad-matter-surface"
 version = "0.1.0"
 dependencies = [
+ "rusty-matter-adf",
  "rusty-matter-model",
  "rusty-matter-particles",
  "rusty-matter-sdf",
