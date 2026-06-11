@@ -109,7 +109,10 @@ For Android and Quest Makepad validation, seed telemetry under the app-private
 debug sandbox (`run-as io.github.mesmerprism.rustyhostess.makepad`), not only
 under `/sdcard/Android/data/...`. On the tested phone and Quest builds, the
 Makepad process could not read that external app-data path and correctly fell
-back to the embedded fixture.
+back to the embedded fixture. For Hostess Makepad effective-settings bundles
+and sibling data-plane files, prefer `tools\Stage-HostessMakepadSettings.ps1`;
+it uses `/data/local/tmp` as the ADB-visible staging hop and then copies into
+`files/hostess-t/settings` with `run-as`.
 
 The Makepad app writes an app-owned watcher PNG and JSON sidecar under its
 internal telemetry directory. The exporter refreshes periodically even when no

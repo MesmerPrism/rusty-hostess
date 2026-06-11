@@ -80,8 +80,20 @@ with Hostess runtime reads. `--quest-camera-permissions=false` is the clean
 camera-free path for particle-only tests; it preserves the generated Quest
 manifest while omitting Android/headset/spatial camera permissions.
 
-Stage effective settings into the app-private path before judging runtime
-behavior:
+Stage effective settings and sibling data-plane artifacts into the app-private
+path before judging runtime behavior. For full recorded replay bundles, use the
+Hostess staging helper; it stages through `/data/local/tmp` and then uses
+`run-as` to copy into `files/hostess-t/settings`. Do not use
+`/sdcard/Android/data/<package>/files` as the app/ADB handoff path for these
+payloads; current Quest builds can let ADB write that tree while the app or
+`run-as` cannot read it reliably.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Stage-HostessMakepadSettings.ps1 `
+  -BundleDir S:\Work\repos\active\rusty-quest-makepad\local-artifacts\quest-makepad-runtime-bundle-recorded-left-particles
+```
+
+For a single effective-settings file, the equivalent app-private copy is:
 
 ```powershell
 $adb = $env:RUSTY_XR_ADB

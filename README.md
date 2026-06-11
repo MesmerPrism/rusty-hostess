@@ -110,6 +110,13 @@ mesh replay runtime from that same effective-settings report, emits
 by file identity, and binds the runtime's four segment uniforms into the XR
 panel shader overlay. The `makepad.render.scale` value is applied as the
 Hostess `xr_render_scale` runtime override when the report is configured.
+For Quest APK validation, stage the report and any sibling data-plane assets
+with `tools\Stage-HostessMakepadSettings.ps1`. The helper pushes the generated
+bundle to `/data/local/tmp`, then copies it into the app-owned
+`files/hostess-t/settings` directory with `run-as
+io.github.mesmerprism.rustyhostess.makepad`. Do not use
+`/sdcard/Android/data/...` as the handoff path for these files; on current
+Quest builds ADB may write that tree while the app cannot read it reliably.
 Collision, SDF, ADF, and particle controls are also sourced from the same
 effective-settings report. Hostess now consumes the camera-shell adapter's
 native Matter-surface runtime boundary and records receipt evidence for the
