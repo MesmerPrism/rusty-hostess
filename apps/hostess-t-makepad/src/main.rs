@@ -134,12 +134,13 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadGpuResidencyProof, QuestMakepadMatterSurfaceWorker,
-    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
-    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldAdfDebugPlacement,
-    QuestMakepadWorldParticleBatch, QuestMakepadWorldParticlePlacement,
-    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
-    DEFAULT_PARTICLE_RENDER_SIZE_SCALE, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+    QuestMakepadGpuComputePreflight, QuestMakepadGpuResidencyProof,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadMatterSurfaceWorkerFrame,
+    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugBatch,
+    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticleBatch,
+    QuestMakepadWorldParticlePlacement, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
+    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
     QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE,
@@ -1650,6 +1651,8 @@ pub struct App {
     matter_surface_frame_markers_emitted: usize,
     #[rust]
     matter_surface_worker_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_compute_preflight_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3559,6 +3562,7 @@ impl App {
             .map(QuestMakepadMatterSurfaceWorker::from_runtime);
         self.matter_surface_frame_markers_emitted = 0;
         self.matter_surface_worker_markers_emitted = 0;
+        self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5179,6 +5183,15 @@ impl App {
         if self.matter_surface_frame_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
             emit_marker_line(&worker_frame.runtime_marker_line);
             self.matter_surface_frame_markers_emitted += 1;
+        }
+        if self.matter_surface_gpu_compute_preflight_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+            if let Some(preflight) = QuestMakepadGpuComputePreflight::from_frame(
+                &frame,
+                QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+            ) {
+                emit_marker_line(&preflight.marker_line(phase));
+                self.matter_surface_gpu_compute_preflight_markers_emitted += 1;
+            }
         }
         let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;

@@ -186,6 +186,16 @@ truth. Pair it with cadence markers for `xrRepaintGeometryUploadBytes`,
 `xrRepaintInstances`, and `xrRepaintGpuMs`, and keep particle rows, ADF cells,
 mesh frames, and future GPU buffers out of settings/control JSON.
 
+For the compute-resource preflight phase, Hostess may also emit
+`RUSTY_QUEST_MAKEPAD_GPU_COMPUTE_PREFLIGHT` from the Quest-Makepad adapter when
+the current Matter frame has a ready `sdf-field` or `adf-field` CPU oracle.
+This marker is an eligibility/readback-boundary record only:
+`gpuComputeReady=false`, `computeKernel=false`,
+`makepadComputeBackend=makepad-command-encoder-pending`, and
+`highRateJsonPayload=false` must remain explicit. Hostess remains the
+install/test/evidence shell and must not own field semantics, compute kernels,
+or high-rate GPU buffer/control payloads.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against

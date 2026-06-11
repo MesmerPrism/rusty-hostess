@@ -133,6 +133,12 @@ particle/SDF/ADF path: Matter remains the CPU oracle, Hostess does not own GPU
 compute, and high-rate rows or future buffers stay out of settings/control
 JSON. Pair this marker with cadence evidence such as
 `xrRepaintGeometryUploadBytes`, `xrRepaintInstances`, and `xrRepaintGpuMs`.
+For the next compute-resource checkpoint, Hostess emits
+`RUSTY_QUEST_MAKEPAD_GPU_COMPUTE_PREFLIGHT` when the Quest-Makepad adapter sees
+a ready Matter `sdf-field` or `adf-field` CPU oracle. The marker is a bounded
+eligibility/readback contract for a future Makepad command encoder, not a GPU
+compute proof; it keeps `gpuComputeReady=false`, `computeKernel=false`, and
+`highRateJsonPayload=false`.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
