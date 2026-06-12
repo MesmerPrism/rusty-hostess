@@ -29,6 +29,8 @@ REQUIRED_MARKERS = {
     "gpu_skinning_mesh_residency": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
     "gpu_mesh_sdf_probe": "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
 }
+PROOF_SUMMARY_SCHEMA = "rusty.hostess.quest_live_hand_small_profile_summary.v1"
+CANONICAL_PROOF_SUMMARY_NAME = "live-hand-small-profile-summary.json"
 
 
 @dataclass(frozen=True)
@@ -64,16 +66,31 @@ def resolve_summary_path(input_path: Path) -> Path:
         return input_path
     if not input_path.is_dir():
         raise FileNotFoundError(f"summary path does not exist: {input_path}")
-    preferred = input_path / "live-hand-small-profile-summary.json"
+    preferred = input_path / CANONICAL_PROOF_SUMMARY_NAME
     if preferred.is_file():
         return preferred
-    candidates = sorted(input_path.glob("*summary.json"))
+    candidates = [
+        candidate
+        for candidate in sorted(input_path.glob("*summary*.json"))
+        if candidate.is_file() and summary_file_has_schema(candidate, PROOF_SUMMARY_SCHEMA)
+    ]
     if len(candidates) == 1:
         return candidates[0]
     if not candidates:
-        raise FileNotFoundError(f"no *summary.json file found under {input_path}")
+        raise FileNotFoundError(
+            f"no Hostess GPU proof summary JSON found under {input_path}; "
+            f"expected {CANONICAL_PROOF_SUMMARY_NAME} or schema {PROOF_SUMMARY_SCHEMA}"
+        )
     names = ", ".join(candidate.name for candidate in candidates)
-    raise FileExistsError(f"multiple summary candidates under {input_path}: {names}")
+    raise FileExistsError(f"multiple Hostess GPU proof summaries under {input_path}: {names}")
+
+
+def summary_file_has_schema(path: Path, schema: str) -> bool:
+    try:
+        value = load_summary(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return False
+    return str(value.get("schema", "")) == schema
 
 
 def validate_summary(
@@ -81,7 +98,7 @@ def validate_summary(
 ) -> EvidenceCheckResult:
     issues: list[str] = []
     schema = str(summary.get("schema", ""))
-    if schema != "rusty.hostess.quest_live_hand_small_profile_summary.v1":
+    if schema != PROOF_SUMMARY_SCHEMA:
         issues.append(f"unexpected schema: {schema or 'missing'}")
 
     markers = object_value(summary, "markers")

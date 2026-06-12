@@ -1,9 +1,15 @@
 import unittest
+import json
 from pathlib import Path
 import sys
+from tempfile import TemporaryDirectory
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from check_makepad_quest_gpu_evidence import EvidenceThresholds, validate_summary
+from check_makepad_quest_gpu_evidence import (
+    EvidenceThresholds,
+    resolve_summary_path,
+    validate_summary,
+)
 
 
 def valid_summary():
@@ -41,6 +47,60 @@ def valid_summary():
 
 
 class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
+    def test_resolves_canonical_summary_from_evidence_root(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            summary_path = root / "live-hand-small-profile-summary.json"
+            summary_path.write_text(json.dumps(valid_summary()), encoding="utf-8")
+            (root / "readiness-failure-summary.json").write_text(
+                json.dumps(
+                    {"schema": "rusty.hostess.quest_gpu_evidence_readiness_summary.v1"}
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(summary_path, resolve_summary_path(root))
+
+    def test_resolves_schema_matching_noncanonical_summary(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            summary_path = root / "derived-buffer-proof-summary.json"
+            summary_path.write_text(json.dumps(valid_summary()), encoding="utf-8")
+            (root / "readiness-failure-summary.json").write_text(
+                json.dumps(
+                    {"schema": "rusty.hostess.quest_gpu_evidence_readiness_summary.v1"}
+                ),
+                encoding="utf-8",
+            )
+
+            self.assertEqual(summary_path, resolve_summary_path(root))
+
+    def test_rejects_evidence_root_with_only_readiness_summary(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            (root / "readiness-failure-summary.json").write_text(
+                json.dumps(
+                    {"schema": "rusty.hostess.quest_gpu_evidence_readiness_summary.v1"}
+                ),
+                encoding="utf-8",
+            )
+
+            with self.assertRaises(FileNotFoundError) as raised:
+                resolve_summary_path(root)
+
+            self.assertIn("GPU proof summary", str(raised.exception))
+
+    def test_rejects_multiple_schema_matching_summaries(self):
+        with TemporaryDirectory() as temp_dir:
+            root = Path(temp_dir)
+            for name in ("first-proof-summary.json", "second-proof-summary.json"):
+                (root / name).write_text(json.dumps(valid_summary()), encoding="utf-8")
+
+            with self.assertRaises(FileExistsError) as raised:
+                resolve_summary_path(root)
+
+            self.assertIn("multiple Hostess GPU proof summaries", str(raised.exception))
+
     def test_accepts_optimized_live_hand_gpu_evidence_shape(self):
         result = validate_summary(valid_summary())
 
