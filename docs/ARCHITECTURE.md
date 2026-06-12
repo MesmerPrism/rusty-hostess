@@ -79,9 +79,10 @@ the Matter-only source-frame option. Source selection now keeps the fallback
 and the `positions-only-surface` smoke mode distinct. The explicit recorded
 mode is the live-input-equivalent replay provider for GPU proof evidence: it
 does not silently fall back to baked positions, requests two mesh-SDF proof
-markers so renderer-lifetime program reuse is observable, and still keeps all
-hand frames, meshes, dense SDF cells, and GPU buffers off settings/control
-JSON. `apps/hostess-t-makepad/src/live_hand_surface.rs`
+markers so renderer-lifetime program reuse is observable, expects the scaled
+proof path to report at least `sampleCount=8`, and still keeps all hand frames,
+meshes, dense SDF cells, and GPU buffers off settings/control JSON.
+`apps/hostess-t-makepad/src/live_hand_surface.rs`
 observes live Makepad `XrHandMeshBindData` plus `XrHand` updates and converts
 them into the same bind-mesh-plus-compact-joint-frame shape. When an explicit
 `live-openxr-hand-*` source mode is selected, Hostess submits the cached live

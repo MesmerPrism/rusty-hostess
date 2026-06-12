@@ -184,7 +184,7 @@ For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:
 
 ```powershell
-python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
 The checker requires the source-aware proof schedule, the GPU skinning,
@@ -193,7 +193,8 @@ without `queueWaitIdle`, zero Hostess-process `Stale>=90`, no `Stale>=30`, and
 near-90 Hz app/XR cadence. The live proof schedule disables the older blocking
 storage/oracle/force diagnostics, emits `blockingGpuDiagnostics=false`, and
 expects two mesh-SDF proof lines: first-use setup and a reused-program line with
-`programReused=true`. Stale-heavy debug APK runs remain functional marker
+`programReused=true`; current scaled dense-SDF evidence should also report at
+least `sampleCount=8`. Stale-heavy debug APK runs remain functional marker
 evidence only.
 
 The first camera-free Quest ADF proof is recorded at

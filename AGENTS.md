@@ -291,7 +291,7 @@ Live-hand GPU proof performance evidence must pass the optimized-profile
 summary checker before it is treated as a cadence baseline:
 
 ```powershell
-python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
 The checker also gates recorded-hand replay proof summaries when they are
@@ -302,7 +302,8 @@ skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
 `blockingGpuDiagnostics=false` so the older synchronous storage/oracle/force
 diagnostics do not poison performance evidence. The mesh-SDF proof should
 produce a first-use setup marker and then a reused-program marker with
-`programReused=true`; newer markers should also report
+`programReused=true`; current scaled dense-SDF markers should report at least
+`sampleCount=8`; newer markers should also report
 `sourceMeshBuffersResident=true` and, on the reused submit,
 `sourceMeshBuffersReused=true`. Stale-heavy debug APK runs remain functional
 marker evidence only, not performance evidence.
