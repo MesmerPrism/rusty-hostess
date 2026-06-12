@@ -6,12 +6,16 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 pub(crate) const EFFECTIVE_SETTINGS_RECEIPT_SCHEMA: &str =
     "rusty.hostess.makepad_effective_settings_receipt.v1";
 const MARKER_PREFIX: &str = "RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS";
+const ADOPTION_MARKER_PREFIX: &str = "RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS_ADOPTION";
+const EFFECTIVE_SETTINGS_ADOPTION_SCHEMA: &str =
+    "rusty.hostess.makepad_effective_settings_adoption.v1";
 const NOT_CONFIGURED_ISSUE: &str = "hostess.issue.makepad_effective_settings_not_configured";
 const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
@@ -136,24 +140,58 @@ pub(crate) struct MakepadEffectiveSettingsIdentity {
     pub(crate) source_effective_settings_path: Option<String>,
     pub(crate) source_modified_ns: Option<u128>,
     pub(crate) source_revision_key: Option<String>,
+    pub(crate) scope_revision_keys: BTreeMap<String, String>,
     pub(crate) source_revision_manifest_path: Option<String>,
     pub(crate) source_revision_manifest_modified_ns: Option<u128>,
 }
 
 impl MakepadEffectiveSettingsIdentity {
-    pub(crate) fn changed_from(
+    pub(crate) fn runtime_settings_revision_key(&self) -> Option<String> {
+        self.scoped_revision_key(EFFECTIVE_SETTINGS_RUNTIME_SCOPES)
+    }
+
+    pub(crate) fn runtime_settings_changed_from(
         &self,
         previous_path: Option<&str>,
         previous_modified_ns: Option<u128>,
-        previous_revision_key: Option<&str>,
+        previous_runtime_revision_key: Option<&str>,
+    ) -> bool {
+        self.changed_from_scopes(
+            previous_path,
+            previous_modified_ns,
+            previous_runtime_revision_key,
+            EFFECTIVE_SETTINGS_RUNTIME_SCOPES,
+        )
+    }
+
+    pub(crate) fn changed_from_scopes(
+        &self,
+        previous_path: Option<&str>,
+        previous_modified_ns: Option<u128>,
+        previous_scoped_revision_key: Option<&str>,
+        scopes: &[&str],
     ) -> bool {
         if self.source_effective_settings_path.as_deref() != previous_path {
             return true;
         }
-        if let Some(revision_key) = self.source_revision_key.as_deref() {
-            return Some(revision_key) != previous_revision_key;
+        if let Some(scoped_revision_key) = self.scoped_revision_key(scopes) {
+            return Some(scoped_revision_key.as_str()) != previous_scoped_revision_key;
         }
         self.source_modified_ns != previous_modified_ns
+    }
+
+    pub(crate) fn scoped_revision_key(&self, scopes: &[&str]) -> Option<String> {
+        let mut parts = Vec::new();
+        for scope in scopes {
+            if let Some(scope_revision_key) = self.scope_revision_keys.get(*scope) {
+                parts.push(format!("{scope}={scope_revision_key}"));
+            }
+        }
+        if parts.is_empty() {
+            None
+        } else {
+            Some(parts.join("|"))
+        }
     }
 }
 
@@ -178,6 +216,37 @@ impl MakepadMeshReplayRuntimeSelection {
                     .map(ParticleRenderAnimationMode::as_str)
             ),
             marker_f32(self.particle_render_size_scale),
+        )
+    }
+
+    pub(crate) fn adoption_marker_line(
+        &self,
+        phase: &str,
+        identity: &MakepadEffectiveSettingsIdentity,
+        scoped_revision_key: Option<&str>,
+    ) -> String {
+        let adoption_status = if self.status == "ready" && self.runtime.is_some() {
+            "applied"
+        } else {
+            self.status.as_str()
+        };
+        format!(
+            "{} schema={} phase={} status={} issue={} sourcePath={} sourceRevisionKey={} scopedRevisionKey={} scopeCount={} scopes={} revisionGate={} detailRead=true highRateJsonPayload=false",
+            ADOPTION_MARKER_PREFIX,
+            EFFECTIVE_SETTINGS_ADOPTION_SCHEMA,
+            marker_token(phase),
+            marker_token(adoption_status),
+            marker_option(self.issue_code.as_deref()),
+            marker_option(identity.source_effective_settings_path.as_deref()),
+            marker_option(identity.source_revision_key.as_deref()),
+            marker_option(scoped_revision_key),
+            EFFECTIVE_SETTINGS_RUNTIME_SCOPES.len(),
+            marker_token(&EFFECTIVE_SETTINGS_RUNTIME_SCOPES.join(",")),
+            if scoped_revision_key.is_some() {
+                "scoped_revision_hash"
+            } else {
+                "path_mtime_fallback"
+            },
         )
     }
 }
@@ -453,6 +522,10 @@ pub(crate) fn makepad_effective_settings_identity_from_path(
         source_revision_key: revision_identity
             .as_ref()
             .map(|identity| identity.revision_key.clone()),
+        scope_revision_keys: revision_identity
+            .as_ref()
+            .map(|identity| identity.scope_revision_keys.clone())
+            .unwrap_or_default(),
         source_revision_manifest_path: revision_identity
             .as_ref()
             .map(|identity| identity.manifest_path.display().to_string()),
@@ -841,6 +914,7 @@ fn file_modified_ns(path: &Path) -> Option<u128> {
 #[derive(Debug)]
 struct EffectiveSettingsRevisionIdentity {
     revision_key: String,
+    scope_revision_keys: BTreeMap<String, String>,
     manifest_path: PathBuf,
     manifest_modified_ns: Option<u128>,
 }
@@ -874,12 +948,28 @@ fn effective_settings_revision_identity_from_path(
             }
         }
     }
+    let scope_revision_keys = value
+        .get("scopes")
+        .and_then(Value::as_object)
+        .map(|scopes| {
+            scopes
+                .iter()
+                .filter_map(|(scope, scope_value)| {
+                    scope_value
+                        .get("revision_hash_sha256")
+                        .and_then(Value::as_str)
+                        .map(|scope_hash| (scope.clone(), scope_hash.to_string()))
+                })
+                .collect::<BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
     if parts.is_empty() {
         return None;
     }
 
     Some(EffectiveSettingsRevisionIdentity {
         revision_key: parts.join("|"),
+        scope_revision_keys,
         manifest_modified_ns: file_modified_ns(&manifest_path),
         manifest_path,
     })
@@ -1238,11 +1328,11 @@ mod tests {
             Some(expected_path.as_str())
         );
         assert!(identity.source_modified_ns.is_some());
-        assert!(identity.changed_from(None, None, None));
-        assert!(!identity.changed_from(
+        assert!(identity.runtime_settings_changed_from(None, None, None));
+        assert!(!identity.runtime_settings_changed_from(
             identity.source_effective_settings_path.as_deref(),
             identity.source_modified_ns,
-            identity.source_revision_key.as_deref()
+            identity.runtime_settings_revision_key().as_deref()
         ));
 
         let parsed = read_mesh_replay_runtime_from_path(&path);
@@ -1263,10 +1353,10 @@ mod tests {
             second.source_effective_settings_path,
             first.source_effective_settings_path
         );
-        assert!(second.changed_from(
+        assert!(second.runtime_settings_changed_from(
             first.source_effective_settings_path.as_deref(),
             first.source_modified_ns,
-            first.source_revision_key.as_deref()
+            first.runtime_settings_revision_key().as_deref()
         ));
     }
 
@@ -1282,20 +1372,55 @@ mod tests {
 
         assert!(first.source_revision_key.is_some());
         assert_eq!(same_revision.source_revision_key, first.source_revision_key);
-        assert!(!same_revision.changed_from(
+        assert!(!same_revision.runtime_settings_changed_from(
             first.source_effective_settings_path.as_deref(),
             first.source_modified_ns,
-            first.source_revision_key.as_deref()
+            first.runtime_settings_revision_key().as_deref()
         ));
 
         write_revision_sidecar(&path, "mesh-b");
         let changed_revision = makepad_effective_settings_identity_from_path(&path);
 
-        assert!(changed_revision.changed_from(
+        assert!(changed_revision.runtime_settings_changed_from(
             first.source_effective_settings_path.as_deref(),
             first.source_modified_ns,
-            first.source_revision_key.as_deref()
+            first.runtime_settings_revision_key().as_deref()
         ));
+    }
+
+    #[test]
+    fn effective_settings_identity_filters_unowned_scope_changes() {
+        let path = write_temp_json("effective-settings-scoped-identity", "{not json");
+        write_revision_sidecar_with_hashes(&path, "mesh-a", "camera-a", "matter-a", "particles-a");
+        let first = makepad_effective_settings_identity_from_path(&path);
+        let mesh_key = first.scoped_revision_key(&["mesh_replay"]);
+        let camera_key = first.scoped_revision_key(&["camera_projection"]);
+
+        write_revision_sidecar_with_hashes(&path, "mesh-a", "camera-b", "matter-a", "particles-a");
+        let camera_changed = makepad_effective_settings_identity_from_path(&path);
+
+        assert!(!camera_changed.changed_from_scopes(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns,
+            mesh_key.as_deref(),
+            &["mesh_replay"]
+        ));
+        assert!(camera_changed.changed_from_scopes(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns,
+            camera_key.as_deref(),
+            &["camera_projection"]
+        ));
+
+        std::fs::write(&path, EFFECTIVE_SETTINGS_FIXTURE).expect("rewrite effective settings");
+        let adoption_identity = makepad_effective_settings_identity_from_path(&path);
+        let selection = read_mesh_replay_runtime_from_path(&path);
+        let adoption_key = adoption_identity.runtime_settings_revision_key();
+        let adoption_marker =
+            selection.adoption_marker_line("test", &adoption_identity, adoption_key.as_deref());
+        assert!(adoption_marker.contains("status=applied"));
+        assert!(adoption_marker.contains("revisionGate=scoped_revision_hash"));
+        assert!(adoption_marker.contains("highRateJsonPayload=false"));
     }
 
     #[test]
@@ -1447,6 +1572,22 @@ mod tests {
     }
 
     fn write_revision_sidecar(settings_path: &Path, mesh_replay_hash: &str) {
+        write_revision_sidecar_with_hashes(
+            settings_path,
+            mesh_replay_hash,
+            "camera-a",
+            "matter-a",
+            "particles-a",
+        );
+    }
+
+    fn write_revision_sidecar_with_hashes(
+        settings_path: &Path,
+        mesh_replay_hash: &str,
+        camera_projection_hash: &str,
+        matter_surface_hash: &str,
+        particles_hash: &str,
+    ) {
         let sidecar_path = settings_path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
         let text = format!(
             r#"{{
@@ -1455,9 +1596,9 @@ mod tests {
   "source_revision": 1,
   "scopes": {{
     "mesh_replay": {{ "revision_hash_sha256": "{mesh_replay_hash}" }},
-    "camera_projection": {{ "revision_hash_sha256": "camera-a" }},
-    "matter_surface": {{ "revision_hash_sha256": "matter-a" }},
-    "particles": {{ "revision_hash_sha256": "particles-a" }}
+    "camera_projection": {{ "revision_hash_sha256": "{camera_projection_hash}" }},
+    "matter_surface": {{ "revision_hash_sha256": "{matter_surface_hash}" }},
+    "particles": {{ "revision_hash_sha256": "{particles_hash}" }}
   }}
 }}"#
         );

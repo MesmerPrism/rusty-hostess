@@ -106,6 +106,10 @@ blocking wakeups are hints, not proof of meaningful detail changes or
 successful adoption. Runtime evidence should distinguish seen, applied, and
 rejected revisions. Keep high-rate hands, meshes, SDF/ADF fields, particles,
 and GPU buffers out of settings/control JSON.
+Runtime adoption evidence uses
+`RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS_ADOPTION`; it should include the
+relevant scoped revision key, subscribed scope list, selected gate, and
+`status=applied` or `status=rejected`.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Stage-HostessMakepadSettings.ps1 `
@@ -254,6 +258,15 @@ instead of building `QuestMakepadMatterSurfaceSourceFrame` on the app/render
 thread. Request full GPU oracle payloads only when the bounded proof cadence
 can consume them; ordinary recorded replay uses the Matter-only source-frame
 option.
+Use the explicit low-rate source mode
+`debug.rustyhostess.makepad.matter.surface.source=recorded-hand-replay` for
+recorded live-input-equivalent GPU proof evidence. Keep
+`recorded-or-positions-replay` as the default fallback and
+`positions-only-surface` as baked-surface smoke evidence. The explicit
+recorded-hand proof schedule should report `recordedHandReplaySelected=true`,
+`liveEquivalentHandInputSelected=true`, `blockingGpuDiagnostics=false`, and
+`meshSdfProbeTargetMarkers=2`; it must produce one mesh-SDF setup marker and
+one reuse marker with `programReused=true`.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates
@@ -271,7 +284,8 @@ summary checker before it is treated as a cadence baseline:
 python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse
 ```
 
-The checker requires the source-aware proof schedule marker, the bounded GPU
+The checker also gates recorded-hand replay proof summaries when they are
+shaped as live-input-equivalent evidence. It requires the bounded GPU
 skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
 `queueWaitIdlePerformed=false`, Hostess-process `Stale>=90` count `0`, no
 `Stale>=30`, and near-90 Hz app/XR cadence. The live-hand schedule must report

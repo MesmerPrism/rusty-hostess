@@ -12,6 +12,8 @@ const SOURCE_ANDROID_PROPERTY: &str = "debug.rustyhostess.makepad.matter.surface
 pub(crate) enum MatterSurfaceSourceMode {
     #[default]
     RecordedOrPositionsReplay,
+    RecordedHandReplay,
+    PositionsOnlySurface,
     LiveOpenXrHandAny,
     LiveOpenXrHandLeft,
     LiveOpenXrHandRight,
@@ -21,6 +23,8 @@ impl MatterSurfaceSourceMode {
     pub(crate) const fn marker_value(self) -> &'static str {
         match self {
             Self::RecordedOrPositionsReplay => "recorded-or-positions-replay",
+            Self::RecordedHandReplay => "recorded-hand-replay",
+            Self::PositionsOnlySurface => "positions-only-surface",
             Self::LiveOpenXrHandAny => "live-openxr-hand-any",
             Self::LiveOpenXrHandLeft => "live-openxr-hand-left",
             Self::LiveOpenXrHandRight => "live-openxr-hand-right",
@@ -28,12 +32,37 @@ impl MatterSurfaceSourceMode {
     }
 
     pub(crate) const fn uses_live_openxr_hand(self) -> bool {
-        !matches!(self, Self::RecordedOrPositionsReplay)
+        matches!(
+            self,
+            Self::LiveOpenXrHandAny | Self::LiveOpenXrHandLeft | Self::LiveOpenXrHandRight
+        )
+    }
+
+    pub(crate) const fn uses_recorded_hand_replay(self) -> bool {
+        matches!(self, Self::RecordedHandReplay)
+    }
+
+    pub(crate) const fn uses_positions_only_surface(self) -> bool {
+        matches!(self, Self::PositionsOnlySurface)
+    }
+
+    pub(crate) const fn allows_recorded_hand_replay(self) -> bool {
+        matches!(
+            self,
+            Self::RecordedOrPositionsReplay | Self::RecordedHandReplay
+        )
+    }
+
+    pub(crate) const fn uses_live_equivalent_hand_input(self) -> bool {
+        self.uses_recorded_hand_replay() || self.uses_live_openxr_hand()
     }
 
     pub(crate) const fn live_is_left(self) -> Option<bool> {
         match self {
-            Self::RecordedOrPositionsReplay | Self::LiveOpenXrHandAny => None,
+            Self::RecordedOrPositionsReplay
+            | Self::RecordedHandReplay
+            | Self::PositionsOnlySurface
+            | Self::LiveOpenXrHandAny => None,
             Self::LiveOpenXrHandLeft => Some(true),
             Self::LiveOpenXrHandRight => Some(false),
         }
@@ -87,9 +116,15 @@ impl MatterSurfaceSourceSelection {
             | "replay"
             | "recorded-or-replay"
             | "recorded-or-positions"
-            | "recorded-or-positions-replay"
-            | "positions-only"
-            | "positions-only-surface" => MatterSurfaceSourceMode::RecordedOrPositionsReplay,
+            | "recorded-or-positions-replay" => MatterSurfaceSourceMode::RecordedOrPositionsReplay,
+            "recorded"
+            | "recorded-hand"
+            | "recorded-hand-replay"
+            | "recorded-meta-quest-hand"
+            | "recorded-meta-quest-hand-replay" => MatterSurfaceSourceMode::RecordedHandReplay,
+            "positions-only" | "positions-only-surface" | "baked-surface-replay" => {
+                MatterSurfaceSourceMode::PositionsOnlySurface
+            }
             "live"
             | "live-openxr-hand"
             | "live-openxr-hand-any"
@@ -114,8 +149,14 @@ impl MatterSurfaceSourceSelection {
                 | "recorded-or-replay"
                 | "recorded-or-positions"
                 | "recorded-or-positions-replay"
+                | "recorded"
+                | "recorded-hand"
+                | "recorded-hand-replay"
+                | "recorded-meta-quest-hand"
+                | "recorded-meta-quest-hand-replay"
                 | "positions-only"
                 | "positions-only-surface"
+                | "baked-surface-replay"
         ) {
             None
         } else {
@@ -140,7 +181,7 @@ impl MatterSurfaceSourceSelection {
             "ready"
         };
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_SOURCE_SELECTION schema=rusty.hostess.makepad.matter_surface_source_selection.v1 phase={} status={} mode={} selectionSource={} requestedValue={} issue={} selectionPlane=low-rate-hostess-runtime-selection liveOpenXrHandProviderSelected={} recordedReplayDefaultPreserved=true positionsOnlySmokePreserved=true gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_SOURCE_SELECTION schema=rusty.hostess.makepad.matter_surface_source_selection.v1 phase={} status={} mode={} selectionSource={} requestedValue={} issue={} selectionPlane=low-rate-hostess-runtime-selection liveOpenXrHandProviderSelected={} recordedHandReplaySelected={} positionsOnlySurfaceSelected={} liveEquivalentHandInputSelected={} recordedReplayDefaultPreserved=true positionsOnlySmokePreserved=true gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
             crate::runtime_settings::marker_token(phase),
             status,
             self.mode.marker_value(),
@@ -148,6 +189,9 @@ impl MatterSurfaceSourceSelection {
             marker_option(self.requested_value.as_deref()),
             marker_option(self.issue.as_deref()),
             self.mode.uses_live_openxr_hand(),
+            self.mode.uses_recorded_hand_replay(),
+            self.mode.uses_positions_only_surface(),
+            self.mode.uses_live_equivalent_hand_input(),
         )
     }
 }
@@ -201,6 +245,22 @@ mod tests {
                 .live_is_left(),
             Some(false)
         );
+    }
+
+    #[test]
+    fn parses_explicit_recorded_and_positions_smoke_modes() {
+        assert_eq!(
+            MatterSurfaceSourceSelection::from_value("recorded-hand-replay", "test").mode(),
+            MatterSurfaceSourceMode::RecordedHandReplay
+        );
+        assert_eq!(
+            MatterSurfaceSourceSelection::from_value("positions-only-surface", "test").mode(),
+            MatterSurfaceSourceMode::PositionsOnlySurface
+        );
+        let marker = MatterSurfaceSourceSelection::from_value("recorded-hand-replay", "test")
+            .marker_line("unit-test");
+        assert!(marker.contains("recordedHandReplaySelected=true"));
+        assert!(marker.contains("liveEquivalentHandInputSelected=true"));
     }
 
     #[test]

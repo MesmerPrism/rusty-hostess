@@ -74,7 +74,14 @@ recorded replay evidence, then submits the cached recorded-hand builder plus
 the current compact joint frame to the Quest-Makepad Matter worker so source
 frame construction happens off the app/render thread. It requests full GPU
 oracle payloads only for bounded proof cadence; ordinary recorded replay uses
-the Matter-only source-frame option. `apps/hostess-t-makepad/src/live_hand_surface.rs`
+the Matter-only source-frame option. Source selection now keeps the fallback
+`recorded-or-positions-replay`, the explicit `recorded-hand-replay` proof mode,
+and the `positions-only-surface` smoke mode distinct. The explicit recorded
+mode is the live-input-equivalent replay provider for GPU proof evidence: it
+does not silently fall back to baked positions, requests two mesh-SDF proof
+markers so renderer-lifetime program reuse is observable, and still keeps all
+hand frames, meshes, dense SDF cells, and GPU buffers off settings/control
+JSON. `apps/hostess-t-makepad/src/live_hand_surface.rs`
 observes live Makepad `XrHandMeshBindData` plus `XrHand` updates and converts
 them into the same bind-mesh-plus-compact-joint-frame shape, emitting only a
 low-rate readiness marker. The live observer does not replace the current
@@ -88,6 +95,10 @@ revision sidecar; runtime consumers compare global then scoped hashes before
 parsing detailed settings; adoption evidence must distinguish seen, applied,
 and rejected revisions. Hostess may stage and observe settings, but it must not
 turn settings JSON into a frame, field, particle, or GPU-buffer transport.
+The current app emits
+`RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS_ADOPTION` after a runtime settings
+detail read, recording the scoped revision key, subscribed scopes, selected
+gate, and applied/rejected status.
 
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live

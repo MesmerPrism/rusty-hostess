@@ -11,6 +11,7 @@ pub(crate) const MATTER_SURFACE_LIVE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 24;
 pub(crate) const MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS: f64 = 1.0 / 15.0;
 pub(crate) const MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS: f64 = 1.0;
 pub(crate) const MATTER_SURFACE_DEFAULT_MESH_SDF_PROBE_TARGET_MARKERS: usize = 1;
+pub(crate) const MATTER_SURFACE_RECORDED_MESH_SDF_PROBE_TARGET_MARKERS: usize = 2;
 pub(crate) const MATTER_SURFACE_LIVE_MESH_SDF_PROBE_TARGET_MARKERS: usize = 2;
 
 pub(crate) fn matter_surface_step_interval_seconds(
@@ -43,6 +44,14 @@ impl MatterSurfaceGpuProofSchedule {
                 source_aware_live_first_proof: true,
                 blocking_gpu_diagnostics: false,
                 mesh_sdf_probe_target_markers: MATTER_SURFACE_LIVE_MESH_SDF_PROBE_TARGET_MARKERS,
+            }
+        } else if selection.mode().uses_recorded_hand_replay() {
+            Self {
+                min_cadence_frames: default_min_cadence_frames,
+                source_aware_live_first_proof: false,
+                blocking_gpu_diagnostics: false,
+                mesh_sdf_probe_target_markers:
+                    MATTER_SURFACE_RECORDED_MESH_SDF_PROBE_TARGET_MARKERS,
             }
         } else {
             Self {
@@ -78,7 +87,7 @@ impl MatterSurfaceGpuProofSchedule {
         draw_event_count: u64,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveObserveIntervalSeconds={:.6} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} sourceAwareLiveFirstProof={} blockingGpuDiagnostics={} meshSdfProbeTargetMarkers={} cadenceGate=source-aware-first-proof liveSourceObserveCadence=bounded-evidence liveSourceSubmitCadence=bounded-evidence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveObserveIntervalSeconds={:.6} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} recordedHandReplaySelected={} liveEquivalentHandInputSelected={} sourceAwareLiveFirstProof={} blockingGpuDiagnostics={} meshSdfProbeTargetMarkers={} cadenceGate=source-aware-first-proof liveSourceObserveCadence=bounded-evidence liveSourceSubmitCadence=bounded-evidence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
             marker_token(phase),
             marker_token(selection.mode().marker_value()),
             self.min_cadence_frames,
@@ -91,6 +100,8 @@ impl MatterSurfaceGpuProofSchedule {
             xr_update_count,
             draw_event_count,
             selection.mode().uses_live_openxr_hand(),
+            selection.mode().uses_recorded_hand_replay(),
+            selection.mode().uses_live_equivalent_hand_input(),
             self.source_aware_live_first_proof,
             self.blocking_gpu_diagnostics,
             self.mesh_sdf_probe_target_markers,
@@ -142,6 +153,29 @@ mod tests {
         );
         assert!(MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS > 0.0);
         assert!(MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS < 1.0);
+    }
+
+    #[test]
+    fn explicit_recorded_hand_replay_requests_mesh_sdf_reuse_marker() {
+        let selection = MatterSurfaceSourceSelection::from_value("recorded-hand-replay", "test");
+        let schedule = MatterSurfaceGpuProofSchedule::for_source_selection(&selection, 900);
+
+        assert_eq!(schedule.min_cadence_frames, 900);
+        assert!(!schedule.source_aware_live_first_proof);
+        assert!(!schedule.blocking_gpu_diagnostics);
+        assert_eq!(
+            schedule.mesh_sdf_probe_target_markers,
+            MATTER_SURFACE_RECORDED_MESH_SDF_PROBE_TARGET_MARKERS
+        );
+        assert!(!schedule.cadence_ready(true, 899, 900, 900));
+        assert!(schedule.cadence_ready(true, 900, 900, 900));
+
+        let marker = schedule.marker_line("unit-test", &selection, 900, 1.0 / 12.0, 900, 900, 900);
+        assert!(marker.contains("selectedMode=recorded-hand-replay"));
+        assert!(marker.contains("recordedHandReplaySelected=true"));
+        assert!(marker.contains("liveEquivalentHandInputSelected=true"));
+        assert!(marker.contains("blockingGpuDiagnostics=false"));
+        assert!(marker.contains("meshSdfProbeTargetMarkers=2"));
     }
 
     #[test]

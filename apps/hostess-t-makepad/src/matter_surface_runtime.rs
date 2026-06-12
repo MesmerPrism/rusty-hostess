@@ -172,16 +172,32 @@ impl App {
             self.matter_surface_cached_world_adf_debug_batch = None;
             return false;
         };
-        if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
-            let include_gpu_oracle_payloads = self.recorded_hand_gpu_oracle_payloads_due();
-            recorded_source.submit_worker_frame_for_replay(
-                worker,
-                phase,
-                replay_runtime,
-                delta_seconds,
-                include_gpu_oracle_payloads,
-            );
-            return true;
+        let selected_mode = self.matter_surface_source_selection.mode();
+        if selected_mode.allows_recorded_hand_replay() {
+            if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
+                let include_gpu_oracle_payloads = self.recorded_hand_gpu_oracle_payloads_due();
+                recorded_source.submit_worker_frame_for_replay(
+                    worker,
+                    phase,
+                    replay_runtime,
+                    delta_seconds,
+                    include_gpu_oracle_payloads,
+                );
+                return true;
+            }
+        }
+        if selected_mode.uses_recorded_hand_replay() {
+            self.matter_surface_cached_world_particle_batch = None;
+            self.matter_surface_cached_world_adf_debug_batch = None;
+            if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
+                emit_marker_line(&format!(
+                    "RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER schema=rusty.quest.makepad.matter_surface_worker.v1 phase={} status=waiting mode=latest-wins workerThread=true renderThreadBlocking=false sourceMode={} issue=recorded_hand_replay_not_ready",
+                    marker_token(phase),
+                    marker_token(selected_mode.marker_value()),
+                ));
+                self.matter_surface_worker_markers_emitted += 1;
+            }
+            return false;
         }
         let probe = MatterSurfaceContactProbe::sphere(
             "hostess.camera_shell.center_probe",

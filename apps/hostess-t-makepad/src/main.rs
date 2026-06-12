@@ -3534,7 +3534,7 @@ impl App {
     ) -> bool {
         let identity = makepad_effective_settings::selected_makepad_effective_settings_identity();
         if !force {
-            if !identity.changed_from(
+            if !identity.runtime_settings_changed_from(
                 self.mesh_replay_effective_settings_path.as_deref(),
                 self.current_mesh_replay_effective_settings_modified_ns(),
                 self.mesh_replay_effective_settings_revision_key.as_deref(),
@@ -3543,6 +3543,7 @@ impl App {
             }
         }
 
+        let runtime_revision_key = identity.runtime_settings_revision_key();
         let selection = makepad_effective_settings::read_selected_mesh_replay_runtime();
         let runtime_ready = selection.runtime.is_some();
         let marker_line = if selection.runtime.is_none() {
@@ -3550,8 +3551,10 @@ impl App {
         } else {
             None
         };
+        let adoption_marker_line =
+            selection.adoption_marker_line(phase, &identity, runtime_revision_key.as_deref());
         self.mesh_replay_effective_settings_path = selection.source_effective_settings_path.clone();
-        self.mesh_replay_effective_settings_revision_key = identity.source_revision_key;
+        self.mesh_replay_effective_settings_revision_key = runtime_revision_key.clone();
         self.mesh_replay_effective_settings_modified_ns =
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
@@ -3608,6 +3611,7 @@ impl App {
         self.live_hand_surface_source.reset_markers();
         self.matter_surface_source_selection = MatterSurfaceSourceSelection::from_runtime();
         emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
+        emit_marker_line(&adoption_marker_line);
         self.mesh_replay_runtime = selection.runtime;
         self.recorded_hand_surface_source = self
             .mesh_replay_runtime
