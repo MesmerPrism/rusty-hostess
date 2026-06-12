@@ -10,6 +10,7 @@ mod camera_texture_path;
 mod hostess_camera_model;
 #[allow(dead_code, unused_imports)]
 mod hostess_contracts;
+mod live_hand_surface;
 mod makepad_effective_settings;
 #[allow(dead_code, unused_imports)]
 mod makepad_runtime_config;
@@ -40,6 +41,7 @@ use camera_pair::{
     makepad_display_source_eye_mapping, pixel_format_label, Camera2StereoPlan, MakepadCameraPair,
 };
 use camera_texture_path::MakepadCameraTexturePath;
+use live_hand_surface::LiveHandSurfaceSource;
 use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
 use matter_particle_texture::{
     MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
@@ -1647,6 +1649,8 @@ pub struct App {
     mesh_replay_runtime: Option<MeshReplayRuntime>,
     #[rust]
     recorded_hand_surface_source: Option<RecordedHandSurfaceSource>,
+    #[rust]
+    live_hand_surface_source: LiveHandSurfaceSource,
     #[rust]
     matter_surface_worker: Option<QuestMakepadMatterSurfaceWorker>,
     #[rust]
@@ -3586,6 +3590,7 @@ impl App {
         self.matter_surface_cached_world_particle_batch = None;
         self.matter_surface_cached_world_adf_debug_batch = None;
         self.matter_particle_texture.reset_markers();
+        self.live_hand_surface_source.reset_markers();
         self.mesh_replay_runtime = selection.runtime;
         self.recorded_hand_surface_source = self
             .mesh_replay_runtime
@@ -5164,6 +5169,14 @@ impl App {
                     .observe_update(cx.in_xr_mode(), _update)
                 {
                     self.refresh_hostess_shell_runtime_capability_receipt();
+                }
+                if let Some(marker) = self.live_hand_surface_source.observe_update(
+                    cx,
+                    _update,
+                    self.shell_xr_runtime.xr_update_count(),
+                    "xr-update",
+                ) {
+                    emit_marker_line(&marker);
                 }
                 self.record_xr_pose_snapshot(_update);
                 self.handle_manifold_breath_feedback_subscription();

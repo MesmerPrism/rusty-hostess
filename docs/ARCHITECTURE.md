@@ -67,6 +67,17 @@ from the Rust graph report.
 
 The telemetry panel boundary is recorded in `docs/TELEMETRY_GUI.md`.
 
+For the Quest Makepad Matter surface path, Hostess remains the app-shell and
+evidence boundary. `apps/hostess-t-makepad/src/recorded_hand_surface.rs` loads
+staged recorded bind rigs and compact joint clips from app-private files for
+recorded replay evidence. `apps/hostess-t-makepad/src/live_hand_surface.rs`
+observes live Makepad `XrHandMeshBindData` plus `XrHand` updates and converts
+them into the same bind-mesh-plus-compact-joint-frame shape, emitting only a
+low-rate readiness marker. The live observer does not replace the current
+recorded replay worker input yet, does not own Matter CPU skinning/SDF truth,
+and does not route hand meshes, joint frames, fields, particles, or GPU buffers
+through settings/control JSON.
+
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live
 run is tied back to the Manifold Hostess contract spine.

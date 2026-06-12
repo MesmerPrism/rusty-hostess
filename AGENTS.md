@@ -233,6 +233,15 @@ worker submission, GPU-probe evidence, and world draw evidence;
 loading. Keep `main.rs` as app-shell wiring and do not route high-rate hand,
 mesh, field, particle, or GPU-buffer payloads through settings/control JSON.
 
+For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
+Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates
+into the same bind-mesh-plus-compact-joint-frame shape used by recorded replay.
+It may emit `RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE` readiness evidence,
+but until an explicit source-selection checkpoint lands it must remain an
+observer and must not replace the recorded replay worker input. Keep Makepad
+runtime types in Hostess/Makepad code, not in Matter or the Quest-Makepad
+Matter-surface crate.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against
