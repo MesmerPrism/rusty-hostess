@@ -2,7 +2,8 @@ use crate::makepad_widgets::makepad_platform::event::{XrHand, XrHandMeshBindData
 use crate::makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
     QuestMakepadMatterSurfaceError, QuestMakepadMatterSurfaceSourceFrame,
-    RecordedCompactHandJointFrame, RecordedHandRig,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadRecordedHandSourceFrameBuilder,
+    QuestMakepadRecordedHandSourceFrameOptions, RecordedCompactHandJointFrame, RecordedHandRig,
 };
 use std::sync::Arc;
 
@@ -71,6 +72,7 @@ impl LiveHandSurfaceSource {
         self.source_frame_for_latest_matching(None)
     }
 
+    #[cfg(test)]
     pub(crate) fn source_frame_for_latest_matching(
         &self,
         is_left: Option<bool>,
@@ -90,6 +92,34 @@ impl LiveHandSurfaceSource {
         Ok(None)
     }
 
+    pub(crate) fn submit_worker_frame_for_latest_matching(
+        &self,
+        worker: &QuestMakepadMatterSurfaceWorker,
+        phase: &str,
+        is_left: Option<bool>,
+        delta_seconds: f32,
+        include_gpu_oracle_payloads: bool,
+    ) -> Option<LiveHandSurfaceWorkerSourceSummary> {
+        let state = self.latest_matching(is_left)?;
+        let options = if include_gpu_oracle_payloads {
+            QuestMakepadRecordedHandSourceFrameOptions::gpu_oracle_probes()
+        } else {
+            QuestMakepadRecordedHandSourceFrameOptions::matter_only()
+        };
+        worker.submit_recorded_hand_frame(
+            phase,
+            Arc::clone(&state.builder),
+            state.compact_frame.clone(),
+            delta_seconds,
+            options,
+            "hostess.live_openxr_hand.center_probe",
+        );
+        Some(LiveHandSurfaceWorkerSourceSummary::from_state(
+            state,
+            include_gpu_oracle_payloads,
+        ))
+    }
+
     #[cfg(test)]
     pub(crate) fn has_latest_matching(&self, is_left: Option<bool>) -> bool {
         match is_left {
@@ -97,6 +127,18 @@ impl LiveHandSurfaceSource {
             Some(false) => self.right.is_some(),
             None => self.left.is_some() || self.right.is_some(),
         }
+    }
+
+    fn latest_matching(&self, is_left: Option<bool>) -> Option<&LiveHandSurfaceHandState> {
+        if matches!(is_left, None | Some(true)) {
+            if let Some(left) = self.left.as_ref() {
+                return Some(left);
+            }
+        }
+        if matches!(is_left, None | Some(false)) {
+            return self.right.as_ref();
+        }
+        None
     }
 
     fn observe_hand(
@@ -194,9 +236,30 @@ impl LiveHandSurfaceSource {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct LiveHandSurfaceWorkerSourceSummary {
+    pub(crate) source_id: &'static str,
+    pub(crate) frame_index: usize,
+    pub(crate) vertex_count: usize,
+    pub(crate) triangle_count: usize,
+    pub(crate) gpu_oracle_payloads_requested: bool,
+}
+
+impl LiveHandSurfaceWorkerSourceSummary {
+    fn from_state(state: &LiveHandSurfaceHandState, gpu_oracle_payloads_requested: bool) -> Self {
+        Self {
+            source_id: state.source_id,
+            frame_index: state.compact_frame.frame_index,
+            vertex_count: state.vertex_count,
+            triangle_count: state.index_count / 3,
+            gpu_oracle_payloads_requested,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 struct LiveHandSurfaceRigCache {
-    rig: Arc<RecordedHandRig>,
+    builder: Arc<QuestMakepadRecordedHandSourceFrameBuilder>,
     is_left: bool,
     bind_version: u32,
     joint_count: usize,
@@ -238,9 +301,16 @@ impl LiveHandSurfaceRigCache {
             &bind.indices,
         )
         .map_err(|error| format!("live_hand_bind_data:{error}"))?;
+        let source_id = if is_left {
+            LIVE_LEFT_SOURCE_ID
+        } else {
+            LIVE_RIGHT_SOURCE_ID
+        };
+        let builder = QuestMakepadRecordedHandSourceFrameBuilder::new(source_id, rig)
+            .map_err(|error| format!("live_hand_source_builder:{error}"))?;
 
         Ok(Self {
-            rig: Arc::new(rig),
+            builder: Arc::new(builder),
             is_left,
             bind_version: bind.bind_version,
             joint_count: bind.joint_bind_poses.len(),
@@ -264,8 +334,7 @@ impl LiveHandSurfaceRigCache {
 struct LiveHandSurfaceHandState {
     source_id: &'static str,
     is_left: bool,
-    #[allow(dead_code)]
-    rig: Arc<RecordedHandRig>,
+    builder: Arc<QuestMakepadRecordedHandSourceFrameBuilder>,
     compact_frame: RecordedCompactHandJointFrame,
     bind_version: u32,
     joint_count: usize,
@@ -309,7 +378,7 @@ impl LiveHandSurfaceHandState {
                 LIVE_RIGHT_SOURCE_ID
             },
             is_left,
-            rig: rig_cache.rig.clone(),
+            builder: Arc::clone(&rig_cache.builder),
             compact_frame,
             bind_version: rig_cache.bind_version,
             joint_count: rig_cache.joint_count,
@@ -322,11 +391,7 @@ impl LiveHandSurfaceHandState {
     fn source_frame(
         &self,
     ) -> Result<QuestMakepadMatterSurfaceSourceFrame, QuestMakepadMatterSurfaceError> {
-        QuestMakepadMatterSurfaceSourceFrame::from_recorded_hand_capture(
-            self.source_id,
-            &self.rig,
-            &self.compact_frame,
-        )
+        self.builder.source_frame(&self.compact_frame)
     }
 
     fn marker_line(&self, phase: &str) -> String {
@@ -404,6 +469,15 @@ mod tests {
         assert_eq!([position.x, position.y, position.z], [1.0, 1.0, -0.25]);
         assert!(source.has_latest_matching(Some(true)));
         assert!(!source.has_latest_matching(Some(false)));
+        let summary = LiveHandSurfaceWorkerSourceSummary::from_state(
+            source.latest_matching(Some(true)).unwrap(),
+            false,
+        );
+        assert_eq!(summary.source_id, LIVE_LEFT_SOURCE_ID);
+        assert_eq!(summary.frame_index, 7);
+        assert_eq!(summary.vertex_count, 3);
+        assert_eq!(summary.triangle_count, 1);
+        assert!(!summary.gpu_oracle_payloads_requested);
         assert_eq!(
             source
                 .source_frame_for_latest_matching(Some(false))
@@ -417,38 +491,16 @@ mod tests {
         let mut source = LiveHandSurfaceSource::default();
 
         assert!(source.should_observe(1.0, Some(0.25)));
-        source.left = Some(LiveHandSurfaceHandState {
-            source_id: LIVE_LEFT_SOURCE_ID,
-            is_left: true,
-            rig: Arc::new(
-                RecordedHandRig::from_makepad_openxr_bind_data(
-                    true,
-                    1,
-                    &vec![([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]); 26],
-                    &vec![0.01; 26],
-                    &vec![-1; 26],
-                    &[[0.0, 0.0, 0.0]],
-                    &[[0.0, 1.0, 0.0]],
-                    &[[0, 0, 0, 0]],
-                    &[[1.0, 0.0, 0.0, 0.0]],
-                    &[0, 0, 0],
-                )
-                .expect("test rig"),
-            ),
-            compact_frame: RecordedCompactHandJointFrame::from_makepad_openxr_compact_frame(
+        source
+            .observe_hand(
                 true,
+                &synthetic_hand(),
+                Some(&synthetic_bind()),
                 0,
                 0,
-                &vec![([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]); 21],
-                [0.0; 5],
-                [0.0; 4],
+                "unit-test",
             )
-            .expect("test frame"),
-            bind_version: 1,
-            joint_count: 26,
-            vertex_count: 1,
-            index_count: 3,
-        });
+            .expect("ready marker emitted");
 
         assert!(!source.should_observe(1.1, Some(0.25)));
         assert!(source.should_observe(1.25, Some(0.25)));

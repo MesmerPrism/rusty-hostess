@@ -4,6 +4,7 @@
 //! adapter payloads. This module keeps Hostess as the app-shell evidence
 //! consumer without growing the Makepad app root with GPU/worker details.
 
+use crate::live_hand_surface::LiveHandSurfaceWorkerSourceSummary;
 use crate::makepad_widgets::makepad_platform::{
     XrGpuF32ForceProbeSample, XR_GPU_F32_FORCE_PROBE_SAMPLES,
 };
@@ -35,10 +36,9 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuFieldForceProbeReadback, QuestMakepadGpuOracleComputeProbe,
     QuestMakepadGpuOracleComputeProbeReadback, QuestMakepadGpuResidencyProof,
     QuestMakepadGpuStorageProbe, QuestMakepadGpuStorageProbeReadback,
-    QuestMakepadMatterSurfaceSourceFrame, QuestMakepadMatterSurfaceWorkerFrame,
-    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugPlacement,
-    QuestMakepadWorldParticlePlacement, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
-    QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
+    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticlePlacement,
+    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
     QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES, QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
     QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
@@ -120,46 +120,37 @@ impl App {
             .uses_live_openxr_hand()
         {
             let selected_mode = self.matter_surface_source_selection.mode();
-            let source_frame = match self
-                .live_hand_surface_source
-                .source_frame_for_latest_matching(selected_mode.live_is_left())
-            {
-                Ok(Some(source_frame)) => source_frame,
-                Ok(None) => {
-                    self.emit_live_hand_surface_worker_source_marker(
-                        phase,
-                        "waiting",
-                        selected_mode.marker_value(),
-                        None,
-                        Some("live_openxr_hand_not_ready"),
-                    );
-                    return false;
-                }
-                Err(error) => {
-                    self.emit_live_hand_surface_worker_source_marker(
-                        phase,
-                        "error",
-                        selected_mode.marker_value(),
-                        None,
-                        Some(&error.to_string()),
-                    );
-                    return false;
-                }
-            };
-            let probes =
-                source_frame_contact_probes(&source_frame, "hostess.live_openxr_hand.center_probe");
-            self.emit_live_hand_surface_worker_source_marker(
-                phase,
-                "ready",
-                selected_mode.marker_value(),
-                Some(&source_frame),
-                None,
-            );
+            let include_gpu_oracle_payloads = self.hand_gpu_oracle_payloads_due();
             let Some(worker) = self.matter_surface_worker.as_ref() else {
                 return false;
             };
-            worker.submit_source_frame(phase, source_frame, delta_seconds, &probes);
-            return true;
+            let summary = self
+                .live_hand_surface_source
+                .submit_worker_frame_for_latest_matching(
+                    worker,
+                    phase,
+                    selected_mode.live_is_left(),
+                    delta_seconds,
+                    include_gpu_oracle_payloads,
+                );
+            if let Some(summary) = summary.as_ref() {
+                self.emit_live_hand_surface_worker_source_marker(
+                    phase,
+                    "ready",
+                    selected_mode.marker_value(),
+                    Some(summary),
+                    None,
+                );
+                return true;
+            }
+            self.emit_live_hand_surface_worker_source_marker(
+                phase,
+                "waiting",
+                selected_mode.marker_value(),
+                None,
+                Some("live_openxr_hand_not_ready"),
+            );
+            return false;
         }
 
         let Some(worker) = self.matter_surface_worker.as_ref() else {
@@ -175,7 +166,7 @@ impl App {
         let selected_mode = self.matter_surface_source_selection.mode();
         if selected_mode.allows_recorded_hand_replay() {
             if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
-                let include_gpu_oracle_payloads = self.recorded_hand_gpu_oracle_payloads_due();
+                let include_gpu_oracle_payloads = self.hand_gpu_oracle_payloads_due();
                 recorded_source.submit_worker_frame_for_replay(
                     worker,
                     phase,
@@ -222,7 +213,7 @@ impl App {
         }
     }
 
-    fn recorded_hand_gpu_oracle_payloads_due(&self) -> bool {
+    fn hand_gpu_oracle_payloads_due(&self) -> bool {
         let gpu_probe_schedule = MatterSurfaceGpuProofSchedule::for_source_selection(
             &self.matter_surface_source_selection,
             MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
@@ -259,23 +250,23 @@ impl App {
         phase: &str,
         status: &str,
         selected_mode: &str,
-        source_frame: Option<&QuestMakepadMatterSurfaceSourceFrame>,
+        source_frame: Option<&LiveHandSurfaceWorkerSourceSummary>,
         issue: Option<&str>,
     ) {
         if self.matter_surface_live_source_worker_markers_emitted >= MATTER_SURFACE_MARKER_LIMIT {
             return;
         }
-        let source_id = source_frame
-            .map(|frame| frame.source_id.as_str())
-            .unwrap_or("none");
+        let source_id = source_frame.map(|frame| frame.source_id).unwrap_or("none");
         let provider_shape = source_frame
-            .map(|frame| frame.provider_shape.marker_value())
+            .map(|_| "bind-mesh-plus-compact-joint-frame")
             .unwrap_or("none");
-        let frame_index = source_frame.map_or(0, |frame| frame.frame.frame_index);
-        let vertex_count = source_frame.map_or(0, |frame| frame.frame.surface.vertex_count());
-        let triangle_count = source_frame.map_or(0, |frame| frame.frame.surface.triangle_count());
+        let frame_index = source_frame.map_or(0, |frame| frame.frame_index);
+        let vertex_count = source_frame.map_or(0, |frame| frame.vertex_count);
+        let triangle_count = source_frame.map_or(0, |frame| frame.triangle_count);
+        let gpu_oracle_payloads_requested =
+            source_frame.map_or(false, |frame| frame.gpu_oracle_payloads_requested);
         emit_marker_line(&format!(
-            "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_WORKER_SOURCE schema=rusty.hostess.makepad.live_hand_surface_worker_source.v1 phase={} status={} selectedMode={} sourceId={} providerShape={} frameIndex={} vertexCount={} triangleCount={} issue={} liveOpenXrHandProvider=true workerSourceSelected={} recordedInputEquivalent={} gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_WORKER_SOURCE schema=rusty.hostess.makepad.live_hand_surface_worker_source.v1 phase={} status={} selectedMode={} sourceId={} providerShape={} frameIndex={} vertexCount={} triangleCount={} issue={} liveOpenXrHandProvider=true workerSourceSelected={} compactFrameWorkerSubmit={} sourceFrameExpansionThread=matter-worker gpuOraclePayloadsRequested={} recordedInputEquivalent={} gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
             marker_token(phase),
             marker_token(status),
             marker_token(selected_mode),
@@ -288,6 +279,8 @@ impl App {
                 .map(marker_token)
                 .unwrap_or_else(|| "none".to_string()),
             source_frame.is_some() && status == "ready",
+            source_frame.is_some() && status == "ready",
+            gpu_oracle_payloads_requested,
             source_frame.is_some(),
         ));
         self.matter_surface_live_source_worker_markers_emitted += 1;
@@ -798,23 +791,6 @@ impl App {
         );
         self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
     }
-}
-
-fn source_frame_contact_probes(
-    source_frame: &QuestMakepadMatterSurfaceSourceFrame,
-    probe_id: &str,
-) -> Vec<MatterSurfaceContactProbe> {
-    let Some(mut center) = source_frame.frame.surface.positions.first().copied() else {
-        return Vec::new();
-    };
-    center.x = (source_frame.bounds_min[0] + source_frame.bounds_max[0]) * 0.5;
-    center.y = (source_frame.bounds_min[1] + source_frame.bounds_max[1]) * 0.5;
-    center.z = (source_frame.bounds_min[2] + source_frame.bounds_max[2]) * 0.5;
-    vec![MatterSurfaceContactProbe::sphere(
-        probe_id,
-        center,
-        source_frame.bounds_radius.max(0.001) * 0.5,
-    )]
 }
 
 fn gpu_mesh_sdf_probe_evidence_phase(base_phase: &str, markers_emitted: usize) -> String {

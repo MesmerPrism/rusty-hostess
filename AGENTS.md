@@ -271,11 +271,16 @@ one reuse marker with `programReused=true`.
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates
 into the same bind-mesh-plus-compact-joint-frame shape used by recorded replay.
-It may emit `RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE` readiness evidence,
-but until an explicit source-selection checkpoint lands it must remain an
-observer and must not replace the recorded replay worker input. Keep Makepad
-runtime types in Hostess/Makepad code, not in Matter or the Quest-Makepad
-Matter-surface crate.
+It emits `RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE` readiness evidence.
+When `live-openxr-hand-any`, `live-openxr-hand-left`, or
+`live-openxr-hand-right` is explicitly selected, it submits the cached live
+source-frame builder plus compact joint frame through
+`QuestMakepadMatterSurfaceWorker::submit_recorded_hand_frame`, matching the
+recorded replay worker-side expansion path. Live worker-source evidence should
+include `compactFrameWorkerSubmit=true`,
+`sourceFrameExpansionThread=matter-worker`, and bounded
+`gpuOraclePayloadsRequested` values. Keep Makepad runtime types in
+Hostess/Makepad code, not in Matter or the Quest-Makepad Matter-surface crate.
 
 Live-hand GPU proof performance evidence must pass the optimized-profile
 summary checker before it is treated as a cadence baseline:

@@ -83,11 +83,14 @@ markers so renderer-lifetime program reuse is observable, and still keeps all
 hand frames, meshes, dense SDF cells, and GPU buffers off settings/control
 JSON. `apps/hostess-t-makepad/src/live_hand_surface.rs`
 observes live Makepad `XrHandMeshBindData` plus `XrHand` updates and converts
-them into the same bind-mesh-plus-compact-joint-frame shape, emitting only a
-low-rate readiness marker. The live observer does not replace the current
-recorded replay worker input yet, does not own Matter CPU skinning/SDF truth,
-and does not route hand meshes, joint frames, fields, particles, or GPU buffers
-through settings/control JSON.
+them into the same bind-mesh-plus-compact-joint-frame shape. When an explicit
+`live-openxr-hand-*` source mode is selected, Hostess submits the cached live
+source-frame builder plus compact joint frame to the same Matter worker path as
+recorded replay. Source-frame expansion and optional GPU oracle payload
+packaging happen on the worker thread, with full GPU oracle payloads requested
+only at bounded proof cadence. The live path does not own Matter CPU
+skinning/SDF truth and does not route hand meshes, joint frames, fields,
+particles, or GPU buffers through settings/control JSON.
 
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact
