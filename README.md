@@ -189,13 +189,17 @@ python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summa
 ```
 
 The checker requires the source-aware proof schedule, the GPU skinning,
-full-mesh residency, and mesh-to-dense-SDF proof markers, asynchronous readback
-without `queueWaitIdle`, zero Hostess-process `Stale>=90`, no `Stale>=30`, and
-near-90 Hz app/XR cadence. The live proof schedule disables the older blocking
-storage/oracle/force diagnostics, emits `blockingGpuDiagnostics=false`, and
-expects two mesh-SDF proof lines: first-use setup and a reused-program line with
-`programReused=true`; current scaled dense-SDF evidence should also report at
-least `sampleCount=8`. Stale-heavy debug APK runs remain functional marker
+full-mesh residency, mesh-to-dense-SDF proof, and GPU field-construction
+receipt markers, asynchronous readback without `queueWaitIdle`, zero
+Hostess-process `Stale>=90`, no `Stale>=30`, and near-90 Hz app/XR cadence.
+The live proof schedule disables the older blocking storage/oracle/force
+diagnostics, emits `blockingGpuDiagnostics=false`, and expects two mesh-SDF
+proof lines: first-use setup and a reused-program line with `programReused=true`;
+current scaled dense-SDF evidence should also report at least `sampleCount=8`.
+The paired `RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION` receipt must report
+`runtimeFieldBoundaryReady=true`, while keeping `forceAuthorityReady=false`,
+`runtimeForceAuthority=false`, `gpuComputeReady=false`, and
+`highRateJsonPayload=false`. Stale-heavy debug APK runs remain functional marker
 evidence only. The summarizer is the Hostess-owned raw evidence adapter: it
 parses `logcat.txt`, filters VrApi stale counts to the Hostess process, ignores
 GPU-marker `kgslFaultsBeforeMarker` telemetry as non-fault evidence, writes the

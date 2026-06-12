@@ -271,7 +271,11 @@ recorded live-input-equivalent GPU proof evidence. Keep
 recorded-hand proof schedule should report `recordedHandReplaySelected=true`,
 `liveEquivalentHandInputSelected=true`, `blockingGpuDiagnostics=false`, and
 `meshSdfProbeTargetMarkers=2`; it must produce one mesh-SDF setup marker and
-one reuse marker with `programReused=true`.
+one reuse marker with `programReused=true`. Each completed mesh-SDF readback
+must also emit `RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION` as a low-rate
+dense-SDF field-buffer receipt with `runtimeFieldBoundaryReady=true`,
+`forceAuthorityReady=false`, `runtimeForceAuthority=false`,
+`gpuComputeReady=false`, and `highRateJsonPayload=false`.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates

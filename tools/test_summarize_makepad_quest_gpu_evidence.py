@@ -87,6 +87,18 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
+                "highRateJsonPayload=false sourceMeshBuffersResident=true "
+                "sourceMeshBuffersReused=false derivedBuffersResident=true "
+                "derivedBuffersReused=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true denseSdfConstructedOnGpu=true "
@@ -96,6 +108,18 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "sourceVertexBufferBytes=413440 sourceTriangleBufferBytes=37024 "
                 "derivedBuffersResident=true derivedBuffersReused=true "
                 "skinnedPositionBufferBytes=21760 sdfDistanceBufferBytes=6292",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
+                "highRateJsonPayload=false sourceMeshBuffersResident=true "
+                "sourceMeshBuffersReused=true derivedBuffersResident=true "
+                "derivedBuffersReused=true",
             ),
         ]
         log_lines = [
@@ -155,6 +179,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         summary = payloads["summary"]
         self.assertEqual(5884, summary["app_pid"])
         self.assertEqual(2, summary["markers"]["gpu_mesh_sdf_probe"])
+        self.assertEqual(2, summary["markers"]["gpu_field_construction"])
         self.assertEqual(90.0, summary["cadence"]["app_frame_rate_hz"]["max"])
         self.assertEqual(0, summary["vrapi_hostess_process"]["stale_90_plus_count"])
         self.assertEqual(14.0, summary["vrapi_hostess_process"]["stale"]["max"])
@@ -214,6 +239,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertFalse(readiness["power_after"]["proximity_positive"])
         self.assertEqual("0", readiness["power_after"]["mounted"])
         self.assertEqual(0, readiness["marker_counts"]["gpu_mesh_sdf_probe"])
+        self.assertEqual(0, readiness["marker_counts"]["gpu_field_construction"])
 
     def test_strict_scan_ignores_marker_kgsl_telemetry(self):
         scan = strict_log_scan(

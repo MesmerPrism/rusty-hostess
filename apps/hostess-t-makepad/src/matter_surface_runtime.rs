@@ -11,7 +11,7 @@ use crate::makepad_widgets::makepad_platform::{
 use crate::makepad_widgets::*;
 use crate::matter_particle_texture::MatterParticleTextureFrame;
 use crate::matter_surface_gpu::{
-    gpu_mesh_sdf_probe_poll_marker_line, gpu_mesh_sdf_probe_submit,
+    gpu_mesh_sdf_probe_poll_marker_lines, gpu_mesh_sdf_probe_submit,
     gpu_skinning_mesh_probe_poll_marker_line, gpu_skinning_mesh_probe_submit,
     gpu_skinning_probe_poll_marker_line, gpu_skinning_probe_submit,
 };
@@ -402,14 +402,16 @@ impl App {
                 phase,
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted,
             );
-            let completed_mesh_sdf_marker = self
+            let completed_mesh_sdf_markers = self
                 .matter_surface_gpu_mesh_sdf_probe_pending
                 .as_ref()
                 .and_then(|pending| {
-                    gpu_mesh_sdf_probe_poll_marker_line(cx, pending, &mesh_sdf_phase)
+                    gpu_mesh_sdf_probe_poll_marker_lines(cx, pending, &mesh_sdf_phase)
                 });
-            if let Some(marker) = completed_mesh_sdf_marker {
-                emit_marker_line(&marker);
+            if let Some(markers) = completed_mesh_sdf_markers {
+                for marker in markers {
+                    emit_marker_line(&marker);
+                }
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted += 1;
                 self.matter_surface_gpu_mesh_sdf_probe_pending = None;
                 gpu_async_probe_completed_this_frame = true;

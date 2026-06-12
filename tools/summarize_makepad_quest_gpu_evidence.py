@@ -26,6 +26,7 @@ except ImportError:  # pragma: no cover - direct script fallback
         "gpu_skinning_probe": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE",
         "gpu_skinning_mesh_residency": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
         "gpu_mesh_sdf_probe": "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
+        "gpu_field_construction": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
     }
 
 
@@ -40,6 +41,7 @@ SOURCE_SELECTION_MARKER = "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_SOURCE_SELECTION
 RECORDED_WORKER_MARKER = "RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_WORKER_SOURCE"
 GPU_RESIDENCY_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY"
 GPU_MESH_SDF_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
+GPU_FIELD_CONSTRUCTION_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION"
 
 LOGCAT_RE = re.compile(
     r"^(?P<date>\d\d-\d\d)\s+"
@@ -507,6 +509,9 @@ def summarize_evidence(
         ),
         "recorded_worker_source": len(marker_lines(hostess_lines, RECORDED_WORKER_MARKER)),
         "gpu_residency": len(marker_lines(hostess_lines, GPU_RESIDENCY_MARKER)),
+        "gpu_field_construction": len(
+            marker_lines(hostess_lines, GPU_FIELD_CONSTRUCTION_MARKER)
+        ),
         "sample_count_8": sum("sampleCount=8" in line for line in proof_lines),
     }
     summary = {

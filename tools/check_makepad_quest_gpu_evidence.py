@@ -28,6 +28,7 @@ REQUIRED_MARKERS = {
     "gpu_skinning_probe": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE",
     "gpu_skinning_mesh_residency": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
     "gpu_mesh_sdf_probe": "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
+    "gpu_field_construction": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
 }
 PROOF_SUMMARY_SCHEMA = "rusty.hostess.quest_live_hand_small_profile_summary.v1"
 CANONICAL_PROOF_SUMMARY_NAME = "live-hand-small-profile-summary.json"
@@ -188,6 +189,7 @@ def validate_summary(
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
         "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
+        "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
     ):
         marker_lines = lines_containing(proof_lines, marker_name)
         if not marker_lines:
@@ -199,6 +201,36 @@ def validate_summary(
                 issues.append(f"{marker_name} did not report queueWaitIdlePerformed=false")
             if "recordedInputEquivalent=true" not in marker_line:
                 issues.append(f"{marker_name} did not report recordedInputEquivalent=true")
+    field_construction_lines = lines_containing(
+        proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION"
+    )
+    field_construction_ready_count = count_lines_containing(
+        field_construction_lines, "runtimeFieldBoundaryReady=true"
+    )
+    field_construction_force_authority_false_count = count_lines_containing(
+        field_construction_lines, "forceAuthorityReady=false"
+    )
+    field_construction_runtime_authority_false_count = count_lines_containing(
+        field_construction_lines, "runtimeForceAuthority=false"
+    )
+    field_construction_gpu_not_ready_count = count_lines_containing(
+        field_construction_lines, "gpuComputeReady=false"
+    )
+    field_construction_low_rate_count = count_lines_containing(
+        field_construction_lines, "highRateJsonPayload=false"
+    )
+    if field_construction_ready_count != len(field_construction_lines):
+        issues.append("GPU field construction receipt did not keep runtimeFieldBoundaryReady=true")
+    if field_construction_force_authority_false_count != len(field_construction_lines):
+        issues.append("GPU field construction receipt did not keep forceAuthorityReady=false")
+    if field_construction_runtime_authority_false_count != len(field_construction_lines):
+        issues.append("GPU field construction receipt did not keep runtimeForceAuthority=false")
+    if not any("fieldKind=dense-sdf" in line for line in field_construction_lines):
+        issues.append("GPU field construction receipt did not report fieldKind=dense-sdf")
+    if field_construction_gpu_not_ready_count != len(field_construction_lines):
+        issues.append("GPU field construction receipt did not keep gpuComputeReady=false")
+    if field_construction_low_rate_count != len(field_construction_lines):
+        issues.append("GPU field construction receipt did not keep highRateJsonPayload=false")
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -282,6 +314,16 @@ def validate_summary(
         "mesh_sdf_derived_buffer_reuse_count": mesh_sdf_derived_reuse_count,
         "mesh_sdf_min_sample_count": mesh_sdf_min_sample_count,
         "mesh_sdf_max_sample_count": mesh_sdf_max_sample_count,
+        "field_construction_line_count": len(field_construction_lines),
+        "field_construction_ready_count": field_construction_ready_count,
+        "field_construction_force_authority_false_count": (
+            field_construction_force_authority_false_count
+        ),
+        "field_construction_runtime_authority_false_count": (
+            field_construction_runtime_authority_false_count
+        ),
+        "field_construction_gpu_not_ready_count": field_construction_gpu_not_ready_count,
+        "field_construction_low_rate_count": field_construction_low_rate_count,
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in REQUIRED_MARKERS
         },

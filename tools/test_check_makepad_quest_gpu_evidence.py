@@ -21,6 +21,7 @@ def valid_summary():
             "gpu_skinning_probe": 1,
             "gpu_skinning_mesh_residency": 1,
             "gpu_mesh_sdf_probe": 2,
+            "gpu_field_construction": 2,
             "gpu_residency": 8,
         },
         "cadence": {
@@ -41,7 +42,9 @@ def valid_summary():
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
             "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true sourceMeshBuffersResident=true sourceMeshBuffersReused=false derivedBuffersResident=true derivedBuffersReused=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false sourceMeshBuffersResident=true sourceMeshBuffersReused=false derivedBuffersResident=true derivedBuffersReused=false",
             "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBuffersResident=true derivedBuffersReused=true",
+            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBuffersResident=true derivedBuffersReused=true",
         ],
     }
 
@@ -116,6 +119,11 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(2, result.summary["mesh_sdf_derived_buffer_resident_count"])
         self.assertEqual(1, result.summary["mesh_sdf_derived_buffer_reuse_count"])
         self.assertEqual(8, result.summary["mesh_sdf_max_sample_count"])
+        self.assertEqual(2, result.summary["field_construction_line_count"])
+        self.assertEqual(2, result.summary["field_construction_ready_count"])
+        self.assertEqual(
+            2, result.summary["field_construction_force_authority_false_count"]
+        )
 
     def test_rejects_stale_heavy_debug_run(self):
         summary = valid_summary()
@@ -232,6 +240,20 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(
             any("derivedBuffersReused=true" in issue for issue in result.issues)
+        )
+
+    def test_rejects_field_construction_force_authority_claim(self):
+        summary = valid_summary()
+        summary["proof_lines"] = [
+            line.replace("forceAuthorityReady=false", "forceAuthorityReady=true")
+            for line in summary["proof_lines"]
+        ]
+
+        result = validate_summary(summary)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("forceAuthorityReady=false" in issue for issue in result.issues)
         )
 
 
