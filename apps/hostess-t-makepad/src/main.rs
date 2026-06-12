@@ -37,6 +37,7 @@ mod source_metadata;
 mod source_sampling;
 mod stereo_frame;
 mod stimulus_stereo_field;
+mod stimulus_volume_gpu;
 mod texture_probe_stats;
 use crate::makepad_runtime_config as makepad_config;
 use camera_pair::{
@@ -172,6 +173,10 @@ use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye
 use stimulus_stereo_field::{
     DrawStimulusStereoField, StimulusStereoFieldPanel, StimulusStereoFieldState,
 };
+use stimulus_volume_gpu::{
+    stimulus_volume_gpu_probe_poll_marker_line, stimulus_volume_gpu_probe_submit,
+    stimulus_volume_probe_input_from_state, PendingStimulusVolumeGpuProbe,
+};
 use texture_probe_stats::texture_plane_content_stats;
 
 app_main!(App);
@@ -207,6 +212,7 @@ const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
 const MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT: usize = 8;
 const STIMULUS_STEREO_FIELD_MARKER_LIMIT: usize = 8;
+const STIMULUS_VOLUME_GPU_PROBE_MARKER_LIMIT: usize = 1;
 const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
 const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
 const MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS: f32 = 0.50;
@@ -1825,6 +1831,10 @@ pub struct App {
     stimulus_stereo_field_state: StimulusStereoFieldState,
     #[rust]
     stimulus_stereo_field_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_gpu_probe_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_gpu_probe_pending: Option<PendingStimulusVolumeGpuProbe>,
     #[rust]
     makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
@@ -3753,6 +3763,8 @@ impl App {
             StimulusStereoFieldState::disabled()
         };
         self.stimulus_stereo_field_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_pending = None;
         emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
         emit_marker_line(&adoption_marker_line);
         self.mesh_replay_runtime = selection.runtime;
@@ -5333,9 +5345,50 @@ impl App {
                 time_seconds,
                 true,
             ));
+            if let Some(marker_line) = self
+                .stimulus_stereo_field_state
+                .volume_adoption_marker_line(phase, true)
+            {
+                emit_marker_line(&marker_line);
+            }
             self.stimulus_stereo_field_markers_emitted += 1;
         }
+        self.update_stimulus_volume_gpu_probe(cx, phase);
         true
+    }
+
+    fn update_stimulus_volume_gpu_probe(&mut self, cx: &mut Cx, phase: &str) {
+        if !self.stimulus_stereo_field_state.enabled
+            || !self.stimulus_stereo_field_state.volume_present
+        {
+            self.stimulus_volume_gpu_probe_pending = None;
+            return;
+        }
+
+        if let Some(marker_line) = self
+            .stimulus_volume_gpu_probe_pending
+            .as_ref()
+            .and_then(|pending| stimulus_volume_gpu_probe_poll_marker_line(cx, pending, phase))
+        {
+            emit_marker_line(&marker_line);
+            self.stimulus_volume_gpu_probe_markers_emitted += 1;
+            self.stimulus_volume_gpu_probe_pending = None;
+            return;
+        }
+
+        if self.stimulus_volume_gpu_probe_markers_emitted >= STIMULUS_VOLUME_GPU_PROBE_MARKER_LIMIT
+            || self.stimulus_volume_gpu_probe_pending.is_some()
+        {
+            return;
+        }
+
+        let Some(input) = stimulus_volume_probe_input_from_state(&self.stimulus_stereo_field_state)
+        else {
+            return;
+        };
+        if let Some(pending) = stimulus_volume_gpu_probe_submit(cx, &input) {
+            self.stimulus_volume_gpu_probe_pending = Some(pending);
+        }
     }
 
     fn apply_mesh_replay_uniforms_to_panel(

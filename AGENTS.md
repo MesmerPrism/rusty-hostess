@@ -214,6 +214,13 @@ driven by Hostess or Quest-Makepad debug visual payloads. In field modes,
 `particleForceRefresh=reused` means the cached Matter field was reused while
 particles still sampled it for the current step.
 
+For staged Optics stimulus volume profiles, Hostess may emit
+`RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_ADOPTION` from the camera-shell profile
+summary when `rusty.optics.stimulus.volume.v1` is present. This marker proves
+profile adoption only: keep `gpuComputeReady=false`, `computeKernel=false`,
+and `highRateJsonPayload=false`, and do not treat it as a Makepad/Vulkan
+command-buffer or storage-buffer readback proof.
+
 For the first GPU-backed residency phase, Hostess emits
 `RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY` only when bounded Quest-Makepad world
 particle or ADF debug batches are submitted to Makepad instanced draw buffers.
