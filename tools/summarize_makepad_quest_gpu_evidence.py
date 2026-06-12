@@ -201,7 +201,12 @@ def filter_hostess_messages(entries: list[LogEntry], app_pid: int | None) -> lis
 
 
 def marker_lines(lines: list[str], marker: str) -> list[str]:
-    return [line for line in lines if marker in line]
+    return [line for line in lines if line_has_marker(line, marker)]
+
+
+def line_has_marker(line: str, marker: str) -> bool:
+    pattern = re.compile(rf"(^|:\s+){re.escape(marker)}\b")
+    return bool(pattern.search(line))
 
 
 def cadence_summary(messages: list[str]) -> dict[str, dict[str, float | int]]:
@@ -496,7 +501,7 @@ def summarize_evidence(
     proof_lines = [
         line
         for line in hostess_lines
-        if any(marker in line for marker in REQUIRED_MARKERS.values())
+        if any(line_has_marker(line, marker) for marker in REQUIRED_MARKERS.values())
     ]
     markers = {
         key: len(marker_lines(proof_lines, marker))

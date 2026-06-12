@@ -94,7 +94,8 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
                 "highRateJsonPayload=false sourceMeshBuffersResident=true "
                 "sourceMeshBuffersReused=false derivedBuffersResident=true "
-                "derivedBuffersReused=false",
+                "derivedBuffersReused=false "
+                "measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
             ),
             log_line(
                 5884,
@@ -119,7 +120,8 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
                 "highRateJsonPayload=false sourceMeshBuffersResident=true "
                 "sourceMeshBuffersReused=true derivedBuffersResident=true "
-                "derivedBuffersReused=true",
+                "derivedBuffersReused=true "
+                "measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
             ),
         ]
         log_lines = [

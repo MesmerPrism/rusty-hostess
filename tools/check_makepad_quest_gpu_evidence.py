@@ -365,7 +365,12 @@ def first_line_containing(lines: list[Any], token: str) -> str:
 
 
 def lines_containing(lines: list[Any], token: str) -> list[str]:
-    return [str(line) for line in lines if token in str(line)]
+    return [str(line) for line in lines if line_has_marker(str(line), token)]
+
+
+def line_has_marker(line: str, marker: str) -> bool:
+    pattern = re.compile(rf"(^|:\s+){re.escape(marker)}\b")
+    return bool(pattern.search(line))
 
 
 def count_lines_containing(lines: list[str], token: str) -> int:
