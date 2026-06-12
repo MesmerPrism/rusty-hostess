@@ -184,6 +184,7 @@ For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:
 
 ```powershell
+python tools\summarize_makepad_quest_gpu_evidence.py --input <evidence-root> --require-mesh-sdf-program-reuse --require-source-buffer-reuse --require-mesh-sdf-min-sample-count 8
 python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
@@ -195,7 +196,12 @@ storage/oracle/force diagnostics, emits `blockingGpuDiagnostics=false`, and
 expects two mesh-SDF proof lines: first-use setup and a reused-program line with
 `programReused=true`; current scaled dense-SDF evidence should also report at
 least `sampleCount=8`. Stale-heavy debug APK runs remain functional marker
-evidence only.
+evidence only. The summarizer is the Hostess-owned raw evidence adapter: it
+parses `logcat.txt`, filters VrApi stale counts to the Hostess process, ignores
+GPU-marker `kgslFaultsBeforeMarker` telemetry as non-fault evidence, writes the
+compact summary/check sidecars, and classifies off-face/asleep launches as XR
+readiness failures instead of GPU failures when startup markers appeared but
+proof markers did not.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256

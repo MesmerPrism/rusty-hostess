@@ -291,6 +291,7 @@ Live-hand GPU proof performance evidence must pass the optimized-profile
 summary checker before it is treated as a cadence baseline:
 
 ```powershell
+python tools\summarize_makepad_quest_gpu_evidence.py --input <evidence-root> --require-mesh-sdf-program-reuse --require-source-buffer-reuse --require-mesh-sdf-min-sample-count 8
 python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
@@ -306,7 +307,10 @@ produce a first-use setup marker and then a reused-program marker with
 `sampleCount=8`; newer markers should also report
 `sourceMeshBuffersResident=true` and, on the reused submit,
 `sourceMeshBuffersReused=true`. Stale-heavy debug APK runs remain functional
-marker evidence only, not performance evidence.
+marker evidence only, not performance evidence. Use the summarizer on raw
+Hostess evidence roots before the checker; it writes the compact summary,
+strict log scan, mesh-SDF source-buffer check, and an XR readiness summary when
+the run launched but stayed asleep/off-face before proof markers.
 
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
