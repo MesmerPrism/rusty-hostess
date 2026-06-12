@@ -20,6 +20,33 @@ pub(crate) struct RecordedHandSurfaceSource {
     source_id: String,
     builder: Arc<QuestMakepadRecordedHandSourceFrameBuilder>,
     frames: Vec<RecordedCompactHandJointFrame>,
+    vertex_count: usize,
+    triangle_count: usize,
+    worker_source_markers_emitted: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct RecordedHandSurfaceWorkerSourceSummary {
+    source_id: String,
+    frame_index: usize,
+    vertex_count: usize,
+    triangle_count: usize,
+    gpu_oracle_payloads_requested: bool,
+}
+
+impl RecordedHandSurfaceWorkerSourceSummary {
+    fn marker_line(&self, phase: &str, selected_mode: &str) -> String {
+        format!(
+            "RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_WORKER_SOURCE schema=rusty.hostess.makepad.recorded_hand_surface_worker_source.v1 phase={} status=ready selectedMode={} sourceId={} providerShape=bind-mesh-plus-compact-joint-frame frameIndex={} vertexCount={} triangleCount={} issue=none recordedHandProvider=true workerSourceSelected=true compactFrameWorkerSubmit=true sourceFrameExpansionThread=matter-worker gpuOraclePayloadsRequested={} recordedInputEquivalent=true gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            crate::runtime_settings::marker_token(phase),
+            crate::runtime_settings::marker_token(selected_mode),
+            crate::runtime_settings::marker_token(&self.source_id),
+            self.frame_index,
+            self.vertex_count,
+            self.triangle_count,
+            self.gpu_oracle_payloads_requested,
+        )
+    }
 }
 
 impl RecordedHandSurfaceSource {
@@ -70,6 +97,8 @@ impl RecordedHandSurfaceSource {
             return Ok(None);
         }
 
+        let vertex_count = rig.bind_surface.vertex_count();
+        let triangle_count = rig.bind_surface.triangle_count();
         let builder = QuestMakepadRecordedHandSourceFrameBuilder::new(source_id, rig)
             .map_err(|error| format!("build {source_id} source-frame builder failed: {error}"))?;
 
@@ -77,6 +106,9 @@ impl RecordedHandSurfaceSource {
             source_id: source_id.to_owned(),
             builder: Arc::new(builder),
             frames,
+            vertex_count,
+            triangle_count,
+            worker_source_markers_emitted: 0,
         }))
     }
 
@@ -87,8 +119,9 @@ impl RecordedHandSurfaceSource {
         replay_runtime: &MeshReplayRuntime,
         delta_seconds: f32,
         include_gpu_oracle_payloads: bool,
-    ) -> u64 {
+    ) -> RecordedHandSurfaceWorkerSourceSummary {
         let frame_index = replay_runtime.current_frame_index() % self.frames.len();
+        let frame = &self.frames[frame_index];
         let options = if include_gpu_oracle_payloads {
             QuestMakepadRecordedHandSourceFrameOptions::gpu_oracle_probes()
         } else {
@@ -97,11 +130,32 @@ impl RecordedHandSurfaceSource {
         worker.submit_recorded_hand_frame(
             phase,
             Arc::clone(&self.builder),
-            self.frames[frame_index].clone(),
+            frame.clone(),
             delta_seconds,
             options,
             "hostess.recorded_hand.center_probe",
-        )
+        );
+        RecordedHandSurfaceWorkerSourceSummary {
+            source_id: self.source_id.clone(),
+            frame_index: frame.frame_index,
+            vertex_count: self.vertex_count,
+            triangle_count: self.triangle_count,
+            gpu_oracle_payloads_requested: include_gpu_oracle_payloads,
+        }
+    }
+
+    pub(crate) fn worker_marker_line_if_due(
+        &mut self,
+        phase: &str,
+        selected_mode: &str,
+        summary: &RecordedHandSurfaceWorkerSourceSummary,
+        marker_limit: usize,
+    ) -> Option<String> {
+        if self.worker_source_markers_emitted >= marker_limit {
+            return None;
+        }
+        self.worker_source_markers_emitted += 1;
+        Some(summary.marker_line(phase, selected_mode))
     }
 
     pub(crate) fn marker_line(&self, phase: &str) -> String {
@@ -139,4 +193,35 @@ fn resolve_capture_file(root: &Path, file_name: &str) -> Option<PathBuf> {
     ]
     .into_iter()
     .find(|path| path.is_file())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn worker_marker_reports_recorded_live_equivalent_shape() {
+        let summary = RecordedHandSurfaceWorkerSourceSummary {
+            source_id: "recorded-meta-quest-hand-left-capture".to_string(),
+            frame_index: 42,
+            vertex_count: 1360,
+            triangle_count: 2314,
+            gpu_oracle_payloads_requested: true,
+        };
+
+        let marker = summary.marker_line("unit-test", "recorded-hand-replay");
+
+        assert!(marker.contains("RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_WORKER_SOURCE"));
+        assert!(marker.contains("selectedMode=recorded-hand-replay"));
+        assert!(marker.contains("providerShape=bind-mesh-plus-compact-joint-frame"));
+        assert!(marker.contains("frameIndex=42"));
+        assert!(marker.contains("vertexCount=1360"));
+        assert!(marker.contains("triangleCount=2314"));
+        assert!(marker.contains("compactFrameWorkerSubmit=true"));
+        assert!(marker.contains("sourceFrameExpansionThread=matter-worker"));
+        assert!(marker.contains("gpuOraclePayloadsRequested=true"));
+        assert!(marker.contains("recordedInputEquivalent=true"));
+        assert!(marker.contains("gpuAdapterBoundaryUnchanged=true"));
+        assert!(marker.contains("highRateJsonPayload=false"));
+    }
 }

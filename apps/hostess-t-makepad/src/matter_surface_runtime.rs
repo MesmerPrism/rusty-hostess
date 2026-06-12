@@ -164,16 +164,28 @@ impl App {
             return false;
         };
         let selected_mode = self.matter_surface_source_selection.mode();
+        let include_gpu_oracle_payloads = if selected_mode.allows_recorded_hand_replay() {
+            self.hand_gpu_oracle_payloads_due()
+        } else {
+            false
+        };
         if selected_mode.allows_recorded_hand_replay() {
-            if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
-                let include_gpu_oracle_payloads = self.hand_gpu_oracle_payloads_due();
-                recorded_source.submit_worker_frame_for_replay(
+            if let Some(recorded_source) = self.recorded_hand_surface_source.as_mut() {
+                let summary = recorded_source.submit_worker_frame_for_replay(
                     worker,
                     phase,
                     replay_runtime,
                     delta_seconds,
                     include_gpu_oracle_payloads,
                 );
+                if let Some(marker_line) = recorded_source.worker_marker_line_if_due(
+                    phase,
+                    selected_mode.marker_value(),
+                    &summary,
+                    MATTER_SURFACE_MARKER_LIMIT,
+                ) {
+                    emit_marker_line(&marker_line);
+                }
                 return true;
             }
         }

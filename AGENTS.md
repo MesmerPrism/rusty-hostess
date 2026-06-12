@@ -257,7 +257,12 @@ compact joint frame to `QuestMakepadMatterSurfaceWorker::submit_recorded_hand_fr
 instead of building `QuestMakepadMatterSurfaceSourceFrame` on the app/render
 thread. Request full GPU oracle payloads only when the bounded proof cadence
 can consume them; ordinary recorded replay uses the Matter-only source-frame
-option.
+option. Recorded worker-source evidence should include
+`RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_WORKER_SOURCE` with
+`compactFrameWorkerSubmit=true`,
+`sourceFrameExpansionThread=matter-worker`,
+`recordedInputEquivalent=true`, bounded `gpuOraclePayloadsRequested` values,
+and `highRateJsonPayload=false`.
 Use the explicit low-rate source mode
 `debug.rustyhostess.makepad.matter.surface.source=recorded-hand-replay` for
 recorded live-input-equivalent GPU proof evidence. Keep
