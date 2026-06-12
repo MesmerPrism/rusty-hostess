@@ -51,6 +51,7 @@ use matter_particle_texture::{
 use matter_surface_gpu::{
     PendingGpuMeshSdfProbe, PendingGpuSkinningMeshProbe, PendingGpuSkinningProbe,
 };
+use matter_surface_gpu_schedule::MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS;
 use matter_surface_runtime::MatterSurfacePanelOverlayFrame;
 use matter_surface_source_selection::MatterSurfaceSourceSelection;
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
@@ -5183,13 +5184,20 @@ impl App {
                 {
                     self.refresh_hostess_shell_runtime_capability_receipt();
                 }
-                if let Some(marker) = self.live_hand_surface_source.observe_update(
-                    cx,
-                    _update,
-                    self.shell_xr_runtime.xr_update_count(),
-                    "xr-update",
-                ) {
-                    emit_marker_line(&marker);
+                if self
+                    .matter_surface_source_selection
+                    .mode()
+                    .uses_live_openxr_hand()
+                {
+                    if let Some(marker) = self.live_hand_surface_source.observe_update(
+                        cx,
+                        _update,
+                        self.shell_xr_runtime.xr_update_count(),
+                        "xr-update",
+                        Some(MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS),
+                    ) {
+                        emit_marker_line(&marker);
+                    }
                 }
                 self.record_xr_pose_snapshot(_update);
                 self.handle_manifold_breath_feedback_subscription();

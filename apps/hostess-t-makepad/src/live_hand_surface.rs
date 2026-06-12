@@ -15,6 +15,7 @@ pub(crate) struct LiveHandSurfaceSource {
     right: Option<LiveHandSurfaceHandState>,
     left_rig: Option<LiveHandSurfaceRigCache>,
     right_rig: Option<LiveHandSurfaceRigCache>,
+    last_observe_time_seconds: Option<f64>,
     left_ready_marker_emitted: bool,
     right_ready_marker_emitted: bool,
     error_marker_emitted: bool,
@@ -25,6 +26,7 @@ impl LiveHandSurfaceSource {
         self.left_ready_marker_emitted = false;
         self.right_ready_marker_emitted = false;
         self.error_marker_emitted = false;
+        self.last_observe_time_seconds = None;
     }
 
     pub(crate) fn observe_update(
@@ -33,7 +35,11 @@ impl LiveHandSurfaceSource {
         update: &XrUpdateEvent,
         frame_index: u64,
         phase: &str,
+        min_interval_seconds: Option<f64>,
     ) -> Option<String> {
+        if !self.should_observe(update.state.time, min_interval_seconds) {
+            return None;
+        }
         let timestamp_ns = timestamp_ns(update.state.time);
         let left_bind = cx.xr_hand_mesh_bind_data(true);
         if let Some(marker) = self.observe_hand(
@@ -147,6 +153,32 @@ impl LiveHandSurfaceSource {
             }
             Err(issue) => self.live_hand_error_marker(phase, issue),
         }
+    }
+
+    fn should_observe(&mut self, time_seconds: f64, min_interval_seconds: Option<f64>) -> bool {
+        if self.left.is_none() && self.right.is_none() {
+            self.last_observe_time_seconds = time_seconds.is_finite().then_some(time_seconds);
+            return true;
+        }
+        let Some(min_interval_seconds) = min_interval_seconds else {
+            self.last_observe_time_seconds = time_seconds.is_finite().then_some(time_seconds);
+            return true;
+        };
+        if !time_seconds.is_finite()
+            || !min_interval_seconds.is_finite()
+            || min_interval_seconds <= 0.0
+        {
+            self.last_observe_time_seconds = time_seconds.is_finite().then_some(time_seconds);
+            return true;
+        }
+        if self
+            .last_observe_time_seconds
+            .is_none_or(|last| time_seconds - last >= min_interval_seconds)
+        {
+            self.last_observe_time_seconds = Some(time_seconds);
+            return true;
+        }
+        false
     }
 
     fn live_hand_error_marker(&mut self, phase: &str, issue: String) -> Option<String> {
@@ -378,6 +410,49 @@ mod tests {
                 .expect("right frame result"),
             None
         );
+    }
+
+    #[test]
+    fn live_observe_interval_keeps_first_frame_and_bounds_followups() {
+        let mut source = LiveHandSurfaceSource::default();
+
+        assert!(source.should_observe(1.0, Some(0.25)));
+        source.left = Some(LiveHandSurfaceHandState {
+            source_id: LIVE_LEFT_SOURCE_ID,
+            is_left: true,
+            rig: Arc::new(
+                RecordedHandRig::from_makepad_openxr_bind_data(
+                    true,
+                    1,
+                    &vec![([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]); 26],
+                    &vec![0.01; 26],
+                    &vec![-1; 26],
+                    &[[0.0, 0.0, 0.0]],
+                    &[[0.0, 1.0, 0.0]],
+                    &[[0, 0, 0, 0]],
+                    &[[1.0, 0.0, 0.0, 0.0]],
+                    &[0, 0, 0],
+                )
+                .expect("test rig"),
+            ),
+            compact_frame: RecordedCompactHandJointFrame::from_makepad_openxr_compact_frame(
+                true,
+                0,
+                0,
+                &vec![([0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 1.0]); 21],
+                [0.0; 5],
+                [0.0; 4],
+            )
+            .expect("test frame"),
+            bind_version: 1,
+            joint_count: 26,
+            vertex_count: 1,
+            index_count: 3,
+        });
+
+        assert!(!source.should_observe(1.1, Some(0.25)));
+        assert!(source.should_observe(1.25, Some(0.25)));
+        assert!(source.should_observe(1.26, None));
     }
 
     fn synthetic_hand() -> XrHand {

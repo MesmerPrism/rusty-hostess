@@ -8,6 +8,7 @@ use crate::matter_surface_source_selection::MatterSurfaceSourceSelection;
 use crate::runtime_settings::marker_token;
 
 pub(crate) const MATTER_SURFACE_LIVE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 24;
+pub(crate) const MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS: f64 = 1.0 / 15.0;
 pub(crate) const MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS: f64 = 1.0;
 
 pub(crate) fn matter_surface_step_interval_seconds(
@@ -69,12 +70,13 @@ impl MatterSurfaceGpuProofSchedule {
         draw_event_count: u64,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} sourceAwareLiveFirstProof={} cadenceGate=source-aware-first-proof liveSourceSubmitCadence=bounded-evidence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveObserveIntervalSeconds={:.6} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} sourceAwareLiveFirstProof={} cadenceGate=source-aware-first-proof liveSourceObserveCadence=bounded-evidence liveSourceSubmitCadence=bounded-evidence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
             marker_token(phase),
             marker_token(selection.mode().marker_value()),
             self.min_cadence_frames,
             default_min_cadence_frames,
             MATTER_SURFACE_LIVE_GPU_PROBE_MIN_CADENCE_FRAMES,
+            MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS,
             matter_surface_step_interval_seconds(selection, default_step_interval_seconds),
             default_step_interval_seconds,
             frame_count,
@@ -118,6 +120,8 @@ mod tests {
             matter_surface_step_interval_seconds(&selection, 1.0 / 12.0),
             MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS
         );
+        assert!(MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS > 0.0);
+        assert!(MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS < 1.0);
     }
 
     #[test]
@@ -129,7 +133,9 @@ mod tests {
         assert!(marker.contains("selectedMode=live-openxr-hand-right"));
         assert!(marker.contains("minCadenceFrames=24"));
         assert!(marker.contains("defaultMinCadenceFrames=900"));
+        assert!(marker.contains("liveObserveIntervalSeconds=0.066667"));
         assert!(marker.contains("liveSourceStepIntervalSeconds=1.000"));
+        assert!(marker.contains("liveSourceObserveCadence=bounded-evidence"));
         assert!(marker.contains("liveSourceSubmitCadence=bounded-evidence"));
         assert!(marker.contains("sourceAwareLiveFirstProof=true"));
         assert!(marker.contains("gpuAdapterBoundaryUnchanged=true"));
