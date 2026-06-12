@@ -44,7 +44,7 @@ use makepad_effective_settings::MakepadCameraShellFeatureUniforms;
 use matter_particle_texture::{
     MatterParticleTextureFrame, MatterParticleTextureRenderer, MATTER_PARTICLE_TEXTURE_SLOT,
 };
-use matter_surface_gpu::PendingGpuMeshSdfProbe;
+use matter_surface_gpu::{PendingGpuMeshSdfProbe, PendingGpuSkinningMeshProbe};
 use matter_surface_runtime::MatterSurfacePanelOverlayFrame;
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use matter_world_adf_debug::{MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX};
@@ -1663,6 +1663,8 @@ pub struct App {
     matter_surface_gpu_skinning_probe_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_skinning_mesh_probe_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_skinning_mesh_probe_pending: Option<PendingGpuSkinningMeshProbe>,
     #[rust]
     matter_surface_gpu_mesh_sdf_probe_markers_emitted: usize,
     #[rust]
@@ -3564,6 +3566,7 @@ impl App {
         self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
         self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
         self.matter_surface_gpu_skinning_mesh_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_mesh_probe_pending = None;
         self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
         self.matter_surface_gpu_mesh_sdf_probe_pending = None;
         self.matter_surface_gpu_sync_probe_last_frame = 0;

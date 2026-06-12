@@ -11,7 +11,8 @@ use crate::makepad_widgets::*;
 use crate::matter_particle_texture::MatterParticleTextureFrame;
 use crate::matter_surface_gpu::{
     gpu_mesh_sdf_probe_poll_marker_line, gpu_mesh_sdf_probe_submit,
-    gpu_skinning_mesh_probe_marker_line, gpu_skinning_probe_marker_line,
+    gpu_skinning_mesh_probe_poll_marker_line, gpu_skinning_mesh_probe_submit,
+    gpu_skinning_probe_marker_line,
 };
 use crate::matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use crate::matter_world_adf_debug::{
@@ -217,6 +218,7 @@ impl App {
                     .cadence_frame_count
                     .saturating_sub(self.matter_surface_gpu_sync_probe_last_frame)
                     >= MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP);
+        let mut gpu_async_probe_completed_this_frame = false;
         if self.matter_surface_gpu_mesh_sdf_probe_markers_emitted == 0 {
             let completed_mesh_sdf_marker = self
                 .matter_surface_gpu_mesh_sdf_probe_pending
@@ -226,9 +228,22 @@ impl App {
                 emit_marker_line(&marker);
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted += 1;
                 self.matter_surface_gpu_mesh_sdf_probe_pending = None;
+                gpu_async_probe_completed_this_frame = true;
             }
         }
-        let mut gpu_sync_probe_emitted_this_frame = false;
+        if self.matter_surface_gpu_skinning_mesh_probe_markers_emitted == 0 {
+            let completed_skinning_mesh_marker = self
+                .matter_surface_gpu_skinning_mesh_probe_pending
+                .as_ref()
+                .and_then(|pending| gpu_skinning_mesh_probe_poll_marker_line(cx, pending, phase));
+            if let Some(marker) = completed_skinning_mesh_marker {
+                emit_marker_line(&marker);
+                self.matter_surface_gpu_skinning_mesh_probe_markers_emitted += 1;
+                self.matter_surface_gpu_skinning_mesh_probe_pending = None;
+                gpu_async_probe_completed_this_frame = true;
+            }
+        }
+        let mut gpu_sync_probe_emitted_this_frame = gpu_async_probe_completed_this_frame;
         if gpu_sync_probe_due && self.matter_surface_gpu_storage_probe_markers_emitted == 0 {
             if let Some(preflight) = gpu_compute_preflight.as_ref() {
                 if let Some(readback) = cx.xr_gpu_storage_buffer_probe(
@@ -380,11 +395,13 @@ impl App {
         if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_skinning_mesh_probe_markers_emitted == 0
+            && self
+                .matter_surface_gpu_skinning_mesh_probe_pending
+                .is_none()
         {
             if let Some(input) = frame.gpu_skinning_mesh_probe.as_ref() {
-                if let Some(marker) = gpu_skinning_mesh_probe_marker_line(cx, input, phase) {
-                    emit_marker_line(&marker);
-                    self.matter_surface_gpu_skinning_mesh_probe_markers_emitted += 1;
+                if let Some(pending) = gpu_skinning_mesh_probe_submit(cx, input) {
+                    self.matter_surface_gpu_skinning_mesh_probe_pending = Some(pending);
                     self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                     gpu_sync_probe_emitted_this_frame = true;
                 }
