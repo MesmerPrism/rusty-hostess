@@ -292,7 +292,7 @@ summary checker before it is treated as a cadence baseline:
 
 ```powershell
 python tools\summarize_makepad_quest_gpu_evidence.py --input <evidence-root> --require-mesh-sdf-program-reuse --require-source-buffer-reuse --require-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8
-python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-source-buffer-reuse --require-mesh-sdf-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
 The checker also gates recorded-hand replay proof summaries when they are
