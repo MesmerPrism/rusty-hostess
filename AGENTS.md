@@ -99,10 +99,13 @@ The helper also stages `makepad-effective-settings.revision.json` beside
 `makepad-effective-settings.json`. Treat settings changes as active
 control-plane invalidation: Hostess runtime hotload prefers the tiny
 sidecar/global identity, compares scoped hashes, and uses path/mtime only as a
-fallback for older staged bundles. Watcher events, mtime changes, and blocking
-wakeups are hints, not proof of meaningful detail changes. Keep high-rate
-hands, meshes, SDF/ADF fields, particles, and GPU buffers out of
-settings/control JSON.
+fallback for older staged bundles. The repo-family policy is layered:
+wakeup hint, global revision/hash, scoped revision/hash, then detailed JSON
+adoption only for changed owned scopes. Watcher events, mtime changes, and
+blocking wakeups are hints, not proof of meaningful detail changes or
+successful adoption. Runtime evidence should distinguish seen, applied, and
+rejected revisions. Keep high-rate hands, meshes, SDF/ADF fields, particles,
+and GPU buffers out of settings/control JSON.
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Stage-HostessMakepadSettings.ps1 `

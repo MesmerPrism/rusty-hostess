@@ -122,9 +122,10 @@ control-plane sidecar with global and scoped hashes for settings invalidation.
 Hostess runtime hotload prefers that sidecar as its revision key and falls back
 to path/mtime only for older staged bundles. Treat filesystem/watch events and
 mtime changes as hints: compare relevant scope hashes before parsing the full
-effective-settings JSON. High-rate hand, mesh, field, particle, and GPU-buffer
-payloads must stay in sibling data-plane files or adapter buffers, never in
-settings/control JSON.
+effective-settings JSON. The policy is wakeup hint, global revision/hash,
+scoped revision/hash, then detailed adoption with applied/rejected evidence.
+High-rate hand, mesh, field, particle, and GPU-buffer payloads must stay in
+sibling data-plane files or adapter buffers, never in settings/control JSON.
 Collision, SDF, ADF, and particle controls are also sourced from the same
 effective-settings report. Hostess now consumes the camera-shell adapter's
 native Matter-surface runtime boundary and records receipt evidence for the

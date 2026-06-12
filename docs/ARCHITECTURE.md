@@ -82,6 +82,13 @@ recorded replay worker input yet, does not own Matter CPU skinning/SDF truth,
 and does not route hand meshes, joint frames, fields, particles, or GPU buffers
 through settings/control JSON.
 
+Hostess settings hotload follows the repo-family settings invalidation policy:
+settings writes are active control-plane transactions that publish a compact
+revision sidecar; runtime consumers compare global then scoped hashes before
+parsing detailed settings; adoption evidence must distinguish seen, applied,
+and rejected revisions. Hostess may stage and observe settings, but it must not
+turn settings JSON into a frame, field, particle, or GPU-buffer transport.
+
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live
 run is tied back to the Manifold Hostess contract spine.
