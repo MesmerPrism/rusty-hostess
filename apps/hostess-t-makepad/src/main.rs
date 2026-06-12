@@ -182,6 +182,7 @@ const FRAME_ADOPTION_MARKER_PERIOD: usize = 120;
 const MATTER_SURFACE_STEP_INTERVAL_SECONDS: f64 = 1.0 / 12.0;
 const MATTER_SURFACE_MARKER_LIMIT: usize = 8;
 const MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 900;
+const MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP: u64 = 90;
 const MATTER_SURFACE_GPU_FORCE_PROBE_TOLERANCE: f32 = 0.0001;
 const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX;
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
@@ -1663,6 +1664,8 @@ pub struct App {
     matter_surface_gpu_skinning_mesh_probe_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_mesh_sdf_probe_markers_emitted: usize,
+    #[rust]
+    matter_surface_gpu_sync_probe_last_frame: u64,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3559,6 +3562,7 @@ impl App {
         self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
         self.matter_surface_gpu_skinning_mesh_probe_markers_emitted = 0;
         self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
+        self.matter_surface_gpu_sync_probe_last_frame = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;

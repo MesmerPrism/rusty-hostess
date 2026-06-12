@@ -21,10 +21,10 @@ use crate::matter_world_particle_billboard::MatterWorldParticleBillboardCloud;
 use crate::{
     emit_marker_line, marker_f32_token, marker_token, App,
     MATTER_SURFACE_GPU_FORCE_PROBE_TOLERANCE, MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
-    MATTER_SURFACE_MARKER_LIMIT, MATTER_SURFACE_STEP_INTERVAL_SECONDS,
-    MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX, MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT,
-    MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER, MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT,
-    MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
+    MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP, MATTER_SURFACE_MARKER_LIMIT,
+    MATTER_SURFACE_STEP_INTERVAL_SECONDS, MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX,
+    MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT, MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
+    MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT, MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS,
 };
 use rusty_quest_makepad_camera_shell::{
     MatterSurfaceContactProbe, QuestMakepadGpuComputePreflight, QuestMakepadGpuFieldForceProbe,
@@ -211,10 +211,14 @@ impl App {
             && self.cadence_frame_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
             && self.cadence_xr_update_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
             && self.cadence_draw_event_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES;
+        let gpu_sync_probe_due = gpu_probe_steady_state_ready
+            && (self.matter_surface_gpu_sync_probe_last_frame == 0
+                || self
+                    .cadence_frame_count
+                    .saturating_sub(self.matter_surface_gpu_sync_probe_last_frame)
+                    >= MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP);
         let mut gpu_sync_probe_emitted_this_frame = false;
-        if gpu_probe_steady_state_ready
-            && self.matter_surface_gpu_storage_probe_markers_emitted == 0
-        {
+        if gpu_sync_probe_due && self.matter_surface_gpu_storage_probe_markers_emitted == 0 {
             if let Some(preflight) = gpu_compute_preflight.as_ref() {
                 if let Some(readback) = cx.xr_gpu_storage_buffer_probe(
                     QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES,
@@ -235,11 +239,12 @@ impl App {
                     );
                     emit_marker_line(&probe.marker_line(phase));
                     self.matter_surface_gpu_storage_probe_markers_emitted += 1;
+                    self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                     gpu_sync_probe_emitted_this_frame = true;
                 }
             }
         }
-        if gpu_probe_steady_state_ready
+        if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_oracle_compute_probe_markers_emitted == 0
         {
@@ -266,11 +271,12 @@ impl App {
                     );
                     emit_marker_line(&probe.marker_line(phase));
                     self.matter_surface_gpu_oracle_compute_probe_markers_emitted += 1;
+                    self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                     gpu_sync_probe_emitted_this_frame = true;
                 }
             }
         }
-        if gpu_probe_steady_state_ready
+        if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_field_force_probe_markers_emitted == 0
         {
@@ -339,13 +345,15 @@ impl App {
                             );
                             emit_marker_line(&probe.marker_line(phase));
                             self.matter_surface_gpu_field_force_probe_markers_emitted += 1;
+                            self.matter_surface_gpu_sync_probe_last_frame =
+                                self.cadence_frame_count;
                             gpu_sync_probe_emitted_this_frame = true;
                         }
                     }
                 }
             }
         }
-        if gpu_probe_steady_state_ready
+        if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_skinning_probe_markers_emitted == 0
         {
@@ -353,11 +361,12 @@ impl App {
                 if let Some(marker) = gpu_skinning_probe_marker_line(cx, input, phase) {
                     emit_marker_line(&marker);
                     self.matter_surface_gpu_skinning_probe_markers_emitted += 1;
+                    self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                     gpu_sync_probe_emitted_this_frame = true;
                 }
             }
         }
-        if gpu_probe_steady_state_ready
+        if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_skinning_mesh_probe_markers_emitted == 0
         {
@@ -365,11 +374,12 @@ impl App {
                 if let Some(marker) = gpu_skinning_mesh_probe_marker_line(cx, input, phase) {
                     emit_marker_line(&marker);
                     self.matter_surface_gpu_skinning_mesh_probe_markers_emitted += 1;
+                    self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                     gpu_sync_probe_emitted_this_frame = true;
                 }
             }
         }
-        if gpu_probe_steady_state_ready
+        if gpu_sync_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_mesh_sdf_probe_markers_emitted == 0
         {
@@ -377,6 +387,7 @@ impl App {
                 if let Some(marker) = gpu_mesh_sdf_probe_marker_line(cx, input, phase) {
                     emit_marker_line(&marker);
                     self.matter_surface_gpu_mesh_sdf_probe_markers_emitted += 1;
+                    self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                 }
             }
         }
