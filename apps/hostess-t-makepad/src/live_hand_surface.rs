@@ -55,17 +55,39 @@ impl LiveHandSurfaceSource {
         )
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub(crate) fn source_frame_for_latest(
         &self,
     ) -> Result<Option<QuestMakepadMatterSurfaceSourceFrame>, QuestMakepadMatterSurfaceError> {
-        if let Some(left) = self.left.as_ref() {
-            return left.source_frame().map(Some);
+        self.source_frame_for_latest_matching(None)
+    }
+
+    pub(crate) fn source_frame_for_latest_matching(
+        &self,
+        is_left: Option<bool>,
+    ) -> Result<Option<QuestMakepadMatterSurfaceSourceFrame>, QuestMakepadMatterSurfaceError> {
+        if matches!(is_left, None | Some(true)) {
+            if let Some(left) = self.left.as_ref() {
+                return left.source_frame().map(Some);
+            }
         }
-        self.right
-            .as_ref()
-            .map(LiveHandSurfaceHandState::source_frame)
-            .transpose()
+        if matches!(is_left, None | Some(false)) {
+            return self
+                .right
+                .as_ref()
+                .map(LiveHandSurfaceHandState::source_frame)
+                .transpose();
+        }
+        Ok(None)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn has_latest_matching(&self, is_left: Option<bool>) -> bool {
+        match is_left {
+            Some(true) => self.left.is_some(),
+            Some(false) => self.right.is_some(),
+            None => self.left.is_some() || self.right.is_some(),
+        }
     }
 
     fn observe_hand(
@@ -291,6 +313,14 @@ mod tests {
         assert!(source_frame.gpu_mesh_sdf_probe.is_some());
         let position = source_frame.frame.surface.positions[2];
         assert_eq!([position.x, position.y, position.z], [1.0, 1.0, -0.25]);
+        assert!(source.has_latest_matching(Some(true)));
+        assert!(!source.has_latest_matching(Some(false)));
+        assert_eq!(
+            source
+                .source_frame_for_latest_matching(Some(false))
+                .expect("right frame result"),
+            None
+        );
     }
 
     fn synthetic_hand() -> XrHand {

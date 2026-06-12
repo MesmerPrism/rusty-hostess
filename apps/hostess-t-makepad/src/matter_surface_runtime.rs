@@ -32,9 +32,10 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuFieldForceProbeReadback, QuestMakepadGpuOracleComputeProbe,
     QuestMakepadGpuOracleComputeProbeReadback, QuestMakepadGpuResidencyProof,
     QuestMakepadGpuStorageProbe, QuestMakepadGpuStorageProbeReadback,
-    QuestMakepadMatterSurfaceWorkerFrame, QuestMakepadMatterSurfaceWorkerOutput,
-    QuestMakepadWorldAdfDebugPlacement, QuestMakepadWorldParticlePlacement,
-    DEFAULT_WORLD_CONTENT_TARGET_RADIUS, QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
+    QuestMakepadMatterSurfaceSourceFrame, QuestMakepadMatterSurfaceWorkerFrame,
+    QuestMakepadMatterSurfaceWorkerOutput, QuestMakepadWorldAdfDebugPlacement,
+    QuestMakepadWorldParticlePlacement, DEFAULT_WORLD_CONTENT_TARGET_RADIUS,
+    QUEST_MAKEPAD_GPU_COMPUTE_DEFAULT_READBACK_PROBE_COUNT,
     QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_BYTES, QUEST_MAKEPAD_GPU_STORAGE_PROBE_DEFAULT_PATTERN,
     QUEST_MAKEPAD_WORLD_ADF_DEBUG_RENDER_MODE,
     QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE,
@@ -102,21 +103,69 @@ impl App {
         phase: &str,
         delta_seconds: f32,
     ) -> bool {
-        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
+        if self.matter_surface_worker.is_none() {
             self.matter_surface_cached_world_particle_batch = None;
             self.matter_surface_cached_world_adf_debug_batch = None;
             return false;
-        };
+        }
+        if self
+            .matter_surface_source_selection
+            .mode()
+            .uses_live_openxr_hand()
+        {
+            let selected_mode = self.matter_surface_source_selection.mode();
+            let source_frame = match self
+                .live_hand_surface_source
+                .source_frame_for_latest_matching(selected_mode.live_is_left())
+            {
+                Ok(Some(source_frame)) => source_frame,
+                Ok(None) => {
+                    self.emit_live_hand_surface_worker_source_marker(
+                        phase,
+                        "waiting",
+                        selected_mode.marker_value(),
+                        None,
+                        Some("live_openxr_hand_not_ready"),
+                    );
+                    return false;
+                }
+                Err(error) => {
+                    self.emit_live_hand_surface_worker_source_marker(
+                        phase,
+                        "error",
+                        selected_mode.marker_value(),
+                        None,
+                        Some(&error.to_string()),
+                    );
+                    return false;
+                }
+            };
+            let probes =
+                source_frame_contact_probes(&source_frame, "hostess.live_openxr_hand.center_probe");
+            self.emit_live_hand_surface_worker_source_marker(
+                phase,
+                "ready",
+                selected_mode.marker_value(),
+                Some(&source_frame),
+                None,
+            );
+            let Some(worker) = self.matter_surface_worker.as_ref() else {
+                return false;
+            };
+            worker.submit_source_frame(phase, source_frame, delta_seconds, &probes);
+            return true;
+        }
+
         let Some(worker) = self.matter_surface_worker.as_ref() else {
             self.matter_surface_cached_world_particle_batch = None;
             self.matter_surface_cached_world_adf_debug_batch = None;
             return false;
         };
-        let probe = MatterSurfaceContactProbe::sphere(
-            "hostess.camera_shell.center_probe",
-            replay_runtime.sequence().bounds_center(),
-            replay_runtime.sequence().bounds_radius() * 0.5,
-        );
+        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
+            self.matter_surface_cached_world_particle_batch = None;
+            self.matter_surface_cached_world_adf_debug_batch = None;
+            return false;
+        };
         if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
             let source_frame = match recorded_source.source_frame_for_replay(replay_runtime) {
                 Ok(source_frame) => source_frame,
@@ -132,9 +181,16 @@ impl App {
                     return false;
                 }
             };
-            worker.submit_source_frame(phase, source_frame, delta_seconds, &[probe]);
+            let probes =
+                source_frame_contact_probes(&source_frame, "hostess.recorded_hand.center_probe");
+            worker.submit_source_frame(phase, source_frame, delta_seconds, &probes);
             return true;
         }
+        let probe = MatterSurfaceContactProbe::sphere(
+            "hostess.camera_shell.center_probe",
+            replay_runtime.sequence().bounds_center(),
+            replay_runtime.sequence().bounds_radius() * 0.5,
+        );
         match worker.submit_replay_frame(phase, replay_runtime, delta_seconds, &[probe]) {
             Ok(_) => true,
             Err(error) => {
@@ -151,6 +207,45 @@ impl App {
                 false
             }
         }
+    }
+
+    fn emit_live_hand_surface_worker_source_marker(
+        &mut self,
+        phase: &str,
+        status: &str,
+        selected_mode: &str,
+        source_frame: Option<&QuestMakepadMatterSurfaceSourceFrame>,
+        issue: Option<&str>,
+    ) {
+        if self.matter_surface_live_source_worker_markers_emitted >= MATTER_SURFACE_MARKER_LIMIT {
+            return;
+        }
+        let source_id = source_frame
+            .map(|frame| frame.source_id.as_str())
+            .unwrap_or("none");
+        let provider_shape = source_frame
+            .map(|frame| frame.provider_shape.marker_value())
+            .unwrap_or("none");
+        let frame_index = source_frame.map_or(0, |frame| frame.frame.frame_index);
+        let vertex_count = source_frame.map_or(0, |frame| frame.frame.surface.vertex_count());
+        let triangle_count = source_frame.map_or(0, |frame| frame.frame.surface.triangle_count());
+        emit_marker_line(&format!(
+            "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_WORKER_SOURCE schema=rusty.hostess.makepad.live_hand_surface_worker_source.v1 phase={} status={} selectedMode={} sourceId={} providerShape={} frameIndex={} vertexCount={} triangleCount={} issue={} liveOpenXrHandProvider=true workerSourceSelected={} recordedInputEquivalent={} gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            marker_token(phase),
+            marker_token(status),
+            marker_token(selected_mode),
+            marker_token(source_id),
+            marker_token(provider_shape),
+            frame_index,
+            vertex_count,
+            triangle_count,
+            issue
+                .map(marker_token)
+                .unwrap_or_else(|| "none".to_string()),
+            source_frame.is_some() && status == "ready",
+            source_frame.is_some(),
+        ));
+        self.matter_surface_live_source_worker_markers_emitted += 1;
     }
 
     fn consume_matter_surface_worker_output(
@@ -431,13 +526,8 @@ impl App {
                 }
             }
         }
-        let Some(replay_runtime) = self.mesh_replay_runtime.as_ref() else {
-            self.matter_surface_cached_world_particle_batch = None;
-            self.matter_surface_cached_world_adf_debug_batch = None;
-            return MatterSurfacePanelOverlayFrame::default();
-        };
-        let bounds_min = replay_runtime.sequence().bounds_min();
-        let bounds_max = replay_runtime.sequence().bounds_max();
+        let bounds_min = frame.source_bounds_min;
+        let bounds_max = frame.source_bounds_max;
         let draw_limit = self.current_matter_world_particle_draw_limit();
         let world_batch = frame.world_particle_batch(
             bounds_min,
@@ -635,4 +725,21 @@ impl App {
         );
         self.matter_surface_world_adf_debug_draw_markers_emitted += 1;
     }
+}
+
+fn source_frame_contact_probes(
+    source_frame: &QuestMakepadMatterSurfaceSourceFrame,
+    probe_id: &str,
+) -> Vec<MatterSurfaceContactProbe> {
+    let Some(mut center) = source_frame.frame.surface.positions.first().copied() else {
+        return Vec::new();
+    };
+    center.x = (source_frame.bounds_min[0] + source_frame.bounds_max[0]) * 0.5;
+    center.y = (source_frame.bounds_min[1] + source_frame.bounds_max[1]) * 0.5;
+    center.z = (source_frame.bounds_min[2] + source_frame.bounds_max[2]) * 0.5;
+    vec![MatterSurfaceContactProbe::sphere(
+        probe_id,
+        center,
+        source_frame.bounds_radius.max(0.001) * 0.5,
+    )]
 }

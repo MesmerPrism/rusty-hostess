@@ -19,6 +19,7 @@ mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_gpu;
 mod matter_surface_runtime;
+mod matter_surface_source_selection;
 mod matter_surface_uniforms;
 mod matter_world_adf_debug;
 mod matter_world_particle_billboard;
@@ -50,6 +51,7 @@ use matter_surface_gpu::{
     PendingGpuMeshSdfProbe, PendingGpuSkinningMeshProbe, PendingGpuSkinningProbe,
 };
 use matter_surface_runtime::MatterSurfacePanelOverlayFrame;
+use matter_surface_source_selection::MatterSurfaceSourceSelection;
 use matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use matter_world_adf_debug::{MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX};
 use matter_world_particle_billboard::{
@@ -1652,11 +1654,15 @@ pub struct App {
     #[rust]
     live_hand_surface_source: LiveHandSurfaceSource,
     #[rust]
+    matter_surface_source_selection: MatterSurfaceSourceSelection,
+    #[rust]
     matter_surface_worker: Option<QuestMakepadMatterSurfaceWorker>,
     #[rust]
     matter_surface_frame_markers_emitted: usize,
     #[rust]
     matter_surface_worker_markers_emitted: usize,
+    #[rust]
+    matter_surface_live_source_worker_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_compute_preflight_markers_emitted: usize,
     #[rust]
@@ -3568,6 +3574,7 @@ impl App {
             .map(QuestMakepadMatterSurfaceWorker::from_runtime);
         self.matter_surface_frame_markers_emitted = 0;
         self.matter_surface_worker_markers_emitted = 0;
+        self.matter_surface_live_source_worker_markers_emitted = 0;
         self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
         self.matter_surface_gpu_storage_probe_markers_emitted = 0;
         self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
@@ -3591,6 +3598,8 @@ impl App {
         self.matter_surface_cached_world_adf_debug_batch = None;
         self.matter_particle_texture.reset_markers();
         self.live_hand_surface_source.reset_markers();
+        self.matter_surface_source_selection = MatterSurfaceSourceSelection::from_runtime();
+        emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
         self.mesh_replay_runtime = selection.runtime;
         self.recorded_hand_surface_source = self
             .mesh_replay_runtime
