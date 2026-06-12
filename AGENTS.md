@@ -245,6 +245,12 @@ worker submission, GPU-probe evidence, and world draw evidence;
 `recorded_hand_surface.rs` owns staged bind-rig plus compact joint-frame
 loading. Keep `main.rs` as app-shell wiring and do not route high-rate hand,
 mesh, field, particle, or GPU-buffer payloads through settings/control JSON.
+Recorded replay should submit the cached recorded-hand builder plus the current
+compact joint frame to `QuestMakepadMatterSurfaceWorker::submit_recorded_hand_frame`
+instead of building `QuestMakepadMatterSurfaceSourceFrame` on the app/render
+thread. Request full GPU oracle payloads only when the bounded proof cadence
+can consume them; ordinary recorded replay uses the Matter-only source-frame
+option.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates

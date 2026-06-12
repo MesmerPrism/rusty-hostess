@@ -1,8 +1,11 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use rusty_quest_makepad_camera_shell::{
-    MeshReplayRuntime, QuestMakepadMatterSurfaceError, QuestMakepadMatterSurfaceSourceFrame,
-    QuestMakepadRecordedHandSourceFrameBuilder, RecordedCompactHandJointFrame, RecordedHandRig,
+    MeshReplayRuntime, QuestMakepadMatterSurfaceWorker, QuestMakepadRecordedHandSourceFrameBuilder,
+    QuestMakepadRecordedHandSourceFrameOptions, RecordedCompactHandJointFrame, RecordedHandRig,
     MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_LEFT,
     MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_RIGHT,
 };
@@ -15,7 +18,7 @@ const RIGHT_CLIP_FILE: &str = "right.clip.jsonl";
 #[derive(Clone, Debug)]
 pub(crate) struct RecordedHandSurfaceSource {
     source_id: String,
-    builder: QuestMakepadRecordedHandSourceFrameBuilder,
+    builder: Arc<QuestMakepadRecordedHandSourceFrameBuilder>,
     frames: Vec<RecordedCompactHandJointFrame>,
 }
 
@@ -72,17 +75,33 @@ impl RecordedHandSurfaceSource {
 
         Ok(Some(Self {
             source_id: source_id.to_owned(),
-            builder,
+            builder: Arc::new(builder),
             frames,
         }))
     }
 
-    pub(crate) fn source_frame_for_replay(
+    pub(crate) fn submit_worker_frame_for_replay(
         &self,
+        worker: &QuestMakepadMatterSurfaceWorker,
+        phase: &str,
         replay_runtime: &MeshReplayRuntime,
-    ) -> Result<QuestMakepadMatterSurfaceSourceFrame, QuestMakepadMatterSurfaceError> {
+        delta_seconds: f32,
+        include_gpu_oracle_payloads: bool,
+    ) -> u64 {
         let frame_index = replay_runtime.current_frame_index() % self.frames.len();
-        self.builder.source_frame(&self.frames[frame_index])
+        let options = if include_gpu_oracle_payloads {
+            QuestMakepadRecordedHandSourceFrameOptions::gpu_oracle_probes()
+        } else {
+            QuestMakepadRecordedHandSourceFrameOptions::matter_only()
+        };
+        worker.submit_recorded_hand_frame(
+            phase,
+            Arc::clone(&self.builder),
+            self.frames[frame_index].clone(),
+            delta_seconds,
+            options,
+            "hostess.recorded_hand.center_probe",
+        )
     }
 
     pub(crate) fn marker_line(&self, phase: &str) -> String {

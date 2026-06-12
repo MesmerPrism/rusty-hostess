@@ -173,23 +173,14 @@ impl App {
             return false;
         };
         if let Some(recorded_source) = self.recorded_hand_surface_source.as_ref() {
-            let source_frame = match recorded_source.source_frame_for_replay(replay_runtime) {
-                Ok(source_frame) => source_frame,
-                Err(error) => {
-                    if self.matter_surface_worker_markers_emitted < MATTER_SURFACE_MARKER_LIMIT {
-                        emit_marker_line(&format!(
-                            "RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER schema=rusty.quest.makepad.matter_surface_worker.v1 phase={} status=error mode=latest-wins workerThread=true renderThreadBlocking=false issue={}",
-                            marker_token(phase),
-                            marker_token(&error.to_string()),
-                        ));
-                        self.matter_surface_worker_markers_emitted += 1;
-                    }
-                    return false;
-                }
-            };
-            let probes =
-                source_frame_contact_probes(&source_frame, "hostess.recorded_hand.center_probe");
-            worker.submit_source_frame(phase, source_frame, delta_seconds, &probes);
+            let include_gpu_oracle_payloads = self.recorded_hand_gpu_oracle_payloads_due();
+            recorded_source.submit_worker_frame_for_replay(
+                worker,
+                phase,
+                replay_runtime,
+                delta_seconds,
+                include_gpu_oracle_payloads,
+            );
             return true;
         }
         let probe = MatterSurfaceContactProbe::sphere(
@@ -213,6 +204,38 @@ impl App {
                 false
             }
         }
+    }
+
+    fn recorded_hand_gpu_oracle_payloads_due(&self) -> bool {
+        let gpu_probe_schedule = MatterSurfaceGpuProofSchedule::for_source_selection(
+            &self.matter_surface_source_selection,
+            MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
+        );
+        if !gpu_probe_schedule.cadence_ready(
+            self.cadence_started,
+            self.cadence_frame_count,
+            self.cadence_xr_update_count,
+            self.cadence_draw_event_count,
+        ) {
+            return false;
+        }
+        if self.matter_surface_gpu_sync_probe_last_frame != 0
+            && self
+                .cadence_frame_count
+                .saturating_sub(self.matter_surface_gpu_sync_probe_last_frame)
+                < MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP
+        {
+            return false;
+        }
+        (self.matter_surface_gpu_skinning_probe_markers_emitted == 0
+            && self.matter_surface_gpu_skinning_probe_pending.is_none())
+            || (self.matter_surface_gpu_skinning_mesh_probe_markers_emitted == 0
+                && self
+                    .matter_surface_gpu_skinning_mesh_probe_pending
+                    .is_none())
+            || (self.matter_surface_gpu_mesh_sdf_probe_markers_emitted
+                < gpu_probe_schedule.mesh_sdf_probe_target_markers
+                && self.matter_surface_gpu_mesh_sdf_probe_pending.is_none())
     }
 
     fn emit_live_hand_surface_worker_source_marker(

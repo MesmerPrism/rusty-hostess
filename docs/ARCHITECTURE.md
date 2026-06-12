@@ -70,7 +70,11 @@ The telemetry panel boundary is recorded in `docs/TELEMETRY_GUI.md`.
 For the Quest Makepad Matter surface path, Hostess remains the app-shell and
 evidence boundary. `apps/hostess-t-makepad/src/recorded_hand_surface.rs` loads
 staged recorded bind rigs and compact joint clips from app-private files for
-recorded replay evidence. `apps/hostess-t-makepad/src/live_hand_surface.rs`
+recorded replay evidence, then submits the cached recorded-hand builder plus
+the current compact joint frame to the Quest-Makepad Matter worker so source
+frame construction happens off the app/render thread. It requests full GPU
+oracle payloads only for bounded proof cadence; ordinary recorded replay uses
+the Matter-only source-frame option. `apps/hostess-t-makepad/src/live_hand_surface.rs`
 observes live Makepad `XrHandMeshBindData` plus `XrHand` updates and converts
 them into the same bind-mesh-plus-compact-joint-frame shape, emitting only a
 low-rate readiness marker. The live observer does not replace the current
