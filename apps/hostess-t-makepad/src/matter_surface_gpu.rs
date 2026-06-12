@@ -1,7 +1,8 @@
 use makepad_widgets::makepad_platform::{
     XrGpuF32MeshSdfProbeGrid, XrGpuF32MeshSdfProbeResult, XrGpuF32MeshSdfProbeTicket,
     XrGpuF32SkinningMeshProbeResult, XrGpuF32SkinningMeshProbeTicket, XrGpuF32SkinningMeshVertex,
-    XrGpuF32SkinningProbeSample, XrGpuSkinningMeshTriangle, XR_GPU_F32_MESH_SDF_PROBE_SAMPLES,
+    XrGpuF32SkinningProbeResult, XrGpuF32SkinningProbeSample, XrGpuF32SkinningProbeTicket,
+    XrGpuSkinningMeshTriangle, XR_GPU_F32_MESH_SDF_PROBE_SAMPLES,
     XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES, XR_GPU_F32_SKINNING_PROBE_SAMPLES,
 };
 use makepad_widgets::*;
@@ -30,6 +31,17 @@ pub(crate) struct PendingGpuSkinningMeshProbe {
     ticket: XrGpuF32SkinningMeshProbeTicket,
 }
 
+#[derive(Clone, Debug)]
+pub(crate) struct PendingGpuSkinningProbe {
+    input: QuestMakepadGpuSkinningProbeInput,
+    ticket: XrGpuF32SkinningProbeTicket,
+}
+
+struct PreparedGpuSkinningProbe {
+    samples: [XrGpuF32SkinningProbeSample; XR_GPU_F32_SKINNING_PROBE_SAMPLES],
+    sample_count: usize,
+}
+
 struct PreparedGpuSkinningMeshProbe {
     vertices: Vec<XrGpuF32SkinningMeshVertex>,
     triangles: Vec<XrGpuSkinningMeshTriangle>,
@@ -46,11 +58,34 @@ struct PreparedGpuMeshSdfProbe {
     sample_count: usize,
 }
 
-pub(crate) fn gpu_skinning_probe_marker_line(
+pub(crate) fn gpu_skinning_probe_submit(
     cx: &mut Cx,
     input: &QuestMakepadGpuSkinningProbeInput,
+) -> Option<PendingGpuSkinningProbe> {
+    let prepared = prepare_gpu_skinning_probe(input)?;
+    let ticket = cx.xr_gpu_f32_skinning_probe_submit(
+        prepared.samples,
+        prepared.sample_count,
+        QUEST_MAKEPAD_GPU_SKINNING_PROBE_DEFAULT_TOLERANCE,
+    )?;
+    Some(PendingGpuSkinningProbe {
+        input: input.clone(),
+        ticket,
+    })
+}
+
+pub(crate) fn gpu_skinning_probe_poll_marker_line(
+    cx: &mut Cx,
+    pending: &PendingGpuSkinningProbe,
     phase: &str,
 ) -> Option<String> {
+    let readback = cx.xr_gpu_f32_skinning_probe_poll(pending.ticket.request_id)?;
+    gpu_skinning_probe_marker_line_from_readback(&pending.input, readback, phase)
+}
+
+fn prepare_gpu_skinning_probe(
+    input: &QuestMakepadGpuSkinningProbeInput,
+) -> Option<PreparedGpuSkinningProbe> {
     let sample_count = input
         .sample_count
         .min(QUEST_MAKEPAD_GPU_SKINNING_PROBE_SAMPLES)
@@ -68,11 +103,17 @@ pub(crate) fn gpu_skinning_probe_marker_line(
         *target = makepad_skinning_sample(*source);
     }
 
-    let readback = cx.xr_gpu_f32_skinning_probe(
+    Some(PreparedGpuSkinningProbe {
         samples,
         sample_count,
-        QUEST_MAKEPAD_GPU_SKINNING_PROBE_DEFAULT_TOLERANCE,
-    )?;
+    })
+}
+
+fn gpu_skinning_probe_marker_line_from_readback(
+    input: &QuestMakepadGpuSkinningProbeInput,
+    readback: XrGpuF32SkinningProbeResult,
+    phase: &str,
+) -> Option<String> {
     let probe = QuestMakepadGpuSkinningProbe::from_input(
         input,
         QuestMakepadGpuSkinningProbeReadback {
