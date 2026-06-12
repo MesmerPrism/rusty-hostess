@@ -2,8 +2,10 @@ use crate::runtime_settings::marker_token;
 use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA};
 use rusty_quest_makepad_camera_shell::{
     camera_shell_runtime_bundle_from_effective_settings_json_with_replay_asset_dir,
-    CameraShellEffectiveConfig, MeshReplayRuntime, ParticleRenderAnimationMode,
-    QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
+    stimulus_profile_payload_from_effective_settings_json_with_root, CameraShellEffectiveConfig,
+    MeshReplayRuntime, ParticleRenderAnimationMode, QuestMakepadMatterSurfaceRuntime,
+    RemoteCameraEffectiveConfig, SdfAdfRuntimeMode, StimulusEffectiveConfig,
+    StimulusProfilePayload, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -26,6 +28,8 @@ const EFFECTIVE_SETTINGS_REVISION_SCHEMA: &str = "rusty.gui.makepad.effective_se
 const EFFECTIVE_SETTINGS_RUNTIME_SCOPES: &[&str] = &[
     "mesh_replay",
     "camera_projection",
+    "stimulus",
+    "remote_camera",
     "matter_surface",
     "particles",
 ];
@@ -68,6 +72,8 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     mesh_replay_opacity: Option<f64>,
     render_scale: Option<f64>,
     camera_streaming_enabled: Option<bool>,
+    stimulus: Option<StimulusEffectiveConfig>,
+    remote_camera: Option<RemoteCameraEffectiveConfig>,
     collision_enabled: Option<bool>,
     sdf_adf_overlay_mode: Option<String>,
     sdf_adf_runtime_mode: Option<String>,
@@ -127,12 +133,15 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) source_modified_ns: Option<u128>,
     pub(crate) render_scale: Option<f32>,
     pub(crate) camera_streaming_enabled: Option<bool>,
+    pub(crate) remote_camera: Option<RemoteCameraEffectiveConfig>,
     pub(crate) particle_render_draw_limit: Option<usize>,
     pub(crate) particle_render_animation_mode: Option<ParticleRenderAnimationMode>,
     pub(crate) particle_render_size_scale: Option<f32>,
     pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
     pub(crate) matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
+    pub(crate) stimulus_profile: Option<StimulusProfilePayload>,
+    pub(crate) stimulus_issue: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -198,7 +207,7 @@ impl MakepadEffectiveSettingsIdentity {
 impl MakepadMeshReplayRuntimeSelection {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={}",
+            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} stimulusProfileSelected={} stimulusIssue={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={}",
             REPLAY_MARKER_PREFIX,
             REPLAY_SCHEMA_ID,
             marker_token(phase),
@@ -210,6 +219,8 @@ impl MakepadMeshReplayRuntimeSelection {
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "none".to_string()),
             self.matter_surface_runtime.is_some(),
+            self.stimulus_profile.is_some(),
+            marker_option(self.stimulus_issue.as_deref()),
             marker_usize(self.particle_render_draw_limit),
             marker_option(
                 self.particle_render_animation_mode
@@ -254,7 +265,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleForceSource={} matterSurfaceParticleForceUpdateIntervalFrames={} matterSurfaceParticleForceCompareProbeCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} stimulusEnabled={} stimulusProfilePath={} stimulusProfileSha256={} stimulusProfileSchema={} stimulusTuningPath={} stimulusTuningSha256={} stimulusPresentationMode={} remoteCameraEnabled={} remoteCameraSessionId={} remoteCameraEndpointRole={} remoteCameraIncomingLaneCount={} remoteCameraOutgoingLaneCount={} remoteCameraTransportKind={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleForceSource={} matterSurfaceParticleForceUpdateIntervalFrames={} matterSurfaceParticleForceCompareProbeCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -279,6 +290,63 @@ impl MakepadEffectiveSettingsReceipt {
             marker_f64(self.mesh_replay_opacity),
             marker_f64(self.render_scale),
             marker_bool(self.camera_streaming_enabled),
+            marker_bool(self.stimulus.as_ref().map(|config| config.enabled)),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.profile_path.as_str())
+            ),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.profile_sha256.as_str())
+            ),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.profile_schema.as_str())
+            ),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.tuning_path.as_str())
+            ),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.tuning_sha256.as_str())
+            ),
+            marker_option(
+                self.stimulus
+                    .as_ref()
+                    .map(|config| config.presentation_mode.as_str())
+            ),
+            marker_bool(self.remote_camera.as_ref().map(|config| config.enabled)),
+            marker_option(
+                self.remote_camera
+                    .as_ref()
+                    .map(|config| config.session_id.as_str())
+            ),
+            marker_option(
+                self.remote_camera
+                    .as_ref()
+                    .map(|config| config.endpoint_role.as_str())
+            ),
+            marker_usize(
+                self.remote_camera
+                    .as_ref()
+                    .map(|config| config.incoming_lane_count)
+            ),
+            marker_usize(
+                self.remote_camera
+                    .as_ref()
+                    .map(|config| config.outgoing_lane_count)
+            ),
+            marker_option(
+                self.remote_camera
+                    .as_ref()
+                    .map(|config| config.transport_kind.as_str())
+            ),
             marker_bool(self.collision_enabled),
             marker_option(self.sdf_adf_overlay_mode.as_deref()),
             marker_option(self.sdf_adf_runtime_mode.as_deref()),
@@ -313,6 +381,10 @@ impl MakepadEffectiveSettingsReceipt {
 
     pub(crate) fn camera_streaming_enabled(&self) -> Option<bool> {
         self.camera_streaming_enabled
+    }
+
+    pub(crate) fn remote_camera(&self) -> Option<&RemoteCameraEffectiveConfig> {
+        self.remote_camera.as_ref()
     }
 
     fn to_json_value(&self) -> Value {
@@ -383,6 +455,126 @@ impl MakepadEffectiveSettingsReceipt {
             &mut object,
             "camera_streaming_enabled",
             self.camera_streaming_enabled,
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_enabled",
+            self.stimulus.as_ref().map(|config| config.enabled),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_profile_path",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.profile_path.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_profile_sha256",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.profile_sha256.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_profile_schema",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.profile_schema.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_tuning_path",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.tuning_path.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_tuning_sha256",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.tuning_sha256.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "stimulus_presentation_mode",
+            self.stimulus
+                .as_ref()
+                .map(|config| config.presentation_mode.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_enabled",
+            self.remote_camera.as_ref().map(|config| config.enabled),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_session_id",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.session_id.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_topology_id",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.topology_id.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_endpoint_device_id",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.endpoint_device_id.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_endpoint_device_kind",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.endpoint_device_kind.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_endpoint_role",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.endpoint_role.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_privacy_tier",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.privacy_tier.as_str()),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_lane_count",
+            self.remote_camera.as_ref().map(|config| config.lane_count),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_incoming_lane_count",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.incoming_lane_count),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_outgoing_lane_count",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.outgoing_lane_count),
+        );
+        insert_json_field!(
+            &mut object,
+            "remote_camera_transport_kind",
+            self.remote_camera
+                .as_ref()
+                .map(|config| config.transport_kind.as_str()),
         );
         insert_json_field!(&mut object, "collision_enabled", self.collision_enabled);
         insert_json_field!(
@@ -577,12 +769,15 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             source_modified_ns: None,
             render_scale: None,
             camera_streaming_enabled: None,
+            remote_camera: None,
             particle_render_draw_limit: None,
             particle_render_animation_mode: None,
             particle_render_size_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
+            stimulus_profile: None,
+            stimulus_issue: None,
         };
     };
     read_mesh_replay_runtime_from_path(&path)
@@ -601,12 +796,15 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 source_modified_ns,
                 render_scale: None,
                 camera_streaming_enabled: None,
+                remote_camera: None,
                 particle_render_draw_limit: None,
                 particle_render_animation_mode: None,
                 particle_render_size_scale: None,
                 feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
                 matter_surface_runtime: None,
+                stimulus_profile: None,
+                stimulus_issue: None,
             };
         }
     };
@@ -618,6 +816,14 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
         Ok(bundle) => {
             let feature_uniforms =
                 MakepadCameraShellFeatureUniforms::from_effective_config(&bundle.effective_config);
+            let (stimulus_profile, stimulus_issue) =
+                match stimulus_profile_payload_from_effective_settings_json_with_root(
+                    &text,
+                    replay_asset_dir,
+                ) {
+                    Ok(profile) => (profile, None),
+                    Err(error) => (None, Some(error.to_string())),
+                };
             MakepadMeshReplayRuntimeSelection {
                 status: "ready".to_string(),
                 issue_code: None,
@@ -626,6 +832,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 source_modified_ns,
                 render_scale: Some(bundle.effective_config.render_scale),
                 camera_streaming_enabled: Some(bundle.effective_config.camera_streaming_enabled),
+                remote_camera: Some(bundle.effective_config.remote_camera.clone()),
                 particle_render_draw_limit: Some(
                     bundle.effective_config.particle_render_draw_limit,
                 ),
@@ -638,6 +845,8 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 feature_uniforms,
                 runtime: Some(bundle.mesh_replay_runtime),
                 matter_surface_runtime: Some(bundle.matter_surface_runtime),
+                stimulus_profile,
+                stimulus_issue,
             }
         }
         Err(error) => MakepadMeshReplayRuntimeSelection {
@@ -648,12 +857,15 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             source_modified_ns,
             render_scale: None,
             camera_streaming_enabled: None,
+            remote_camera: None,
             particle_render_draw_limit: None,
             particle_render_animation_mode: None,
             particle_render_size_scale: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
+            stimulus_profile: None,
+            stimulus_issue: None,
         },
     }
 }
@@ -693,6 +905,8 @@ fn ready_receipt(
         mesh_replay_opacity,
         render_scale,
         camera_streaming_enabled,
+        stimulus,
+        remote_camera,
         collision_enabled,
         sdf_adf_overlay_mode,
         sdf_adf_runtime_mode,
@@ -730,6 +944,8 @@ fn ready_receipt(
                 Some(f64::from(config.replay.opacity)),
                 Some(f64::from(config.render_scale)),
                 Some(config.camera_streaming_enabled),
+                Some(config.stimulus.clone()),
+                Some(config.remote_camera.clone()),
                 Some(config.collision_enabled),
                 Some(config.sdf_adf_overlay_mode.as_str().to_string()),
                 Some(runtime_mode.as_str().to_string()),
@@ -823,6 +1039,8 @@ fn ready_receipt(
             None,
             None,
             None,
+            None,
+            None,
         ),
     };
 
@@ -849,6 +1067,8 @@ fn ready_receipt(
         mesh_replay_opacity,
         render_scale,
         camera_streaming_enabled,
+        stimulus,
+        remote_camera,
         collision_enabled,
         sdf_adf_overlay_mode,
         sdf_adf_runtime_mode,
@@ -1391,12 +1611,26 @@ mod tests {
     #[test]
     fn effective_settings_identity_filters_unowned_scope_changes() {
         let path = write_temp_json("effective-settings-scoped-identity", "{not json");
-        write_revision_sidecar_with_hashes(&path, "mesh-a", "camera-a", "matter-a", "particles-a");
+        write_revision_sidecar_with_hashes(
+            &path,
+            "mesh-a",
+            "camera-a",
+            "stimulus-a",
+            "matter-a",
+            "particles-a",
+        );
         let first = makepad_effective_settings_identity_from_path(&path);
         let mesh_key = first.scoped_revision_key(&["mesh_replay"]);
         let camera_key = first.scoped_revision_key(&["camera_projection"]);
 
-        write_revision_sidecar_with_hashes(&path, "mesh-a", "camera-b", "matter-a", "particles-a");
+        write_revision_sidecar_with_hashes(
+            &path,
+            "mesh-a",
+            "camera-b",
+            "stimulus-a",
+            "matter-a",
+            "particles-a",
+        );
         let camera_changed = makepad_effective_settings_identity_from_path(&path);
 
         assert!(!camera_changed.changed_from_scopes(
@@ -1576,6 +1810,7 @@ mod tests {
             settings_path,
             mesh_replay_hash,
             "camera-a",
+            "stimulus-a",
             "matter-a",
             "particles-a",
         );
@@ -1585,6 +1820,7 @@ mod tests {
         settings_path: &Path,
         mesh_replay_hash: &str,
         camera_projection_hash: &str,
+        stimulus_hash: &str,
         matter_surface_hash: &str,
         particles_hash: &str,
     ) {
@@ -1597,6 +1833,7 @@ mod tests {
   "scopes": {{
     "mesh_replay": {{ "revision_hash_sha256": "{mesh_replay_hash}" }},
     "camera_projection": {{ "revision_hash_sha256": "{camera_projection_hash}" }},
+    "stimulus": {{ "revision_hash_sha256": "{stimulus_hash}" }},
     "matter_surface": {{ "revision_hash_sha256": "{matter_surface_hash}" }},
     "particles": {{ "revision_hash_sha256": "{particles_hash}" }}
   }}

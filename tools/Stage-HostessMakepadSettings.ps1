@@ -182,6 +182,10 @@ function Write-EffectiveSettingsRevisionManifest {
                 -Settings $Settings `
                 -ExactIds @("makepad.render.scale", "makepad.camera.streaming.enabled") `
                 -Prefixes @("makepad.projection.")
+            stimulus = New-SettingsScopeRevision `
+                -Scope "stimulus" `
+                -Settings $Settings `
+                -Prefixes @("makepad.stimulus.")
             matter_surface = New-SettingsScopeRevision `
                 -Scope "matter_surface" `
                 -Settings $Settings `
@@ -234,6 +238,16 @@ if (Test-Path -LiteralPath $MeshReplayDir -PathType Container) {
         $Relative = $File.FullName.Substring($MeshReplayRoot.Length).TrimStart("\", "/")
         $Relative = "mesh-replay/" + ($Relative -replace "\\", "/")
         Add-Payload -Payloads $Payloads -Source $File.FullName -RelativePath $Relative -Role "mesh-replay"
+    }
+}
+
+$StimulusDir = Join-Path $ResolvedBundleDir "stimulus"
+if (Test-Path -LiteralPath $StimulusDir -PathType Container) {
+    $StimulusRoot = (Resolve-Path $StimulusDir).Path
+    foreach ($File in Get-ChildItem -LiteralPath $StimulusRoot -Recurse -File) {
+        $Relative = $File.FullName.Substring($StimulusRoot.Length).TrimStart("\", "/")
+        $Relative = "stimulus/" + ($Relative -replace "\\", "/")
+        Add-Payload -Payloads $Payloads -Source $File.FullName -RelativePath $Relative -Role "stimulus"
     }
 }
 

@@ -36,6 +36,7 @@ mod shell_xr_runtime;
 mod source_metadata;
 mod source_sampling;
 mod stereo_frame;
+mod stimulus_stereo_field;
 mod texture_probe_stats;
 use crate::makepad_runtime_config as makepad_config;
 use camera_pair::{
@@ -146,8 +147,9 @@ use projection_target_controls::{
 use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
     QuestMakepadMatterSurfaceWorker, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
-    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    QuestMakepadWorldParticleBatch, RemoteCameraEffectiveConfig,
+    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -159,11 +161,17 @@ use source_sampling::{
     MakepadSourceSamplingHandoff,
 };
 use std::{
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Mutex,
+    },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
+use stimulus_stereo_field::{
+    DrawStimulusStereoField, StimulusStereoFieldPanel, StimulusStereoFieldState,
+};
 use texture_probe_stats::texture_plane_content_stats;
 
 app_main!(App);
@@ -182,6 +190,7 @@ static VIDEO_EVENT_RAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_UPDATE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_CONTENT_PROBE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static FRAME_ADOPTION_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+static EFFECTIVE_REMOTE_CAMERA: Mutex<Option<RemoteCameraEffectiveConfig>> = Mutex::new(None);
 #[cfg(target_os = "android")]
 static ANDROID_XR_START_FALLBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 
@@ -197,6 +206,7 @@ const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLB
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
 const MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT: usize = 8;
+const STIMULUS_STEREO_FIELD_MARKER_LIMIT: usize = 8;
 const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
 const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
 const MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS: f32 = 0.50;
@@ -215,6 +225,69 @@ script_mod! {
     use mod.geom
     use mod.prelude.widgets.*
     use mod.widgets.*
+
+    mod.draw.DrawStimulusStereoField = mod.std.set_type_default() do #(DrawStimulusStereoField::script_shader(vm)){
+        ..mod.draw.DrawQuad
+        alpha_blend: false
+        backface_culling: false
+
+        enabled: 0.0
+        time_seconds: 0.0
+        temporal_frequency_hz: 0.0
+        spatial_frequency: 8.0
+        rotation_radians: 0.0
+        phase_offset: 0.0
+        wave_modulation: 0.0
+        radial_decay: 0.0
+        geometry_mix: 1.0
+        edge_fade: 0.0
+        source_a_b: vec4(-0.24, 0.0, 0.24, 0.0)
+        source_b_weight: 1.0
+        color_low: vec4(0.0, 0.0, 0.0, 1.0)
+        color_high: vec4(1.0, 1.0, 1.0, 1.0)
+        v_uv: varying(vec2f)
+
+        vertex: fn() {
+            let screen_uv = clamp(self.geom.pos, vec2(0.0, 0.0), vec2(1.0, 1.0))
+            let instance_marker = self.rect_size.x * 0.0
+            self.world = vec4(screen_uv.x, screen_uv.y, 0.0, 1.0)
+            self.v_uv = screen_uv
+            self.vertex_pos = vec4(screen_uv.x * 2.0 - 1.0, screen_uv.y * 2.0 - 1.0, instance_marker, 1.0)
+        }
+
+        pixel: fn() {
+            let uv01 = clamp(self.v_uv, vec2(0.0, 0.0), vec2(1.0, 1.0))
+            let eye = clamp(xr_view_id(), 0.0, 1.0)
+            let eye_offset = (eye - 0.5) * 0.025
+            let uv = (uv01 * 2.0 - vec2(1.0, 1.0)) + vec2(eye_offset, 0.0)
+            let c = cos(self.rotation_radians)
+            let s = sin(self.rotation_radians)
+            let p = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c)
+            let source_a = self.source_a_b.xy
+            let source_b = self.source_a_b.zw
+            let d0 = length(p - source_a)
+            let d1 = length(p - source_b)
+            let tau = 6.2831853
+            let phase = (self.time_seconds * max(self.temporal_frequency_hz, 0.001) + self.phase_offset) * tau
+            let stripes = sin((p.x + p.y * 0.18) * self.spatial_frequency * tau + phase)
+            let ripple = sin((d0 + d1 * self.source_b_weight) * self.spatial_frequency * tau - phase)
+            let interference = sin((d0 - d1 * self.source_b_weight) * self.spatial_frequency * tau + phase * (1.0 + self.wave_modulation))
+            let geometry_field = mix(stripes, 0.5 * (ripple + interference), clamp(self.geometry_mix, 0.0, 1.0))
+            let luma = smoothstep(-0.16, 0.16, geometry_field)
+            let radius = length(uv)
+            let radial = pow(clamp(1.0 - radius * 0.34, 0.0, 1.0), max(self.radial_decay, 0.0))
+            let edge = mix(1.0, 1.0 - smoothstep(0.72, 1.38, radius), clamp(self.edge_fade * 5.0, 0.0, 1.0))
+            let pulse = 0.34 + 0.66 * (0.5 + 0.5 * sin(phase))
+            let color = mix(self.color_low.xyz, self.color_high.xyz, luma)
+            let rgb = color * max(radial, 0.18) * max(edge, 0.18) * pulse
+            let proof_floor = vec3(0.025, 0.0, 0.012) * step(0.5, self.enabled)
+            return vec4(max(rgb, proof_floor), 1.0)
+        }
+
+        fragment: fn() {
+            self.fb0 = self.pixel()
+        }
+    }
 
     mod.draw.DrawMakepadStereoCameraPanel = mod.std.set_type_default() do #(DrawMakepadStereoCameraPanel::script_shader(vm)){
         alpha_blend: true
@@ -1442,6 +1515,20 @@ script_mod! {
         }
     }
 
+    mod.widgets.StimulusStereoFieldPanelBase = #(StimulusStereoFieldPanel::register_widget(vm))
+    mod.widgets.StimulusStereoFieldPanel = set_type_default() do mod.widgets.StimulusStereoFieldPanelBase{
+        body: mod.widgets.XrBodyKind.Fixed
+        shared_object_policy: mod.widgets.XrSharedObjectPolicy.None
+        draw_field: mod.draw.DrawStimulusStereoField{
+            enabled: 0.0
+            temporal_frequency_hz: 0.0
+            spatial_frequency: 8.0
+            geometry_mix: 1.0
+            color_low: vec4(0.0, 0.0, 0.0, 1.0)
+            color_high: vec4(1.0, 1.0, 1.0, 1.0)
+        }
+    }
+
     mod.widgets.MakepadStereoCameraPanelBase = #(MakepadStereoCameraPanel::register_widget(vm))
     mod.widgets.MakepadStereoCameraPanel = set_type_default() do mod.widgets.MakepadStereoCameraPanelBase{
         body: mod.widgets.XrBodyKind.Fixed
@@ -1587,6 +1674,11 @@ script_mod! {
             camera_projection_scene := XrNode{
                 pos: vec3(0.0, 0.0, 0.0)
 
+                stimulus_stereo_field := mod.widgets.StimulusStereoFieldPanel{
+                    body: mod.widgets.XrBodyKind.Fixed
+                    pos: vec3(0.0, 0.0, -1.0)
+                }
+
                 camera_projection_panel := mod.widgets.MakepadStereoCameraPanel{
                     body: mod.widgets.XrBodyKind.Fixed
                     size: vec3(1.0, 1.0, 0.010)
@@ -1729,6 +1821,10 @@ pub struct App {
     camera_shell_effective_render_scale_present: bool,
     #[rust]
     camera_shell_effective_camera_streaming_enabled: bool,
+    #[rust]
+    stimulus_stereo_field_state: StimulusStereoFieldState,
+    #[rust]
+    stimulus_stereo_field_markers_emitted: usize,
     #[rust]
     makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
@@ -3492,6 +3588,27 @@ impl App {
         )
     }
 
+    fn set_effective_remote_camera(remote_camera: Option<RemoteCameraEffectiveConfig>) {
+        if let Ok(mut slot) = EFFECTIVE_REMOTE_CAMERA.lock() {
+            *slot = remote_camera;
+        }
+    }
+
+    fn effective_remote_camera_receiver() -> Option<RemoteCameraEffectiveConfig> {
+        EFFECTIVE_REMOTE_CAMERA
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+            .filter(|config| {
+                config.enabled
+                    && config.incoming_lane_count > 0
+                    && matches!(
+                        config.endpoint_role.as_str(),
+                        "receiver" | "sender_receiver"
+                    )
+            })
+    }
+
     fn apply_makepad_video_input_discovery_enabled(
         &mut self,
         cx: &mut Cx,
@@ -3564,6 +3681,7 @@ impl App {
         self.camera_shell_effective_camera_streaming_enabled = selection
             .camera_streaming_enabled
             .unwrap_or(DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED);
+        Self::set_effective_remote_camera(selection.remote_camera.clone());
         self.matter_world_particle_draw_limit = selection
             .particle_render_draw_limit
             .unwrap_or(DEFAULT_PARTICLE_RENDER_DRAW_LIMIT)
@@ -3610,6 +3728,31 @@ impl App {
         self.matter_particle_texture.reset_markers();
         self.live_hand_surface_source.reset_markers();
         self.matter_surface_source_selection = MatterSurfaceSourceSelection::from_runtime();
+        self.stimulus_stereo_field_state = if let Some(payload) =
+            selection.stimulus_profile.as_ref()
+        {
+            match StimulusStereoFieldState::from_profile_payload(payload) {
+                Ok(state) => state,
+                Err(error) => {
+                    emit_marker_line(&format!(
+                            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=rejected issue={} profileSelected=true renderPath=makepad-xr-fragment-preview",
+                            marker_token(phase),
+                            marker_token(&error),
+                        ));
+                    StimulusStereoFieldState::disabled()
+                }
+            }
+        } else {
+            if let Some(issue) = selection.stimulus_issue.as_deref() {
+                emit_marker_line(&format!(
+                        "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=rejected issue={} profileSelected=false renderPath=makepad-xr-fragment-preview",
+                        marker_token(phase),
+                        marker_token(issue),
+                    ));
+            }
+            StimulusStereoFieldState::disabled()
+        };
+        self.stimulus_stereo_field_markers_emitted = 0;
         emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
         emit_marker_line(&adoption_marker_line);
         self.mesh_replay_runtime = selection.runtime;
@@ -3738,6 +3881,9 @@ impl App {
     }
 
     fn broker_h264_enabled() -> bool {
+        if Self::effective_remote_camera_receiver().is_some() {
+            return true;
+        }
         let transport_requests_broker = std::env::var("RUSTY_MAKEPAD_TRANSPORT_PROFILE")
             .map(|value| value.to_ascii_lowercase().contains("broker-h264"))
             .unwrap_or(false);
@@ -3791,16 +3937,27 @@ impl App {
     }
 
     fn broker_h264_stream_port(eye: StereoEye) -> u16 {
+        let remote_receiver = Self::effective_remote_camera_receiver();
+        let default_left = if remote_receiver.is_some() {
+            DEFAULT_REMOTE_CAMERA_RECEIVER_LEFT_STREAM_PORT
+        } else {
+            DEFAULT_BROKER_H264_STREAM_PORT
+        };
+        let default_right = if remote_receiver.is_some() {
+            DEFAULT_REMOTE_CAMERA_RECEIVER_RIGHT_STREAM_PORT
+        } else {
+            DEFAULT_BROKER_H264_RIGHT_STREAM_PORT
+        };
         match eye {
             StereoEye::Left => hotload_u16(
                 KEY_MAKEPAD_BROKER_H264_STREAM_PORT,
-                DEFAULT_BROKER_H264_STREAM_PORT,
+                default_left,
                 1,
                 u16::MAX,
             ),
             StereoEye::Right => hotload_u16(
                 KEY_MAKEPAD_BROKER_H264_RIGHT_STREAM_PORT,
-                DEFAULT_BROKER_H264_RIGHT_STREAM_PORT,
+                default_right,
                 1,
                 u16::MAX,
             ),
@@ -3830,6 +3987,7 @@ impl App {
     }
 
     fn broker_h264_source_for_eye(eye: StereoEye) -> ExternalH264VideoSource {
+        let remote_receiver = Self::effective_remote_camera_receiver();
         let synthetic_projection_profile = hotload_text(
             KEY_MAKEPAD_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
             DEFAULT_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
@@ -3851,7 +4009,11 @@ impl App {
             stream_port: Self::broker_h264_stream_port(eye),
             source_mode: hotload_text(
                 KEY_MAKEPAD_BROKER_H264_SOURCE_MODE,
-                DEFAULT_BROKER_H264_SOURCE_MODE,
+                if remote_receiver.is_some() {
+                    DEFAULT_REMOTE_CAMERA_RECEIVER_SOURCE_MODE
+                } else {
+                    DEFAULT_BROKER_H264_SOURCE_MODE
+                },
             ),
             decode_output_mode,
             synthetic_pattern: hotload_text(
@@ -3873,7 +4035,10 @@ impl App {
             },
             stereo_pair_id: hotload_text(
                 KEY_MAKEPAD_BROKER_H264_STEREO_PAIR_ID,
-                DEFAULT_BROKER_H264_STEREO_PAIR_ID,
+                remote_receiver
+                    .as_ref()
+                    .map(|config| config.session_id.as_str())
+                    .unwrap_or(DEFAULT_BROKER_H264_STEREO_PAIR_ID),
             ),
             stereo_pair_role: match eye {
                 StereoEye::Left => "left".to_string(),
@@ -3899,13 +4064,21 @@ impl App {
             ),
             capture_ms: hotload_u32(
                 KEY_MAKEPAD_BROKER_H264_CAPTURE_MS,
-                DEFAULT_BROKER_H264_CAPTURE_MS,
+                if remote_receiver.is_some() {
+                    0
+                } else {
+                    DEFAULT_BROKER_H264_CAPTURE_MS
+                },
                 0,
                 120_000,
             ),
             max_packets: hotload_u32(
                 KEY_MAKEPAD_BROKER_H264_MAX_PACKETS,
-                DEFAULT_BROKER_H264_MAX_PACKETS,
+                if remote_receiver.is_some() {
+                    0
+                } else {
+                    DEFAULT_BROKER_H264_MAX_PACKETS
+                },
                 0,
                 2400,
             ),
@@ -3941,7 +4114,7 @@ impl App {
             ),
             live_stream: hotload_bool(
                 KEY_MAKEPAD_BROKER_H264_LIVE_STREAM,
-                DEFAULT_BROKER_H264_LIVE_STREAM,
+                DEFAULT_BROKER_H264_LIVE_STREAM || remote_receiver.is_some(),
             ),
         }
     }
@@ -5125,6 +5298,44 @@ impl App {
         }
         self.apply_matter_world_particles_to_cloud(cx, "cadence");
         self.apply_matter_world_adf_debug_to_cells(cx, "cadence");
+        self.apply_stimulus_stereo_field_to_panel(cx, "cadence", now_seconds);
+    }
+
+    fn apply_stimulus_stereo_field_to_panel(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        now_seconds: f64,
+    ) -> bool {
+        let field_ref = self.ui.widget(cx, ids!(stimulus_stereo_field));
+        let Some(mut field) = field_ref.borrow_mut::<StimulusStereoFieldPanel>() else {
+            if self.stimulus_stereo_field_state.enabled
+                && self.stimulus_stereo_field_markers_emitted < STIMULUS_STEREO_FIELD_MARKER_LIMIT
+            {
+                emit_marker_line(&format!(
+                    "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=error issue=stimulus_stereo_field_widget_missing panelBound=false profileId={} renderPath=makepad-xr-fragment-preview",
+                    marker_token(phase),
+                    marker_token(&self.stimulus_stereo_field_state.profile_id),
+                ));
+                self.stimulus_stereo_field_markers_emitted += 1;
+            }
+            return false;
+        };
+        let time_seconds = now_seconds.max(0.0).min(f32::MAX as f64) as f32;
+        let changed =
+            field.set_stimulus_state(cx, self.stimulus_stereo_field_state.clone(), time_seconds);
+        if self.stimulus_stereo_field_state.enabled
+            && (changed
+                || self.stimulus_stereo_field_markers_emitted < STIMULUS_STEREO_FIELD_MARKER_LIMIT)
+        {
+            emit_marker_line(&self.stimulus_stereo_field_state.marker_line(
+                phase,
+                time_seconds,
+                true,
+            ));
+            self.stimulus_stereo_field_markers_emitted += 1;
+        }
+        true
     }
 
     fn apply_mesh_replay_uniforms_to_panel(
