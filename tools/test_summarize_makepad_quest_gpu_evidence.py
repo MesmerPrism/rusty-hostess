@@ -100,6 +100,19 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "runtimeSamplingBoundaryReady=true residentFieldBufferSampled=true "
+                "sourceFieldGenerationMatched=true fieldSamplingKernel=true "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
+                "highRateJsonPayload=false programReused=false "
+                "shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true denseSdfConstructedOnGpu=true "
@@ -122,6 +135,19 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "sourceMeshBuffersReused=true derivedBuffersResident=true "
                 "derivedBuffersReused=true "
                 "measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "runtimeSamplingBoundaryReady=true residentFieldBufferSampled=true "
+                "sourceFieldGenerationMatched=true fieldSamplingKernel=true "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false "
+                "highRateJsonPayload=false programReused=true "
+                "shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             ),
         ]
         log_lines = [
@@ -182,6 +208,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(5884, summary["app_pid"])
         self.assertEqual(2, summary["markers"]["gpu_mesh_sdf_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_construction"])
+        self.assertEqual(2, summary["markers"]["gpu_field_sampling_probe"])
         self.assertEqual(90.0, summary["cadence"]["app_frame_rate_hz"]["max"])
         self.assertEqual(0, summary["vrapi_hostess_process"]["stale_90_plus_count"])
         self.assertEqual(14.0, summary["vrapi_hostess_process"]["stale"]["max"])

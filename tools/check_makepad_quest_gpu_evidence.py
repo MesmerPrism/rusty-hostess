@@ -29,6 +29,7 @@ REQUIRED_MARKERS = {
     "gpu_skinning_mesh_residency": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
     "gpu_mesh_sdf_probe": "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
     "gpu_field_construction": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
+    "gpu_field_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE",
 }
 PROOF_SUMMARY_SCHEMA = "rusty.hostess.quest_live_hand_small_profile_summary.v1"
 CANONICAL_PROOF_SUMMARY_NAME = "live-hand-small-profile-summary.json"
@@ -190,6 +191,7 @@ def validate_summary(
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
         "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
+        "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE",
     ):
         marker_lines = lines_containing(proof_lines, marker_name)
         if not marker_lines:
@@ -231,6 +233,56 @@ def validate_summary(
         issues.append("GPU field construction receipt did not keep gpuComputeReady=false")
     if field_construction_low_rate_count != len(field_construction_lines):
         issues.append("GPU field construction receipt did not keep highRateJsonPayload=false")
+    field_sampling_lines = lines_containing(
+        proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE"
+    )
+    field_sampling_ready_count = count_lines_containing(
+        field_sampling_lines, "runtimeSamplingBoundaryReady=true"
+    )
+    field_sampling_field_ready_count = count_lines_containing(
+        field_sampling_lines, "runtimeFieldBoundaryReady=true"
+    )
+    field_sampling_resident_count = count_lines_containing(
+        field_sampling_lines, "residentFieldBufferSampled=true"
+    )
+    field_sampling_generation_match_count = count_lines_containing(
+        field_sampling_lines, "sourceFieldGenerationMatched=true"
+    )
+    field_sampling_kernel_count = count_lines_containing(
+        field_sampling_lines, "fieldSamplingKernel=true"
+    )
+    field_sampling_force_authority_false_count = count_lines_containing(
+        field_sampling_lines, "forceAuthorityReady=false"
+    )
+    field_sampling_runtime_authority_false_count = count_lines_containing(
+        field_sampling_lines, "runtimeForceAuthority=false"
+    )
+    field_sampling_gpu_not_ready_count = count_lines_containing(
+        field_sampling_lines, "gpuComputeReady=false"
+    )
+    field_sampling_low_rate_count = count_lines_containing(
+        field_sampling_lines, "highRateJsonPayload=false"
+    )
+    if field_sampling_ready_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep runtimeSamplingBoundaryReady=true")
+    if field_sampling_field_ready_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep runtimeFieldBoundaryReady=true")
+    if field_sampling_resident_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not report residentFieldBufferSampled=true")
+    if field_sampling_generation_match_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not match sourceFieldGeneration")
+    if field_sampling_kernel_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not report fieldSamplingKernel=true")
+    if field_sampling_force_authority_false_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep forceAuthorityReady=false")
+    if field_sampling_runtime_authority_false_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep runtimeForceAuthority=false")
+    if not any("fieldKind=dense-sdf" in line for line in field_sampling_lines):
+        issues.append("GPU field sampling probe did not report fieldKind=dense-sdf")
+    if field_sampling_gpu_not_ready_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep gpuComputeReady=false")
+    if field_sampling_low_rate_count != len(field_sampling_lines):
+        issues.append("GPU field sampling probe did not keep highRateJsonPayload=false")
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -324,6 +376,16 @@ def validate_summary(
         ),
         "field_construction_gpu_not_ready_count": field_construction_gpu_not_ready_count,
         "field_construction_low_rate_count": field_construction_low_rate_count,
+        "field_sampling_line_count": len(field_sampling_lines),
+        "field_sampling_ready_count": field_sampling_ready_count,
+        "field_sampling_field_ready_count": field_sampling_field_ready_count,
+        "field_sampling_resident_count": field_sampling_resident_count,
+        "field_sampling_generation_match_count": field_sampling_generation_match_count,
+        "field_sampling_kernel_count": field_sampling_kernel_count,
+        "field_sampling_force_authority_false_count": field_sampling_force_authority_false_count,
+        "field_sampling_runtime_authority_false_count": field_sampling_runtime_authority_false_count,
+        "field_sampling_gpu_not_ready_count": field_sampling_gpu_not_ready_count,
+        "field_sampling_low_rate_count": field_sampling_low_rate_count,
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in REQUIRED_MARKERS
         },

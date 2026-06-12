@@ -1,18 +1,22 @@
 use makepad_widgets::makepad_platform::{
-    XrGpuF32MeshSdfProbeGrid, XrGpuF32MeshSdfProbeResult, XrGpuF32MeshSdfProbeTicket,
-    XrGpuF32SkinningMeshProbeResult, XrGpuF32SkinningMeshProbeTicket, XrGpuF32SkinningMeshVertex,
-    XrGpuF32SkinningProbeResult, XrGpuF32SkinningProbeSample, XrGpuF32SkinningProbeTicket,
-    XrGpuSkinningMeshTriangle, XR_GPU_F32_MESH_SDF_PROBE_SAMPLES,
-    XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES, XR_GPU_F32_SKINNING_PROBE_SAMPLES,
+    XrGpuF32FieldSampleProbeResult, XrGpuF32MeshSdfProbeGrid, XrGpuF32MeshSdfProbeResult,
+    XrGpuF32MeshSdfProbeTicket, XrGpuF32SkinningMeshProbeResult, XrGpuF32SkinningMeshProbeTicket,
+    XrGpuF32SkinningMeshVertex, XrGpuF32SkinningProbeResult, XrGpuF32SkinningProbeSample,
+    XrGpuF32SkinningProbeTicket, XrGpuSkinningMeshTriangle, XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES,
+    XR_GPU_F32_MESH_SDF_PROBE_SAMPLES, XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES,
+    XR_GPU_F32_SKINNING_PROBE_SAMPLES,
 };
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
-    QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuMeshSdfProbe,
+    QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuFieldSamplingProbe,
+    QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuMeshSdfProbe,
     QuestMakepadGpuMeshSdfProbeInput, QuestMakepadGpuMeshSdfProbeReadback,
     QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
     QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
     QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
     QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
+    QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_DEFAULT_TOLERANCE, QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_SKINNING_MESH_PROBE_SAMPLES,
@@ -161,7 +165,7 @@ pub(crate) fn gpu_mesh_sdf_probe_poll_marker_lines(
     phase: &str,
 ) -> Option<Vec<String>> {
     let readback = cx.xr_gpu_f32_mesh_sdf_probe_poll(pending.ticket.request_id)?;
-    gpu_mesh_sdf_probe_marker_lines_from_readback(&pending.input, readback, phase)
+    gpu_mesh_sdf_probe_marker_lines_from_readback(cx, &pending.input, readback, phase)
 }
 
 fn prepare_gpu_mesh_sdf_probe(
@@ -219,6 +223,7 @@ fn prepare_gpu_mesh_sdf_probe(
 }
 
 fn gpu_mesh_sdf_probe_marker_lines_from_readback(
+    cx: &mut Cx,
     input: &QuestMakepadGpuMeshSdfProbeInput,
     readback: XrGpuF32MeshSdfProbeResult,
     phase: &str,
@@ -275,7 +280,95 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
         },
     );
     let receipt = QuestMakepadGpuFieldConstructionReceipt::from_mesh_sdf_probe(&probe);
-    Some(vec![probe.marker_line(phase), receipt.marker_line(phase)])
+    let mut markers = vec![probe.marker_line(phase), receipt.marker_line(phase)];
+    if let Some(marker) = gpu_field_sampling_probe_marker_line(cx, input, &receipt, phase) {
+        markers.push(marker);
+    }
+    Some(markers)
+}
+
+fn gpu_field_sampling_probe_marker_line(
+    cx: &mut Cx,
+    input: &QuestMakepadGpuMeshSdfProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    phase: &str,
+) -> Option<String> {
+    if !receipt.runtime_field_boundary_ready() {
+        return None;
+    }
+    let sample_count = input
+        .sample_count
+        .min(QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES)
+        .min(XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES);
+    if sample_count == 0 {
+        return None;
+    }
+
+    let mut sample_linear_indices = [0_u32; XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES];
+    let mut expected_distances = [0.0_f32; XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES];
+    for index in 0..sample_count {
+        sample_linear_indices[index] = u32::try_from(input.samples[index].linear_index).ok()?;
+        expected_distances[index] = input.samples[index].expected_distance;
+    }
+
+    let readback = cx.xr_gpu_f32_field_sample_probe(
+        sample_linear_indices,
+        expected_distances,
+        sample_count,
+        QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    )?;
+    gpu_field_sampling_probe_marker_line_from_readback(input, receipt, readback, phase)
+}
+
+fn gpu_field_sampling_probe_marker_line_from_readback(
+    input: &QuestMakepadGpuMeshSdfProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    readback: XrGpuF32FieldSampleProbeResult,
+    phase: &str,
+) -> Option<String> {
+    let mut sample_linear_indices = [0_usize; QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES];
+    let mut output_distances = [0.0_f32; QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES];
+    let mut expected_distances = [0.0_f32; QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES];
+    let sample_count = readback
+        .sample_count
+        .min(QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES);
+    for index in 0..sample_count {
+        sample_linear_indices[index] = readback.sample_linear_indices[index] as usize;
+        output_distances[index] = readback.output_distances[index];
+        expected_distances[index] = readback.expected_distances[index];
+    }
+    let probe = QuestMakepadGpuFieldSamplingProbe::from_receipt_and_input(
+        receipt,
+        input,
+        QuestMakepadGpuFieldSamplingProbeReadback {
+            sample_count: readback.sample_count,
+            checked_sample_count: readback.checked_sample_count,
+            sample_linear_indices,
+            output_distances,
+            expected_distances,
+            mismatched_samples: readback.mismatched_samples,
+            max_abs_error: readback.max_abs_error,
+            tolerance: readback.tolerance,
+            queue_submit_serial: readback.queue_submit_serial,
+            fence_serial: readback.fence_serial,
+            resource_generation: readback.resource_generation,
+            program_generation: readback.program_generation,
+            program_reused: readback.program_reused,
+            shader_compiled_this_submit: readback.shader_compiled_this_submit,
+            pipeline_created_this_submit: readback.pipeline_created_this_submit,
+            source_field_generation: readback.source_field_generation,
+            source_field_buffer_resident: readback.source_field_buffer_resident,
+            source_field_buffer_bytes: readback.source_field_buffer_bytes,
+            sample_index_buffer_bytes: readback.sample_index_buffer_bytes,
+            sample_output_buffer_bytes: readback.sample_output_buffer_bytes,
+            pending_retire_count: readback.pending_retire_count,
+            retained_resource_count: readback.retained_resource_count,
+            retired_after_fence_count: readback.retired_after_fence_count,
+            queue_wait_idle_performed: readback.queue_wait_idle_performed,
+            elapsed_ms: readback.elapsed_ms,
+        },
+    );
+    Some(probe.marker_line(phase))
 }
 
 pub(crate) fn gpu_skinning_mesh_probe_submit(
