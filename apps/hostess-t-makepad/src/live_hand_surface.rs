@@ -4,6 +4,7 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadMatterSurfaceError, QuestMakepadMatterSurfaceSourceFrame,
     RecordedCompactHandJointFrame, RecordedHandRig,
 };
+use std::sync::Arc;
 
 const LIVE_LEFT_SOURCE_ID: &str = "live-meta-quest-hand-left";
 const LIVE_RIGHT_SOURCE_ID: &str = "live-meta-quest-hand-right";
@@ -12,6 +13,8 @@ const LIVE_RIGHT_SOURCE_ID: &str = "live-meta-quest-hand-right";
 pub(crate) struct LiveHandSurfaceSource {
     left: Option<LiveHandSurfaceHandState>,
     right: Option<LiveHandSurfaceHandState>,
+    left_rig: Option<LiveHandSurfaceRigCache>,
+    right_rig: Option<LiveHandSurfaceRigCache>,
     left_ready_marker_emitted: bool,
     right_ready_marker_emitted: bool,
     error_marker_emitted: bool,
@@ -103,12 +106,30 @@ impl LiveHandSurfaceSource {
         if !hand.in_view() {
             return None;
         }
+        let rig_cache = if is_left {
+            &mut self.left_rig
+        } else {
+            &mut self.right_rig
+        };
+        if rig_cache
+            .as_ref()
+            .is_none_or(|cache| !cache.matches_bind(is_left, bind))
+        {
+            match LiveHandSurfaceRigCache::from_bind(is_left, bind) {
+                Ok(cache) => *rig_cache = Some(cache),
+                Err(issue) => return self.live_hand_error_marker(phase, issue),
+            }
+        }
+        let Some(rig_cache) = rig_cache.as_ref() else {
+            return self.live_hand_error_marker(phase, "live_hand_bind_cache_missing".to_string());
+        };
+
         match LiveHandSurfaceHandState::from_makepad_hand(
             is_left,
             hand,
-            bind,
             frame_index,
             timestamp_ns,
+            rig_cache,
         ) {
             Ok(state) => {
                 let emit_ready = if is_left {
@@ -124,42 +145,36 @@ impl LiveHandSurfaceSource {
                 };
                 emit_ready.then(|| state.marker_line(phase))
             }
-            Err(issue) => {
-                if self.error_marker_emitted {
-                    return None;
-                }
-                self.error_marker_emitted = true;
-                Some(format!(
-                    "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE schema=rusty.hostess.makepad.live_hand_surface_source.v1 phase={} status=error issue={} providerShape=bind-mesh-plus-compact-joint-frame liveOpenXrHandProvider=true highRateJsonPayload=false",
-                    crate::runtime_settings::marker_token(phase),
-                    crate::runtime_settings::marker_token(&issue),
-                ))
-            }
+            Err(issue) => self.live_hand_error_marker(phase, issue),
         }
+    }
+
+    fn live_hand_error_marker(&mut self, phase: &str, issue: String) -> Option<String> {
+        if self.error_marker_emitted {
+            return None;
+        }
+        self.error_marker_emitted = true;
+        Some(format!(
+            "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE schema=rusty.hostess.makepad.live_hand_surface_source.v1 phase={} status=error issue={} providerShape=bind-mesh-plus-compact-joint-frame liveOpenXrHandProvider=true highRateJsonPayload=false",
+            crate::runtime_settings::marker_token(phase),
+            crate::runtime_settings::marker_token(&issue),
+        ))
     }
 }
 
 #[derive(Clone, Debug)]
-struct LiveHandSurfaceHandState {
-    source_id: &'static str,
+struct LiveHandSurfaceRigCache {
+    rig: Arc<RecordedHandRig>,
     is_left: bool,
-    #[allow(dead_code)]
-    rig: RecordedHandRig,
-    compact_frame: RecordedCompactHandJointFrame,
     bind_version: u32,
     joint_count: usize,
     vertex_count: usize,
+    normal_count: usize,
     index_count: usize,
 }
 
-impl LiveHandSurfaceHandState {
-    fn from_makepad_hand(
-        is_left: bool,
-        hand: &XrHand,
-        bind: &XrHandMeshBindData,
-        frame_index: u64,
-        timestamp_ns: u64,
-    ) -> Result<Self, String> {
+impl LiveHandSurfaceRigCache {
+    fn from_bind(is_left: bool, bind: &XrHandMeshBindData) -> Result<Self, String> {
         let joint_bind_poses = bind
             .joint_bind_poses
             .iter()
@@ -192,6 +207,48 @@ impl LiveHandSurfaceHandState {
         )
         .map_err(|error| format!("live_hand_bind_data:{error}"))?;
 
+        Ok(Self {
+            rig: Arc::new(rig),
+            is_left,
+            bind_version: bind.bind_version,
+            joint_count: bind.joint_bind_poses.len(),
+            vertex_count: bind.vertex_positions.len(),
+            normal_count: bind.vertex_normals.len(),
+            index_count: bind.indices.len(),
+        })
+    }
+
+    fn matches_bind(&self, is_left: bool, bind: &XrHandMeshBindData) -> bool {
+        self.is_left == is_left
+            && self.bind_version == bind.bind_version
+            && self.joint_count == bind.joint_bind_poses.len()
+            && self.vertex_count == bind.vertex_positions.len()
+            && self.normal_count == bind.vertex_normals.len()
+            && self.index_count == bind.indices.len()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct LiveHandSurfaceHandState {
+    source_id: &'static str,
+    is_left: bool,
+    #[allow(dead_code)]
+    rig: Arc<RecordedHandRig>,
+    compact_frame: RecordedCompactHandJointFrame,
+    bind_version: u32,
+    joint_count: usize,
+    vertex_count: usize,
+    index_count: usize,
+}
+
+impl LiveHandSurfaceHandState {
+    fn from_makepad_hand(
+        is_left: bool,
+        hand: &XrHand,
+        frame_index: u64,
+        timestamp_ns: u64,
+        rig_cache: &LiveHandSurfaceRigCache,
+    ) -> Result<Self, String> {
         let joint_poses = hand
             .joints
             .iter()
@@ -220,12 +277,12 @@ impl LiveHandSurfaceHandState {
                 LIVE_RIGHT_SOURCE_ID
             },
             is_left,
-            rig,
+            rig: rig_cache.rig.clone(),
             compact_frame,
-            bind_version: bind.bind_version,
-            joint_count: bind.joint_bind_poses.len(),
-            vertex_count: bind.vertex_positions.len(),
-            index_count: bind.indices.len(),
+            bind_version: rig_cache.bind_version,
+            joint_count: rig_cache.joint_count,
+            vertex_count: rig_cache.vertex_count,
+            index_count: rig_cache.index_count,
         })
     }
 

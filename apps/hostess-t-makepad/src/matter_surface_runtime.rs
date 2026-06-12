@@ -14,7 +14,9 @@ use crate::matter_surface_gpu::{
     gpu_skinning_mesh_probe_poll_marker_line, gpu_skinning_mesh_probe_submit,
     gpu_skinning_probe_poll_marker_line, gpu_skinning_probe_submit,
 };
-use crate::matter_surface_gpu_schedule::MatterSurfaceGpuProofSchedule;
+use crate::matter_surface_gpu_schedule::{
+    matter_surface_step_interval_seconds, MatterSurfaceGpuProofSchedule,
+};
 use crate::matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use crate::matter_world_adf_debug::{
     MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
@@ -72,10 +74,13 @@ impl App {
         phase: &str,
         update_panel_overlay: bool,
     ) -> MatterSurfacePanelOverlayFrame {
+        let step_interval_seconds = matter_surface_step_interval_seconds(
+            &self.matter_surface_source_selection,
+            MATTER_SURFACE_STEP_INTERVAL_SECONDS,
+        );
         let should_submit = !(now_seconds.is_finite()
             && self.matter_surface_last_step_seconds.is_finite()
-            && now_seconds - self.matter_surface_last_step_seconds
-                < MATTER_SURFACE_STEP_INTERVAL_SECONDS);
+            && now_seconds - self.matter_surface_last_step_seconds < step_interval_seconds);
 
         if should_submit {
             let delta_seconds =
@@ -319,6 +324,7 @@ impl App {
                 phase,
                 &self.matter_surface_source_selection,
                 MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
+                MATTER_SURFACE_STEP_INTERVAL_SECONDS,
                 self.cadence_frame_count,
                 self.cadence_xr_update_count,
                 self.cadence_draw_event_count,
