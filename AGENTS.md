@@ -72,6 +72,11 @@ cd S:\Work\repos\active\rusty-hostess\apps\hostess-t-makepad
 cargo makepad android --variant=quest --abi=aarch64 --sdk-path="$env:ANDROID_HOME" --package-name=io.github.mesmerprism.rustyhostess.makepad --app-label="Rusty Hostess Makepad" --quest-camera-permissions=false build -p hostess-t-makepad
 ```
 
+Use the default debug profile only for fast functional iteration. For headset
+performance evidence, pass `--profile=small` after the package argument; this
+uses an optimized Hostess-local Cargo profile while keeping the generated APK
+debuggable so `Stage-HostessMakepadSettings.ps1` can still use `run-as`.
+
 The expected APK is
 `apps\hostess-t-makepad\target\android\makepad-android-apk\hostess_t_makepad\apk\rustyhostessmakepad.apk`.
 The `--variant=quest` flag is required for `.MakepadAppXr` and OpenXR broker
