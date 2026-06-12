@@ -20,14 +20,15 @@ def valid_summary():
         "cadence": {
             "app_frame_rate_hz": {"avg": 88.149},
             "xr_update_rate_hz": {"avg": 88.130},
-            "xr_effective_frame_rate_hz": {"avg": 90.0},
+            "xr_effective_frame_rate_hz": {"avg": 90.0, "min": 90.0},
             "xr_repaint_gpu_ms": {"avg": 0.330},
             "xr_update_dispatch_ms": {"avg": 0.255},
         },
         "vrapi_hostess_process": {
-            "stale": {"max": 11.0, "avg": 2.56},
+            "stale": {"count": 109, "max": 11.0, "avg": 2.56},
             "stale_90_plus_count": 0,
             "stale_30_plus_count": 0,
+            "stale_nonzero_count": 77,
         },
         "proof_lines": [
             "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE status=ready",
@@ -46,6 +47,7 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual([], result.issues)
         self.assertEqual(0, result.summary["hostess_stale_90_plus_count"])
+        self.assertEqual(77, result.summary["hostess_stale_nonzero_count"])
         self.assertEqual(2, result.summary["mesh_sdf_proof_line_count"])
         self.assertEqual(1, result.summary["mesh_sdf_program_setup_count"])
         self.assertEqual(1, result.summary["mesh_sdf_program_reuse_count"])
@@ -63,6 +65,30 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertFalse(result.ok)
         self.assertTrue(any("stale_90_plus_count" in issue for issue in result.issues))
         self.assertTrue(any("app_frame_rate_hz.avg" in issue for issue in result.issues))
+
+    def test_rejects_sustained_low_stale_accumulation(self):
+        summary = valid_summary()
+        summary["vrapi_hostess_process"]["stale"]["avg"] = 3.44
+        summary["vrapi_hostess_process"]["stale"]["count"] = 123
+        summary["vrapi_hostess_process"]["stale_nonzero_count"] = 123
+
+        result = validate_summary(summary)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("stale.avg" in issue for issue in result.issues))
+        self.assertTrue(any("stale_nonzero_count" in issue for issue in result.issues))
+        self.assertTrue(any("stale_nonzero_ratio" in issue for issue in result.issues))
+
+    def test_rejects_low_effective_frame_rate_samples(self):
+        summary = valid_summary()
+        summary["cadence"]["xr_effective_frame_rate_hz"]["avg"] = 87.25
+        summary["cadence"]["xr_effective_frame_rate_hz"]["min"] = 22.5
+
+        result = validate_summary(summary)
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("xr_effective_frame_rate_hz.avg" in issue for issue in result.issues))
+        self.assertTrue(any("xr_effective_frame_rate_hz.min" in issue for issue in result.issues))
 
     def test_requires_async_gpu_readback_markers(self):
         summary = valid_summary()

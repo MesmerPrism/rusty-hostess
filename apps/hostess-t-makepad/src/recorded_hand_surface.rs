@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, QuestMakepadMatterSurfaceError, QuestMakepadMatterSurfaceSourceFrame,
-    RecordedCompactHandJointFrame, RecordedHandRig,
+    QuestMakepadRecordedHandSourceFrameBuilder, RecordedCompactHandJointFrame, RecordedHandRig,
     MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_LEFT,
     MESH_REPLAY_SOURCE_RECORDED_META_QUEST_HAND_RIGHT,
 };
@@ -15,7 +15,7 @@ const RIGHT_CLIP_FILE: &str = "right.clip.jsonl";
 #[derive(Clone, Debug)]
 pub(crate) struct RecordedHandSurfaceSource {
     source_id: String,
-    rig: RecordedHandRig,
+    builder: QuestMakepadRecordedHandSourceFrameBuilder,
     frames: Vec<RecordedCompactHandJointFrame>,
 }
 
@@ -67,9 +67,12 @@ impl RecordedHandSurfaceSource {
             return Ok(None);
         }
 
+        let builder = QuestMakepadRecordedHandSourceFrameBuilder::new(source_id, rig)
+            .map_err(|error| format!("build {source_id} source-frame builder failed: {error}"))?;
+
         Ok(Some(Self {
             source_id: source_id.to_owned(),
-            rig,
+            builder,
             frames,
         }))
     }
@@ -79,11 +82,7 @@ impl RecordedHandSurfaceSource {
         replay_runtime: &MeshReplayRuntime,
     ) -> Result<QuestMakepadMatterSurfaceSourceFrame, QuestMakepadMatterSurfaceError> {
         let frame_index = replay_runtime.current_frame_index() % self.frames.len();
-        QuestMakepadMatterSurfaceSourceFrame::from_recorded_hand_capture(
-            self.source_id.clone(),
-            &self.rig,
-            &self.frames[frame_index],
-        )
+        self.builder.source_frame(&self.frames[frame_index])
     }
 
     pub(crate) fn marker_line(&self, phase: &str) -> String {

@@ -83,6 +83,119 @@ function Add-Payload {
     })
 }
 
+function Get-Sha256HexForText {
+    param([string]$Text)
+
+    $Sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        $Bytes = [System.Text.Encoding]::UTF8.GetBytes($Text)
+        return (($Sha.ComputeHash($Bytes) | ForEach-Object { $_.ToString("x2") }) -join "")
+    } finally {
+        $Sha.Dispose()
+    }
+}
+
+function Select-ScopeSettingIds {
+    param(
+        [object[]]$Settings,
+        [string[]]$ExactIds,
+        [string[]]$Prefixes
+    )
+
+    $Rows = foreach ($Setting in $Settings) {
+        $SettingId = [string]$Setting.setting_id
+        $ExactMatch = $ExactIds -contains $SettingId
+        $PrefixMatch = $false
+        foreach ($Prefix in $Prefixes) {
+            if ($SettingId.StartsWith($Prefix)) {
+                $PrefixMatch = $true
+                break
+            }
+        }
+        if ($ExactMatch -or $PrefixMatch) {
+            [ordered]@{
+                setting_id = $SettingId
+                value = $Setting.value
+                hotload_policy = $Setting.hotload_policy
+                writer_policy = $Setting.writer_policy
+            }
+        }
+    }
+    return @($Rows | Sort-Object { $_["setting_id"] })
+}
+
+function New-SettingsScopeRevision {
+    param(
+        [string]$Scope,
+        [object[]]$Settings,
+        [string[]]$ExactIds = @(),
+        [string[]]$Prefixes = @()
+    )
+
+    $Rows = Select-ScopeSettingIds -Settings $Settings -ExactIds $ExactIds -Prefixes $Prefixes
+    $ScopePayload = [ordered]@{
+        scope = $Scope
+        settings = @($Rows)
+    }
+    $ScopeJson = $ScopePayload | ConvertTo-Json -Depth 10 -Compress
+    [ordered]@{
+        revision_hash_sha256 = Get-Sha256HexForText $ScopeJson
+        setting_count = @($Rows).Count
+        setting_ids = @($Rows | ForEach-Object { $_["setting_id"] })
+    }
+}
+
+function Write-EffectiveSettingsRevisionManifest {
+    param(
+        [string]$Source,
+        [string]$Out
+    )
+
+    $SourceItem = Get-Item -LiteralPath $Source
+    $Text = Get-Content -LiteralPath $Source -Raw
+    $Report = $Text | ConvertFrom-Json
+    $Settings = @($Report.settings)
+    $Manifest = [ordered]@{
+        schema = "rusty.gui.makepad.effective_settings_revision.v1"
+        generated_at = (Get-Date).ToUniversalTime().ToString("o")
+        source_file = "makepad-effective-settings.json"
+        source_size_bytes = $SourceItem.Length
+        source_sha256 = (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash.ToLowerInvariant()
+        app_id = $Report.app_id
+        surface_schema = $Report.surface_schema
+        surface_version = $Report.surface_version
+        source_revision = $Report.revision
+        invalidation_policy = [ordered]@{
+            global_gate = "source_sha256_or_source_revision"
+            scope_gate = "revision_hash_sha256"
+            detail_read = "only_after_relevant_scope_changed"
+            watcher_events_are_hints = $true
+            high_rate_payload_in_settings_json = $false
+        }
+        scopes = [ordered]@{
+            mesh_replay = New-SettingsScopeRevision `
+                -Scope "mesh_replay" `
+                -Settings $Settings `
+                -Prefixes @("makepad.mesh_replay.")
+            camera_projection = New-SettingsScopeRevision `
+                -Scope "camera_projection" `
+                -Settings $Settings `
+                -ExactIds @("makepad.render.scale", "makepad.camera.streaming.enabled") `
+                -Prefixes @("makepad.projection.")
+            matter_surface = New-SettingsScopeRevision `
+                -Scope "matter_surface" `
+                -Settings $Settings `
+                -ExactIds @("makepad.collision.enabled", "makepad.sdf_adf.overlay_mode") `
+                -Prefixes @("makepad.matter.surface_runtime.", "makepad.sdf.slice.", "makepad.adf.debug.", "makepad.sdf_adf.debug.")
+            particles = New-SettingsScopeRevision `
+                -Scope "particles" `
+                -Settings $Settings `
+                -Prefixes @("makepad.particles.")
+        }
+    }
+    $Manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Out -Encoding UTF8
+}
+
 function Remote-Parent {
     param([string]$RemoteFile)
 
@@ -100,10 +213,19 @@ Assert-SafeRemoteTmp $RemoteTmp
 Assert-SafeInternalSettingsDir $InternalSettingsDir
 
 $Payloads = New-Object System.Collections.ArrayList
+$GeneratedPayloadDir = Join-Path ([System.IO.Path]::GetTempPath()) "rusty-hostess-makepad-settings-staging"
+New-Item -ItemType Directory -Force -Path $GeneratedPayloadDir | Out-Null
+$EffectiveSettingsSource = Join-Path $ResolvedBundleDir "effective-settings.json"
+$EffectiveSettingsRevisionManifest = Join-Path $GeneratedPayloadDir "makepad-effective-settings.revision.json"
+Write-EffectiveSettingsRevisionManifest -Source $EffectiveSettingsSource -Out $EffectiveSettingsRevisionManifest
 Add-Payload -Payloads $Payloads `
-    -Source (Join-Path $ResolvedBundleDir "effective-settings.json") `
+    -Source $EffectiveSettingsSource `
     -RelativePath "makepad-effective-settings.json" `
     -Role "effective-settings"
+Add-Payload -Payloads $Payloads `
+    -Source $EffectiveSettingsRevisionManifest `
+    -RelativePath "makepad-effective-settings.revision.json" `
+    -Role "effective-settings-revision"
 
 $MeshReplayDir = Join-Path $ResolvedBundleDir "mesh-replay"
 if (Test-Path -LiteralPath $MeshReplayDir -PathType Container) {
@@ -148,6 +270,8 @@ $Report = [ordered]@{
         adb_handoff_tmp_root = "/data/local/tmp"
         external_android_data_used = $false
         settings_json_payload = "source selection and low-rate profile values only"
+        settings_revision_manifest = "makepad-effective-settings.revision.json"
+        settings_invalidation_policy = "global revision/hash gate, scoped revision/hash gate, then detailed JSON read"
         high_rate_payload_in_settings_json = $false
     }
 }

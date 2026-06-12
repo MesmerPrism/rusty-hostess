@@ -310,6 +310,45 @@ pub(crate) fn makepad_cadence_sample_marker_line(sample: MakepadCadenceSampleMar
     )
 }
 
+pub(crate) fn makepad_cadence_compact_sample_marker_line(
+    sample: MakepadCadenceSampleMarker,
+) -> String {
+    format!(
+        "RUSTY_MAKEPAD_CADENCE schema=rusty.gui.makepad.cadence.v1 phase=sample status=ok cadencePayload=compact cameraStreamingEnabled=false elapsedMs={:.0} intervalMs={:.0} appFrameCount={} appFrameDelta={} appFrameRateHz={:.2} xrUpdateCount={} xrUpdateDelta={} xrUpdateRateHz={:.2} drawEventCount={} drawEventDelta={} drawEventRateHz={:.2} renderPath=makepad-xr appFrameSource=makepad-next-frame xrDisplayRefreshRateHz={} xrEffectiveFrameRateHz={} xrFrameCpuMs={} xrShouldRender={} xrSkippedShouldRenderCount={} xrWaitFrameMs={} xrUpdateDispatchMs={} xrNextFrameMs={} xrDrawEventMs={} xrRepaintMs={} xrRepaintGpuMs={} xrRepaintWaitInflightMs={} xrRepaintSubmitMs={} xrRepaintTextureUploadBytes={} xrRepaintPacketBufferBytes={} xrRepaintGeometryUploadBytes={} xrRepaintDrawCalls={} xrRepaintInstances={} xrRepaintIndices={} xrEndFrameMs={}",
+        sample.elapsed_seconds * 1000.0,
+        sample.interval_seconds * 1000.0,
+        sample.app_frame_count,
+        sample.app_frame_delta,
+        sample.app_frame_rate_hz,
+        sample.xr_update_count,
+        sample.xr_update_delta,
+        sample.xr_update_rate_hz,
+        sample.draw_event_count,
+        sample.draw_event_delta,
+        sample.draw_event_rate_hz,
+        optional_f64_marker(sample.xr_display_refresh_rate_hz),
+        optional_f64_marker(sample.xr_effective_frame_rate_hz),
+        optional_f64_marker(sample.xr_frame_cpu_ms),
+        optional_bool_marker(sample.xr_should_render),
+        optional_u64_marker(sample.xr_skipped_should_render_count),
+        optional_f64_marker(sample.xr_wait_frame_ms),
+        optional_f64_marker(sample.xr_update_dispatch_ms),
+        optional_f64_marker(sample.xr_next_frame_ms),
+        optional_f64_marker(sample.xr_draw_event_ms),
+        optional_f64_marker(sample.xr_repaint_ms),
+        optional_f64_marker(sample.xr_repaint_gpu_ms),
+        optional_f64_marker(sample.xr_repaint_wait_inflight_ms),
+        optional_f64_marker(sample.xr_repaint_submit_ms),
+        optional_u64_marker(sample.xr_repaint_texture_upload_bytes),
+        optional_u64_marker(sample.xr_repaint_packet_buffer_bytes),
+        optional_u64_marker(sample.xr_repaint_geometry_upload_bytes),
+        optional_u64_marker(sample.xr_repaint_draw_calls),
+        optional_u64_marker(sample.xr_repaint_instances),
+        optional_u64_marker(sample.xr_repaint_indices),
+        optional_f64_marker(sample.xr_end_frame_ms),
+    )
+}
+
 fn optional_f64_marker(value: Option<f64>) -> String {
     value
         .filter(|value| value.is_finite())
@@ -518,6 +557,94 @@ mod tests {
             marker,
             "RUSTY_MAKEPAD_CADENCE schema=rusty.gui.makepad.cadence.v1 phase=sample status=ok elapsedMs=4250 intervalMs=2000 appFrameCount=120 appFrameDelta=60 appFrameRateHz=30.00 xrUpdateCount=118 xrUpdateDelta=59 xrUpdateRateHz=29.50 drawEventCount=90 drawEventDelta=45 drawEventRateHz=22.50 leftTextureUpdateCount=32 rightTextureUpdateCount=31 pairedTextureUpdateCount=31 leftTextureUpdateDelta=16 rightTextureUpdateDelta=15 pairedTextureUpdateDelta=15 leftTextureUpdateRateHz=8.00 rightTextureUpdateRateHz=7.50 pairedTextureUpdateRateHz=7.50 leftLastPositionMs=1001 rightLastPositionMs=1003 leftCameraFrameAgeMs=12.00 rightCameraFrameAgeMs=15.00 pairedCameraFrameAgeMs=15.00 leftCameraImportLagMs=1.20 rightCameraImportLagMs=1.40 cameraStaleThresholdMs=100 pairedCameraStale=false pairedLeftRightCameraFrames=true projectionMappingReady=true alignedProjection=false visibleCameraProjectionReady=true renderPath=makepad-xr appFrameSource=makepad-next-frame cameraFrameSource=makepad-video-texture-updated xrDisplayRefreshRateHz=90.00 xrEffectiveFrameRateHz=30.00 xrFrameCpuMs=12.34 xrShouldRender=true xrSkippedShouldRenderCount=3 xrPreFrameEventsMs=0.25 xrPostFrameMediaEventsMs=1.25 xrWaitFrameMs=8.00 xrBeginFrameMs=0.10 xrLocateSpaceMs=0.11 xrLocateViewsMs=0.12 xrAcquireSwapchainMs=0.20 xrWaitSwapchainMs=0.30 xrAcquireDepthMs=0.35 xrUpdatePrepareMs=0.36 xrUpdateDispatchMs=0.40 xrNextFrameMs=0.50 xrDrawEventMs=0.60 xrCompileShadersMs=0.65 xrRepaintMs=1.70 xrRepaintGpuMs=2.10 xrRepaintWaitInflightMs=0.80 xrRepaintPrepareTexturesMs=0.90 xrRepaintRecordDrawMs=1.00 xrRepaintSubmitMs=1.10 xrRepaintTextureUploadCount=2 xrRepaintTextureUploadBytes=3456 xrRepaintPacketBufferCount=4 xrRepaintPacketBufferBytes=5678 xrRepaintGeometryUploadBytes=6789 xrRepaintDescriptorSetCount=8 xrRepaintDrawItems=9 xrRepaintDrawCalls=10 xrRepaintPackets=11 xrRepaintInstances=12 xrRepaintIndices=13 xrDepthReadbackMs=1.20 xrEndFrameMs=0.70 xrResizeProjectionMs=1.30 cameraTexturePath=direct-camera-cpu-yuv-plane makepadVulkanImport=false textureImportPath=makepad-camera-cpu-yuv-plane cpuUploadPath=makepad-camera-cpu-yuv-plane visualColorStatus=accepted-cpu-yuv-reference"
         );
+    }
+
+    #[test]
+    fn compact_cadence_marker_keeps_gpu_proof_timing_fields() {
+        let marker = makepad_cadence_compact_sample_marker_line(MakepadCadenceSampleMarker {
+            elapsed_seconds: 5.0,
+            interval_seconds: 5.0,
+            app_frame_count: 450,
+            app_frame_delta: 449,
+            app_frame_rate_hz: 89.8,
+            xr_update_count: 450,
+            xr_update_delta: 449,
+            xr_update_rate_hz: 89.8,
+            draw_event_count: 450,
+            draw_event_delta: 449,
+            draw_event_rate_hz: 89.8,
+            left_texture_update_count: 0,
+            right_texture_update_count: 0,
+            paired_texture_update_count: 0,
+            left_texture_update_delta: 0,
+            right_texture_update_delta: 0,
+            paired_texture_update_delta: 0,
+            left_texture_update_rate_hz: 0.0,
+            right_texture_update_rate_hz: 0.0,
+            paired_texture_update_rate_hz: 0.0,
+            left_last_position_ms: 0,
+            right_last_position_ms: 0,
+            left_camera_frame_age_ms: None,
+            right_camera_frame_age_ms: None,
+            paired_camera_frame_age_ms: None,
+            left_camera_import_lag_ms: None,
+            right_camera_import_lag_ms: None,
+            camera_stale_threshold_ms: 100.0,
+            paired_camera_stale: None,
+            paired_left_right_camera_frames: false,
+            projection_mapping_ready: false,
+            aligned_projection: false,
+            visible_camera_projection_ready: false,
+            xr_display_refresh_rate_hz: Some(90.0),
+            xr_effective_frame_rate_hz: Some(90.0),
+            xr_frame_cpu_ms: Some(11.2),
+            xr_should_render: Some(true),
+            xr_skipped_should_render_count: Some(0),
+            xr_pre_frame_events_ms: Some(0.01),
+            xr_post_frame_media_events_ms: Some(0.0),
+            xr_wait_frame_ms: Some(10.0),
+            xr_begin_frame_ms: Some(0.01),
+            xr_locate_space_ms: Some(0.01),
+            xr_locate_views_ms: Some(0.01),
+            xr_acquire_swapchain_ms: Some(0.0),
+            xr_wait_swapchain_ms: Some(0.0),
+            xr_acquire_depth_ms: Some(0.0),
+            xr_update_prepare_ms: Some(0.1),
+            xr_update_dispatch_ms: Some(0.2),
+            xr_next_frame_ms: Some(0.1),
+            xr_draw_event_ms: Some(0.1),
+            xr_compile_shaders_ms: Some(0.0),
+            xr_repaint_ms: Some(0.4),
+            xr_repaint_gpu_ms: Some(0.3),
+            xr_repaint_wait_inflight_ms: Some(0.1),
+            xr_repaint_prepare_textures_ms: Some(0.0),
+            xr_repaint_record_draw_ms: Some(0.1),
+            xr_repaint_submit_ms: Some(0.2),
+            xr_repaint_texture_upload_count: Some(0),
+            xr_repaint_texture_upload_bytes: Some(0),
+            xr_repaint_packet_buffer_count: Some(1),
+            xr_repaint_packet_buffer_bytes: Some(8832),
+            xr_repaint_geometry_upload_bytes: Some(0),
+            xr_repaint_descriptor_set_count: Some(1),
+            xr_repaint_draw_items: Some(2),
+            xr_repaint_draw_calls: Some(1),
+            xr_repaint_packets: Some(1),
+            xr_repaint_instances: Some(64),
+            xr_repaint_indices: Some(36),
+            xr_depth_readback_ms: Some(0.0),
+            xr_end_frame_ms: Some(0.2),
+            xr_resize_projection_ms: Some(0.0),
+            texture_path: MakepadCameraTexturePath::DirectHardwareBufferExternal,
+        });
+
+        assert!(marker.contains("RUSTY_MAKEPAD_CADENCE"));
+        assert!(marker.contains("cadencePayload=compact"));
+        assert!(marker.contains("cameraStreamingEnabled=false"));
+        assert!(marker.contains("appFrameRateHz=89.80"));
+        assert!(marker.contains("xrEffectiveFrameRateHz=90.00"));
+        assert!(marker.contains("xrRepaintGpuMs=0.30"));
+        assert!(!marker.contains("cameraTexturePath="));
+        assert!(!marker.contains("leftCameraFrameAgeMs="));
     }
 
     #[test]

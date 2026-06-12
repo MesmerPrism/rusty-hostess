@@ -153,8 +153,8 @@ use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
 use shell_xr_runtime::ShellXrRuntimeState;
 use source_sampling::{
-    makepad_cadence_sample_marker_line, makepad_cadence_start_marker_line,
-    makepad_texture_content_probe_missing_marker_fields,
+    makepad_cadence_compact_sample_marker_line, makepad_cadence_sample_marker_line,
+    makepad_cadence_start_marker_line, makepad_texture_content_probe_missing_marker_fields,
     makepad_texture_content_probe_ok_marker_fields, MakepadCadenceSampleMarker,
     MakepadSourceSamplingHandoff,
 };
@@ -1733,6 +1733,8 @@ pub struct App {
     makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
     mesh_replay_effective_settings_path: Option<String>,
+    #[rust]
+    mesh_replay_effective_settings_revision_key: Option<String>,
     #[rust]
     mesh_replay_effective_settings_modified_ns: u128,
     #[rust]
@@ -3530,12 +3532,12 @@ impl App {
         phase: &str,
         force: bool,
     ) -> bool {
+        let identity = makepad_effective_settings::selected_makepad_effective_settings_identity();
         if !force {
-            let identity =
-                makepad_effective_settings::selected_makepad_effective_settings_identity();
             if !identity.changed_from(
                 self.mesh_replay_effective_settings_path.as_deref(),
                 self.current_mesh_replay_effective_settings_modified_ns(),
+                self.mesh_replay_effective_settings_revision_key.as_deref(),
             ) {
                 return false;
             }
@@ -3549,6 +3551,7 @@ impl App {
             None
         };
         self.mesh_replay_effective_settings_path = selection.source_effective_settings_path.clone();
+        self.mesh_replay_effective_settings_revision_key = identity.source_revision_key;
         self.mesh_replay_effective_settings_modified_ns =
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
@@ -5568,6 +5571,10 @@ impl App {
         }
     }
 
+    fn use_compact_cadence_marker(&self) -> bool {
+        !self.current_camera_streaming_enabled()
+    }
+
     fn emit_cadence_sample(&mut self, cx: &mut Cx, now_seconds: f64, interval_seconds: f64) {
         let elapsed_seconds = (now_seconds - self.cadence_start_time).max(0.0);
         let frame_delta = self
@@ -5618,95 +5625,98 @@ impl App {
         let paired_camera_stale =
             paired_camera_frame_age_ms.map(|age_ms| age_ms > CAMERA_FRAME_STALE_THRESHOLD_MS);
 
-        emit_marker_line(&makepad_cadence_sample_marker_line(
-            MakepadCadenceSampleMarker {
-                elapsed_seconds,
-                interval_seconds,
-                app_frame_count: self.cadence_frame_count,
-                app_frame_delta: frame_delta,
-                app_frame_rate_hz,
-                xr_update_count: self.cadence_xr_update_count,
-                xr_update_delta,
-                xr_update_rate_hz,
-                draw_event_count: self.cadence_draw_event_count,
-                draw_event_delta,
-                draw_event_rate_hz,
-                left_texture_update_count: self.cadence_left_texture_update_count,
-                right_texture_update_count: self.cadence_right_texture_update_count,
-                paired_texture_update_count: self
-                    .cadence_left_texture_update_count
-                    .min(self.cadence_right_texture_update_count),
-                left_texture_update_delta: left_delta,
-                right_texture_update_delta: right_delta,
-                paired_texture_update_delta: paired_delta,
-                left_texture_update_rate_hz: left_texture_rate_hz,
-                right_texture_update_rate_hz: right_texture_rate_hz,
-                paired_texture_update_rate_hz: paired_texture_rate_hz,
-                left_last_position_ms: self.cadence_left_last_position_ms,
-                right_last_position_ms: self.cadence_right_last_position_ms,
-                left_camera_frame_age_ms,
-                right_camera_frame_age_ms,
-                paired_camera_frame_age_ms,
-                left_camera_import_lag_ms,
-                right_camera_import_lag_ms,
-                camera_stale_threshold_ms: CAMERA_FRAME_STALE_THRESHOLD_MS,
-                paired_camera_stale,
-                paired_left_right_camera_frames: paired_buffers_ready,
-                projection_mapping_ready,
-                aligned_projection,
-                visible_camera_projection_ready: self.camera_projection_textures_bound,
-                xr_display_refresh_rate_hz: cx.xr_display_refresh_rate_hz(),
-                xr_effective_frame_rate_hz: cx.xr_effective_frame_rate_hz(),
-                xr_frame_cpu_ms: cx.xr_frame_cpu_time_ms(),
-                xr_should_render: xr_cpu.map(|breakdown| breakdown.should_render),
-                xr_skipped_should_render_count: xr_cpu
-                    .map(|breakdown| breakdown.skipped_should_render_count),
-                xr_pre_frame_events_ms: xr_cpu.map(|breakdown| breakdown.pre_frame_events_ms),
-                xr_post_frame_media_events_ms: xr_cpu
-                    .map(|breakdown| breakdown.post_frame_media_events_ms),
-                xr_wait_frame_ms: xr_cpu.map(|breakdown| breakdown.wait_frame_ms),
-                xr_begin_frame_ms: xr_cpu.map(|breakdown| breakdown.begin_frame_ms),
-                xr_locate_space_ms: xr_cpu.map(|breakdown| breakdown.locate_space_ms),
-                xr_locate_views_ms: xr_cpu.map(|breakdown| breakdown.locate_views_ms),
-                xr_acquire_swapchain_ms: xr_cpu.map(|breakdown| breakdown.acquire_swapchain_ms),
-                xr_wait_swapchain_ms: xr_cpu.map(|breakdown| breakdown.wait_swapchain_ms),
-                xr_acquire_depth_ms: xr_cpu.map(|breakdown| breakdown.acquire_depth_ms),
-                xr_update_prepare_ms: xr_cpu.map(|breakdown| breakdown.update_prepare_ms),
-                xr_update_dispatch_ms: xr_cpu.map(|breakdown| breakdown.update_dispatch_ms),
-                xr_next_frame_ms: xr_cpu.map(|breakdown| breakdown.next_frame_ms),
-                xr_draw_event_ms: xr_cpu.map(|breakdown| breakdown.draw_event_ms),
-                xr_compile_shaders_ms: xr_cpu.map(|breakdown| breakdown.compile_shaders_ms),
-                xr_repaint_ms: xr_cpu.map(|breakdown| breakdown.repaint_ms),
-                xr_repaint_gpu_ms: xr_cpu.and_then(|breakdown| breakdown.repaint_gpu_ms),
-                xr_repaint_wait_inflight_ms: xr_cpu
-                    .map(|breakdown| breakdown.repaint_wait_inflight_ms),
-                xr_repaint_prepare_textures_ms: xr_cpu
-                    .map(|breakdown| breakdown.repaint_prepare_textures_ms),
-                xr_repaint_record_draw_ms: xr_cpu.map(|breakdown| breakdown.repaint_record_draw_ms),
-                xr_repaint_submit_ms: xr_cpu.map(|breakdown| breakdown.repaint_submit_ms),
-                xr_repaint_texture_upload_count: xr_cpu
-                    .map(|breakdown| breakdown.repaint_texture_upload_count),
-                xr_repaint_texture_upload_bytes: xr_cpu
-                    .map(|breakdown| breakdown.repaint_texture_upload_bytes),
-                xr_repaint_packet_buffer_count: xr_cpu
-                    .map(|breakdown| breakdown.repaint_packet_buffer_count),
-                xr_repaint_packet_buffer_bytes: xr_cpu
-                    .map(|breakdown| breakdown.repaint_packet_buffer_bytes),
-                xr_repaint_geometry_upload_bytes: xr_cpu
-                    .map(|breakdown| breakdown.repaint_geometry_upload_bytes),
-                xr_repaint_descriptor_set_count: xr_cpu
-                    .map(|breakdown| breakdown.repaint_descriptor_set_count),
-                xr_repaint_draw_items: xr_cpu.map(|breakdown| breakdown.repaint_draw_items),
-                xr_repaint_draw_calls: xr_cpu.map(|breakdown| breakdown.repaint_draw_calls),
-                xr_repaint_packets: xr_cpu.map(|breakdown| breakdown.repaint_packets),
-                xr_repaint_instances: xr_cpu.map(|breakdown| breakdown.repaint_instances),
-                xr_repaint_indices: xr_cpu.map(|breakdown| breakdown.repaint_indices),
-                xr_depth_readback_ms: xr_cpu.map(|breakdown| breakdown.depth_readback_ms),
-                xr_end_frame_ms: xr_cpu.map(|breakdown| breakdown.end_frame_ms),
-                xr_resize_projection_ms: xr_cpu.map(|breakdown| breakdown.resize_projection_ms),
-                texture_path: self.cadence_camera_texture_path(),
-            },
-        ));
+        let cadence_sample = MakepadCadenceSampleMarker {
+            elapsed_seconds,
+            interval_seconds,
+            app_frame_count: self.cadence_frame_count,
+            app_frame_delta: frame_delta,
+            app_frame_rate_hz,
+            xr_update_count: self.cadence_xr_update_count,
+            xr_update_delta,
+            xr_update_rate_hz,
+            draw_event_count: self.cadence_draw_event_count,
+            draw_event_delta,
+            draw_event_rate_hz,
+            left_texture_update_count: self.cadence_left_texture_update_count,
+            right_texture_update_count: self.cadence_right_texture_update_count,
+            paired_texture_update_count: self
+                .cadence_left_texture_update_count
+                .min(self.cadence_right_texture_update_count),
+            left_texture_update_delta: left_delta,
+            right_texture_update_delta: right_delta,
+            paired_texture_update_delta: paired_delta,
+            left_texture_update_rate_hz: left_texture_rate_hz,
+            right_texture_update_rate_hz: right_texture_rate_hz,
+            paired_texture_update_rate_hz: paired_texture_rate_hz,
+            left_last_position_ms: self.cadence_left_last_position_ms,
+            right_last_position_ms: self.cadence_right_last_position_ms,
+            left_camera_frame_age_ms,
+            right_camera_frame_age_ms,
+            paired_camera_frame_age_ms,
+            left_camera_import_lag_ms,
+            right_camera_import_lag_ms,
+            camera_stale_threshold_ms: CAMERA_FRAME_STALE_THRESHOLD_MS,
+            paired_camera_stale,
+            paired_left_right_camera_frames: paired_buffers_ready,
+            projection_mapping_ready,
+            aligned_projection,
+            visible_camera_projection_ready: self.camera_projection_textures_bound,
+            xr_display_refresh_rate_hz: cx.xr_display_refresh_rate_hz(),
+            xr_effective_frame_rate_hz: cx.xr_effective_frame_rate_hz(),
+            xr_frame_cpu_ms: cx.xr_frame_cpu_time_ms(),
+            xr_should_render: xr_cpu.map(|breakdown| breakdown.should_render),
+            xr_skipped_should_render_count: xr_cpu
+                .map(|breakdown| breakdown.skipped_should_render_count),
+            xr_pre_frame_events_ms: xr_cpu.map(|breakdown| breakdown.pre_frame_events_ms),
+            xr_post_frame_media_events_ms: xr_cpu
+                .map(|breakdown| breakdown.post_frame_media_events_ms),
+            xr_wait_frame_ms: xr_cpu.map(|breakdown| breakdown.wait_frame_ms),
+            xr_begin_frame_ms: xr_cpu.map(|breakdown| breakdown.begin_frame_ms),
+            xr_locate_space_ms: xr_cpu.map(|breakdown| breakdown.locate_space_ms),
+            xr_locate_views_ms: xr_cpu.map(|breakdown| breakdown.locate_views_ms),
+            xr_acquire_swapchain_ms: xr_cpu.map(|breakdown| breakdown.acquire_swapchain_ms),
+            xr_wait_swapchain_ms: xr_cpu.map(|breakdown| breakdown.wait_swapchain_ms),
+            xr_acquire_depth_ms: xr_cpu.map(|breakdown| breakdown.acquire_depth_ms),
+            xr_update_prepare_ms: xr_cpu.map(|breakdown| breakdown.update_prepare_ms),
+            xr_update_dispatch_ms: xr_cpu.map(|breakdown| breakdown.update_dispatch_ms),
+            xr_next_frame_ms: xr_cpu.map(|breakdown| breakdown.next_frame_ms),
+            xr_draw_event_ms: xr_cpu.map(|breakdown| breakdown.draw_event_ms),
+            xr_compile_shaders_ms: xr_cpu.map(|breakdown| breakdown.compile_shaders_ms),
+            xr_repaint_ms: xr_cpu.map(|breakdown| breakdown.repaint_ms),
+            xr_repaint_gpu_ms: xr_cpu.and_then(|breakdown| breakdown.repaint_gpu_ms),
+            xr_repaint_wait_inflight_ms: xr_cpu.map(|breakdown| breakdown.repaint_wait_inflight_ms),
+            xr_repaint_prepare_textures_ms: xr_cpu
+                .map(|breakdown| breakdown.repaint_prepare_textures_ms),
+            xr_repaint_record_draw_ms: xr_cpu.map(|breakdown| breakdown.repaint_record_draw_ms),
+            xr_repaint_submit_ms: xr_cpu.map(|breakdown| breakdown.repaint_submit_ms),
+            xr_repaint_texture_upload_count: xr_cpu
+                .map(|breakdown| breakdown.repaint_texture_upload_count),
+            xr_repaint_texture_upload_bytes: xr_cpu
+                .map(|breakdown| breakdown.repaint_texture_upload_bytes),
+            xr_repaint_packet_buffer_count: xr_cpu
+                .map(|breakdown| breakdown.repaint_packet_buffer_count),
+            xr_repaint_packet_buffer_bytes: xr_cpu
+                .map(|breakdown| breakdown.repaint_packet_buffer_bytes),
+            xr_repaint_geometry_upload_bytes: xr_cpu
+                .map(|breakdown| breakdown.repaint_geometry_upload_bytes),
+            xr_repaint_descriptor_set_count: xr_cpu
+                .map(|breakdown| breakdown.repaint_descriptor_set_count),
+            xr_repaint_draw_items: xr_cpu.map(|breakdown| breakdown.repaint_draw_items),
+            xr_repaint_draw_calls: xr_cpu.map(|breakdown| breakdown.repaint_draw_calls),
+            xr_repaint_packets: xr_cpu.map(|breakdown| breakdown.repaint_packets),
+            xr_repaint_instances: xr_cpu.map(|breakdown| breakdown.repaint_instances),
+            xr_repaint_indices: xr_cpu.map(|breakdown| breakdown.repaint_indices),
+            xr_depth_readback_ms: xr_cpu.map(|breakdown| breakdown.depth_readback_ms),
+            xr_end_frame_ms: xr_cpu.map(|breakdown| breakdown.end_frame_ms),
+            xr_resize_projection_ms: xr_cpu.map(|breakdown| breakdown.resize_projection_ms),
+            texture_path: self.cadence_camera_texture_path(),
+        };
+        let cadence_marker = if self.use_compact_cadence_marker() {
+            makepad_cadence_compact_sample_marker_line(cadence_sample)
+        } else {
+            makepad_cadence_sample_marker_line(cadence_sample)
+        };
+        emit_marker_line(&cadence_marker);
 
         self.cadence_last_sample_time = now_seconds;
         self.cadence_frame_count_at_last_sample = self.cadence_frame_count;

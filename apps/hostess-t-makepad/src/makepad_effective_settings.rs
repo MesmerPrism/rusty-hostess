@@ -17,6 +17,14 @@ const READ_ISSUE: &str = "hostess.issue.makepad_effective_settings_read";
 const PARSE_ISSUE: &str = "hostess.issue.makepad_effective_settings_parse";
 const SCHEMA_ISSUE: &str = "hostess.issue.makepad_effective_settings_schema";
 const MESH_REPLAY_ADAPTER: &str = "rusty-quest-makepad-camera-shell";
+const EFFECTIVE_SETTINGS_REVISION_FILE_NAME: &str = "makepad-effective-settings.revision.json";
+const EFFECTIVE_SETTINGS_REVISION_SCHEMA: &str = "rusty.gui.makepad.effective_settings_revision.v1";
+const EFFECTIVE_SETTINGS_RUNTIME_SCOPES: &[&str] = &[
+    "mesh_replay",
+    "camera_projection",
+    "matter_surface",
+    "particles",
+];
 
 macro_rules! insert_json_field {
     ($object:expr, $key:expr, $value:expr $(,)?) => {{
@@ -127,6 +135,9 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
 pub(crate) struct MakepadEffectiveSettingsIdentity {
     pub(crate) source_effective_settings_path: Option<String>,
     pub(crate) source_modified_ns: Option<u128>,
+    pub(crate) source_revision_key: Option<String>,
+    pub(crate) source_revision_manifest_path: Option<String>,
+    pub(crate) source_revision_manifest_modified_ns: Option<u128>,
 }
 
 impl MakepadEffectiveSettingsIdentity {
@@ -134,9 +145,15 @@ impl MakepadEffectiveSettingsIdentity {
         &self,
         previous_path: Option<&str>,
         previous_modified_ns: Option<u128>,
+        previous_revision_key: Option<&str>,
     ) -> bool {
-        self.source_effective_settings_path.as_deref() != previous_path
-            || self.source_modified_ns != previous_modified_ns
+        if self.source_effective_settings_path.as_deref() != previous_path {
+            return true;
+        }
+        if let Some(revision_key) = self.source_revision_key.as_deref() {
+            return Some(revision_key) != previous_revision_key;
+        }
+        self.source_modified_ns != previous_modified_ns
     }
 }
 
@@ -429,9 +446,19 @@ pub(crate) fn selected_makepad_effective_settings_identity() -> MakepadEffective
 pub(crate) fn makepad_effective_settings_identity_from_path(
     path: &Path,
 ) -> MakepadEffectiveSettingsIdentity {
+    let revision_identity = effective_settings_revision_identity_from_path(path);
     MakepadEffectiveSettingsIdentity {
         source_effective_settings_path: Some(path.display().to_string()),
         source_modified_ns: file_modified_ns(path),
+        source_revision_key: revision_identity
+            .as_ref()
+            .map(|identity| identity.revision_key.clone()),
+        source_revision_manifest_path: revision_identity
+            .as_ref()
+            .map(|identity| identity.manifest_path.display().to_string()),
+        source_revision_manifest_modified_ns: revision_identity
+            .as_ref()
+            .and_then(|identity| identity.manifest_modified_ns),
     }
 }
 
@@ -811,6 +838,62 @@ fn file_modified_ns(path: &Path) -> Option<u128> {
         .map(|duration| duration.as_nanos())
 }
 
+#[derive(Debug)]
+struct EffectiveSettingsRevisionIdentity {
+    revision_key: String,
+    manifest_path: PathBuf,
+    manifest_modified_ns: Option<u128>,
+}
+
+fn effective_settings_revision_identity_from_path(
+    effective_settings_path: &Path,
+) -> Option<EffectiveSettingsRevisionIdentity> {
+    let manifest_path =
+        effective_settings_path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
+    let text = std::fs::read_to_string(&manifest_path).ok()?;
+    let value = serde_json::from_str::<Value>(&text).ok()?;
+    if value.get("schema").and_then(Value::as_str) != Some(EFFECTIVE_SETTINGS_REVISION_SCHEMA) {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    if let Some(source_sha) = value.get("source_sha256").and_then(Value::as_str) {
+        parts.push(format!("source_sha256={source_sha}"));
+    }
+    if let Some(source_revision) = json_scalar_token(value.get("source_revision")) {
+        parts.push(format!("source_revision={source_revision}"));
+    }
+    if let Some(scopes) = value.get("scopes").and_then(Value::as_object) {
+        for scope in EFFECTIVE_SETTINGS_RUNTIME_SCOPES {
+            if let Some(scope_hash) = scopes
+                .get(*scope)
+                .and_then(|scope_value| scope_value.get("revision_hash_sha256"))
+                .and_then(Value::as_str)
+            {
+                parts.push(format!("{scope}={scope_hash}"));
+            }
+        }
+    }
+    if parts.is_empty() {
+        return None;
+    }
+
+    Some(EffectiveSettingsRevisionIdentity {
+        revision_key: parts.join("|"),
+        manifest_modified_ns: file_modified_ns(&manifest_path),
+        manifest_path,
+    })
+}
+
+fn json_scalar_token(value: Option<&Value>) -> Option<String> {
+    match value? {
+        Value::String(value) => Some(value.clone()),
+        Value::Number(value) => Some(value.to_string()),
+        Value::Bool(value) => Some(value.to_string()),
+        _ => None,
+    }
+}
+
 fn selected_effective_settings_path() -> Option<PathBuf> {
     if let Some(path) = arg_value("--makepad-effective-settings") {
         return Some(PathBuf::from(path));
@@ -1155,10 +1238,11 @@ mod tests {
             Some(expected_path.as_str())
         );
         assert!(identity.source_modified_ns.is_some());
-        assert!(identity.changed_from(None, None));
+        assert!(identity.changed_from(None, None, None));
         assert!(!identity.changed_from(
             identity.source_effective_settings_path.as_deref(),
-            identity.source_modified_ns
+            identity.source_modified_ns,
+            identity.source_revision_key.as_deref()
         ));
 
         let parsed = read_mesh_replay_runtime_from_path(&path);
@@ -1181,7 +1265,36 @@ mod tests {
         );
         assert!(second.changed_from(
             first.source_effective_settings_path.as_deref(),
-            first.source_modified_ns
+            first.source_modified_ns,
+            first.source_revision_key.as_deref()
+        ));
+    }
+
+    #[test]
+    fn effective_settings_identity_prefers_revision_sidecar_scope_hashes() {
+        let path = write_temp_json("effective-settings-identity-revision", "{not json");
+        write_revision_sidecar(&path, "mesh-a");
+        let first = makepad_effective_settings_identity_from_path(&path);
+
+        wait_for_file_timestamp_tick();
+        std::fs::write(&path, EFFECTIVE_SETTINGS_FIXTURE).expect("rewrite effective settings");
+        let same_revision = makepad_effective_settings_identity_from_path(&path);
+
+        assert!(first.source_revision_key.is_some());
+        assert_eq!(same_revision.source_revision_key, first.source_revision_key);
+        assert!(!same_revision.changed_from(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns,
+            first.source_revision_key.as_deref()
+        ));
+
+        write_revision_sidecar(&path, "mesh-b");
+        let changed_revision = makepad_effective_settings_identity_from_path(&path);
+
+        assert!(changed_revision.changed_from(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns,
+            first.source_revision_key.as_deref()
         ));
     }
 
@@ -1331,6 +1444,24 @@ mod tests {
         let path = root.join("settings.json");
         std::fs::write(&path, text).expect("write effective settings fixture");
         path
+    }
+
+    fn write_revision_sidecar(settings_path: &Path, mesh_replay_hash: &str) {
+        let sidecar_path = settings_path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
+        let text = format!(
+            r#"{{
+  "schema": "{EFFECTIVE_SETTINGS_REVISION_SCHEMA}",
+  "source_sha256": "source-a",
+  "source_revision": 1,
+  "scopes": {{
+    "mesh_replay": {{ "revision_hash_sha256": "{mesh_replay_hash}" }},
+    "camera_projection": {{ "revision_hash_sha256": "camera-a" }},
+    "matter_surface": {{ "revision_hash_sha256": "matter-a" }},
+    "particles": {{ "revision_hash_sha256": "particles-a" }}
+  }}
+}}"#
+        );
+        std::fs::write(sidecar_path, text).expect("write effective settings revision sidecar");
     }
 
     fn wait_for_file_timestamp_tick() {

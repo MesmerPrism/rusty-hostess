@@ -16,6 +16,9 @@ from typing import Any
 
 
 DEFAULT_MAX_HOSTESS_STALE = 30.0
+DEFAULT_MAX_HOSTESS_STALE_AVG = 3.0
+DEFAULT_MAX_HOSTESS_STALE_NONZERO_RATIO = 0.85
+DEFAULT_MAX_HOSTESS_STALE_NONZERO_COUNT = 90.0
 DEFAULT_MIN_APP_FRAME_RATE_HZ = 85.0
 DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ = 89.0
 
@@ -30,6 +33,9 @@ REQUIRED_MARKERS = {
 @dataclass(frozen=True)
 class EvidenceThresholds:
     max_hostess_stale: float = DEFAULT_MAX_HOSTESS_STALE
+    max_hostess_stale_avg: float = DEFAULT_MAX_HOSTESS_STALE_AVG
+    max_hostess_stale_nonzero_ratio: float = DEFAULT_MAX_HOSTESS_STALE_NONZERO_RATIO
+    max_hostess_stale_nonzero_count: float = DEFAULT_MAX_HOSTESS_STALE_NONZERO_COUNT
     min_app_frame_rate_hz: float = DEFAULT_MIN_APP_FRAME_RATE_HZ
     min_xr_effective_frame_rate_hz: float = DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ
     require_mesh_sdf_program_reuse: bool = False
@@ -84,6 +90,7 @@ def validate_summary(
     app_rate_avg = nested_numeric(cadence, "app_frame_rate_hz", "avg")
     xr_update_avg = nested_numeric(cadence, "xr_update_rate_hz", "avg")
     xr_effective_avg = nested_numeric(cadence, "xr_effective_frame_rate_hz", "avg")
+    xr_effective_min = nested_numeric(cadence, "xr_effective_frame_rate_hz", "min")
     repaint_gpu_avg = nested_numeric(cadence, "xr_repaint_gpu_ms", "avg")
     update_dispatch_avg = nested_numeric(cadence, "xr_update_dispatch_ms", "avg")
 
@@ -102,6 +109,11 @@ def validate_summary(
             "xr_effective_frame_rate_hz.avg "
             f"{xr_effective_avg:.3f} < {thresholds.min_xr_effective_frame_rate_hz:.3f}"
         )
+    if xr_effective_min < thresholds.min_xr_effective_frame_rate_hz:
+        issues.append(
+            "xr_effective_frame_rate_hz.min "
+            f"{xr_effective_min:.3f} < {thresholds.min_xr_effective_frame_rate_hz:.3f}"
+        )
     if repaint_gpu_avg <= 0.0:
         issues.append("xr_repaint_gpu_ms.avg missing or nonpositive")
     if update_dispatch_avg <= 0.0:
@@ -110,7 +122,13 @@ def validate_summary(
     hostess_vrapi = object_value(summary, "vrapi_hostess_process")
     stale_90_plus = numeric(hostess_vrapi.get("stale_90_plus_count"))
     stale_30_plus = numeric(hostess_vrapi.get("stale_30_plus_count"))
+    stale_nonzero_count = numeric(hostess_vrapi.get("stale_nonzero_count"))
+    stale_count = nested_numeric(hostess_vrapi, "stale", "count")
     stale_max = nested_numeric(hostess_vrapi, "stale", "max")
+    stale_avg = nested_numeric(hostess_vrapi, "stale", "avg")
+    stale_nonzero_ratio = (
+        stale_nonzero_count / stale_count if stale_count > 0.0 else 0.0
+    )
     if stale_90_plus != 0:
         issues.append(f"Hostess VrApi stale_90_plus_count is {stale_90_plus:g}")
     if stale_30_plus != 0:
@@ -119,6 +137,22 @@ def validate_summary(
         issues.append(
             f"Hostess VrApi stale.max {stale_max:.3f} > "
             f"{thresholds.max_hostess_stale:.3f}"
+        )
+    if stale_avg > thresholds.max_hostess_stale_avg:
+        issues.append(
+            f"Hostess VrApi stale.avg {stale_avg:.3f} > "
+            f"{thresholds.max_hostess_stale_avg:.3f}"
+        )
+    if stale_nonzero_count > thresholds.max_hostess_stale_nonzero_count:
+        issues.append(
+            "Hostess VrApi stale_nonzero_count "
+            f"{stale_nonzero_count:g} > {thresholds.max_hostess_stale_nonzero_count:g}"
+        )
+    if stale_nonzero_ratio > thresholds.max_hostess_stale_nonzero_ratio:
+        issues.append(
+            "Hostess VrApi stale_nonzero_ratio "
+            f"{stale_nonzero_ratio:.3f} > "
+            f"{thresholds.max_hostess_stale_nonzero_ratio:.3f}"
         )
 
     proof_lines = summary.get("proof_lines", [])
@@ -176,7 +210,11 @@ def validate_summary(
         "app_frame_rate_hz_avg": app_rate_avg,
         "xr_update_rate_hz_avg": xr_update_avg,
         "xr_effective_frame_rate_hz_avg": xr_effective_avg,
+        "xr_effective_frame_rate_hz_min": xr_effective_min,
         "hostess_stale_max": stale_max,
+        "hostess_stale_avg": stale_avg,
+        "hostess_stale_nonzero_count": stale_nonzero_count,
+        "hostess_stale_nonzero_ratio": stale_nonzero_ratio,
         "hostess_stale_30_plus_count": stale_30_plus,
         "hostess_stale_90_plus_count": stale_90_plus,
         "mesh_sdf_proof_line_count": len(mesh_sdf_lines),
@@ -252,6 +290,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Maximum allowed Hostess-process VrApi Stale value.",
     )
     parser.add_argument(
+        "--max-hostess-stale-avg",
+        type=float,
+        default=DEFAULT_MAX_HOSTESS_STALE_AVG,
+        help="Maximum allowed average Hostess-process VrApi Stale value.",
+    )
+    parser.add_argument(
+        "--max-hostess-stale-nonzero-ratio",
+        type=float,
+        default=DEFAULT_MAX_HOSTESS_STALE_NONZERO_RATIO,
+        help="Maximum allowed fraction of Hostess-process VrApi samples with Stale > 0.",
+    )
+    parser.add_argument(
+        "--max-hostess-stale-nonzero-count",
+        type=float,
+        default=DEFAULT_MAX_HOSTESS_STALE_NONZERO_COUNT,
+        help="Maximum allowed Hostess-process VrApi sample count with Stale > 0.",
+    )
+    parser.add_argument(
         "--min-app-frame-rate-hz",
         type=float,
         default=DEFAULT_MIN_APP_FRAME_RATE_HZ,
@@ -276,6 +332,9 @@ def main(argv: list[str] | None = None) -> int:
     summary_path = resolve_summary_path(args.input)
     thresholds = EvidenceThresholds(
         max_hostess_stale=args.max_hostess_stale,
+        max_hostess_stale_avg=args.max_hostess_stale_avg,
+        max_hostess_stale_nonzero_ratio=args.max_hostess_stale_nonzero_ratio,
+        max_hostess_stale_nonzero_count=args.max_hostess_stale_nonzero_count,
         min_app_frame_rate_hz=args.min_app_frame_rate_hz,
         min_xr_effective_frame_rate_hz=args.min_xr_effective_frame_rate_hz,
         require_mesh_sdf_program_reuse=args.require_mesh_sdf_program_reuse,
