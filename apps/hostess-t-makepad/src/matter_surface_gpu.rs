@@ -1,20 +1,24 @@
 use makepad_widgets::makepad_platform::{
-    XrGpuF32FieldSampleProbeResult, XrGpuF32MeshSdfProbeGrid, XrGpuF32MeshSdfProbeResult,
-    XrGpuF32MeshSdfProbeTicket, XrGpuF32SkinningMeshProbeResult, XrGpuF32SkinningMeshProbeTicket,
-    XrGpuF32SkinningMeshVertex, XrGpuF32SkinningProbeResult, XrGpuF32SkinningProbeSample,
-    XrGpuF32SkinningProbeTicket, XrGpuSkinningMeshTriangle, XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES,
-    XR_GPU_F32_MESH_SDF_PROBE_SAMPLES, XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES,
-    XR_GPU_F32_SKINNING_PROBE_SAMPLES,
+    XrGpuF32FieldForceSampleProbeResult, XrGpuF32FieldSampleProbeResult, XrGpuF32ForceProbeSample,
+    XrGpuF32MeshSdfProbeGrid, XrGpuF32MeshSdfProbeResult, XrGpuF32MeshSdfProbeTicket,
+    XrGpuF32SkinningMeshProbeResult, XrGpuF32SkinningMeshProbeTicket, XrGpuF32SkinningMeshVertex,
+    XrGpuF32SkinningProbeResult, XrGpuF32SkinningProbeSample, XrGpuF32SkinningProbeTicket,
+    XrGpuSkinningMeshTriangle, XR_GPU_F32_FIELD_FORCE_SAMPLE_PROBE_SAMPLES,
+    XR_GPU_F32_FIELD_SAMPLE_PROBE_SAMPLES, XR_GPU_F32_MESH_SDF_PROBE_SAMPLES,
+    XR_GPU_F32_SKINNING_MESH_PROBE_SAMPLES, XR_GPU_F32_SKINNING_PROBE_SAMPLES,
 };
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
-    QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuFieldSamplingProbe,
+    QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuFieldForceSamplingProbe,
+    QuestMakepadGpuFieldForceSamplingProbeReadback, QuestMakepadGpuFieldSamplingProbe,
     QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuMeshSdfProbe,
     QuestMakepadGpuMeshSdfProbeInput, QuestMakepadGpuMeshSdfProbeReadback,
     QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
     QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
     QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
     QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
+    QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_DEFAULT_TOLERANCE, QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_SAMPLES,
@@ -284,6 +288,9 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
     if let Some(marker) = gpu_field_sampling_probe_marker_line(cx, input, &receipt, phase) {
         markers.push(marker);
     }
+    if let Some(marker) = gpu_field_force_sampling_probe_marker_line(cx, input, &receipt, phase) {
+        markers.push(marker);
+    }
     Some(markers)
 }
 
@@ -360,6 +367,93 @@ fn gpu_field_sampling_probe_marker_line_from_readback(
             source_field_buffer_resident: readback.source_field_buffer_resident,
             source_field_buffer_bytes: readback.source_field_buffer_bytes,
             sample_index_buffer_bytes: readback.sample_index_buffer_bytes,
+            sample_output_buffer_bytes: readback.sample_output_buffer_bytes,
+            pending_retire_count: readback.pending_retire_count,
+            retained_resource_count: readback.retained_resource_count,
+            retired_after_fence_count: readback.retired_after_fence_count,
+            queue_wait_idle_performed: readback.queue_wait_idle_performed,
+            elapsed_ms: readback.elapsed_ms,
+        },
+    );
+    Some(probe.marker_line(phase))
+}
+
+fn gpu_field_force_sampling_probe_marker_line(
+    cx: &mut Cx,
+    input: &QuestMakepadGpuMeshSdfProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    phase: &str,
+) -> Option<String> {
+    if !receipt.runtime_field_boundary_ready() {
+        return None;
+    }
+    let sample_count = input
+        .force_sample_count
+        .min(QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_SAMPLES)
+        .min(XR_GPU_F32_FIELD_FORCE_SAMPLE_PROBE_SAMPLES);
+    if sample_count == 0 {
+        return None;
+    }
+
+    let mut samples =
+        [XrGpuF32ForceProbeSample::default(); XR_GPU_F32_FIELD_FORCE_SAMPLE_PROBE_SAMPLES];
+    for (target, source) in samples
+        .iter_mut()
+        .zip(input.force_samples.iter())
+        .take(sample_count)
+    {
+        *target = XrGpuF32ForceProbeSample {
+            position_radius: [
+                source.position[0],
+                source.position[1],
+                source.position[2],
+                source.radius,
+            ],
+            distance_target_strength: [
+                source.distance,
+                source.target_distance,
+                source.attraction_strength,
+                0.0,
+            ],
+            outward: source.outward,
+            expected_acceleration: source.expected_acceleration,
+        };
+    }
+
+    let readback = cx.xr_gpu_f32_field_force_sample_probe(
+        samples,
+        sample_count,
+        QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    )?;
+    gpu_field_force_sampling_probe_marker_line_from_readback(input, receipt, readback, phase)
+}
+
+fn gpu_field_force_sampling_probe_marker_line_from_readback(
+    input: &QuestMakepadGpuMeshSdfProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    readback: XrGpuF32FieldForceSampleProbeResult,
+    phase: &str,
+) -> Option<String> {
+    let probe = QuestMakepadGpuFieldForceSamplingProbe::from_receipt_and_input(
+        receipt,
+        input,
+        QuestMakepadGpuFieldForceSamplingProbeReadback {
+            sample_count: readback.sample_count,
+            component_count: readback.component_count,
+            mismatched_components: readback.mismatched_components,
+            max_abs_error: readback.max_abs_error,
+            tolerance: readback.tolerance,
+            queue_submit_serial: readback.queue_submit_serial,
+            fence_serial: readback.fence_serial,
+            resource_generation: readback.resource_generation,
+            program_generation: readback.program_generation,
+            program_reused: readback.program_reused,
+            shader_compiled_this_submit: readback.shader_compiled_this_submit,
+            pipeline_created_this_submit: readback.pipeline_created_this_submit,
+            source_field_generation: readback.source_field_generation,
+            source_field_buffer_resident: readback.source_field_buffer_resident,
+            source_field_buffer_bytes: readback.source_field_buffer_bytes,
+            sample_input_buffer_bytes: readback.sample_input_buffer_bytes,
             sample_output_buffer_bytes: readback.sample_output_buffer_bytes,
             pending_retire_count: readback.pending_retire_count,
             retained_resource_count: readback.retained_resource_count,

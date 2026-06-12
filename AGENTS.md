@@ -272,8 +272,15 @@ recorded-hand proof schedule should report `recordedHandReplaySelected=true`,
 `liveEquivalentHandInputSelected=true`, `blockingGpuDiagnostics=false`, and
 `meshSdfProbeTargetMarkers=2`; it must produce one mesh-SDF setup marker and
 one reuse marker with `programReused=true`. Each completed mesh-SDF readback
-must also emit `RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION` as a low-rate
-dense-SDF field-buffer receipt with `runtimeFieldBoundaryReady=true`,
+must also emit `RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION`,
+`RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE`, and
+`RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE` as low-rate resident
+dense-SDF boundary evidence. The field construction marker requires
+`runtimeFieldBoundaryReady=true`; the field sampler requires
+`runtimeSamplingBoundaryReady=true`; the field-force sampler requires
+`runtimeForceSamplingBoundaryReady=true`,
+`fieldForceSamplingKernel=true`, `fieldParticleKernel=false`, and
+`runtimeParticleIntegration=false`. All three must keep
 `forceAuthorityReady=false`, `runtimeForceAuthority=false`,
 `gpuComputeReady=false`, and `highRateJsonPayload=false`.
 
@@ -301,9 +308,10 @@ python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summa
 
 The checker also gates recorded-hand replay proof summaries when they are
 shaped as live-input-equivalent evidence. It requires the bounded GPU
-skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
-`queueWaitIdlePerformed=false`, Hostess-process `Stale>=90` count `0`, no
-`Stale>=30`, and near-90 Hz app/XR cadence. The live-hand schedule must report
+skinning/full-mesh/mesh-SDF/field-sampling/field-force-sampling proof markers,
+`readbackMatched=true`, `queueWaitIdlePerformed=false`, Hostess-process
+`Stale>=90` count `0`, no `Stale>=30`, and near-90 Hz app/XR cadence. The
+live-hand schedule must report
 `blockingGpuDiagnostics=false` so the older synchronous storage/oracle/force
 diagnostics do not poison performance evidence. The mesh-SDF proof should
 produce a first-use setup marker and then a reused-program marker with
@@ -311,11 +319,14 @@ produce a first-use setup marker and then a reused-program marker with
 `sampleCount=8`; newer markers should also report
 `sourceMeshBuffersResident=true` and, on the reused submit,
 `sourceMeshBuffersReused=true`, plus `derivedBuffersResident=true` and, on the
-reused submit, `derivedBuffersReused=true`. Stale-heavy debug APK runs remain
-functional marker evidence only, not performance evidence. Use the summarizer on raw
-Hostess evidence roots before the checker; it writes the compact summary,
-strict log scan, mesh-SDF source-buffer check, and an XR readiness summary when
-the run launched but stayed asleep/off-face before proof markers.
+reused submit, `derivedBuffersReused=true`. Field-sampling markers should
+report resident source-field generation matches, and field-force sampling
+markers should also report `fieldParticleKernel=false` and
+`runtimeParticleIntegration=false`. Stale-heavy debug APK runs remain
+functional marker evidence only, not performance evidence. Use the summarizer
+on raw Hostess evidence roots before the checker; it writes the compact
+summary, strict log scan, mesh-SDF source-buffer check, and an XR readiness
+summary when the run launched but stayed asleep/off-face before proof markers.
 
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
