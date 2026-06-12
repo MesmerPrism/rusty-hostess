@@ -14,6 +14,7 @@ use crate::matter_surface_gpu::{
     gpu_skinning_mesh_probe_poll_marker_line, gpu_skinning_mesh_probe_submit,
     gpu_skinning_probe_poll_marker_line, gpu_skinning_probe_submit,
 };
+use crate::matter_surface_gpu_schedule::MatterSurfaceGpuProofSchedule;
 use crate::matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use crate::matter_world_adf_debug::{
     MatterWorldAdfDebugCells, HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID,
@@ -303,10 +304,27 @@ impl App {
                 self.matter_surface_gpu_compute_preflight_markers_emitted += 1;
             }
         }
-        let gpu_probe_steady_state_ready = self.cadence_started
-            && self.cadence_frame_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
-            && self.cadence_xr_update_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES
-            && self.cadence_draw_event_count >= MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES;
+        let gpu_probe_schedule = MatterSurfaceGpuProofSchedule::for_source_selection(
+            &self.matter_surface_source_selection,
+            MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
+        );
+        let gpu_probe_steady_state_ready = gpu_probe_schedule.cadence_ready(
+            self.cadence_started,
+            self.cadence_frame_count,
+            self.cadence_xr_update_count,
+            self.cadence_draw_event_count,
+        );
+        if gpu_probe_steady_state_ready && self.matter_surface_gpu_schedule_markers_emitted == 0 {
+            emit_marker_line(&gpu_probe_schedule.marker_line(
+                phase,
+                &self.matter_surface_source_selection,
+                MATTER_SURFACE_GPU_PROBE_MIN_CADENCE_FRAMES,
+                self.cadence_frame_count,
+                self.cadence_xr_update_count,
+                self.cadence_draw_event_count,
+            ));
+            self.matter_surface_gpu_schedule_markers_emitted += 1;
+        }
         let gpu_sync_probe_due = gpu_probe_steady_state_ready
             && (self.matter_surface_gpu_sync_probe_last_frame == 0
                 || self

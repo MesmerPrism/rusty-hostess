@@ -18,6 +18,7 @@ mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_gpu;
+mod matter_surface_gpu_schedule;
 mod matter_surface_runtime;
 mod matter_surface_source_selection;
 mod matter_surface_uniforms;
@@ -1685,6 +1686,8 @@ pub struct App {
     matter_surface_gpu_mesh_sdf_probe_pending: Option<PendingGpuMeshSdfProbe>,
     #[rust]
     matter_surface_gpu_sync_probe_last_frame: u64,
+    #[rust]
+    matter_surface_gpu_schedule_markers_emitted: usize,
     #[rust]
     matter_surface_world_particle_markers_emitted: usize,
     #[rust]
@@ -3586,6 +3589,7 @@ impl App {
         self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
         self.matter_surface_gpu_mesh_sdf_probe_pending = None;
         self.matter_surface_gpu_sync_probe_last_frame = 0;
+        self.matter_surface_gpu_schedule_markers_emitted = 0;
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
