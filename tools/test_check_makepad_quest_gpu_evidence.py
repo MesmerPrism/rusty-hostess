@@ -34,8 +34,8 @@ def valid_summary():
             "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE status=ready",
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
-            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
-            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true derivedBuffersResident=true derivedBuffersReused=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false derivedBuffersResident=true derivedBuffersReused=true",
         ],
     }
 
@@ -51,6 +51,8 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(2, result.summary["mesh_sdf_proof_line_count"])
         self.assertEqual(1, result.summary["mesh_sdf_program_setup_count"])
         self.assertEqual(1, result.summary["mesh_sdf_program_reuse_count"])
+        self.assertEqual(2, result.summary["mesh_sdf_derived_buffer_resident_count"])
+        self.assertEqual(1, result.summary["mesh_sdf_derived_buffer_reuse_count"])
         self.assertEqual(8, result.summary["mesh_sdf_max_sample_count"])
 
     def test_rejects_stale_heavy_debug_run(self):
@@ -135,6 +137,23 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
 
         self.assertFalse(result.ok)
         self.assertTrue(any("sampleCount" in issue for issue in result.issues))
+
+    def test_can_require_mesh_sdf_derived_buffer_reuse(self):
+        summary = valid_summary()
+        summary["proof_lines"] = [
+            line.replace("derivedBuffersReused=true", "derivedBuffersReused=false")
+            for line in summary["proof_lines"]
+        ]
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(require_mesh_sdf_derived_buffer_reuse=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("derivedBuffersReused=true" in issue for issue in result.issues)
+        )
 
 
 if __name__ == "__main__":

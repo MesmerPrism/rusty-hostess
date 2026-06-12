@@ -80,6 +80,8 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true "
                 "sourceMeshBuffersResident=true sourceMeshBuffersReused=false "
                 "sourceVertexBufferBytes=413440 sourceTriangleBufferBytes=37024 "
+                "derivedBuffersResident=true derivedBuffersReused=false "
+                "skinnedPositionBufferBytes=21760 sdfDistanceBufferBytes=6292 "
                 "kgslFaultsAfterMarker=unavailable",
             ),
             log_line(
@@ -91,7 +93,9 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=true "
                 "shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false "
                 "sourceMeshBuffersResident=true sourceMeshBuffersReused=true "
-                "sourceVertexBufferBytes=413440 sourceTriangleBufferBytes=37024",
+                "sourceVertexBufferBytes=413440 sourceTriangleBufferBytes=37024 "
+                "derivedBuffersResident=true derivedBuffersReused=true "
+                "skinnedPositionBufferBytes=21760 sdfDistanceBufferBytes=6292",
             ),
         ]
         log_lines = [
@@ -144,6 +148,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 max_sample_lines=8,
                 require_mesh_sdf_program_reuse=True,
                 require_source_buffer_reuse=True,
+                require_derived_buffer_reuse=True,
                 mesh_sdf_min_sample_count=8,
             )
 
@@ -156,6 +161,17 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertEqual("ok", payloads["strict_scan"]["status"])
         self.assertEqual("ok", payloads["mesh_sdf_check"]["status"])
         self.assertEqual(8, payloads["mesh_sdf_check"]["mesh_sdf_max_sample_count"])
+        self.assertEqual(
+            2, payloads["mesh_sdf_check"]["derived_buffers_resident_count"]
+        )
+        self.assertEqual(1, payloads["mesh_sdf_check"]["derived_buffers_reused_count"])
+        self.assertEqual(
+            ["21760"],
+            payloads["mesh_sdf_check"]["skinned_position_buffer_bytes_values"],
+        )
+        self.assertEqual(
+            ["6292"], payloads["mesh_sdf_check"]["sdf_distance_buffer_bytes_values"]
+        )
         self.assertIsNone(payloads["readiness"])
 
     def test_classifies_asleep_off_face_launch_as_xr_not_ready(self):
@@ -186,6 +202,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 max_sample_lines=8,
                 require_mesh_sdf_program_reuse=False,
                 require_source_buffer_reuse=False,
+                require_derived_buffer_reuse=False,
                 mesh_sdf_min_sample_count=8,
             )
 

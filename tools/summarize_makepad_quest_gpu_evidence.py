@@ -338,17 +338,22 @@ def mesh_sdf_check(
     proof_lines: list[str],
     require_program_reuse: bool,
     require_source_buffer_reuse: bool,
+    require_derived_buffer_reuse: bool,
     min_sample_count: int,
 ) -> dict[str, Any]:
     mesh_lines = marker_lines(proof_lines, GPU_MESH_SDF_MARKER)
     sample_counts = int_fields(mesh_lines, "sampleCount")
     issues: list[str] = []
-    resident_count = sum("sourceMeshBuffersResident=true" in line for line in mesh_lines)
-    reused_count = sum("sourceMeshBuffersReused=true" in line for line in mesh_lines)
+    source_resident_count = sum("sourceMeshBuffersResident=true" in line for line in mesh_lines)
+    source_reused_count = sum("sourceMeshBuffersReused=true" in line for line in mesh_lines)
+    derived_resident_count = sum("derivedBuffersResident=true" in line for line in mesh_lines)
+    derived_reused_count = sum("derivedBuffersReused=true" in line for line in mesh_lines)
     if require_program_reuse and not any("programReused=true" in line for line in mesh_lines):
         issues.append("mesh-SDF proof did not include programReused=true")
-    if require_source_buffer_reuse and reused_count < 1:
+    if require_source_buffer_reuse and source_reused_count < 1:
         issues.append("mesh-SDF proof did not include sourceMeshBuffersReused=true")
+    if require_derived_buffer_reuse and derived_reused_count < 1:
+        issues.append("mesh-SDF proof did not include derivedBuffersReused=true")
     if min_sample_count > 0 and max(sample_counts, default=0) < min_sample_count:
         issues.append(
             f"mesh-SDF proof max sampleCount {max(sample_counts, default=0)} < {min_sample_count}"
@@ -358,13 +363,21 @@ def mesh_sdf_check(
         "status": "ok" if not issues else "failed",
         "issues": issues,
         "mesh_sdf_line_count": len(mesh_lines),
-        "source_mesh_buffers_resident_count": resident_count,
-        "source_mesh_buffers_reused_count": reused_count,
+        "source_mesh_buffers_resident_count": source_resident_count,
+        "source_mesh_buffers_reused_count": source_reused_count,
+        "derived_buffers_resident_count": derived_resident_count,
+        "derived_buffers_reused_count": derived_reused_count,
         "source_vertex_buffer_bytes_values": unique_field_values(
             mesh_lines, "sourceVertexBufferBytes"
         ),
         "source_triangle_buffer_bytes_values": unique_field_values(
             mesh_lines, "sourceTriangleBufferBytes"
+        ),
+        "skinned_position_buffer_bytes_values": unique_field_values(
+            mesh_lines, "skinnedPositionBufferBytes"
+        ),
+        "sdf_distance_buffer_bytes_values": unique_field_values(
+            mesh_lines, "sdfDistanceBufferBytes"
         ),
         "mesh_sdf_sample_count_values": sample_counts,
         "mesh_sdf_min_sample_count": min(sample_counts, default=0),
@@ -468,6 +481,7 @@ def summarize_evidence(
     max_sample_lines: int,
     require_mesh_sdf_program_reuse: bool,
     require_source_buffer_reuse: bool,
+    require_derived_buffer_reuse: bool,
     mesh_sdf_min_sample_count: int,
 ) -> dict[str, Any]:
     log_text = read_text(evidence_root / "logcat.txt")
@@ -519,6 +533,7 @@ def summarize_evidence(
         proof_lines,
         require_mesh_sdf_program_reuse,
         require_source_buffer_reuse,
+        require_derived_buffer_reuse,
         mesh_sdf_min_sample_count,
     )
     readiness = readiness_summary(
@@ -580,6 +595,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Mark the mesh-SDF sidecar failed unless sourceMeshBuffersReused=true appears.",
     )
     parser.add_argument(
+        "--require-derived-buffer-reuse",
+        action="store_true",
+        help="Mark the mesh-SDF sidecar failed unless derivedBuffersReused=true appears.",
+    )
+    parser.add_argument(
         "--require-mesh-sdf-min-sample-count",
         type=int,
         default=0,
@@ -612,6 +632,7 @@ def main(argv: list[str] | None = None) -> int:
         max_sample_lines=max(0, args.max_sample_lines),
         require_mesh_sdf_program_reuse=args.require_mesh_sdf_program_reuse,
         require_source_buffer_reuse=args.require_source_buffer_reuse,
+        require_derived_buffer_reuse=args.require_derived_buffer_reuse,
         mesh_sdf_min_sample_count=max(0, args.require_mesh_sdf_min_sample_count),
     )
     output_paths = {

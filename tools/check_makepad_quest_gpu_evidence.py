@@ -40,6 +40,7 @@ class EvidenceThresholds:
     min_app_frame_rate_hz: float = DEFAULT_MIN_APP_FRAME_RATE_HZ
     min_xr_effective_frame_rate_hz: float = DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ
     require_mesh_sdf_program_reuse: bool = False
+    require_mesh_sdf_derived_buffer_reuse: bool = False
     require_mesh_sdf_min_sample_count: int = 0
 
 
@@ -203,11 +204,22 @@ def validate_summary(
     mesh_sdf_pipeline_create_count = count_lines_containing(
         mesh_sdf_lines, "pipelineCreatedThisSubmit=true"
     )
+    mesh_sdf_derived_resident_count = count_lines_containing(
+        mesh_sdf_lines, "derivedBuffersResident=true"
+    )
+    mesh_sdf_derived_reuse_count = count_lines_containing(
+        mesh_sdf_lines, "derivedBuffersReused=true"
+    )
     mesh_sdf_sample_counts = marker_int_fields(mesh_sdf_lines, "sampleCount")
     mesh_sdf_max_sample_count = max(mesh_sdf_sample_counts, default=0)
     mesh_sdf_min_sample_count = min(mesh_sdf_sample_counts, default=0)
     if thresholds.require_mesh_sdf_program_reuse and mesh_sdf_program_reuse_count < 1:
         issues.append("mesh-SDF proof did not include programReused=true")
+    if (
+        thresholds.require_mesh_sdf_derived_buffer_reuse
+        and mesh_sdf_derived_reuse_count < 1
+    ):
+        issues.append("mesh-SDF proof did not include derivedBuffersReused=true")
     if (
         thresholds.require_mesh_sdf_min_sample_count > 0
         and mesh_sdf_max_sample_count < thresholds.require_mesh_sdf_min_sample_count
@@ -235,6 +247,8 @@ def validate_summary(
         "mesh_sdf_program_reuse_count": mesh_sdf_program_reuse_count,
         "mesh_sdf_shader_compile_count": mesh_sdf_shader_compile_count,
         "mesh_sdf_pipeline_create_count": mesh_sdf_pipeline_create_count,
+        "mesh_sdf_derived_buffer_resident_count": mesh_sdf_derived_resident_count,
+        "mesh_sdf_derived_buffer_reuse_count": mesh_sdf_derived_reuse_count,
         "mesh_sdf_min_sample_count": mesh_sdf_min_sample_count,
         "mesh_sdf_max_sample_count": mesh_sdf_max_sample_count,
         "required_marker_counts": {
@@ -348,6 +362,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         help="Require at least one mesh-SDF proof line with programReused=true.",
     )
     parser.add_argument(
+        "--require-mesh-sdf-derived-buffer-reuse",
+        action="store_true",
+        help="Require at least one mesh-SDF proof line with derivedBuffersReused=true.",
+    )
+    parser.add_argument(
         "--require-mesh-sdf-min-sample-count",
         type=int,
         default=0,
@@ -367,6 +386,7 @@ def main(argv: list[str] | None = None) -> int:
         min_app_frame_rate_hz=args.min_app_frame_rate_hz,
         min_xr_effective_frame_rate_hz=args.min_xr_effective_frame_rate_hz,
         require_mesh_sdf_program_reuse=args.require_mesh_sdf_program_reuse,
+        require_mesh_sdf_derived_buffer_reuse=args.require_mesh_sdf_derived_buffer_reuse,
         require_mesh_sdf_min_sample_count=args.require_mesh_sdf_min_sample_count,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
