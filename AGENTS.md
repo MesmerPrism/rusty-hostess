@@ -221,6 +221,15 @@ profile adoption only: keep `gpuComputeReady=false`, `computeKernel=false`,
 and `highRateJsonPayload=false`, and do not treat it as a Makepad/Vulkan
 command-buffer or storage-buffer readback proof.
 
+For bounded stimulus-volume GPU evidence, Hostess may submit the compact
+Quest-Makepad oracle payload to Makepad XR/Vulkan and emit one
+`RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_GPU_PROBE` point-sample marker plus one
+`RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_RAYMARCH_PREVIEW` low-resolution stereo
+raymarch marker. The raymarch preview is a 4x4-per-eye storage-buffer output
+readback proof with `runtimeTextureBound=false`. Keep `gpuComputeReady=false`
+and `highRateJsonPayload=false`; Hostess must not become Optics profile
+authority or a production volume renderer.
+
 For the first GPU-backed residency phase, Hostess emits
 `RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY` only when bounded Quest-Makepad world
 particle or ADF debug batches are submitted to Makepad instanced draw buffers.
