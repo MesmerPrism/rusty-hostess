@@ -247,6 +247,19 @@ observer and must not replace the recorded replay worker input. Keep Makepad
 runtime types in Hostess/Makepad code, not in Matter or the Quest-Makepad
 Matter-surface crate.
 
+Live-hand GPU proof performance evidence must pass the optimized-profile
+summary checker before it is treated as a cadence baseline:
+
+```powershell
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json>
+```
+
+The checker requires the source-aware proof schedule marker, the bounded GPU
+skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
+`queueWaitIdlePerformed=false`, Hostess-process `Stale>=90` count `0`, no
+`Stale>=30`, and near-90 Hz app/XR cadence. A debug run with high VrApi stale
+counts is functional marker evidence only, not performance evidence.
+
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
 current evidence baseline. At 1024 Matter particles / 1024 visual rows against

@@ -171,6 +171,19 @@ evidence; `matter_surface_gpu.rs` owns the bounded Makepad XR/Vulkan sample
 conversion; `recorded_hand_surface.rs` owns loading staged bind-rig plus
 compact joint-frame recordings. Keep `main.rs` as app-shell wiring.
 
+For live-hand GPU proof performance evidence, validate the compact Quest run
+summary before accepting the run as a cadence baseline:
+
+```powershell
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json>
+```
+
+The checker requires the source-aware proof schedule, the GPU skinning,
+full-mesh residency, and mesh-to-dense-SDF proof markers, asynchronous readback
+without `queueWaitIdle`, zero Hostess-process `Stale>=90`, no `Stale>=30`, and
+near-90 Hz app/XR cadence. Stale-heavy debug APK runs remain functional marker
+evidence only.
+
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
 `AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.

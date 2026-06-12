@@ -23,7 +23,9 @@ try {
         "tools\capture_window_printwindow.py",
         "tools\telemetry_snapshot.py",
         "tools\telemetry_stream.py",
+        "tools\check_makepad_quest_gpu_evidence.py",
         "tools\test_telemetry_snapshot.py",
+        "tools\test_check_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
     ) | Where-Object { Test-Path $_ }
     if ($PythonFiles.Count -gt 0) {
