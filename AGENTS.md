@@ -302,8 +302,10 @@ skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
 `blockingGpuDiagnostics=false` so the older synchronous storage/oracle/force
 diagnostics do not poison performance evidence. The mesh-SDF proof should
 produce a first-use setup marker and then a reused-program marker with
-`programReused=true`; stale-heavy debug APK runs remain functional marker
-evidence only, not performance evidence.
+`programReused=true`; newer markers should also report
+`sourceMeshBuffersResident=true` and, on the reused submit,
+`sourceMeshBuffersReused=true`. Stale-heavy debug APK runs remain functional
+marker evidence only, not performance evidence.
 
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
