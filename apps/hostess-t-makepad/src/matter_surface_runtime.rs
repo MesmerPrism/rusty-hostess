@@ -331,12 +331,13 @@ impl App {
             ));
             self.matter_surface_gpu_schedule_markers_emitted += 1;
         }
-        let gpu_sync_probe_due = gpu_probe_steady_state_ready
+        let gpu_probe_due = gpu_probe_steady_state_ready
             && (self.matter_surface_gpu_sync_probe_last_frame == 0
                 || self
                     .cadence_frame_count
                     .saturating_sub(self.matter_surface_gpu_sync_probe_last_frame)
                     >= MATTER_SURFACE_GPU_SYNC_PROBE_FRAME_GAP);
+        let gpu_sync_probe_due = gpu_probe_due && gpu_probe_schedule.blocking_gpu_diagnostics;
         let mut gpu_async_probe_completed_this_frame = false;
         if self.matter_surface_gpu_skinning_probe_markers_emitted == 0 {
             let completed_skinning_marker = self
@@ -350,11 +351,19 @@ impl App {
                 gpu_async_probe_completed_this_frame = true;
             }
         }
-        if self.matter_surface_gpu_mesh_sdf_probe_markers_emitted == 0 {
+        if self.matter_surface_gpu_mesh_sdf_probe_markers_emitted
+            < gpu_probe_schedule.mesh_sdf_probe_target_markers
+        {
+            let mesh_sdf_phase = gpu_mesh_sdf_probe_evidence_phase(
+                phase,
+                self.matter_surface_gpu_mesh_sdf_probe_markers_emitted,
+            );
             let completed_mesh_sdf_marker = self
                 .matter_surface_gpu_mesh_sdf_probe_pending
                 .as_ref()
-                .and_then(|pending| gpu_mesh_sdf_probe_poll_marker_line(cx, pending, phase));
+                .and_then(|pending| {
+                    gpu_mesh_sdf_probe_poll_marker_line(cx, pending, &mesh_sdf_phase)
+                });
             if let Some(marker) = completed_mesh_sdf_marker {
                 emit_marker_line(&marker);
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted += 1;
@@ -510,7 +519,7 @@ impl App {
                 }
             }
         }
-        if gpu_sync_probe_due
+        if gpu_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_skinning_probe_markers_emitted == 0
             && self.matter_surface_gpu_skinning_probe_pending.is_none()
@@ -523,7 +532,7 @@ impl App {
                 }
             }
         }
-        if gpu_sync_probe_due
+        if gpu_probe_due
             && !gpu_sync_probe_emitted_this_frame
             && self.matter_surface_gpu_skinning_mesh_probe_markers_emitted == 0
             && self
@@ -538,9 +547,10 @@ impl App {
                 }
             }
         }
-        if gpu_sync_probe_due
+        if gpu_probe_due
             && !gpu_sync_probe_emitted_this_frame
-            && self.matter_surface_gpu_mesh_sdf_probe_markers_emitted == 0
+            && self.matter_surface_gpu_mesh_sdf_probe_markers_emitted
+                < gpu_probe_schedule.mesh_sdf_probe_target_markers
             && self.matter_surface_gpu_mesh_sdf_probe_pending.is_none()
         {
             if let Some(input) = frame.gpu_mesh_sdf_probe.as_ref() {
@@ -766,4 +776,34 @@ fn source_frame_contact_probes(
         center,
         source_frame.bounds_radius.max(0.001) * 0.5,
     )]
+}
+
+fn gpu_mesh_sdf_probe_evidence_phase(base_phase: &str, markers_emitted: usize) -> String {
+    let suffix = if markers_emitted == 0 {
+        "gpu-mesh-sdf-setup"
+    } else {
+        "gpu-mesh-sdf-reuse"
+    };
+    format!("{base_phase}-{suffix}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mesh_sdf_probe_evidence_phase_separates_setup_and_reuse() {
+        assert_eq!(
+            gpu_mesh_sdf_probe_evidence_phase("unit", 0),
+            "unit-gpu-mesh-sdf-setup"
+        );
+        assert_eq!(
+            gpu_mesh_sdf_probe_evidence_phase("unit", 1),
+            "unit-gpu-mesh-sdf-reuse"
+        );
+        assert_eq!(
+            gpu_mesh_sdf_probe_evidence_phase("unit", 2),
+            "unit-gpu-mesh-sdf-reuse"
+        );
+    }
 }

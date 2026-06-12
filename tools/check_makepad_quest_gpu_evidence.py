@@ -32,6 +32,7 @@ class EvidenceThresholds:
     max_hostess_stale: float = DEFAULT_MAX_HOSTESS_STALE
     min_app_frame_rate_hz: float = DEFAULT_MIN_APP_FRAME_RATE_HZ
     min_xr_effective_frame_rate_hz: float = DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ
+    require_mesh_sdf_program_reuse: bool = False
 
 
 @dataclass(frozen=True)
@@ -133,18 +134,41 @@ def validate_summary(
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
         "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
     ):
-        marker_line = first_line_containing(proof_lines, marker_name)
-        if "readbackMatched=true" not in marker_line:
-            issues.append(f"{marker_name} did not report readbackMatched=true")
-        if "queueWaitIdlePerformed=false" not in marker_line:
-            issues.append(f"{marker_name} did not report queueWaitIdlePerformed=false")
-        if "recordedInputEquivalent=true" not in marker_line:
-            issues.append(f"{marker_name} did not report recordedInputEquivalent=true")
-    mesh_sdf_line = first_line_containing(proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE")
-    if "denseSdfConstructedOnGpu=true" not in mesh_sdf_line:
+        marker_lines = lines_containing(proof_lines, marker_name)
+        if not marker_lines:
+            continue
+        for marker_line in marker_lines:
+            if "readbackMatched=true" not in marker_line:
+                issues.append(f"{marker_name} did not report readbackMatched=true")
+            if "queueWaitIdlePerformed=false" not in marker_line:
+                issues.append(f"{marker_name} did not report queueWaitIdlePerformed=false")
+            if "recordedInputEquivalent=true" not in marker_line:
+                issues.append(f"{marker_name} did not report recordedInputEquivalent=true")
+    mesh_sdf_lines = lines_containing(
+        proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
+    )
+    if not any("denseSdfConstructedOnGpu=true" in line for line in mesh_sdf_lines):
         issues.append("mesh-SDF proof did not report denseSdfConstructedOnGpu=true")
-    if "fullSourceMeshConsumedByGpu=true" not in mesh_sdf_line:
+    if not any("fullSourceMeshConsumedByGpu=true" in line for line in mesh_sdf_lines):
         issues.append("mesh-SDF proof did not report fullSourceMeshConsumedByGpu=true")
+    mesh_sdf_program_reuse_count = count_lines_containing(
+        mesh_sdf_lines, "programReused=true"
+    )
+    mesh_sdf_program_setup_count = sum(
+        1
+        for line in mesh_sdf_lines
+        if "programReused=false" in line
+        or "shaderCompiledThisSubmit=true" in line
+        or "pipelineCreatedThisSubmit=true" in line
+    )
+    mesh_sdf_shader_compile_count = count_lines_containing(
+        mesh_sdf_lines, "shaderCompiledThisSubmit=true"
+    )
+    mesh_sdf_pipeline_create_count = count_lines_containing(
+        mesh_sdf_lines, "pipelineCreatedThisSubmit=true"
+    )
+    if thresholds.require_mesh_sdf_program_reuse and mesh_sdf_program_reuse_count < 1:
+        issues.append("mesh-SDF proof did not include programReused=true")
 
     compact = {
         "schema": schema,
@@ -155,6 +179,11 @@ def validate_summary(
         "hostess_stale_max": stale_max,
         "hostess_stale_30_plus_count": stale_30_plus,
         "hostess_stale_90_plus_count": stale_90_plus,
+        "mesh_sdf_proof_line_count": len(mesh_sdf_lines),
+        "mesh_sdf_program_setup_count": mesh_sdf_program_setup_count,
+        "mesh_sdf_program_reuse_count": mesh_sdf_program_reuse_count,
+        "mesh_sdf_shader_compile_count": mesh_sdf_shader_compile_count,
+        "mesh_sdf_pipeline_create_count": mesh_sdf_pipeline_create_count,
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in REQUIRED_MARKERS
         },
@@ -195,6 +224,14 @@ def first_line_containing(lines: list[Any], token: str) -> str:
     return ""
 
 
+def lines_containing(lines: list[Any], token: str) -> list[str]:
+    return [str(line) for line in lines if token in str(line)]
+
+
+def count_lines_containing(lines: list[str], token: str) -> int:
+    return sum(1 for line in lines if token in line)
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
@@ -226,6 +263,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ,
         help="Minimum allowed average XR effective frame rate.",
     )
+    parser.add_argument(
+        "--require-mesh-sdf-program-reuse",
+        action="store_true",
+        help="Require at least one mesh-SDF proof line with programReused=true.",
+    )
     return parser.parse_args(argv)
 
 
@@ -236,6 +278,7 @@ def main(argv: list[str] | None = None) -> int:
         max_hostess_stale=args.max_hostess_stale,
         min_app_frame_rate_hz=args.min_app_frame_rate_hz,
         min_xr_effective_frame_rate_hz=args.min_xr_effective_frame_rate_hz,
+        require_mesh_sdf_program_reuse=args.require_mesh_sdf_program_reuse,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {

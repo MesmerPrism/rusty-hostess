@@ -14,7 +14,7 @@ def valid_summary():
             "proof_schedule": 1,
             "gpu_skinning_probe": 1,
             "gpu_skinning_mesh_residency": 1,
-            "gpu_mesh_sdf_probe": 1,
+            "gpu_mesh_sdf_probe": 2,
             "gpu_residency": 8,
         },
         "cadence": {
@@ -33,7 +33,8 @@ def valid_summary():
             "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE status=ready",
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
             "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true",
-            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true",
+            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
+            "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
         ],
     }
 
@@ -45,6 +46,9 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertTrue(result.ok)
         self.assertEqual([], result.issues)
         self.assertEqual(0, result.summary["hostess_stale_90_plus_count"])
+        self.assertEqual(2, result.summary["mesh_sdf_proof_line_count"])
+        self.assertEqual(1, result.summary["mesh_sdf_program_setup_count"])
+        self.assertEqual(1, result.summary["mesh_sdf_program_reuse_count"])
 
     def test_rejects_stale_heavy_debug_run(self):
         summary = valid_summary()
@@ -73,6 +77,22 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertTrue(
             any("queueWaitIdlePerformed=false" in issue for issue in result.issues)
         )
+
+    def test_can_require_mesh_sdf_program_reuse(self):
+        summary = valid_summary()
+        summary["proof_lines"] = [
+            line
+            for line in summary["proof_lines"]
+            if "programReused=true" not in line
+        ]
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(require_mesh_sdf_program_reuse=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("programReused=true" in issue for issue in result.issues))
 
 
 if __name__ == "__main__":

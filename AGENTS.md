@@ -251,14 +251,18 @@ Live-hand GPU proof performance evidence must pass the optimized-profile
 summary checker before it is treated as a cadence baseline:
 
 ```powershell
-python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json>
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse
 ```
 
 The checker requires the source-aware proof schedule marker, the bounded GPU
 skinning/full-mesh/mesh-SDF proof markers, `readbackMatched=true`,
 `queueWaitIdlePerformed=false`, Hostess-process `Stale>=90` count `0`, no
-`Stale>=30`, and near-90 Hz app/XR cadence. A debug run with high VrApi stale
-counts is functional marker evidence only, not performance evidence.
+`Stale>=30`, and near-90 Hz app/XR cadence. The live-hand schedule must report
+`blockingGpuDiagnostics=false` so the older synchronous storage/oracle/force
+diagnostics do not poison performance evidence. The mesh-SDF proof should
+produce a first-use setup marker and then a reused-program marker with
+`programReused=true`; stale-heavy debug APK runs remain functional marker
+evidence only, not performance evidence.
 
 The 2026-06-11 indexed ADF pre-GPU sweep at
 `S:\Work\tmp\quest-makepad-indexed-adf-pre-gpu-sweep-20260611-141903` is the
