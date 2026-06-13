@@ -142,6 +142,11 @@ only at bounded proof cadence. The live path does not own Matter CPU
 skinning/SDF truth and does not route hand meshes, joint frames, fields,
 particles, or GPU buffers through settings/control JSON.
 
+`apps/hostess-t-makepad/src/makepad_diagnostics.rs` owns app-level diagnostic
+marker emission, marker token formatting, bounded cadence helpers, raw camera
+event markers, YUV texture handles, and runtime target-footprint marker
+augmentation so the Makepad app root remains app-shell wiring.
+
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact
 revision sidecar; runtime consumers compare global then scoped hashes before
