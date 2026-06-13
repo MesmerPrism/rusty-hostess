@@ -33,6 +33,8 @@ try {
         "tools\hostessctl\pmb_broker_bridge.py",
         "tools\hostessctl\pmb_desktop_routes.py",
         "tools\hostessctl\pmb_evidence.py",
+        "tools\hostessctl\pmb_host_run_evidence.py",
+        "tools\hostessctl\pmb_support.py",
         "tools\hostessctl\recording_evidence.py",
         "tools\hostessctl\runtime.py",
         "tools\hostessctl\telemetry_render.py",

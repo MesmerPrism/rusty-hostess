@@ -80,8 +80,11 @@ publication and receipt listening live in
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test
-evidence builders, PMB validation reports, and host-run evidence writers remain
-a separate helper family.
+evidence builders, and PMB validation reports remain separate from host-run
+evidence writing. Host-run evidence writers live in
+`tools/hostessctl/pmb_host_run_evidence.py`, and shared PMB package snapshot,
+scorecard, host-app, timestamp, and path helpers live in
+`tools/hostessctl/pmb_support.py`.
 Manifold value recording planning and broker capture orchestration live in
 `tools/hostessctl/manifold_recording.py`: the provider registry,
 `record-values` route planner, Quest broker WebSocket capture, Makepad
