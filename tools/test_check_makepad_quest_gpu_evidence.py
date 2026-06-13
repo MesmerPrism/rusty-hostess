@@ -26,6 +26,7 @@ def valid_summary():
             "gpu_field_force_sampling_probe": 2,
             "gpu_field_particle_force_probe": 2,
             "gpu_force_authority_candidate": 2,
+            "gpu_force_authority_gate": 2,
             "gpu_residency": 8,
         },
         "cadence": {
@@ -51,12 +52,14 @@ def valid_summary():
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeForceSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false matterCpuFallbackReady=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
             "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true denseSdfConstructedOnGpu=true fullSourceMeshConsumedByGpu=true sampleCount=8 programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBuffersResident=true derivedBuffersReused=true",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBuffersResident=true derivedBuffersReused=true measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeForceSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false matterCpuFallbackReady=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
         ],
     }
 
@@ -76,12 +79,14 @@ def remove_force_stage_markers(summary):
     summary["markers"]["gpu_field_force_sampling_probe"] = 0
     summary["markers"]["gpu_field_particle_force_probe"] = 0
     summary["markers"]["gpu_force_authority_candidate"] = 0
+    summary["markers"]["gpu_force_authority_gate"] = 0
     summary["proof_lines"] = [
         line
         for line in summary["proof_lines"]
         if "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE" not in line
         and "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE" not in line
         and "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE" not in line
+        and "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE" not in line
     ]
     return summary
 
@@ -189,6 +194,24 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
             2,
             result.summary["force_candidate_runtime_authority_false_count"],
         )
+        self.assertEqual(2, result.summary["force_gate_line_count"])
+        self.assertEqual(2, result.summary["force_gate_candidate_ready_count"])
+        self.assertEqual(2, result.summary["force_gate_gpu_candidate_ready_count"])
+        self.assertEqual(2, result.summary["force_gate_single_authority_count"])
+        self.assertEqual(2, result.summary["force_gate_slot_count"])
+        self.assertEqual(2, result.summary["force_gate_active_count"])
+        self.assertEqual(2, result.summary["force_gate_profile_required_count"])
+        self.assertEqual(2, result.summary["force_gate_profile_unsatisfied_count"])
+        self.assertEqual(2, result.summary["force_gate_selection_blocked_count"])
+        self.assertEqual(2, result.summary["force_gate_profile_disabled_count"])
+        self.assertEqual(2, result.summary["force_gate_candidate_eligible_count"])
+        self.assertEqual(2, result.summary["force_gate_not_selected_count"])
+        self.assertEqual(2, result.summary["force_gate_not_promoted_count"])
+        self.assertEqual(2, result.summary["force_gate_fallback_ready_count"])
+        self.assertEqual(
+            2,
+            result.summary["force_gate_runtime_authority_false_count"],
+        )
         self.assertEqual(0, result.summary["gpu_proof_epoch_line_count"])
 
     def test_accepts_mesh_sdf_only_stage_without_force_proofs(self):
@@ -210,6 +233,7 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(0, result.summary["field_force_sampling_line_count"])
         self.assertEqual(0, result.summary["field_particle_force_line_count"])
         self.assertEqual(0, result.summary["force_candidate_line_count"])
+        self.assertEqual(0, result.summary["force_gate_line_count"])
         self.assertEqual(
             0,
             result.summary["stage_marker_counts"]["gpu_field_force_sampling_probe"],
@@ -224,6 +248,7 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
                 require_gpu_field_force_sampling=True,
                 require_gpu_field_particle_force=True,
                 require_gpu_force_authority_candidate=True,
+                require_gpu_force_authority_gate=True,
             ),
         )
 
@@ -236,6 +261,9 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         )
         self.assertTrue(
             any("GPU_FORCE_AUTHORITY_CANDIDATE" in issue for issue in result.issues)
+        )
+        self.assertTrue(
+            any("GPU_FORCE_AUTHORITY_GATE" in issue for issue in result.issues)
         )
 
     def test_can_require_gpu_proof_epoch(self):

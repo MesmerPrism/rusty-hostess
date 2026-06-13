@@ -35,6 +35,7 @@ OPTIONAL_STAGE_MARKERS = {
     "gpu_field_force_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
     "gpu_field_particle_force_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
     "gpu_force_authority_candidate": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE",
+    "gpu_force_authority_gate": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE",
 }
 OPTIONAL_MARKERS = {
     "gpu_proof_epoch": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH",
@@ -60,6 +61,7 @@ class EvidenceThresholds:
     require_gpu_field_force_sampling: bool = False
     require_gpu_field_particle_force: bool = False
     require_gpu_force_authority_candidate: bool = False
+    require_gpu_force_authority_gate: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,6 +132,10 @@ def validate_summary(
     if thresholds.require_gpu_force_authority_candidate:
         required_markers["gpu_force_authority_candidate"] = OPTIONAL_STAGE_MARKERS[
             "gpu_force_authority_candidate"
+        ]
+    if thresholds.require_gpu_force_authority_gate:
+        required_markers["gpu_force_authority_gate"] = OPTIONAL_STAGE_MARKERS[
+            "gpu_force_authority_gate"
         ]
     for key, marker_name in required_markers.items():
         if numeric(markers.get(key)) < 1:
@@ -260,6 +266,7 @@ def validate_summary(
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE",
+        "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE",
     ):
         marker_lines = lines_containing(proof_lines, marker_name)
         if not marker_lines:
@@ -604,6 +611,120 @@ def validate_summary(
             issues.append(
                 "GPU force authority candidate did not keep settingsControlPayload=false"
             )
+    force_gate_lines = lines_containing(
+        proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE"
+    )
+    force_gate_candidate_ready_count = count_lines_containing(
+        force_gate_lines, "forceAuthorityCandidateReady=true"
+    )
+    force_gate_gpu_candidate_ready_count = count_lines_containing(
+        force_gate_lines, "gpuComputeCandidateReady=true"
+    )
+    force_gate_single_authority_count = count_lines_containing(
+        force_gate_lines, "singleActiveForceAuthorityPreserved=true"
+    )
+    force_gate_slot_count = count_lines_containing(
+        force_gate_lines, "forceAuthoritySlotCount=1"
+    )
+    force_gate_active_count = count_lines_containing(
+        force_gate_lines, "activeForceAuthorityCount=1"
+    )
+    force_gate_profile_required_count = count_lines_containing(
+        force_gate_lines, "profileGate=explicit-profile-required"
+    )
+    force_gate_profile_unsatisfied_count = count_lines_containing(
+        force_gate_lines, "profileGateSatisfied=false"
+    )
+    force_gate_selection_blocked_count = count_lines_containing(
+        force_gate_lines, "runtimeSelectionPermitted=false"
+    )
+    force_gate_profile_disabled_count = count_lines_containing(
+        force_gate_lines, "gpuForceAuthorityProfileEnabled=false"
+    )
+    force_gate_candidate_eligible_count = count_lines_containing(
+        force_gate_lines, "candidateEligible=true"
+    )
+    force_gate_not_selected_count = count_lines_containing(
+        force_gate_lines, "candidateSelected=false"
+    )
+    force_gate_not_promoted_count = count_lines_containing(
+        force_gate_lines, "candidatePromoted=false"
+    )
+    force_gate_active_unchanged_count = count_lines_containing(
+        force_gate_lines, "activeForceAuthorityChanged=false"
+    )
+    force_gate_fallback_ready_count = count_lines_containing(
+        force_gate_lines, "matterCpuFallbackReady=true"
+    )
+    force_gate_force_authority_false_count = count_lines_containing(
+        force_gate_lines, "forceAuthorityReady=false"
+    )
+    force_gate_runtime_authority_false_count = count_lines_containing(
+        force_gate_lines, "runtimeForceAuthority=false"
+    )
+    force_gate_runtime_particle_false_count = count_lines_containing(
+        force_gate_lines, "runtimeParticleIntegration=false"
+    )
+    force_gate_gpu_not_ready_count = count_lines_containing(
+        force_gate_lines, "gpuComputeReady=false"
+    )
+    force_gate_low_rate_count = count_lines_containing(
+        force_gate_lines, "highRateJsonPayload=false"
+    )
+    force_gate_settings_payload_false_count = count_lines_containing(
+        force_gate_lines, "settingsControlPayload=false"
+    )
+    if force_gate_lines:
+        if force_gate_candidate_ready_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not keep forceAuthorityCandidateReady=true"
+            )
+        if force_gate_gpu_candidate_ready_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not keep gpuComputeCandidateReady=true"
+            )
+        if force_gate_single_authority_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not preserve single authority")
+        if force_gate_slot_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not report forceAuthoritySlotCount=1")
+        if force_gate_active_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not report activeForceAuthorityCount=1")
+        if force_gate_profile_required_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not require explicit profile selection"
+            )
+        if force_gate_profile_unsatisfied_count != len(force_gate_lines):
+            issues.append("GPU force authority gate was profile-satisfied unexpectedly")
+        if force_gate_selection_blocked_count != len(force_gate_lines):
+            issues.append("GPU force authority gate permitted runtime selection")
+        if force_gate_profile_disabled_count != len(force_gate_lines):
+            issues.append("GPU force authority gate enabled the GPU force profile")
+        if force_gate_candidate_eligible_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep candidateEligible=true")
+        if force_gate_not_selected_count != len(force_gate_lines):
+            issues.append("GPU force authority gate selected the candidate")
+        if force_gate_not_promoted_count != len(force_gate_lines):
+            issues.append("GPU force authority gate promoted the candidate")
+        if force_gate_active_unchanged_count != len(force_gate_lines):
+            issues.append("GPU force authority gate changed active force authority")
+        if force_gate_fallback_ready_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep Matter CPU fallback ready")
+        if force_gate_force_authority_false_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep forceAuthorityReady=false")
+        if force_gate_runtime_authority_false_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep runtimeForceAuthority=false")
+        if force_gate_runtime_particle_false_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not keep runtimeParticleIntegration=false"
+            )
+        if force_gate_gpu_not_ready_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep gpuComputeReady=false")
+        if force_gate_low_rate_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep highRateJsonPayload=false")
+        if force_gate_settings_payload_false_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not keep settingsControlPayload=false"
+            )
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -784,6 +905,31 @@ def validate_summary(
         "force_candidate_settings_payload_false_count": (
             force_candidate_settings_payload_false_count
         ),
+        "force_gate_line_count": len(force_gate_lines),
+        "force_gate_candidate_ready_count": force_gate_candidate_ready_count,
+        "force_gate_gpu_candidate_ready_count": force_gate_gpu_candidate_ready_count,
+        "force_gate_single_authority_count": force_gate_single_authority_count,
+        "force_gate_slot_count": force_gate_slot_count,
+        "force_gate_active_count": force_gate_active_count,
+        "force_gate_profile_required_count": force_gate_profile_required_count,
+        "force_gate_profile_unsatisfied_count": force_gate_profile_unsatisfied_count,
+        "force_gate_selection_blocked_count": force_gate_selection_blocked_count,
+        "force_gate_profile_disabled_count": force_gate_profile_disabled_count,
+        "force_gate_candidate_eligible_count": force_gate_candidate_eligible_count,
+        "force_gate_not_selected_count": force_gate_not_selected_count,
+        "force_gate_not_promoted_count": force_gate_not_promoted_count,
+        "force_gate_active_unchanged_count": force_gate_active_unchanged_count,
+        "force_gate_fallback_ready_count": force_gate_fallback_ready_count,
+        "force_gate_force_authority_false_count": force_gate_force_authority_false_count,
+        "force_gate_runtime_authority_false_count": (
+            force_gate_runtime_authority_false_count
+        ),
+        "force_gate_runtime_particle_false_count": force_gate_runtime_particle_false_count,
+        "force_gate_gpu_not_ready_count": force_gate_gpu_not_ready_count,
+        "force_gate_low_rate_count": force_gate_low_rate_count,
+        "force_gate_settings_payload_false_count": (
+            force_gate_settings_payload_false_count
+        ),
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
         },
@@ -956,6 +1102,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "candidate readiness without promotion."
         ),
     )
+    parser.add_argument(
+        "--require-gpu-force-authority-gate",
+        action="store_true",
+        help=(
+            "Require the optional GPU force-authority profile gate marker proving "
+            "the candidate stayed blocked behind explicit profile selection."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -977,6 +1131,7 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_field_force_sampling=args.require_gpu_field_force_sampling,
         require_gpu_field_particle_force=args.require_gpu_field_particle_force,
         require_gpu_force_authority_candidate=args.require_gpu_force_authority_candidate,
+        require_gpu_force_authority_gate=args.require_gpu_force_authority_gate,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {

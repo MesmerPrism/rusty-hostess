@@ -166,6 +166,22 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true forceAuthorityCandidateReady=true "
+                "gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true "
+                "forceAuthoritySlotCount=1 activeForceAuthorityCount=1 "
+                "profileGate=explicit-profile-required profileGateSatisfied=false "
+                "runtimeSelectionPermitted=false gpuForceAuthorityProfileEnabled=false "
+                "candidateEligible=true candidateSelected=false candidatePromoted=false "
+                "activeForceAuthorityChanged=false matterCpuFallbackReady=true "
+                "runtimeParticleIntegration=false forceAuthorityReady=false "
+                "runtimeForceAuthority=false gpuComputeReady=false "
+                "highRateJsonPayload=false settingsControlPayload=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true denseSdfConstructedOnGpu=true "
@@ -247,6 +263,22 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "gpuComputeReady=false highRateJsonPayload=false "
                 "settingsControlPayload=false",
             ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true forceAuthorityCandidateReady=true "
+                "gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true "
+                "forceAuthoritySlotCount=1 activeForceAuthorityCount=1 "
+                "profileGate=explicit-profile-required profileGateSatisfied=false "
+                "runtimeSelectionPermitted=false gpuForceAuthorityProfileEnabled=false "
+                "candidateEligible=true candidateSelected=false candidatePromoted=false "
+                "activeForceAuthorityChanged=false matterCpuFallbackReady=true "
+                "runtimeParticleIntegration=false forceAuthorityReady=false "
+                "runtimeForceAuthority=false gpuComputeReady=false "
+                "highRateJsonPayload=false settingsControlPayload=false",
+            ),
         ]
         log_lines = [
             log_line(
@@ -311,6 +343,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(2, summary["markers"]["gpu_field_force_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_particle_force_probe"])
         self.assertEqual(2, summary["markers"]["gpu_force_authority_candidate"])
+        self.assertEqual(2, summary["markers"]["gpu_force_authority_gate"])
         self.assertTrue(
             any(
                 "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH" in line

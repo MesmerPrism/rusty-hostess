@@ -9,10 +9,11 @@ use makepad_widgets::makepad_platform::{
 };
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
-    QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuFieldForceSamplingProbe,
-    QuestMakepadGpuFieldForceSamplingProbeReadback, QuestMakepadGpuFieldParticleForceProbe,
-    QuestMakepadGpuFieldParticleForceProbeInput, QuestMakepadGpuFieldSamplingProbe,
-    QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuForceAuthorityCandidate,
+    MatterSurfaceParticleForceSource, QuestMakepadGpuFieldConstructionReceipt,
+    QuestMakepadGpuFieldForceSamplingProbe, QuestMakepadGpuFieldForceSamplingProbeReadback,
+    QuestMakepadGpuFieldParticleForceProbe, QuestMakepadGpuFieldParticleForceProbeInput,
+    QuestMakepadGpuFieldSamplingProbe, QuestMakepadGpuFieldSamplingProbeReadback,
+    QuestMakepadGpuForceAuthorityCandidate, QuestMakepadGpuForceAuthorityGate,
     QuestMakepadGpuMeshSdfProbe, QuestMakepadGpuMeshSdfProbeInput,
     QuestMakepadGpuMeshSdfProbeReadback, QuestMakepadGpuSkinningMeshProbe,
     QuestMakepadGpuSkinningMeshProbeInput, QuestMakepadGpuSkinningMeshProbeReadback,
@@ -35,6 +36,7 @@ use rusty_quest_makepad_camera_shell::{
 pub(crate) struct PendingGpuMeshSdfProbe {
     input: QuestMakepadGpuMeshSdfProbeInput,
     particle_force_input: Option<QuestMakepadGpuFieldParticleForceProbeInput>,
+    active_force_source: MatterSurfaceParticleForceSource,
     ticket: XrGpuF32MeshSdfProbeTicket,
 }
 
@@ -172,6 +174,7 @@ pub(crate) fn gpu_mesh_sdf_probe_submit(
     Some(PendingGpuMeshSdfProbe {
         input: input.clone(),
         particle_force_input,
+        active_force_source: frame.stats.particle_force_source,
         ticket,
     })
 }
@@ -186,6 +189,7 @@ pub(crate) fn gpu_mesh_sdf_probe_poll_marker_lines(
         cx,
         &pending.input,
         pending.particle_force_input.as_ref(),
+        pending.active_force_source,
         readback,
         phase,
     )
@@ -249,6 +253,7 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
     cx: &mut Cx,
     input: &QuestMakepadGpuMeshSdfProbeInput,
     particle_force_input: Option<&QuestMakepadGpuFieldParticleForceProbeInput>,
+    active_force_source: MatterSurfaceParticleForceSource,
     readback: XrGpuF32MeshSdfProbeResult,
     phase: &str,
 ) -> Option<Vec<String>> {
@@ -312,9 +317,13 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
         markers.push(marker);
     }
     if let Some(particle_force_input) = particle_force_input {
-        if let Some(particle_markers) =
-            gpu_field_particle_force_probe_marker_lines(cx, particle_force_input, &receipt, phase)
-        {
+        if let Some(particle_markers) = gpu_field_particle_force_probe_marker_lines(
+            cx,
+            particle_force_input,
+            &receipt,
+            active_force_source,
+            phase,
+        ) {
             markers.extend(particle_markers);
         }
     }
@@ -496,6 +505,7 @@ fn gpu_field_particle_force_probe_marker_lines(
     cx: &mut Cx,
     input: &QuestMakepadGpuFieldParticleForceProbeInput,
     receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    active_force_source: MatterSurfaceParticleForceSource,
     phase: &str,
 ) -> Option<Vec<String>> {
     if !receipt.runtime_field_boundary_ready() {
@@ -539,12 +549,19 @@ fn gpu_field_particle_force_probe_marker_lines(
         sample_count,
         QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_DEFAULT_TOLERANCE,
     )?;
-    gpu_field_particle_force_probe_marker_lines_from_readback(input, receipt, readback, phase)
+    gpu_field_particle_force_probe_marker_lines_from_readback(
+        input,
+        receipt,
+        active_force_source,
+        readback,
+        phase,
+    )
 }
 
 fn gpu_field_particle_force_probe_marker_lines_from_readback(
     input: &QuestMakepadGpuFieldParticleForceProbeInput,
     receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    active_force_source: MatterSurfaceParticleForceSource,
     readback: XrGpuF32FieldForceSampleProbeResult,
     phase: &str,
 ) -> Option<Vec<String>> {
@@ -581,6 +598,11 @@ fn gpu_field_particle_force_probe_marker_lines_from_readback(
         QuestMakepadGpuForceAuthorityCandidate::from_particle_force_probe(&probe)
     {
         markers.push(candidate.marker_line(phase));
+        if let Some(gate) =
+            QuestMakepadGpuForceAuthorityGate::from_candidate(&candidate, active_force_source)
+        {
+            markers.push(gate.marker_line(phase));
+        }
     }
     Some(markers)
 }
