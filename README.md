@@ -253,7 +253,10 @@ compact joint-frame recordings; `makepad_diagnostics.rs` owns marker cadence,
 token formatting, raw camera event markers, target-footprint augmentation, and
 camera YUV texture handle structs; `broker_h264_runtime.rs` owns broker-H264
 and remote-camera runtime key parsing plus `ExternalH264VideoSource`
-construction. Keep `main.rs` as app-shell wiring.
+construction; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
+state, shader uniform application, camera texture binding, and horizontal
+alignment tuning application for the stereo camera panel. Keep `main.rs` as
+app-shell wiring and live-design registration.
 
 For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:
