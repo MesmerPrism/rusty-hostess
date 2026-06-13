@@ -58,6 +58,17 @@ def valid_summary():
     }
 
 
+def add_valid_gpu_proof_epoch(summary):
+    summary["markers"]["gpu_proof_epoch"] = 1
+    summary["proof_lines"].append(
+        "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH "
+        "status=applied source=hotload proofCountersReset=true "
+        "runtimeSettingsReloaded=false replayRuntimeRebuilt=false "
+        "matterWorkerRestarted=false highRateJsonPayload=false"
+    )
+    return summary
+
+
 class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
     def test_resolves_canonical_summary_from_evidence_root(self):
         with TemporaryDirectory() as temp_dir:
@@ -150,6 +161,54 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(
             2,
             result.summary["field_particle_force_runtime_particle_false_count"],
+        )
+        self.assertEqual(0, result.summary["gpu_proof_epoch_line_count"])
+
+    def test_can_require_gpu_proof_epoch(self):
+        summary = add_valid_gpu_proof_epoch(valid_summary())
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(require_gpu_proof_epoch=True),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(1, result.summary["gpu_proof_epoch_line_count"])
+        self.assertEqual(1, result.summary["gpu_proof_epoch_reset_count"])
+        self.assertEqual(
+            1,
+            result.summary["gpu_proof_epoch_no_runtime_reload_count"],
+        )
+        self.assertEqual(
+            1,
+            result.summary["optional_marker_counts"]["gpu_proof_epoch"],
+        )
+
+    def test_rejects_missing_required_gpu_proof_epoch(self):
+        result = validate_summary(
+            valid_summary(),
+            EvidenceThresholds(require_gpu_proof_epoch=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(any("GPU_PROOF_EPOCH" in issue for issue in result.issues))
+
+    def test_rejects_gpu_proof_epoch_runtime_rebuild(self):
+        summary = add_valid_gpu_proof_epoch(valid_summary())
+        summary["proof_lines"][-1] = summary["proof_lines"][-1].replace(
+            "replayRuntimeRebuilt=false",
+            "replayRuntimeRebuilt=true",
+        )
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(require_gpu_proof_epoch=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("replayRuntimeRebuilt=false" in issue for issue in result.issues)
         )
 
     def test_rejects_stale_heavy_debug_run(self):

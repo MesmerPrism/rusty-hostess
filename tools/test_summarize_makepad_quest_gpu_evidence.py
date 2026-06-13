@@ -59,6 +59,14 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH "
+                "status=applied source=hotload proofCountersReset=true "
+                "runtimeSettingsReloaded=false replayRuntimeRebuilt=false "
+                "matterWorkerRestarted=false highRateJsonPayload=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true kgslFaultsBeforeMarker=unavailable",
@@ -270,11 +278,18 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
 
         summary = payloads["summary"]
         self.assertEqual(5884, summary["app_pid"])
+        self.assertEqual(1, summary["markers"]["gpu_proof_epoch"])
         self.assertEqual(2, summary["markers"]["gpu_mesh_sdf_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_construction"])
         self.assertEqual(2, summary["markers"]["gpu_field_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_force_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_particle_force_probe"])
+        self.assertTrue(
+            any(
+                "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH" in line
+                for line in summary["proof_lines"]
+            )
+        )
         self.assertEqual(90.0, summary["cadence"]["app_frame_rate_hz"]["max"])
         self.assertEqual(0, summary["vrapi_hostess_process"]["stale_90_plus_count"])
         self.assertEqual(14.0, summary["vrapi_hostess_process"]["stale"]["max"])

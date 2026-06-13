@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 try:
-    from check_makepad_quest_gpu_evidence import REQUIRED_MARKERS
+    from check_makepad_quest_gpu_evidence import OPTIONAL_MARKERS, REQUIRED_MARKERS
 except ImportError:  # pragma: no cover - direct script fallback
     REQUIRED_MARKERS = {
         "proof_schedule": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE",
@@ -34,6 +34,9 @@ except ImportError:  # pragma: no cover - direct script fallback
         "gpu_field_particle_force_probe": (
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
         ),
+    }
+    OPTIONAL_MARKERS = {
+        "gpu_proof_epoch": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH",
     }
 
 
@@ -52,6 +55,8 @@ GPU_FIELD_CONSTRUCTION_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION"
 GPU_FIELD_SAMPLING_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE"
 GPU_FIELD_FORCE_SAMPLING_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE"
 GPU_FIELD_PARTICLE_FORCE_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
+GPU_PROOF_EPOCH_MARKER = "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH"
+PROOF_MARKERS = {**REQUIRED_MARKERS, **OPTIONAL_MARKERS}
 
 LOGCAT_RE = re.compile(
     r"^(?P<date>\d\d-\d\d)\s+"
@@ -511,11 +516,11 @@ def summarize_evidence(
     proof_lines = [
         line
         for line in hostess_lines
-        if any(line_has_marker(line, marker) for marker in REQUIRED_MARKERS.values())
+        if any(line_has_marker(line, marker) for marker in PROOF_MARKERS.values())
     ]
     markers = {
         key: len(marker_lines(proof_lines, marker))
-        for key, marker in REQUIRED_MARKERS.items()
+        for key, marker in PROOF_MARKERS.items()
     }
     extra_counts = {
         "source_selection": len(marker_lines(hostess_lines, SOURCE_SELECTION_MARKER)),
@@ -536,6 +541,7 @@ def summarize_evidence(
         "gpu_field_particle_force_probe": len(
             marker_lines(hostess_lines, GPU_FIELD_PARTICLE_FORCE_MARKER)
         ),
+        "gpu_proof_epoch": len(marker_lines(hostess_lines, GPU_PROOF_EPOCH_MARKER)),
         "sample_count_8": sum("sampleCount=8" in line for line in proof_lines),
     }
     summary = {

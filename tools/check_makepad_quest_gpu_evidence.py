@@ -33,6 +33,9 @@ REQUIRED_MARKERS = {
     "gpu_field_force_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
     "gpu_field_particle_force_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
 }
+OPTIONAL_MARKERS = {
+    "gpu_proof_epoch": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH",
+}
 PROOF_SUMMARY_SCHEMA = "rusty.hostess.quest_live_hand_small_profile_summary.v1"
 CANONICAL_PROOF_SUMMARY_NAME = "live-hand-small-profile-summary.json"
 
@@ -49,6 +52,7 @@ class EvidenceThresholds:
     require_mesh_sdf_source_buffer_reuse: bool = False
     require_mesh_sdf_derived_buffer_reuse: bool = False
     require_mesh_sdf_min_sample_count: int = 0
+    require_gpu_proof_epoch: bool = False
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,10 @@ def validate_summary(
     for key, marker_name in REQUIRED_MARKERS.items():
         if numeric(markers.get(key)) < 1:
             issues.append(f"missing required marker count for {marker_name}")
+    if thresholds.require_gpu_proof_epoch:
+        for key, marker_name in OPTIONAL_MARKERS.items():
+            if numeric(markers.get(key)) < 1:
+                issues.append(f"missing required marker count for {marker_name}")
 
     cadence = object_value(summary, "cadence")
     app_rate_avg = nested_numeric(cadence, "app_frame_rate_hz", "avg")
@@ -188,6 +196,41 @@ def validate_summary(
     for marker_name in REQUIRED_MARKERS.values():
         if marker_name not in proof_text:
             issues.append(f"proof line missing {marker_name}")
+    if thresholds.require_gpu_proof_epoch:
+        for marker_name in OPTIONAL_MARKERS.values():
+            if marker_name not in proof_text:
+                issues.append(f"proof line missing {marker_name}")
+    gpu_proof_epoch_lines = lines_containing(
+        proof_lines, OPTIONAL_MARKERS["gpu_proof_epoch"]
+    )
+    gpu_proof_epoch_reset_count = count_lines_containing(
+        gpu_proof_epoch_lines, "proofCountersReset=true"
+    )
+    gpu_proof_epoch_no_runtime_reload_count = count_lines_containing(
+        gpu_proof_epoch_lines, "runtimeSettingsReloaded=false"
+    )
+    gpu_proof_epoch_no_replay_rebuild_count = count_lines_containing(
+        gpu_proof_epoch_lines, "replayRuntimeRebuilt=false"
+    )
+    gpu_proof_epoch_no_worker_restart_count = count_lines_containing(
+        gpu_proof_epoch_lines, "matterWorkerRestarted=false"
+    )
+    gpu_proof_epoch_low_rate_count = count_lines_containing(
+        gpu_proof_epoch_lines, "highRateJsonPayload=false"
+    )
+    if thresholds.require_gpu_proof_epoch and not gpu_proof_epoch_lines:
+        issues.append("GPU proof epoch marker was required but not present")
+    if thresholds.require_gpu_proof_epoch and gpu_proof_epoch_lines:
+        if gpu_proof_epoch_reset_count != len(gpu_proof_epoch_lines):
+            issues.append("GPU proof epoch did not report proofCountersReset=true")
+        if gpu_proof_epoch_no_runtime_reload_count != len(gpu_proof_epoch_lines):
+            issues.append("GPU proof epoch did not keep runtimeSettingsReloaded=false")
+        if gpu_proof_epoch_no_replay_rebuild_count != len(gpu_proof_epoch_lines):
+            issues.append("GPU proof epoch did not keep replayRuntimeRebuilt=false")
+        if gpu_proof_epoch_no_worker_restart_count != len(gpu_proof_epoch_lines):
+            issues.append("GPU proof epoch did not keep matterWorkerRestarted=false")
+        if gpu_proof_epoch_low_rate_count != len(gpu_proof_epoch_lines):
+            issues.append("GPU proof epoch did not keep highRateJsonPayload=false")
     for marker_name in (
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
@@ -507,6 +550,18 @@ def validate_summary(
         "mesh_sdf_derived_buffer_reuse_count": mesh_sdf_derived_reuse_count,
         "mesh_sdf_min_sample_count": mesh_sdf_min_sample_count,
         "mesh_sdf_max_sample_count": mesh_sdf_max_sample_count,
+        "gpu_proof_epoch_line_count": len(gpu_proof_epoch_lines),
+        "gpu_proof_epoch_reset_count": gpu_proof_epoch_reset_count,
+        "gpu_proof_epoch_no_runtime_reload_count": (
+            gpu_proof_epoch_no_runtime_reload_count
+        ),
+        "gpu_proof_epoch_no_replay_rebuild_count": (
+            gpu_proof_epoch_no_replay_rebuild_count
+        ),
+        "gpu_proof_epoch_no_worker_restart_count": (
+            gpu_proof_epoch_no_worker_restart_count
+        ),
+        "gpu_proof_epoch_low_rate_count": gpu_proof_epoch_low_rate_count,
         "field_construction_line_count": len(field_construction_lines),
         "field_construction_ready_count": field_construction_ready_count,
         "field_construction_force_authority_false_count": (
@@ -573,6 +628,9 @@ def validate_summary(
         "field_particle_force_low_rate_count": field_particle_force_low_rate_count,
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in REQUIRED_MARKERS
+        },
+        "optional_marker_counts": {
+            key: int(numeric(markers.get(key))) for key in OPTIONAL_MARKERS
         },
     }
     return EvidenceCheckResult(ok=not issues, issues=issues, summary=compact)
@@ -702,6 +760,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=0,
         help="Require at least one mesh-SDF proof line with sampleCount at or above this value.",
     )
+    parser.add_argument(
+        "--require-gpu-proof-epoch",
+        action="store_true",
+        help=(
+            "Require a Hostess GPU proof epoch marker proving proof counter reset "
+            "without runtime/settings replay rebuild."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -719,6 +785,7 @@ def main(argv: list[str] | None = None) -> int:
         require_mesh_sdf_source_buffer_reuse=args.require_mesh_sdf_source_buffer_reuse,
         require_mesh_sdf_derived_buffer_reuse=args.require_mesh_sdf_derived_buffer_reuse,
         require_mesh_sdf_min_sample_count=args.require_mesh_sdf_min_sample_count,
+        require_gpu_proof_epoch=args.require_gpu_proof_epoch,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {
