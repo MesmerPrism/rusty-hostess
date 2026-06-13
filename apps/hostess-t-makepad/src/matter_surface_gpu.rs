@@ -75,6 +75,16 @@ struct PreparedGpuMeshSdfProbe {
     sample_count: usize,
 }
 
+impl PendingGpuMeshSdfProbe {
+    pub(crate) fn source_id(&self) -> &str {
+        &self.input.source_id
+    }
+
+    pub(crate) fn source_frame_index(&self) -> usize {
+        self.input.source_frame_index
+    }
+}
+
 pub(crate) fn gpu_skinning_probe_submit(
     cx: &mut Cx,
     input: &QuestMakepadGpuSkinningProbeInput,

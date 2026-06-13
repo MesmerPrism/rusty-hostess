@@ -16,7 +16,8 @@ use crate::matter_surface_gpu::{
     gpu_skinning_probe_poll_marker_line, gpu_skinning_probe_submit,
 };
 use crate::matter_surface_gpu_schedule::{
-    matter_surface_step_interval_seconds, MatterSurfaceGpuProofSchedule,
+    matter_surface_step_interval_seconds, MatterSurfaceGpuForceFreshnessEvidence,
+    MatterSurfaceGpuProofSchedule, MATTER_SURFACE_GPU_FORCE_FRESHNESS_MAX_SOURCE_FRAME_LAG,
 };
 use crate::matter_surface_uniforms::MakepadMatterSurfaceUniforms;
 use crate::matter_world_adf_debug::{
@@ -419,8 +420,6 @@ impl App {
             self.cadence_xr_update_count,
             self.cadence_draw_event_count,
         );
-        let gpu_force_authority_runtime_readiness =
-            gpu_probe_schedule.force_authority_runtime_readiness(gpu_probe_steady_state_ready);
         if gpu_probe_steady_state_ready && self.matter_surface_gpu_schedule_markers_emitted == 0 {
             self.reset_matter_surface_gpu_proof_markers();
             let identity =
@@ -470,6 +469,18 @@ impl App {
             );
             let pending_mesh_sdf_probe = self.matter_surface_gpu_mesh_sdf_probe_pending.clone();
             let completed_mesh_sdf_markers = pending_mesh_sdf_probe.as_ref().and_then(|pending| {
+                let freshness = MatterSurfaceGpuForceFreshnessEvidence::from_source_frame_adoption(
+                    pending.source_id(),
+                    pending.source_frame_index(),
+                    &frame.source_id,
+                    frame.matter_update.frame_index,
+                    MATTER_SURFACE_GPU_FORCE_FRESHNESS_MAX_SOURCE_FRAME_LAG,
+                );
+                let gpu_force_authority_runtime_readiness = gpu_probe_schedule
+                    .force_authority_runtime_readiness(
+                        gpu_probe_steady_state_ready,
+                        freshness.freshness_ready(),
+                    );
                 gpu_mesh_sdf_probe_poll_marker_lines(
                     cx,
                     pending,
@@ -477,8 +488,14 @@ impl App {
                     &mut self.matter_surface_gpu_force_authority_residency_tracker,
                     gpu_force_authority_runtime_readiness,
                 )
+                .map(|markers| (freshness, markers))
             });
-            if let Some(markers) = completed_mesh_sdf_markers {
+            if let Some((freshness, markers)) = completed_mesh_sdf_markers {
+                emit_marker_line(&freshness.marker_line(
+                    &mesh_sdf_phase,
+                    gpu_probe_steady_state_ready,
+                    &self.matter_surface_source_selection,
+                ));
                 for marker in markers {
                     emit_marker_line(&marker);
                 }

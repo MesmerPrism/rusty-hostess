@@ -34,6 +34,7 @@ CORE_REQUIRED_MARKERS = {
 OPTIONAL_STAGE_MARKERS = {
     "gpu_field_force_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
     "gpu_field_particle_force_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
+    "gpu_force_freshness": "RUSTY_HOSTESS_MAKEPAD_GPU_FORCE_FRESHNESS",
     "gpu_force_authority_candidate": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE",
     "gpu_force_authority_gate": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE",
     "gpu_force_authority_residency": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY",
@@ -61,11 +62,13 @@ class EvidenceThresholds:
     require_gpu_proof_epoch: bool = False
     require_gpu_field_force_sampling: bool = False
     require_gpu_field_particle_force: bool = False
+    require_gpu_force_freshness: bool = False
     require_gpu_force_authority_candidate: bool = False
     require_gpu_force_authority_gate: bool = False
     require_gpu_force_authority_residency: bool = False
     require_gpu_force_profile_enabled: bool = False
     require_gpu_force_steady_state_fallback: bool = False
+    require_gpu_force_fresh_expanded_oracle_fallback: bool = False
     min_force_residency_observed_proofs: int = 0
     min_force_residency_reused_proofs: int = 0
 
@@ -134,6 +137,10 @@ def validate_summary(
     if thresholds.require_gpu_field_particle_force:
         required_markers["gpu_field_particle_force_probe"] = OPTIONAL_STAGE_MARKERS[
             "gpu_field_particle_force_probe"
+        ]
+    if thresholds.require_gpu_force_freshness:
+        required_markers["gpu_force_freshness"] = OPTIONAL_STAGE_MARKERS[
+            "gpu_force_freshness"
         ]
     if thresholds.require_gpu_force_authority_candidate:
         required_markers["gpu_force_authority_candidate"] = OPTIONAL_STAGE_MARKERS[
@@ -766,6 +773,61 @@ def validate_summary(
             issues.append(
                 "GPU force authority gate did not keep settingsControlPayload=false"
             )
+    force_freshness_lines = lines_containing(
+        proof_lines, "RUSTY_HOSTESS_MAKEPAD_GPU_FORCE_FRESHNESS"
+    )
+    force_freshness_ready_count = count_lines_containing(
+        force_freshness_lines, "freshnessReady=true"
+    )
+    force_freshness_not_ready_count = count_lines_containing(
+        force_freshness_lines, "freshnessReady=false"
+    )
+    force_freshness_source_match_count = count_lines_containing(
+        force_freshness_lines, "sourceIdMatched=true"
+    )
+    force_freshness_candidate_not_future_count = count_lines_containing(
+        force_freshness_lines, "candidateNotFuture=true"
+    )
+    force_freshness_cadence_ready_count = count_lines_containing(
+        force_freshness_lines, "cadenceReady=true"
+    )
+    force_freshness_runtime_authority_false_count = count_lines_containing(
+        force_freshness_lines, "runtimeForceAuthority=false"
+    )
+    force_freshness_gpu_not_ready_count = count_lines_containing(
+        force_freshness_lines, "gpuComputeReady=false"
+    )
+    force_freshness_low_rate_count = count_lines_containing(
+        force_freshness_lines, "highRateJsonPayload=false"
+    )
+    force_freshness_settings_payload_false_count = count_lines_containing(
+        force_freshness_lines, "settingsControlPayload=false"
+    )
+    force_freshness_lag_values = marker_int_fields(force_freshness_lines, "sourceFrameLag")
+    force_freshness_max_lag_values = marker_int_fields(
+        force_freshness_lines, "maxSourceFrameLag"
+    )
+    force_freshness_max_lag_observed = max(force_freshness_lag_values, default=0)
+    force_freshness_max_lag_allowed = max(force_freshness_max_lag_values, default=0)
+    if force_freshness_lines:
+        if force_freshness_runtime_authority_false_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep runtimeForceAuthority=false")
+        if force_freshness_gpu_not_ready_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep gpuComputeReady=false")
+        if force_freshness_low_rate_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep highRateJsonPayload=false")
+        if force_freshness_settings_payload_false_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep settingsControlPayload=false")
+        if force_freshness_source_match_count + count_lines_containing(
+            force_freshness_lines, "sourceIdMatched=false"
+        ) != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not declare sourceIdMatched")
+        if force_freshness_candidate_not_future_count + count_lines_containing(
+            force_freshness_lines, "candidateNotFuture=false"
+        ) != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not declare candidateNotFuture")
+        if not force_freshness_max_lag_values:
+            issues.append("GPU force freshness evidence did not declare maxSourceFrameLag")
     force_residency_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY"
     )
@@ -879,6 +941,9 @@ def validate_summary(
     force_residency_bounded_only_count = count_lines_containing(
         force_residency_lines, "boundedProofOnly=true"
     )
+    force_residency_bounded_declared_count = count_lines_containing(
+        force_residency_lines, "boundedProofOnly="
+    )
     force_residency_steady_state_declared_count = count_lines_containing(
         force_residency_lines, "steadyStateResidencyReady="
     )
@@ -962,6 +1027,10 @@ def validate_summary(
     )
     force_residency_freshness_fallback_count = count_lines_containing(
         force_residency_lines, "fallbackReason=gpu-freshness-not-proven"
+    )
+    force_residency_expanded_oracle_fallback_count = count_lines_containing(
+        force_residency_lines,
+        "fallbackReason=gpu-expanded-oracle-comparison-not-proven",
     )
     if force_residency_lines:
         if force_residency_candidate_ready_count != len(force_residency_lines):
@@ -1064,8 +1133,8 @@ def validate_summary(
             )
         if force_residency_derived_reuse_declared_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not declare derived buffer reuse")
-        if force_residency_bounded_only_count != len(force_residency_lines):
-            issues.append("GPU force authority residency did not report boundedProofOnly=true")
+        if force_residency_bounded_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare boundedProofOnly")
         if force_residency_steady_state_declared_count != len(force_residency_lines):
             issues.append(
                 "GPU force authority residency did not declare steady-state readiness"
@@ -1164,6 +1233,65 @@ def validate_summary(
             issues.append("GPU force authority steady-state fallback permitted runtime selection")
         if force_residency_active_kind_count != len(force_residency_lines):
             issues.append("GPU force authority steady-state fallback did not keep Matter CPU active")
+    if thresholds.require_gpu_force_freshness:
+        if not force_freshness_lines:
+            issues.append("GPU force freshness was required but no freshness marker was present")
+        if force_freshness_ready_count < 1:
+            issues.append("GPU force freshness evidence did not reach freshnessReady=true")
+        if force_freshness_not_ready_count != 0:
+            issues.append("GPU force freshness evidence still contained freshnessReady=false")
+        if force_freshness_source_match_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep sourceIdMatched=true")
+        if force_freshness_candidate_not_future_count != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not keep candidateNotFuture=true")
+        if force_freshness_cadence_ready_count < 1:
+            issues.append("GPU force freshness evidence did not show cadenceReady=true")
+        if len(force_freshness_lag_values) != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not declare numeric sourceFrameLag")
+        if len(force_freshness_max_lag_values) != len(force_freshness_lines):
+            issues.append("GPU force freshness evidence did not declare maxSourceFrameLag")
+        if (
+            force_freshness_lag_values
+            and force_freshness_max_lag_values
+            and force_freshness_max_lag_observed > force_freshness_max_lag_allowed
+        ):
+            issues.append(
+                "GPU force freshness sourceFrameLag max "
+                f"{force_freshness_max_lag_observed} > allowed "
+                f"{force_freshness_max_lag_allowed}"
+            )
+        if force_residency_freshness_true_count < 1:
+            issues.append("GPU force authority residency did not consume freshnessReady=true")
+    if thresholds.require_gpu_force_fresh_expanded_oracle_fallback:
+        if not force_residency_lines:
+            issues.append(
+                "fresh GPU force fallback was required but no residency marker was present"
+            )
+        if force_residency_steady_state_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach steadyStateResidencyReady=true"
+            )
+        if force_residency_freshness_true_count < 1:
+            issues.append("GPU force authority residency did not reach freshnessReady=true")
+        if force_residency_cadence_true_count < 1:
+            issues.append("GPU force authority residency did not reach cadenceReady=true")
+        if force_residency_expanded_oracle_true_count != 0:
+            issues.append(
+                "GPU force authority residency claimed expandedOracleComparisonReady=true too early"
+            )
+        if force_residency_provider_ab_true_count != 0:
+            issues.append(
+                "GPU force authority residency claimed liveRecordedProviderAbReady=true too early"
+            )
+        if force_residency_expanded_oracle_fallback_count < 1:
+            issues.append(
+                "GPU force authority residency did not fall back for "
+                "gpu-expanded-oracle-comparison-not-proven"
+            )
+        if force_residency_selection_blocked_count != len(force_residency_lines):
+            issues.append("GPU force authority fresh fallback permitted runtime selection")
+        if force_residency_active_kind_count != len(force_residency_lines):
+            issues.append("GPU force authority fresh fallback did not keep Matter CPU active")
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -1376,6 +1504,24 @@ def validate_summary(
         "force_gate_settings_payload_false_count": (
             force_gate_settings_payload_false_count
         ),
+        "force_freshness_line_count": len(force_freshness_lines),
+        "force_freshness_ready_count": force_freshness_ready_count,
+        "force_freshness_not_ready_count": force_freshness_not_ready_count,
+        "force_freshness_source_match_count": force_freshness_source_match_count,
+        "force_freshness_candidate_not_future_count": (
+            force_freshness_candidate_not_future_count
+        ),
+        "force_freshness_cadence_ready_count": force_freshness_cadence_ready_count,
+        "force_freshness_runtime_authority_false_count": (
+            force_freshness_runtime_authority_false_count
+        ),
+        "force_freshness_gpu_not_ready_count": force_freshness_gpu_not_ready_count,
+        "force_freshness_low_rate_count": force_freshness_low_rate_count,
+        "force_freshness_settings_payload_false_count": (
+            force_freshness_settings_payload_false_count
+        ),
+        "force_freshness_max_lag_observed": force_freshness_max_lag_observed,
+        "force_freshness_max_lag_allowed": force_freshness_max_lag_allowed,
         "force_residency_line_count": len(force_residency_lines),
         "force_residency_candidate_ready_count": force_residency_candidate_ready_count,
         "force_residency_gpu_candidate_ready_count": (
@@ -1408,6 +1554,9 @@ def validate_summary(
         ),
         "force_residency_derived_reuse_count": force_residency_derived_reuse_count,
         "force_residency_bounded_only_count": force_residency_bounded_only_count,
+        "force_residency_bounded_declared_count": (
+            force_residency_bounded_declared_count
+        ),
         "force_residency_steady_state_declared_count": (
             force_residency_steady_state_declared_count
         ),
@@ -1456,6 +1605,9 @@ def validate_summary(
         "force_residency_max_required_proofs": force_residency_max_required_proofs,
         "force_residency_freshness_fallback_count": (
             force_residency_freshness_fallback_count
+        ),
+        "force_residency_expanded_oracle_fallback_count": (
+            force_residency_expanded_oracle_fallback_count
         ),
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
@@ -1621,6 +1773,14 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--require-gpu-force-freshness",
+        action="store_true",
+        help=(
+            "Require Hostess GPU force freshness evidence proving a completed "
+            "GPU force proof matches a recently adopted Matter source frame."
+        ),
+    )
+    parser.add_argument(
         "--require-gpu-force-authority-candidate",
         action="store_true",
         help=(
@@ -1664,6 +1824,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--require-gpu-force-fresh-expanded-oracle-fallback",
+        action="store_true",
+        help=(
+            "Require steady-state, cadence, and freshness readiness while still "
+            "falling back to Matter CPU because expanded oracle comparison and "
+            "live/recorded A/B are not proven."
+        ),
+    )
+    parser.add_argument(
         "--min-force-residency-observed-proofs",
         type=int,
         default=0,
@@ -1695,11 +1864,15 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_proof_epoch=args.require_gpu_proof_epoch,
         require_gpu_field_force_sampling=args.require_gpu_field_force_sampling,
         require_gpu_field_particle_force=args.require_gpu_field_particle_force,
+        require_gpu_force_freshness=args.require_gpu_force_freshness,
         require_gpu_force_authority_candidate=args.require_gpu_force_authority_candidate,
         require_gpu_force_authority_gate=args.require_gpu_force_authority_gate,
         require_gpu_force_authority_residency=args.require_gpu_force_authority_residency,
         require_gpu_force_profile_enabled=args.require_gpu_force_profile_enabled,
         require_gpu_force_steady_state_fallback=args.require_gpu_force_steady_state_fallback,
+        require_gpu_force_fresh_expanded_oracle_fallback=(
+            args.require_gpu_force_fresh_expanded_oracle_fallback
+        ),
         min_force_residency_observed_proofs=args.min_force_residency_observed_proofs,
         min_force_residency_reused_proofs=args.min_force_residency_reused_proofs,
     )
