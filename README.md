@@ -89,6 +89,12 @@ JSON that includes package manifest hashes.
 - `tools/hostessctl/recording_evidence.py`: broker telemetry and Manifold
   value-recording evidence builders, validators, scorecards, and host-run
   evidence writers used by general recording routes.
+- `tools/studio_staging/platform_smoke.py`: compatibility facade for Studio
+  platform-smoke planning, operator approval, execution, evidence attachment,
+  and evidence review helpers. Phase implementations live in
+  `platform_smoke_plan.py`, `platform_smoke_execution.py`,
+  `platform_smoke_operator_start.py`, `platform_smoke_execution_report.py`, and
+  `platform_smoke_evidence.py` so staging workflow growth stays reviewable.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.

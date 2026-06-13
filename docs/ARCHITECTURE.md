@@ -95,6 +95,14 @@ Broker telemetry and Manifold value-recording evidence construction lives in
 `tools/hostessctl/recording_evidence.py`. Recording evidence schemas,
 validators, scorecards, and host-run wrappers are isolated from command
 orchestration.
+Studio platform-smoke staging helpers are split by workflow phase:
+`tools/studio_staging/platform_smoke.py` remains the import facade, while
+`platform_smoke_plan.py`, `platform_smoke_execution.py`,
+`platform_smoke_operator_start.py`, `platform_smoke_execution_report.py`, and
+`platform_smoke_evidence.py` own plan/approval, execution, operator-start,
+report, and evidence review behavior. These helpers are staging contract and
+review evidence builders; they must not start Studio, Hostess, Quest, Makepad,
+or Manifold runtimes.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
