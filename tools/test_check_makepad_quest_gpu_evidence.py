@@ -52,7 +52,7 @@ def valid_summary():
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false sourceMeshBuffersResident=true sourceMeshBuffersReused=false derivedBuffersResident=true derivedBuffersReused=false measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeForceSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
-            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
+            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot particleRows=4 requestedParticleSampleCount=4 sampledParticleCount=4 rejectedParticleCount=0 matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=false shaderCompiledThisSubmit=true pipelineCreatedThisSubmit=true",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 activeForceAuthorityKind=matter-cpu profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileKnown=true gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false matterCpuFallbackReady=true rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 activeForceAuthorityKind=matter-cpu activeForceAuthoritySource=matter-runtime-profile activeMatterForceAuthority=mesh-distance matterCpuOracleForceAuthority=mesh-distance activeForceAuthorityPreserved=matter-cpu-runtime profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileKnown=true gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false residencyTrackerSource=quest-makepad-gpu-force-authority-residency-tracker observedResidentProofs=1 reusedResidentProofs=0 requiredResidentProofs=4 residencyContinuityReady=false residencyContinuityBroken=false residencyContinuityBreakCount=0 sourceMeshBufferGenerationMatched=true derivedBufferGenerationMatched=true queueSubmitSerialMonotonic=true fenceSerialMonotonic=true boundedProofOnly=true steadyStateResidencyReady=false freshnessReady=false cadenceReady=false expandedOracleComparisonReady=false liveRecordedProviderAbReady=false fallbackForceAuthority=mesh-distance fallbackReason=profile-prefers-matter-cpu activeForceAuthorityChanged=false matterCpuFallbackReady=true rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure sourceMeshBufferGeneration=1 sourceMeshBuffersResident=true sourceMeshBuffersReused=false derivedBufferGeneration=1 derivedBuffersResident=true derivedBuffersReused=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
@@ -60,7 +60,7 @@ def valid_summary():
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBuffersResident=true derivedBuffersReused=true measuredBy=RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE.elapsedMs",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=8 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeForceSamplingBoundaryReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
-            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
+            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true runtimeFieldBoundaryReady=true runtimeParticleForceComparisonReady=true residentFieldBufferSampled=true sourceFieldGenerationMatched=true particleSampleSource=matter-particle-snapshot particleRows=4 requestedParticleSampleCount=4 sampledParticleCount=4 rejectedParticleCount=0 matterParticleForceEquation=true fieldSamplingKernel=true fieldForceSamplingKernel=true fieldParticleKernel=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 componentCount=12 gpuComputeReady=false highRateJsonPayload=false programReused=true shaderCompiledThisSubmit=false pipelineCreatedThisSubmit=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 activeForceAuthorityKind=matter-cpu profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileKnown=true gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false activeForceAuthorityChanged=false matterCpuFallbackReady=true rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY readbackMatched=true queueWaitIdlePerformed=false recordedInputEquivalent=true forceAuthorityCandidateReady=true gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true forceAuthoritySlotCount=1 activeForceAuthorityCount=1 activeForceAuthorityKind=matter-cpu activeForceAuthoritySource=matter-runtime-profile activeMatterForceAuthority=mesh-distance matterCpuOracleForceAuthority=mesh-distance activeForceAuthorityPreserved=matter-cpu-runtime profileGate=explicit-profile-required profileGateSatisfied=false runtimeSelectionPermitted=false gpuForceAuthorityProfileKnown=true gpuForceAuthorityProfileEnabled=false candidateEligible=true candidateSelected=false candidatePromoted=false residencyTrackerSource=quest-makepad-gpu-force-authority-residency-tracker observedResidentProofs=2 reusedResidentProofs=1 requiredResidentProofs=4 residencyContinuityReady=true residencyContinuityBroken=false residencyContinuityBreakCount=0 sourceMeshBufferGenerationMatched=true derivedBufferGenerationMatched=true queueSubmitSerialMonotonic=true fenceSerialMonotonic=true boundedProofOnly=true steadyStateResidencyReady=false freshnessReady=false cadenceReady=false expandedOracleComparisonReady=false liveRecordedProviderAbReady=false fallbackForceAuthority=mesh-distance fallbackReason=profile-prefers-matter-cpu activeForceAuthorityChanged=false matterCpuFallbackReady=true rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure sourceMeshBufferGeneration=1 sourceMeshBuffersResident=true sourceMeshBuffersReused=true derivedBufferGeneration=1 derivedBuffersResident=true derivedBuffersReused=true runtimeParticleIntegration=false forceAuthorityReady=false runtimeForceAuthority=false gpuComputeReady=false highRateJsonPayload=false settingsControlPayload=false",
@@ -147,6 +147,23 @@ def add_fresh_gpu_force_expanded_oracle_fallback(summary):
             "settingsControlPayload=false",
         ]
     )
+    return summary
+
+
+def add_expanded_gpu_force_provider_ab_fallback(summary):
+    summary = add_fresh_gpu_force_expanded_oracle_fallback(summary)
+    summary["proof_lines"] = [
+        line.replace("sampleCount=4", "sampleCount=16")
+        .replace("componentCount=12", "componentCount=48")
+        .replace("requestedParticleSampleCount=4", "requestedParticleSampleCount=16")
+        .replace("sampledParticleCount=4", "sampledParticleCount=16")
+        .replace(
+            "fallbackReason=gpu-expanded-oracle-comparison-not-proven",
+            "fallbackReason=gpu-live-recorded-provider-ab-not-proven",
+        )
+        .replace("expandedOracleComparisonReady=false", "expandedOracleComparisonReady=true")
+        for line in summary["proof_lines"]
+    ]
     return summary
 
 
@@ -420,6 +437,72 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(
             2,
             result.summary["force_residency_runtime_authority_false_count"],
+        )
+
+    def test_accepts_expanded_gpu_force_oracle_with_provider_ab_cpu_fallback(self):
+        summary = add_expanded_gpu_force_provider_ab_fallback(valid_summary())
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_freshness=True,
+                require_gpu_force_expanded_oracle_provider_ab_fallback=True,
+                min_field_particle_force_sample_count=16,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(16, result.summary["field_particle_force_max_sample_count"])
+        self.assertEqual(
+            16,
+            result.summary["field_particle_force_max_requested_sample_count"],
+        )
+        self.assertEqual(
+            16,
+            result.summary["field_particle_force_max_sampled_particle_count"],
+        )
+        self.assertEqual(2, result.summary["force_residency_steady_state_true_count"])
+        self.assertEqual(2, result.summary["force_residency_freshness_true_count"])
+        self.assertEqual(2, result.summary["force_residency_cadence_true_count"])
+        self.assertEqual(
+            2,
+            result.summary["force_residency_expanded_oracle_true_count"],
+        )
+        self.assertEqual(2, result.summary["force_residency_provider_ab_false_count"])
+        self.assertEqual(
+            2,
+            result.summary["force_residency_provider_ab_fallback_count"],
+        )
+        self.assertEqual(
+            2,
+            result.summary["force_residency_runtime_authority_false_count"],
+        )
+
+    def test_rejects_expanded_gpu_force_oracle_without_sample_expansion(self):
+        summary = add_fresh_gpu_force_expanded_oracle_fallback(valid_summary())
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_freshness=True,
+                require_gpu_force_expanded_oracle_provider_ab_fallback=True,
+                min_field_particle_force_sample_count=16,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("particle-force proof max sampleCount 4 < 16" in issue for issue in result.issues)
+        )
+        self.assertTrue(
+            any("expandedOracleComparisonReady=true" in issue for issue in result.issues)
         )
 
     def test_rejects_stale_gpu_force_freshness(self):

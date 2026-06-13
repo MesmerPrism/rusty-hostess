@@ -22,6 +22,7 @@ DEFAULT_MAX_HOSTESS_STALE_NONZERO_RATIO = 0.85
 DEFAULT_MAX_HOSTESS_STALE_NONZERO_COUNT = 90.0
 DEFAULT_MIN_APP_FRAME_RATE_HZ = 85.0
 DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ = 89.0
+EXPANDED_FORCE_ORACLE_SAMPLE_COUNT = 16
 
 CORE_REQUIRED_MARKERS = {
     "proof_schedule": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE",
@@ -69,6 +70,8 @@ class EvidenceThresholds:
     require_gpu_force_profile_enabled: bool = False
     require_gpu_force_steady_state_fallback: bool = False
     require_gpu_force_fresh_expanded_oracle_fallback: bool = False
+    require_gpu_force_expanded_oracle_provider_ab_fallback: bool = False
+    min_field_particle_force_sample_count: int = 0
     min_force_residency_observed_proofs: int = 0
     min_force_residency_reused_proofs: int = 0
 
@@ -504,6 +507,24 @@ def validate_summary(
     field_particle_force_low_rate_count = count_lines_containing(
         field_particle_force_lines, "highRateJsonPayload=false"
     )
+    field_particle_force_sample_counts = marker_int_fields(
+        field_particle_force_lines, "sampleCount"
+    )
+    field_particle_force_requested_sample_counts = marker_int_fields(
+        field_particle_force_lines, "requestedParticleSampleCount"
+    )
+    field_particle_force_sampled_particle_counts = marker_int_fields(
+        field_particle_force_lines, "sampledParticleCount"
+    )
+    field_particle_force_max_sample_count = max(
+        field_particle_force_sample_counts, default=0
+    )
+    field_particle_force_max_requested_sample_count = max(
+        field_particle_force_requested_sample_counts, default=0
+    )
+    field_particle_force_max_sampled_particle_count = max(
+        field_particle_force_sampled_particle_counts, default=0
+    )
     if field_particle_force_lines:
         if field_particle_force_ready_count != len(field_particle_force_lines):
             issues.append(
@@ -555,6 +576,16 @@ def validate_summary(
             issues.append(
                 "GPU field particle-force probe did not keep highRateJsonPayload=false"
             )
+    if (
+        thresholds.min_field_particle_force_sample_count > 0
+        and field_particle_force_max_sample_count
+        < thresholds.min_field_particle_force_sample_count
+    ):
+        issues.append(
+            "GPU field particle-force proof max sampleCount "
+            f"{field_particle_force_max_sample_count} < "
+            f"{thresholds.min_field_particle_force_sample_count}"
+        )
     force_candidate_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE"
     )
@@ -1032,6 +1063,10 @@ def validate_summary(
         force_residency_lines,
         "fallbackReason=gpu-expanded-oracle-comparison-not-proven",
     )
+    force_residency_provider_ab_fallback_count = count_lines_containing(
+        force_residency_lines,
+        "fallbackReason=gpu-live-recorded-provider-ab-not-proven",
+    )
     if force_residency_lines:
         if force_residency_candidate_ready_count != len(force_residency_lines):
             issues.append(
@@ -1292,6 +1327,49 @@ def validate_summary(
             issues.append("GPU force authority fresh fallback permitted runtime selection")
         if force_residency_active_kind_count != len(force_residency_lines):
             issues.append("GPU force authority fresh fallback did not keep Matter CPU active")
+    if thresholds.require_gpu_force_expanded_oracle_provider_ab_fallback:
+        if not field_particle_force_lines:
+            issues.append(
+                "expanded GPU force oracle fallback was required but no particle-force "
+                "proof marker was present"
+            )
+        if field_particle_force_max_sample_count < EXPANDED_FORCE_ORACLE_SAMPLE_COUNT:
+            issues.append(
+                "GPU field particle-force proof max sampleCount "
+                f"{field_particle_force_max_sample_count} < "
+                f"{EXPANDED_FORCE_ORACLE_SAMPLE_COUNT}"
+            )
+        if not force_residency_lines:
+            issues.append(
+                "expanded GPU force oracle fallback was required but no residency marker was present"
+            )
+        if force_residency_steady_state_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach steadyStateResidencyReady=true"
+            )
+        if force_residency_freshness_true_count < 1:
+            issues.append("GPU force authority residency did not reach freshnessReady=true")
+        if force_residency_cadence_true_count < 1:
+            issues.append("GPU force authority residency did not reach cadenceReady=true")
+        if force_residency_expanded_oracle_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach expandedOracleComparisonReady=true"
+            )
+        if force_residency_provider_ab_true_count != 0:
+            issues.append(
+                "GPU force authority residency claimed liveRecordedProviderAbReady=true too early"
+            )
+        if force_residency_provider_ab_fallback_count < 1:
+            issues.append(
+                "GPU force authority residency did not fall back for "
+                "gpu-live-recorded-provider-ab-not-proven"
+            )
+        if force_residency_selection_blocked_count != len(force_residency_lines):
+            issues.append("GPU force expanded oracle fallback permitted runtime selection")
+        if force_residency_active_kind_count != len(force_residency_lines):
+            issues.append(
+                "GPU force expanded oracle fallback did not keep Matter CPU active"
+            )
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -1451,6 +1529,13 @@ def validate_summary(
         ),
         "field_particle_force_gpu_not_ready_count": field_particle_force_gpu_not_ready_count,
         "field_particle_force_low_rate_count": field_particle_force_low_rate_count,
+        "field_particle_force_max_sample_count": field_particle_force_max_sample_count,
+        "field_particle_force_max_requested_sample_count": (
+            field_particle_force_max_requested_sample_count
+        ),
+        "field_particle_force_max_sampled_particle_count": (
+            field_particle_force_max_sampled_particle_count
+        ),
         "force_candidate_line_count": len(force_candidate_lines),
         "force_candidate_ready_count": force_candidate_ready_count,
         "force_candidate_gpu_ready_count": force_candidate_gpu_ready_count,
@@ -1608,6 +1693,9 @@ def validate_summary(
         ),
         "force_residency_expanded_oracle_fallback_count": (
             force_residency_expanded_oracle_fallback_count
+        ),
+        "force_residency_provider_ab_fallback_count": (
+            force_residency_provider_ab_fallback_count
         ),
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
@@ -1833,6 +1921,21 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--require-gpu-force-expanded-oracle-provider-ab-fallback",
+        action="store_true",
+        help=(
+            "Require steady-state, cadence, freshness, and expanded 16-sample "
+            "CPU-oracle comparison readiness while still falling back to Matter CPU "
+            "because live/recorded provider A/B is not proven."
+        ),
+    )
+    parser.add_argument(
+        "--min-field-particle-force-sample-count",
+        type=int,
+        default=0,
+        help="Require GPU field particle-force proof max sampleCount to be at least this value.",
+    )
+    parser.add_argument(
         "--min-force-residency-observed-proofs",
         type=int,
         default=0,
@@ -1873,6 +1976,10 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_force_fresh_expanded_oracle_fallback=(
             args.require_gpu_force_fresh_expanded_oracle_fallback
         ),
+        require_gpu_force_expanded_oracle_provider_ab_fallback=(
+            args.require_gpu_force_expanded_oracle_provider_ab_fallback
+        ),
+        min_field_particle_force_sample_count=args.min_field_particle_force_sample_count,
         min_force_residency_observed_proofs=args.min_force_residency_observed_proofs,
         min_force_residency_reused_proofs=args.min_force_residency_reused_proofs,
     )
