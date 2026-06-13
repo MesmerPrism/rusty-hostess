@@ -103,6 +103,14 @@ Studio platform-smoke staging helpers are split by workflow phase:
 report, and evidence review behavior. These helpers are staging contract and
 review evidence builders; they must not start Studio, Hostess, Quest, Makepad,
 or Manifold runtimes.
+Hostess staging handoff helpers follow the same facade pattern:
+`tools/studio_staging/staging_handoff.py` remains the import surface, while
+`staging_handoff_acceptance.py`, `staging_handoff_file_plan.py`,
+`staging_handoff_file_copy.py`, `staging_handoff_payload_manifest.py`, and
+`staging_handoff_downstream_shell.py` own acceptance, file planning, file copy,
+payload manifest, and downstream shell selection behavior. The file-copy helper
+may copy files under validated staging roots, but these modules must not launch
+Studio, Hostess, Quest, Makepad, or Manifold runtimes.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust

@@ -95,6 +95,12 @@ JSON that includes package manifest hashes.
   `platform_smoke_plan.py`, `platform_smoke_execution.py`,
   `platform_smoke_operator_start.py`, `platform_smoke_execution_report.py`, and
   `platform_smoke_evidence.py` so staging workflow growth stays reviewable.
+- `tools/studio_staging/staging_handoff.py`: compatibility facade for Hostess
+  staging handoff acceptance, file planning, file copy, staged payload
+  manifest, and downstream shell selection helpers. Phase implementations live
+  in `staging_handoff_acceptance.py`, `staging_handoff_file_plan.py`,
+  `staging_handoff_file_copy.py`, `staging_handoff_payload_manifest.py`, and
+  `staging_handoff_downstream_shell.py`.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
