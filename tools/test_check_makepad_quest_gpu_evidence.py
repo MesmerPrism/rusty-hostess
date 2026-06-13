@@ -305,7 +305,15 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
             for line in summary["proof_lines"]
         ]
 
-        result = validate_summary(summary, EvidenceThresholds())
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_steady_state_fallback=True,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
 
         self.assertTrue(result.ok)
         self.assertEqual([], result.issues)
@@ -313,9 +321,58 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
         self.assertEqual(2, result.summary["force_residency_steady_state_true_count"])
         self.assertEqual(2, result.summary["force_residency_cadence_true_count"])
         self.assertEqual(2, result.summary["force_residency_freshness_false_count"])
+        self.assertEqual(5, result.summary["force_residency_max_observed_proofs"])
+        self.assertEqual(4, result.summary["force_residency_max_reused_proofs"])
+        self.assertEqual(2, result.summary["force_residency_freshness_fallback_count"])
         self.assertEqual(
             2,
             result.summary["force_residency_runtime_authority_false_count"],
+        )
+
+    def test_can_require_explicit_gpu_force_profile(self):
+        result = validate_summary(
+            valid_summary(),
+            EvidenceThresholds(require_gpu_force_profile_enabled=True),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("explicit GPU profile gate" in issue for issue in result.issues)
+        )
+
+    def test_rejects_insufficient_steady_state_residency_counts(self):
+        summary = valid_summary()
+        summary["proof_lines"] = [
+            line.replace("profileGateSatisfied=false", "profileGateSatisfied=true")
+            .replace(
+                "gpuForceAuthorityProfileEnabled=false",
+                "gpuForceAuthorityProfileEnabled=true",
+            )
+            .replace("steadyStateResidencyReady=false", "steadyStateResidencyReady=true")
+            .replace("cadenceReady=false", "cadenceReady=true")
+            .replace(
+                "fallbackReason=profile-prefers-matter-cpu",
+                "fallbackReason=gpu-freshness-not-proven",
+            )
+            for line in summary["proof_lines"]
+        ]
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_steady_state_fallback=True,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("observedResidentProofs max 2 < 5" in issue for issue in result.issues)
+        )
+        self.assertTrue(
+            any("reusedResidentProofs max 1 < 4" in issue for issue in result.issues)
         )
 
     def test_accepts_mesh_sdf_only_stage_without_force_proofs(self):

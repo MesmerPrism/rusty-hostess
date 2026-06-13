@@ -64,6 +64,10 @@ class EvidenceThresholds:
     require_gpu_force_authority_candidate: bool = False
     require_gpu_force_authority_gate: bool = False
     require_gpu_force_authority_residency: bool = False
+    require_gpu_force_profile_enabled: bool = False
+    require_gpu_force_steady_state_fallback: bool = False
+    min_force_residency_observed_proofs: int = 0
+    min_force_residency_reused_proofs: int = 0
 
 
 @dataclass(frozen=True)
@@ -938,6 +942,27 @@ def validate_summary(
     force_residency_settings_payload_false_count = count_lines_containing(
         force_residency_lines, "settingsControlPayload=false"
     )
+    force_residency_observed_proof_values = marker_int_fields(
+        force_residency_lines, "observedResidentProofs"
+    )
+    force_residency_reused_proof_values = marker_int_fields(
+        force_residency_lines, "reusedResidentProofs"
+    )
+    force_residency_required_proof_values = marker_int_fields(
+        force_residency_lines, "requiredResidentProofs"
+    )
+    force_residency_max_observed_proofs = max(
+        force_residency_observed_proof_values, default=0
+    )
+    force_residency_max_reused_proofs = max(
+        force_residency_reused_proof_values, default=0
+    )
+    force_residency_max_required_proofs = max(
+        force_residency_required_proof_values, default=0
+    )
+    force_residency_freshness_fallback_count = count_lines_containing(
+        force_residency_lines, "fallbackReason=gpu-freshness-not-proven"
+    )
     if force_residency_lines:
         if force_residency_candidate_ready_count != len(force_residency_lines):
             issues.append(
@@ -1073,6 +1098,72 @@ def validate_summary(
             issues.append(
                 "GPU force authority residency did not keep settingsControlPayload=false"
             )
+    if thresholds.require_gpu_force_profile_enabled:
+        if not force_gate_lines:
+            issues.append("GPU force profile was required but no force-authority gate was present")
+        elif force_gate_profile_satisfied_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not satisfy the explicit GPU profile gate"
+            )
+        if not force_residency_lines:
+            issues.append(
+                "GPU force profile was required but no force-authority residency marker was present"
+            )
+        elif (
+            force_residency_profile_declared_count != len(force_residency_lines)
+            or count_lines_containing(force_residency_lines, "profileGateSatisfied=true")
+            != len(force_residency_lines)
+            or count_lines_containing(
+                force_residency_lines, "gpuForceAuthorityProfileEnabled=true"
+            )
+            != len(force_residency_lines)
+        ):
+            issues.append(
+                "GPU force authority residency did not satisfy the explicit GPU profile gate"
+            )
+    if thresholds.min_force_residency_observed_proofs > 0:
+        if force_residency_max_observed_proofs < thresholds.min_force_residency_observed_proofs:
+            issues.append(
+                "GPU force authority residency observedResidentProofs max "
+                f"{force_residency_max_observed_proofs} < "
+                f"{thresholds.min_force_residency_observed_proofs}"
+            )
+    if thresholds.min_force_residency_reused_proofs > 0:
+        if force_residency_max_reused_proofs < thresholds.min_force_residency_reused_proofs:
+            issues.append(
+                "GPU force authority residency reusedResidentProofs max "
+                f"{force_residency_max_reused_proofs} < "
+                f"{thresholds.min_force_residency_reused_proofs}"
+            )
+    if thresholds.require_gpu_force_steady_state_fallback:
+        if not force_residency_lines:
+            issues.append(
+                "steady-state GPU force fallback was required but no residency marker was present"
+            )
+        if force_residency_steady_state_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach steadyStateResidencyReady=true"
+            )
+        if force_residency_cadence_true_count < 1:
+            issues.append("GPU force authority residency did not reach cadenceReady=true")
+        if force_residency_freshness_true_count != 0:
+            issues.append("GPU force authority residency claimed freshnessReady=true too early")
+        if force_residency_expanded_oracle_true_count != 0:
+            issues.append(
+                "GPU force authority residency claimed expandedOracleComparisonReady=true too early"
+            )
+        if force_residency_provider_ab_true_count != 0:
+            issues.append(
+                "GPU force authority residency claimed liveRecordedProviderAbReady=true too early"
+            )
+        if force_residency_freshness_fallback_count < 1:
+            issues.append(
+                "GPU force authority residency did not fall back for gpu-freshness-not-proven"
+            )
+        if force_residency_selection_blocked_count != len(force_residency_lines):
+            issues.append("GPU force authority steady-state fallback permitted runtime selection")
+        if force_residency_active_kind_count != len(force_residency_lines):
+            issues.append("GPU force authority steady-state fallback did not keep Matter CPU active")
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -1360,6 +1451,12 @@ def validate_summary(
         "force_residency_settings_payload_false_count": (
             force_residency_settings_payload_false_count
         ),
+        "force_residency_max_observed_proofs": force_residency_max_observed_proofs,
+        "force_residency_max_reused_proofs": force_residency_max_reused_proofs,
+        "force_residency_max_required_proofs": force_residency_max_required_proofs,
+        "force_residency_freshness_fallback_count": (
+            force_residency_freshness_fallback_count
+        ),
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
         },
@@ -1549,6 +1646,35 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "cadence, expanded oracle comparison, and live/recorded provider A/B evidence exist."
         ),
     )
+    parser.add_argument(
+        "--require-gpu-force-profile-enabled",
+        action="store_true",
+        help=(
+            "Require force-authority gate and residency markers to show the explicit "
+            "gpu-dense-sdf-field-particle-force profile gate was requested."
+        ),
+    )
+    parser.add_argument(
+        "--require-gpu-force-steady-state-fallback",
+        action="store_true",
+        help=(
+            "Require the residency marker to reach steady-state/cadence readiness "
+            "while still falling back to the Matter CPU oracle because freshness, "
+            "expanded oracle comparison, and live/recorded A/B are not proven."
+        ),
+    )
+    parser.add_argument(
+        "--min-force-residency-observed-proofs",
+        type=int,
+        default=0,
+        help="Require the residency marker's max observedResidentProofs to be at least this value.",
+    )
+    parser.add_argument(
+        "--min-force-residency-reused-proofs",
+        type=int,
+        default=0,
+        help="Require the residency marker's max reusedResidentProofs to be at least this value.",
+    )
     return parser.parse_args(argv)
 
 
@@ -1572,6 +1698,10 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_force_authority_candidate=args.require_gpu_force_authority_candidate,
         require_gpu_force_authority_gate=args.require_gpu_force_authority_gate,
         require_gpu_force_authority_residency=args.require_gpu_force_authority_residency,
+        require_gpu_force_profile_enabled=args.require_gpu_force_profile_enabled,
+        require_gpu_force_steady_state_fallback=args.require_gpu_force_steady_state_fallback,
+        min_force_residency_observed_proofs=args.min_force_residency_observed_proofs,
+        min_force_residency_reused_proofs=args.min_force_residency_reused_proofs,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {

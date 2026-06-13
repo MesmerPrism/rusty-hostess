@@ -330,6 +330,20 @@ python tools\summarize_makepad_quest_gpu_evidence.py --input <evidence-root> --r
 python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-source-buffer-reuse --require-mesh-sdf-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
+For the explicit GPU force-authority profile run, add the force-stage and
+steady fallback requirements:
+
+```powershell
+python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-source-buffer-reuse --require-mesh-sdf-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8 --require-gpu-proof-epoch --require-gpu-field-force-sampling --require-gpu-field-particle-force --require-gpu-force-authority-candidate --require-gpu-force-authority-gate --require-gpu-force-authority-residency --require-gpu-force-profile-enabled --require-gpu-force-steady-state-fallback --min-force-residency-observed-proofs 5 --min-force-residency-reused-proofs 4
+```
+
+This gate requires `profileGateSatisfied=true`,
+`gpuForceAuthorityProfileEnabled=true`, five observed resident proofs, four
+reused resident proofs, `steadyStateResidencyReady=true`, and
+`cadenceReady=true`, while still rejecting `runtimeSelectionPermitted=true`,
+`runtimeForceAuthority=true`, or `gpuComputeReady=true` until freshness,
+expanded CPU-oracle comparison, and live/recorded provider A/B are also proven.
+
 The checker also gates recorded-hand replay proof summaries when they are
 shaped as live-input-equivalent evidence. It requires the bounded GPU
 skinning/full-mesh/mesh-SDF/field-sampling/field-force-sampling proof markers,
