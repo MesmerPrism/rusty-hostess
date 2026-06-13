@@ -106,6 +106,10 @@ blocking wakeups are hints, not proof of meaningful detail changes or
 successful adoption. Runtime evidence should distinguish seen, applied, and
 rejected revisions. Keep high-rate hands, meshes, SDF/ADF fields, particles,
 and GPU buffers out of settings/control JSON.
+Write revision manifests as UTF-8 without BOM. Hostess tolerates a BOM in
+older sidecars, but PowerShell-generated BOM-prefixed JSON previously caused
+the runtime identity parser to drop the revision manifest and miss proof-only
+`gpu_proof` scope changes.
 Runtime adoption evidence uses
 `RUSTY_HOSTESS_MAKEPAD_EFFECTIVE_SETTINGS_ADOPTION`; it should include the
 relevant scoped revision key, subscribed scope list, selected gate, and
