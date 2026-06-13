@@ -66,6 +66,21 @@ class MakepadMorphospaceBoundaryTests(unittest.TestCase):
         self.assertIn("Hostess-local Makepad smoke renderer", widget)
         self.assertIn("reusable renderer should move", widget)
 
+    def test_runtime_config_manifest_formatter_stays_split_from_core_parser(self):
+        root = (HOSTESS_MAKEPAD_SRC / "makepad_runtime_config.rs").read_text(
+            encoding="utf-8"
+        )
+        manifest_path = HOSTESS_MAKEPAD_SRC / "makepad_runtime_config" / "manifest.rs"
+        self.assertTrue(manifest_path.exists())
+        manifest = manifest_path.read_text(encoding="utf-8")
+
+        self.assertIn("mod manifest;", root)
+        self.assertIn("pub use manifest::projection_runtime_manifest_marker_lines;", root)
+        self.assertIn("pub fn projection_runtime_manifest_marker_lines", manifest)
+        self.assertIn("section=aliases", manifest)
+        self.assertNotIn("fn projection_runtime_alias_tokens", root)
+        self.assertNotIn("fn sanitize_marker_token", root)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -150,6 +150,10 @@ Retired projection runtime spellings that may need cleanup from shell profiles
 or Android properties are documented in
 `apps/hostess-t-makepad/src/makepad_runtime_config/retired_aliases.rs`; that
 ledger is intentionally not part of active runtime resolution.
+Projection runtime manifest marker formatting and alias-evidence tokenization
+live in `apps/hostess-t-makepad/src/makepad_runtime_config/manifest.rs` so the
+core runtime-config file stays focused on keys, typed parsing, and layered
+resolution.
 
 The projection runtime trace marker is
 `RUSTY_MAKEPAD_PROJECTION_RUNTIME_MANIFEST` with schema

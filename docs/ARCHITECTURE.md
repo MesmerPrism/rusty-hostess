@@ -185,8 +185,11 @@ gate, and applied/rejected status.
 
 `apps/hostess-t-makepad/src/makepad_runtime_config.rs` owns canonical
 renderer-neutral projection runtime keys, typed parsing, layered resolution,
-and manifest marker formatting. Accepted external spellings for launch extras,
-Android properties, and environment variables live in
+and the runtime-config facade. Projection manifest marker formatting and
+alias-evidence tokenization live in
+`apps/hostess-t-makepad/src/makepad_runtime_config/manifest.rs` so the core
+parser/resolver does not carry diagnostic marker formatting. Accepted external
+spellings for launch extras, Android properties, and environment variables live in
 `apps/hostess-t-makepad/src/makepad_runtime_config/aliases.rs` and are
 re-exported through the parent module only for facade compatibility. Keep
 legacy or retired names out of the canonical registry unless a compatibility
