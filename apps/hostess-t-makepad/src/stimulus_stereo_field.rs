@@ -26,8 +26,10 @@ const STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT: usize = 8;
 static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 pub(crate) const STIMULUS_VOLUME_TEXTURE_SLOT: usize = 0;
 pub(crate) const STIMULUS_VOLUME_FRAGMENT_RENDER_PATH: &str =
-    "makepad-xr-fragment-volume-raymarch-v1";
+    "makepad-xr-fragment-volume-raymarch-v2";
 pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 16;
+pub(crate) const STIMULUS_VOLUME_NOISE_MODEL: &str = "value-fbm-3oct-v1";
+pub(crate) const STIMULUS_VOLUME_OSCILLATOR_MODEL: &str = "radial-axial-cross-v1";
 
 pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
     [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -289,6 +291,57 @@ impl StimulusStereoFieldState {
         (x / y).clamp(0.35, 2.75)
     }
 
+    pub(crate) fn volume_noise_model(&self) -> &'static str {
+        if self.volume_fragment_renderer_ready() {
+            STIMULUS_VOLUME_NOISE_MODEL
+        } else {
+            "none"
+        }
+    }
+
+    pub(crate) fn volume_oscillator_model(&self) -> &'static str {
+        if self.volume_fragment_renderer_ready() {
+            STIMULUS_VOLUME_OSCILLATOR_MODEL
+        } else {
+            "none"
+        }
+    }
+
+    pub(crate) fn volume_noise_scale(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        (self.volume_grid_frequency() * 0.75).clamp(1.0, 48.0)
+    }
+
+    pub(crate) fn volume_noise_strength(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        (0.24 + self.wave_modulation * 0.16 + self.geometry_mix * 0.22).clamp(0.12, 0.86)
+    }
+
+    pub(crate) fn volume_noise_motion(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        (0.10 + self.temporal_frequency_hz * 0.04 + self.wave_modulation * 0.08).clamp(0.04, 1.25)
+    }
+
+    pub(crate) fn volume_oscillator_mix(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        (0.28 + self.wave_modulation * 0.26 + self.geometry_mix * 0.18).clamp(0.0, 1.0)
+    }
+
+    pub(crate) fn volume_shell_mix(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        (0.12 + self.radial_decay * 0.05 + self.edge_fade * 0.18).clamp(0.0, 0.72)
+    }
+
     pub(crate) fn marker_line(
         &self,
         phase: &str,
@@ -297,7 +350,7 @@ impl StimulusStereoFieldState {
         projection_rows_ready: bool,
     ) -> String {
         format!(
-            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
+            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
             STIMULUS_STEREO_FIELD_MARKER_PREFIX,
             STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
             marker_token(phase),
@@ -317,6 +370,13 @@ impl StimulusStereoFieldState {
             self.volume_fragment_renderer_ready(),
             self.volume_fragment_renderer_ready(),
             self.volume_fragment_renderer_ready(),
+            self.volume_noise_model(),
+            self.volume_oscillator_model(),
+            self.volume_noise_scale(),
+            self.volume_noise_strength(),
+            self.volume_noise_motion(),
+            self.volume_oscillator_mix(),
+            self.volume_shell_mix(),
             self.temporal_frequency_hz,
             self.spatial_frequency,
             self.geometry_mix,
@@ -349,7 +409,7 @@ impl StimulusStereoFieldState {
             return None;
         }
         Some(format!(
-            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath={} resourcePlane=staged-optics-json-profile fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
+            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath={} resourcePlane=staged-optics-json-profile fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
             STIMULUS_VOLUME_ADOPTION_MARKER,
             STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA,
             marker_token(phase),
@@ -363,6 +423,13 @@ impl StimulusStereoFieldState {
             marker_grid_dimensions(self.volume_grid_dimensions),
             self.volume_step_count,
             self.volume_shader_raymarch_steps(),
+            self.volume_noise_model(),
+            self.volume_oscillator_model(),
+            self.volume_noise_scale(),
+            self.volume_noise_strength(),
+            self.volume_noise_motion(),
+            self.volume_oscillator_mix(),
+            self.volume_shell_mix(),
             marker_token(&self.kernel_abi_id),
             self.compute_pass_count,
             self.volume_readback_probe_samples,
@@ -475,6 +542,16 @@ pub struct DrawStimulusStereoField {
     pub volume_phase: f32,
     #[live(1.0_f32)]
     pub volume_eccentricity: f32,
+    #[live(3.0_f32)]
+    pub volume_noise_scale: f32,
+    #[live(0.42_f32)]
+    pub volume_noise_strength: f32,
+    #[live(0.18_f32)]
+    pub volume_noise_motion: f32,
+    #[live(0.44_f32)]
+    pub volume_oscillator_mix: f32,
+    #[live(0.24_f32)]
+    pub volume_shell_mix: f32,
 }
 
 impl DrawStimulusStereoField {
@@ -529,6 +606,11 @@ impl DrawStimulusStereoField {
             + state.volume_step_count as f32 * 0.003
             + time_seconds * state.temporal_frequency_hz.max(0.01) * 0.35;
         self.volume_eccentricity = state.volume_eccentricity();
+        self.volume_noise_scale = state.volume_noise_scale();
+        self.volume_noise_strength = state.volume_noise_strength();
+        self.volume_noise_motion = state.volume_noise_motion();
+        self.volume_oscillator_mix = state.volume_oscillator_mix();
+        self.volume_shell_mix = state.volume_shell_mix();
     }
 
     fn apply_projection_rows(&mut self, projection_rows: StimulusSurfaceProjectionRows) {
@@ -656,7 +738,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialAnchors=center-and-four-corners",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialAnchors=center-and-four-corners",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -671,6 +753,13 @@ impl Widget for StimulusStereoFieldPanel {
                     self.state.volume_fragment_renderer_ready(),
                     self.state.volume_fragment_renderer_ready(),
                     self.state.volume_fragment_renderer_ready(),
+                    self.state.volume_noise_model(),
+                    self.state.volume_oscillator_model(),
+                    self.draw_field.volume_noise_scale,
+                    self.draw_field.volume_noise_strength,
+                    self.draw_field.volume_noise_motion,
+                    self.draw_field.volume_oscillator_mix,
+                    self.draw_field.volume_shell_mix,
                     self.projection_rows.ready,
                     self.volume_texture_bound,
                     self.volume_texture_blend,
@@ -808,11 +897,24 @@ mod tests {
             state.volume_shader_raymarch_steps(),
             STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES as f32
         );
+        assert_eq!(state.volume_noise_model(), STIMULUS_VOLUME_NOISE_MODEL);
+        assert_eq!(
+            state.volume_oscillator_model(),
+            STIMULUS_VOLUME_OSCILLATOR_MODEL
+        );
+        assert!((state.volume_noise_scale() - 3.0).abs() < 0.0001);
+        assert!(state.volume_noise_strength() > 0.0);
+        assert!(state.volume_oscillator_mix() > 0.0);
 
         let draw_marker = state.marker_line("test", 1.25, true, true);
         assert!(draw_marker.contains(&format!(
             "renderPath={STIMULUS_VOLUME_FRAGMENT_RENDER_PATH}"
         )));
+        assert!(draw_marker.contains(&format!("volumeNoiseModel={STIMULUS_VOLUME_NOISE_MODEL}")));
+        assert!(draw_marker.contains(&format!(
+            "volumeOscillatorModel={STIMULUS_VOLUME_OSCILLATOR_MODEL}"
+        )));
+        assert!(draw_marker.contains("volumeNoiseScale=3.000"));
         assert!(draw_marker.contains("fragmentVolumeRenderer=true"));
         assert!(draw_marker.contains("runtimeVolumeRenderer=true"));
         assert!(draw_marker.contains("gpuRenderReady=true"));
@@ -832,6 +934,10 @@ mod tests {
         assert!(volume_marker.contains("stereoFieldOutputLayers=2"));
         assert!(volume_marker.contains(&format!(
             "renderPath={STIMULUS_VOLUME_FRAGMENT_RENDER_PATH}"
+        )));
+        assert!(volume_marker.contains(&format!("volumeNoiseModel={STIMULUS_VOLUME_NOISE_MODEL}")));
+        assert!(volume_marker.contains(&format!(
+            "volumeOscillatorModel={STIMULUS_VOLUME_OSCILLATOR_MODEL}"
         )));
         assert!(volume_marker.contains("fragmentVolumeRenderer=true"));
         assert!(volume_marker.contains("runtimeVolumeRenderer=true"));
