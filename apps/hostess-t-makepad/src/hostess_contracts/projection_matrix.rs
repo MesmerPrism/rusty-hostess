@@ -1,8 +1,6 @@
 use super::{Eye, ImageSize};
 
-/// Legacy serialized schema id for renderer-neutral projection/performance matrix packets.
-pub const LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA: &str =
-    "rusty.xr.projection_performance_matrix.v1";
+pub use super::legacy_rusty_xr_schemas::LEGACY_RUSTY_XR_PROJECTION_PERFORMANCE_MATRIX_SCHEMA;
 
 /// Coarse renderer or ingestion lane class used by comparison packets.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

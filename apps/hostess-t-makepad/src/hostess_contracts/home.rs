@@ -1,34 +1,12 @@
 use super::Vec2;
 
-/// Legacy serialized schema id for home panel descriptors.
-pub const LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA: &str = "rusty.xr.home.panel.v1";
-
-/// Legacy serialized schema id for home session state.
-pub const LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA: &str = "rusty.xr.home.state.v1";
-
-/// Legacy serialized schema id for launcher entries.
-pub const LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA: &str = "rusty.xr.home.launcher_entry.v1";
-
-/// Legacy serialized schema id for settings shortcut descriptors.
-pub const LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA: &str =
-    "rusty.xr.home.settings_shortcut.v1";
-
-/// Legacy serialized schema id for focus recovery events.
-pub const LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA: &str =
-    "rusty.xr.home.focus_recovery_event.v1";
-
-/// Legacy serialized schema id for Rusty Kiosk control-plane snapshots.
-pub const LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA: &str =
-    "rusty.xr.kiosk.control_plane.v1";
-
-/// Legacy serialized schema id for command evidence embedded in control-plane snapshots.
-pub const LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA: &str =
-    "rusty.xr.kiosk.command_evidence.v1";
-
-/// Legacy serialized schema id for run records that tie API, CLI, MCP, and fallback
-/// command paths to before/after kiosk state.
-pub const LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA: &str =
-    "rusty.xr.kiosk.command_run_record.v1";
+pub use super::legacy_rusty_xr_schemas::{
+    LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA, LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA,
+    LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA, LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA,
+    LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA, LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA,
+    LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA,
+    LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
+};
 
 /// High-level mode for a Rusty Kiosk, developer-home, or broker surface.
 ///

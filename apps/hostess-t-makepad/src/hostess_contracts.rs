@@ -6,6 +6,8 @@
 //! Existing `rusty.xr.*` schema identifiers remain serialized compatibility
 //! values until the relevant contracts are extracted into Lattice, Optics,
 //! Matter, GUI, Quest, or Manifold owner crates.
+//! The frozen compatibility registry lives in `legacy_rusty_xr_schemas`; new
+//! default-lane contracts should not add schema IDs there.
 //!
 //! Enable the `serde` feature to derive serialization for stable public data
 //! contracts without making serialization mandatory for plain Rust consumers.
@@ -28,6 +30,7 @@ pub mod hand;
 pub mod home;
 pub mod interaction;
 pub mod layer;
+pub mod legacy_rusty_xr_schemas;
 pub mod math;
 pub mod passthrough;
 pub mod projection_matrix;
@@ -98,6 +101,7 @@ pub use layer::{
     StereoLayerDepthPolicy, StereoLayerPerformanceHints, StereoMediaLayout, VisualFeedbackBorder,
     VisualFeedbackBorderLayout, VisualFeedbackLayerTuning,
 };
+pub use legacy_rusty_xr_schemas::{LegacyRustyXrSchema, LEGACY_RUSTY_XR_SCHEMAS};
 pub use math::{Pose, Quat, Vec2, Vec3};
 pub use passthrough::{
     audio_reactive_mono_to_rgba_style, PassthroughColorAdjustment, PassthroughColorLutBinding,

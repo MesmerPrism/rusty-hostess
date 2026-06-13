@@ -1,5 +1,11 @@
 use super::{Eye, Pose, Vec2};
 
+pub use super::legacy_rusty_xr_schemas::{
+    LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA,
+    LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA,
+    LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA,
+};
+
 /// Pixel dimensions for a frame, view, or payload.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -457,16 +463,6 @@ impl Default for CameraTextureTransform {
         Self::new("default", "unspecified")
     }
 }
-
-/// Legacy schema id for source-sampling contracts kept for serialized compatibility.
-pub const LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA: &str =
-    "rusty.xr.source-sampling-contract.v1";
-/// Legacy schema id for camera texture lane contracts kept for serialized compatibility.
-pub const LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA: &str =
-    "rusty.xr.camera-texture-lane-contract.v1";
-/// Legacy schema id for camera-source diagnostics kept for serialized compatibility.
-pub const LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA: &str =
-    "rusty.xr.camera-source-diagnostics.v1";
 
 /// Normalized UV rectangle in the source image domain.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

@@ -113,6 +113,13 @@ re-exported through the parent module only for facade compatibility. Keep
 legacy or retired names out of the canonical registry unless a compatibility
 bridge is explicitly approved and covered by the alias tests.
 
+`apps/hostess-t-makepad/src/hostess_contracts/legacy_rusty_xr_schemas.rs`
+is the frozen compatibility ledger for old `rusty.xr.*` schema IDs still
+serialized by Hostess-local contract DTOs. Contract modules re-export those
+constants to preserve the existing facade, but new default-lane schema work
+belongs in the owning Morphospace lane rather than adding more old Rusty-XR
+defaults.
+
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live
 run is tied back to the Manifold Hostess contract spine.

@@ -1,8 +1,6 @@
 use super::{CameraExtrinsics, Eye, FieldOfView, ImageSize, Pose, Vec2, Vec3};
 
-/// Legacy serialized schema id for depth/world-space contract packets.
-pub const LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA: &str =
-    "rusty.xr.depth_world_space_contract.v1";
+pub use super::legacy_rusty_xr_schemas::LEGACY_RUSTY_XR_DEPTH_WORLD_SPACE_CONTRACT_SCHEMA;
 
 /// Public depth payload interpretation.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]

@@ -1,12 +1,9 @@
 use super::{ImageSize, StereoMediaLayout};
 
-/// Legacy serialized schema id for generic effect-stack descriptors.
-pub const LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA: &str =
-    "rusty.xr.effect_stack.descriptor.v1";
-
-/// Legacy serialized schema id for generic effect-stack comparison reports.
-pub const LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA: &str =
-    "rusty.xr.effect_stack.comparison_report.v1";
+pub use super::legacy_rusty_xr_schemas::{
+    LEGACY_RUSTY_XR_EFFECT_STACK_COMPARISON_REPORT_SCHEMA,
+    LEGACY_RUSTY_XR_EFFECT_STACK_DESCRIPTOR_SCHEMA,
+};
 
 /// Public category for a renderer-owned image-processing pass.
 ///
