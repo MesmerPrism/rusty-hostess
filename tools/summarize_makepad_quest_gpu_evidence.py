@@ -31,6 +31,9 @@ except ImportError:  # pragma: no cover - direct script fallback
         "gpu_field_force_sampling_probe": (
             "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE"
         ),
+        "gpu_field_particle_force_probe": (
+            "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
+        ),
     }
 
 
@@ -48,6 +51,7 @@ GPU_MESH_SDF_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
 GPU_FIELD_CONSTRUCTION_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION"
 GPU_FIELD_SAMPLING_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE"
 GPU_FIELD_FORCE_SAMPLING_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE"
+GPU_FIELD_PARTICLE_FORCE_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
 
 LOGCAT_RE = re.compile(
     r"^(?P<date>\d\d-\d\d)\s+"
@@ -528,6 +532,9 @@ def summarize_evidence(
         ),
         "gpu_field_force_sampling_probe": len(
             marker_lines(hostess_lines, GPU_FIELD_FORCE_SAMPLING_MARKER)
+        ),
+        "gpu_field_particle_force_probe": len(
+            marker_lines(hostess_lines, GPU_FIELD_PARTICLE_FORCE_MARKER)
         ),
         "sample_count_8": sum("sampleCount=8" in line for line in proof_lines),
     }

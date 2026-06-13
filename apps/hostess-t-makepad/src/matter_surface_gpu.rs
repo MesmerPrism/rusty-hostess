@@ -10,15 +10,18 @@ use makepad_widgets::makepad_platform::{
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuFieldConstructionReceipt, QuestMakepadGpuFieldForceSamplingProbe,
-    QuestMakepadGpuFieldForceSamplingProbeReadback, QuestMakepadGpuFieldSamplingProbe,
+    QuestMakepadGpuFieldForceSamplingProbeReadback, QuestMakepadGpuFieldParticleForceProbe,
+    QuestMakepadGpuFieldParticleForceProbeInput, QuestMakepadGpuFieldSamplingProbe,
     QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuMeshSdfProbe,
     QuestMakepadGpuMeshSdfProbeInput, QuestMakepadGpuMeshSdfProbeReadback,
     QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
     QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
     QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
     QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
-    QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    QuestMakepadMatterSurfaceFrame, QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_SAMPLES,
+    QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_DEFAULT_TOLERANCE,
+    QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_DEFAULT_TOLERANCE, QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_SAMPLES,
@@ -30,6 +33,7 @@ use rusty_quest_makepad_camera_shell::{
 #[derive(Clone, Debug)]
 pub(crate) struct PendingGpuMeshSdfProbe {
     input: QuestMakepadGpuMeshSdfProbeInput,
+    particle_force_input: Option<QuestMakepadGpuFieldParticleForceProbeInput>,
     ticket: XrGpuF32MeshSdfProbeTicket,
 }
 
@@ -145,8 +149,9 @@ fn gpu_skinning_probe_marker_line_from_readback(
 
 pub(crate) fn gpu_mesh_sdf_probe_submit(
     cx: &mut Cx,
-    input: &QuestMakepadGpuMeshSdfProbeInput,
+    frame: &QuestMakepadMatterSurfaceFrame,
 ) -> Option<PendingGpuMeshSdfProbe> {
+    let input = frame.gpu_mesh_sdf_probe.as_ref()?;
     let prepared = prepare_gpu_mesh_sdf_probe(input)?;
     let ticket = cx.xr_gpu_f32_mesh_sdf_probe_submit(
         &prepared.vertices,
@@ -157,8 +162,15 @@ pub(crate) fn gpu_mesh_sdf_probe_submit(
         prepared.sample_count,
         QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_DEFAULT_TOLERANCE,
     )?;
+    let particle_force_input =
+        QuestMakepadGpuFieldParticleForceProbeInput::from_mesh_sdf_input_and_particle_snapshot(
+            input,
+            &frame.particle_snapshot,
+            frame.particle_force_oracle_config,
+        );
     Some(PendingGpuMeshSdfProbe {
         input: input.clone(),
+        particle_force_input,
         ticket,
     })
 }
@@ -169,7 +181,13 @@ pub(crate) fn gpu_mesh_sdf_probe_poll_marker_lines(
     phase: &str,
 ) -> Option<Vec<String>> {
     let readback = cx.xr_gpu_f32_mesh_sdf_probe_poll(pending.ticket.request_id)?;
-    gpu_mesh_sdf_probe_marker_lines_from_readback(cx, &pending.input, readback, phase)
+    gpu_mesh_sdf_probe_marker_lines_from_readback(
+        cx,
+        &pending.input,
+        pending.particle_force_input.as_ref(),
+        readback,
+        phase,
+    )
 }
 
 fn prepare_gpu_mesh_sdf_probe(
@@ -229,6 +247,7 @@ fn prepare_gpu_mesh_sdf_probe(
 fn gpu_mesh_sdf_probe_marker_lines_from_readback(
     cx: &mut Cx,
     input: &QuestMakepadGpuMeshSdfProbeInput,
+    particle_force_input: Option<&QuestMakepadGpuFieldParticleForceProbeInput>,
     readback: XrGpuF32MeshSdfProbeResult,
     phase: &str,
 ) -> Option<Vec<String>> {
@@ -290,6 +309,13 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
     }
     if let Some(marker) = gpu_field_force_sampling_probe_marker_line(cx, input, &receipt, phase) {
         markers.push(marker);
+    }
+    if let Some(particle_force_input) = particle_force_input {
+        if let Some(marker) =
+            gpu_field_particle_force_probe_marker_line(cx, particle_force_input, &receipt, phase)
+        {
+            markers.push(marker);
+        }
     }
     Some(markers)
 }
@@ -435,6 +461,93 @@ fn gpu_field_force_sampling_probe_marker_line_from_readback(
     phase: &str,
 ) -> Option<String> {
     let probe = QuestMakepadGpuFieldForceSamplingProbe::from_receipt_and_input(
+        receipt,
+        input,
+        QuestMakepadGpuFieldForceSamplingProbeReadback {
+            sample_count: readback.sample_count,
+            component_count: readback.component_count,
+            mismatched_components: readback.mismatched_components,
+            max_abs_error: readback.max_abs_error,
+            tolerance: readback.tolerance,
+            queue_submit_serial: readback.queue_submit_serial,
+            fence_serial: readback.fence_serial,
+            resource_generation: readback.resource_generation,
+            program_generation: readback.program_generation,
+            program_reused: readback.program_reused,
+            shader_compiled_this_submit: readback.shader_compiled_this_submit,
+            pipeline_created_this_submit: readback.pipeline_created_this_submit,
+            source_field_generation: readback.source_field_generation,
+            source_field_buffer_resident: readback.source_field_buffer_resident,
+            source_field_buffer_bytes: readback.source_field_buffer_bytes,
+            sample_input_buffer_bytes: readback.sample_input_buffer_bytes,
+            sample_output_buffer_bytes: readback.sample_output_buffer_bytes,
+            pending_retire_count: readback.pending_retire_count,
+            retained_resource_count: readback.retained_resource_count,
+            retired_after_fence_count: readback.retired_after_fence_count,
+            queue_wait_idle_performed: readback.queue_wait_idle_performed,
+            elapsed_ms: readback.elapsed_ms,
+        },
+    );
+    Some(probe.marker_line(phase))
+}
+
+fn gpu_field_particle_force_probe_marker_line(
+    cx: &mut Cx,
+    input: &QuestMakepadGpuFieldParticleForceProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    phase: &str,
+) -> Option<String> {
+    if !receipt.runtime_field_boundary_ready() {
+        return None;
+    }
+    let sample_count = input
+        .sample_count
+        .min(QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_SAMPLES)
+        .min(XR_GPU_F32_FIELD_FORCE_SAMPLE_PROBE_SAMPLES);
+    if sample_count == 0 {
+        return None;
+    }
+
+    let mut samples =
+        [XrGpuF32ForceProbeSample::default(); XR_GPU_F32_FIELD_FORCE_SAMPLE_PROBE_SAMPLES];
+    for (target, source) in samples
+        .iter_mut()
+        .zip(input.samples.iter())
+        .take(sample_count)
+    {
+        *target = XrGpuF32ForceProbeSample {
+            position_radius: [
+                source.position[0],
+                source.position[1],
+                source.position[2],
+                source.radius,
+            ],
+            distance_target_strength: [
+                source.distance,
+                source.target_distance,
+                source.attraction_strength,
+                0.0,
+            ],
+            outward: source.outward,
+            expected_acceleration: source.expected_acceleration,
+        };
+    }
+
+    let readback = cx.xr_gpu_f32_field_force_sample_probe(
+        samples,
+        sample_count,
+        QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_DEFAULT_TOLERANCE,
+    )?;
+    gpu_field_particle_force_probe_marker_line_from_readback(input, receipt, readback, phase)
+}
+
+fn gpu_field_particle_force_probe_marker_line_from_readback(
+    input: &QuestMakepadGpuFieldParticleForceProbeInput,
+    receipt: &QuestMakepadGpuFieldConstructionReceipt,
+    readback: XrGpuF32FieldForceSampleProbeResult,
+    phase: &str,
+) -> Option<String> {
+    let probe = QuestMakepadGpuFieldParticleForceProbe::from_receipt_and_input(
         receipt,
         input,
         QuestMakepadGpuFieldForceSamplingProbeReadback {

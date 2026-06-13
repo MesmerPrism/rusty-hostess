@@ -128,6 +128,23 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "runtimeParticleForceComparisonReady=true "
+                "residentFieldBufferSampled=true sourceFieldGenerationMatched=true "
+                "particleSampleSource=matter-particle-snapshot "
+                "matterParticleForceEquation=true fieldSamplingKernel=true "
+                "fieldForceSamplingKernel=true fieldParticleKernel=true "
+                "runtimeParticleIntegration=false forceAuthorityReady=false "
+                "runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 "
+                "componentCount=12 gpuComputeReady=false highRateJsonPayload=false "
+                "programReused=false shaderCompiledThisSubmit=true "
+                "pipelineCreatedThisSubmit=true",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true denseSdfConstructedOnGpu=true "
@@ -173,6 +190,23 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "runtimeForceSamplingBoundaryReady=true residentFieldBufferSampled=true "
                 "sourceFieldGenerationMatched=true fieldSamplingKernel=true "
                 "fieldForceSamplingKernel=true fieldParticleKernel=false "
+                "runtimeParticleIntegration=false forceAuthorityReady=false "
+                "runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 "
+                "componentCount=12 gpuComputeReady=false highRateJsonPayload=false "
+                "programReused=true shaderCompiledThisSubmit=false "
+                "pipelineCreatedThisSubmit=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true runtimeFieldBoundaryReady=true "
+                "runtimeParticleForceComparisonReady=true "
+                "residentFieldBufferSampled=true sourceFieldGenerationMatched=true "
+                "particleSampleSource=matter-particle-snapshot "
+                "matterParticleForceEquation=true fieldSamplingKernel=true "
+                "fieldForceSamplingKernel=true fieldParticleKernel=true "
                 "runtimeParticleIntegration=false forceAuthorityReady=false "
                 "runtimeForceAuthority=false fieldKind=dense-sdf sampleCount=4 "
                 "componentCount=12 gpuComputeReady=false highRateJsonPayload=false "
@@ -240,6 +274,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(2, summary["markers"]["gpu_field_construction"])
         self.assertEqual(2, summary["markers"]["gpu_field_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_force_sampling_probe"])
+        self.assertEqual(2, summary["markers"]["gpu_field_particle_force_probe"])
         self.assertEqual(90.0, summary["cadence"]["app_frame_rate_hz"]["max"])
         self.assertEqual(0, summary["vrapi_hostess_process"]["stale_90_plus_count"])
         self.assertEqual(14.0, summary["vrapi_hostess_process"]["stale"]["max"])
