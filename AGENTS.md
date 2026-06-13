@@ -287,6 +287,14 @@ dense-SDF boundary evidence. The field construction marker requires
 `runtimeParticleIntegration=false`. All three must keep
 `forceAuthorityReady=false`, `runtimeForceAuthority=false`,
 `gpuComputeReady=false`, and `highRateJsonPayload=false`.
+Hostess may read and report `makepad.particles.force.authority` only as
+low-rate effective-settings/profile evidence. `matter-cpu` keeps the selected
+Matter force source authoritative; `gpu-dense-sdf-field-particle-force` may
+make `RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE` profile-satisfied, but
+Hostess must still report exactly one active authority, keep runtime selection
+blocked, and preserve Matter CPU rollback/fallback evidence until the GPU path
+has steady-state residency, freshness/cadence checks, and expanded CPU-oracle
+comparisons.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates

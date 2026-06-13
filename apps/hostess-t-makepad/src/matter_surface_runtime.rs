@@ -646,7 +646,9 @@ impl App {
             && self.matter_surface_gpu_mesh_sdf_probe_pending.is_none()
         {
             if frame.gpu_mesh_sdf_probe.is_some() {
-                if let Some(pending) = gpu_mesh_sdf_probe_submit(cx, &frame) {
+                if let Some(pending) =
+                    gpu_mesh_sdf_probe_submit(cx, &frame, self.matter_surface_force_authority)
+                {
                     self.matter_surface_gpu_mesh_sdf_probe_pending = Some(pending);
                     self.matter_surface_gpu_sync_probe_last_frame = self.cadence_frame_count;
                 }

@@ -632,14 +632,32 @@ def validate_summary(
     force_gate_profile_required_count = count_lines_containing(
         force_gate_lines, "profileGate=explicit-profile-required"
     )
+    force_gate_profile_declared_count = count_lines_containing(
+        force_gate_lines, "profileGateSatisfied="
+    )
+    force_gate_profile_satisfied_count = count_lines_containing(
+        force_gate_lines, "profileGateSatisfied=true"
+    )
     force_gate_profile_unsatisfied_count = count_lines_containing(
         force_gate_lines, "profileGateSatisfied=false"
     )
     force_gate_selection_blocked_count = count_lines_containing(
         force_gate_lines, "runtimeSelectionPermitted=false"
     )
+    force_gate_profile_known_count = count_lines_containing(
+        force_gate_lines, "gpuForceAuthorityProfileKnown=true"
+    )
+    force_gate_profile_state_declared_count = count_lines_containing(
+        force_gate_lines, "gpuForceAuthorityProfileEnabled="
+    )
+    force_gate_profile_enabled_count = count_lines_containing(
+        force_gate_lines, "gpuForceAuthorityProfileEnabled=true"
+    )
     force_gate_profile_disabled_count = count_lines_containing(
         force_gate_lines, "gpuForceAuthorityProfileEnabled=false"
+    )
+    force_gate_active_kind_count = count_lines_containing(
+        force_gate_lines, "activeForceAuthorityKind=matter-cpu"
     )
     force_gate_candidate_eligible_count = count_lines_containing(
         force_gate_lines, "candidateEligible=true"
@@ -655,6 +673,10 @@ def validate_summary(
     )
     force_gate_fallback_ready_count = count_lines_containing(
         force_gate_lines, "matterCpuFallbackReady=true"
+    )
+    force_gate_rollback_policy_count = count_lines_containing(
+        force_gate_lines,
+        "rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure",
     )
     force_gate_force_authority_false_count = count_lines_containing(
         force_gate_lines, "forceAuthorityReady=false"
@@ -693,12 +715,18 @@ def validate_summary(
             issues.append(
                 "GPU force authority gate did not require explicit profile selection"
             )
-        if force_gate_profile_unsatisfied_count != len(force_gate_lines):
-            issues.append("GPU force authority gate was profile-satisfied unexpectedly")
+        if force_gate_profile_declared_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not declare profileGateSatisfied")
         if force_gate_selection_blocked_count != len(force_gate_lines):
             issues.append("GPU force authority gate permitted runtime selection")
-        if force_gate_profile_disabled_count != len(force_gate_lines):
-            issues.append("GPU force authority gate enabled the GPU force profile")
+        if force_gate_profile_known_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not report profile knowledge")
+        if force_gate_profile_state_declared_count != len(force_gate_lines):
+            issues.append(
+                "GPU force authority gate did not declare gpuForceAuthorityProfileEnabled"
+            )
+        if force_gate_active_kind_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not keep Matter CPU active kind")
         if force_gate_candidate_eligible_count != len(force_gate_lines):
             issues.append("GPU force authority gate did not keep candidateEligible=true")
         if force_gate_not_selected_count != len(force_gate_lines):
@@ -709,6 +737,8 @@ def validate_summary(
             issues.append("GPU force authority gate changed active force authority")
         if force_gate_fallback_ready_count != len(force_gate_lines):
             issues.append("GPU force authority gate did not keep Matter CPU fallback ready")
+        if force_gate_rollback_policy_count != len(force_gate_lines):
+            issues.append("GPU force authority gate did not report Matter CPU rollback policy")
         if force_gate_force_authority_false_count != len(force_gate_lines):
             issues.append("GPU force authority gate did not keep forceAuthorityReady=false")
         if force_gate_runtime_authority_false_count != len(force_gate_lines):
@@ -912,14 +942,21 @@ def validate_summary(
         "force_gate_slot_count": force_gate_slot_count,
         "force_gate_active_count": force_gate_active_count,
         "force_gate_profile_required_count": force_gate_profile_required_count,
+        "force_gate_profile_declared_count": force_gate_profile_declared_count,
+        "force_gate_profile_satisfied_count": force_gate_profile_satisfied_count,
         "force_gate_profile_unsatisfied_count": force_gate_profile_unsatisfied_count,
         "force_gate_selection_blocked_count": force_gate_selection_blocked_count,
+        "force_gate_profile_known_count": force_gate_profile_known_count,
+        "force_gate_profile_state_declared_count": force_gate_profile_state_declared_count,
+        "force_gate_profile_enabled_count": force_gate_profile_enabled_count,
         "force_gate_profile_disabled_count": force_gate_profile_disabled_count,
+        "force_gate_active_kind_count": force_gate_active_kind_count,
         "force_gate_candidate_eligible_count": force_gate_candidate_eligible_count,
         "force_gate_not_selected_count": force_gate_not_selected_count,
         "force_gate_not_promoted_count": force_gate_not_promoted_count,
         "force_gate_active_unchanged_count": force_gate_active_unchanged_count,
         "force_gate_fallback_ready_count": force_gate_fallback_ready_count,
+        "force_gate_rollback_policy_count": force_gate_rollback_policy_count,
         "force_gate_force_authority_false_count": force_gate_force_authority_false_count,
         "force_gate_runtime_authority_false_count": (
             force_gate_runtime_authority_false_count

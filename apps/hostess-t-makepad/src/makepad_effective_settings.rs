@@ -3,7 +3,8 @@ use rusty_makepad_settings::{EffectiveSettingsReport, EFFECTIVE_SETTINGS_SCHEMA}
 use rusty_quest_makepad_camera_shell::{
     camera_shell_runtime_bundle_from_effective_settings_json_with_replay_asset_dir,
     CameraShellEffectiveConfig, MeshReplayRuntime, ParticleRenderAnimationMode,
-    QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode, REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
+    QuestMakepadForceAuthorityMode, QuestMakepadMatterSurfaceRuntime, SdfAdfRuntimeMode,
+    REPLAY_MARKER_PREFIX, REPLAY_SCHEMA_ID,
 };
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
@@ -86,6 +87,7 @@ pub(crate) struct MakepadEffectiveSettingsReceipt {
     matter_surface_particle_count: Option<usize>,
     matter_surface_leaf_triangle_count: Option<usize>,
     matter_surface_particle_distance_refresh_policy: Option<String>,
+    matter_surface_particle_force_authority: Option<String>,
     matter_surface_particle_force_source: Option<String>,
     matter_surface_particle_force_update_interval_frames: Option<usize>,
     matter_surface_particle_force_compare_probe_count: Option<usize>,
@@ -131,6 +133,7 @@ pub(crate) struct MakepadMeshReplayRuntimeSelection {
     pub(crate) particle_render_draw_limit: Option<usize>,
     pub(crate) particle_render_animation_mode: Option<ParticleRenderAnimationMode>,
     pub(crate) particle_render_size_scale: Option<f32>,
+    pub(crate) particle_force_authority: Option<QuestMakepadForceAuthorityMode>,
     pub(crate) feature_uniforms: MakepadCameraShellFeatureUniforms,
     pub(crate) runtime: Option<MeshReplayRuntime>,
     pub(crate) matter_surface_runtime: Option<QuestMakepadMatterSurfaceRuntime>,
@@ -219,7 +222,7 @@ impl MakepadEffectiveSettingsIdentity {
 impl MakepadMeshReplayRuntimeSelection {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={}",
+            "{} schema={} phase={} status={} issue={} evidence={} sourcePath={} sourceModifiedNs={} matterSurfaceRuntimeSelected={} particleForceAuthority={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={}",
             REPLAY_MARKER_PREFIX,
             REPLAY_SCHEMA_ID,
             marker_token(phase),
@@ -231,6 +234,10 @@ impl MakepadMeshReplayRuntimeSelection {
                 .map(|value| value.to_string())
                 .unwrap_or_else(|| "none".to_string()),
             self.matter_surface_runtime.is_some(),
+            marker_option(
+                self.particle_force_authority
+                    .map(QuestMakepadForceAuthorityMode::as_str)
+            ),
             marker_usize(self.particle_render_draw_limit),
             marker_option(
                 self.particle_render_animation_mode
@@ -275,7 +282,7 @@ impl MakepadMeshReplayRuntimeSelection {
 impl MakepadEffectiveSettingsReceipt {
     pub(crate) fn marker_line(&self, phase: &str) -> String {
         format!(
-            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleForceSource={} matterSurfaceParticleForceUpdateIntervalFrames={} matterSurfaceParticleForceCompareProbeCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
+            "{} schema={} phase={} status={} issue={} sourcePath={} app={} revision={} settingCount={} canonicalEffectiveSettingsConsumed={} meshReplaySettingsPresent={} meshReplayAdapter={} meshReplayAdapterStatus={} meshReplayAdapterError={} meshReplayEnabled={} meshReplaySource={} meshReplaySpeed={} meshReplayOpacity={} renderScale={} cameraStreamingEnabled={} collisionEnabled={} sdfAdfOverlayMode={} sdfAdfRuntimeMode={} sdfAdfUnsupportedFutureMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderAnimationMode={} particleRenderSizeScale={} matterSurfaceNativeRuntimeConfigured={} matterSurfaceAdfDebugEnabled={} matterSurfaceAdfMaxDepth={} matterSurfaceAdfMaxCells={} matterSurfaceAdfErrorTolerance={} matterSurfaceSdfAdfDebugUpdateIntervalFrames={} matterSurfaceParticleCount={} matterSurfaceLeafTriangleCount={} matterSurfaceParticleDistanceRefreshPolicy={} matterSurfaceParticleForceAuthority={} matterSurfaceParticleForceSource={} matterSurfaceParticleForceUpdateIntervalFrames={} matterSurfaceParticleForceCompareProbeCount={} matterSurfaceParticleExecutionBackend={} matterSurfaceParticleExecutionBatchSize={} matterSurfaceParticleExecutionMaxThreads={} matterSurfaceParticleMaxFrameDeltaSeconds={} legacySettingsFallbackUsed={}",
             MARKER_PREFIX,
             EFFECTIVE_SETTINGS_RECEIPT_SCHEMA,
             marker_token(phase),
@@ -317,6 +324,7 @@ impl MakepadEffectiveSettingsReceipt {
             marker_usize(self.matter_surface_particle_count),
             marker_usize(self.matter_surface_leaf_triangle_count),
             marker_option(self.matter_surface_particle_distance_refresh_policy.as_deref()),
+            marker_option(self.matter_surface_particle_force_authority.as_deref()),
             marker_option(self.matter_surface_particle_force_source.as_deref()),
             marker_usize(self.matter_surface_particle_force_update_interval_frames),
             marker_usize(self.matter_surface_particle_force_compare_probe_count),
@@ -484,6 +492,11 @@ impl MakepadEffectiveSettingsReceipt {
         );
         insert_json_field!(
             &mut object,
+            "matter_surface_particle_force_authority",
+            &self.matter_surface_particle_force_authority,
+        );
+        insert_json_field!(
+            &mut object,
             "matter_surface_particle_force_source",
             &self.matter_surface_particle_force_source,
         );
@@ -601,6 +614,7 @@ pub(crate) fn read_selected_mesh_replay_runtime() -> MakepadMeshReplayRuntimeSel
             particle_render_draw_limit: None,
             particle_render_animation_mode: None,
             particle_render_size_scale: None,
+            particle_force_authority: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
@@ -625,6 +639,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 particle_render_draw_limit: None,
                 particle_render_animation_mode: None,
                 particle_render_size_scale: None,
+                particle_force_authority: None,
                 feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
                 runtime: None,
                 matter_surface_runtime: None,
@@ -656,6 +671,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
                 particle_render_size_scale: Some(
                     bundle.effective_config.particle_render_size_scale,
                 ),
+                particle_force_authority: Some(bundle.effective_config.particle_force_authority),
                 feature_uniforms,
                 runtime: Some(bundle.mesh_replay_runtime),
                 matter_surface_runtime: Some(bundle.matter_surface_runtime),
@@ -672,6 +688,7 @@ pub(crate) fn read_mesh_replay_runtime_from_path(path: &Path) -> MakepadMeshRepl
             particle_render_draw_limit: None,
             particle_render_animation_mode: None,
             particle_render_size_scale: None,
+            particle_force_authority: None,
             feature_uniforms: MakepadCameraShellFeatureUniforms::default(),
             runtime: None,
             matter_surface_runtime: None,
@@ -731,6 +748,7 @@ fn ready_receipt(
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
+        matter_surface_particle_force_authority,
         matter_surface_particle_force_source,
         matter_surface_particle_force_update_interval_frames,
         matter_surface_particle_force_compare_probe_count,
@@ -781,6 +799,7 @@ fn ready_receipt(
                         .marker_value()
                         .to_string(),
                 ),
+                Some(config.particle_force_authority.as_str().to_string()),
                 Some(
                     config
                         .matter_surface
@@ -814,6 +833,7 @@ fn ready_receipt(
             Some("rejected".to_string()),
             Some(error.to_string()),
             false,
+            None,
             None,
             None,
             None,
@@ -887,6 +907,7 @@ fn ready_receipt(
         matter_surface_particle_count,
         matter_surface_leaf_triangle_count,
         matter_surface_particle_distance_refresh_policy,
+        matter_surface_particle_force_authority,
         matter_surface_particle_force_source,
         matter_surface_particle_force_update_interval_frames,
         matter_surface_particle_force_compare_probe_count,
@@ -1175,6 +1196,10 @@ mod tests {
             Some("step-only")
         );
         assert_eq!(
+            receipt.matter_surface_particle_force_authority.as_deref(),
+            Some("matter-cpu")
+        );
+        assert_eq!(
             receipt.matter_surface_particle_force_source.as_deref(),
             Some("mesh-distance")
         );
@@ -1220,6 +1245,7 @@ mod tests {
         assert!(marker.contains("matterSurfaceSdfAdfDebugUpdateIntervalFrames=1"));
         assert!(marker.contains("matterSurfaceParticleCount=1000"));
         assert!(marker.contains("matterSurfaceParticleDistanceRefreshPolicy=step-only"));
+        assert!(marker.contains("matterSurfaceParticleForceAuthority=matter-cpu"));
         assert!(marker.contains("matterSurfaceParticleForceSource=mesh-distance"));
         assert!(marker.contains("matterSurfaceParticleForceUpdateIntervalFrames=1"));
         assert!(marker.contains("matterSurfaceParticleForceCompareProbeCount=0"));
@@ -1238,6 +1264,10 @@ mod tests {
         assert_eq!(
             json["matter_surface_sdf_adf_debug_update_interval_frames"],
             serde_json::json!(1)
+        );
+        assert_eq!(
+            json["matter_surface_particle_force_authority"],
+            serde_json::json!("matter-cpu")
         );
         assert_eq!(
             json["matter_surface_particle_force_source"],
@@ -1319,6 +1349,10 @@ mod tests {
         );
         assert_eq!(selection.particle_render_size_scale, Some(1.0));
         assert_eq!(
+            selection.particle_force_authority,
+            Some(QuestMakepadForceAuthorityMode::MatterCpu)
+        );
+        assert_eq!(
             selection.feature_uniforms,
             MakepadCameraShellFeatureUniforms {
                 collision_enabled: 1.0,
@@ -1335,6 +1369,36 @@ mod tests {
         assert!(marker.contains("schema=rusty.quest.makepad.mesh_replay.v1"));
         assert!(marker.contains("source=public-synthetic-hand-sequence"));
         assert!(!marker.contains("rusty.xr"));
+    }
+
+    #[test]
+    fn reads_gpu_force_authority_as_profile_gate_without_replacing_matter_source() {
+        let gpu_authority_settings = EFFECTIVE_SETTINGS_FIXTURE.replace(
+            "\"value\": \"matter-cpu\"",
+            "\"value\": \"gpu-dense-sdf-field-particle-force\"",
+        );
+        let path = write_temp_json("gpu-authority-effective-settings", &gpu_authority_settings);
+
+        let receipt = read_makepad_effective_settings_from_path(&path);
+        let selection = read_mesh_replay_runtime_from_path(&path);
+
+        assert_eq!(
+            receipt.matter_surface_particle_force_authority.as_deref(),
+            Some("gpu-dense-sdf-field-particle-force")
+        );
+        assert_eq!(
+            receipt.matter_surface_particle_force_source.as_deref(),
+            Some("mesh-distance")
+        );
+        assert_eq!(
+            selection.particle_force_authority,
+            Some(QuestMakepadForceAuthorityMode::GpuDenseSdfFieldParticleForce)
+        );
+        assert!(selection.matter_surface_runtime.is_some());
+
+        let marker = selection.marker_line("gpu-authority-test");
+        assert!(marker.contains("particleForceAuthority=gpu-dense-sdf-field-particle-force"));
+        assert!(marker.contains("matterSurfaceRuntimeSelected=true"));
     }
 
     #[test]

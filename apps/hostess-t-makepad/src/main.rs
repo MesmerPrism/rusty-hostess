@@ -145,9 +145,10 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadMatterSurfaceWorker, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
-    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    QuestMakepadForceAuthorityMode, QuestMakepadMatterSurfaceWorker,
+    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldParticleBatch,
+    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -1723,6 +1724,8 @@ pub struct App {
     matter_world_particle_size_scale_configured: bool,
     #[rust]
     camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
+    #[rust]
+    matter_surface_force_authority: QuestMakepadForceAuthorityMode,
     #[rust]
     camera_shell_effective_render_scale: f32,
     #[rust]
@@ -3583,6 +3586,8 @@ impl App {
         self.matter_world_particle_size_scale_configured =
             selection.particle_render_size_scale.is_some();
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
+        self.matter_surface_force_authority =
+            selection.particle_force_authority.unwrap_or_default();
         self.matter_surface_worker = selection
             .matter_surface_runtime
             .map(QuestMakepadMatterSurfaceWorker::from_runtime);
@@ -3646,13 +3651,14 @@ impl App {
 
     fn camera_shell_feature_uniform_marker_line(&self, phase: &str) -> String {
         format!(
-            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} particleRenderDrawLimit={} particleRenderDrawLimitSource={} particleRenderAnimationMode={} particleRenderSizeScale={} particleRenderSizeScaleSource={} renderScale={} sourcePath={}",
+            "RUSTY_QUEST_MAKEPAD_CAMERA_SHELL_FEATURES schema=rusty.quest.makepad.camera_shell_feature_uniforms.v1 phase={} status=ready collisionEnabled={} sdfAdfOverlayMode={} particlesEnabled={} particleForceAuthority={} particleRenderDrawLimit={} particleRenderDrawLimitSource={} particleRenderAnimationMode={} particleRenderSizeScale={} particleRenderSizeScaleSource={} renderScale={} sourcePath={}",
             marker_token(phase),
             self.camera_shell_feature_uniforms.collision_enabled >= 0.5,
             marker_token(camera_shell_sdf_adf_mode_token(
                 self.camera_shell_feature_uniforms.sdf_adf_overlay_mode,
             )),
             self.camera_shell_feature_uniforms.particles_enabled >= 0.5,
+            marker_token(self.matter_surface_force_authority.as_str()),
             self.current_matter_world_particle_draw_limit(),
             self.matter_world_particle_draw_limit_source(),
             marker_token(self.current_matter_world_particle_animation_mode().as_str()),
