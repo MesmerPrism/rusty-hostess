@@ -49,7 +49,12 @@ JSON that includes package manifest hashes.
   these helpers as a compatibility facade for tests and existing callers.
 - `tools/hostessctl/pmb_broker_bridge.py`: Projected Motion Breath feedback
   publication, breath-source selection, and PMB receipt listening over the
-  broker transport. Recording orchestration remains in `hostessctl.py`.
+  broker transport.
+- `tools/hostessctl/manifold_recording.py`: Manifold value provider registry,
+  `record-values` route planning, broker WebSocket stream capture, Makepad
+  controller-pose provider setup, and PMB live processor bridge execution.
+  `hostessctl.py` re-exports thin wrappers so existing scripts and tests can
+  continue importing from the CLI root.
 - `tools/hostessctl/pmb_evidence.py`: projected-motion-breath contract
   constants, replay/self-test evidence builders, PMB validators, and host-run
   evidence writers used by `hostessctl.py` command routes.
@@ -72,9 +77,8 @@ JSON that includes package manifest hashes.
   with physical controller input explicitly marked unused.
 - `tools/hostessctl/hostessctl.py record-values`: general Manifold value
   recording entrypoint. It accepts repeated `--value <stream-id-or-alias>` and
-  `--duration-seconds`, builds provider plans, runs an existing single-value
-  live capture route when one is available, or records Quest broker WebSocket
-  streams for provider sets that share that transport. The recorder remains
+  `--duration-seconds`, then delegates provider planning and capture execution
+  to `tools/hostessctl/manifold_recording.py`. The recorder remains
   general-purpose and records explicit missing-stream evidence instead of
   becoming Polar- or controller-specific.
 - `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
@@ -88,7 +92,7 @@ JSON that includes package manifest hashes.
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_evidence.py tools\hostessctl\recording_evidence.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\manifold_recording.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_evidence.py tools\hostessctl\recording_evidence.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>

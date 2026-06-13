@@ -49,7 +49,7 @@ and a JSON sidecar before they are accepted as visual evidence.
 Argument parser construction lives in `tools/hostessctl/cli_parser.py`; it
 receives platform defaults from `tools/hostessctl/hostessctl.py` and does not
 import command implementations. The CLI root stays the platform default,
-dispatch, and route orchestration facade.
+dispatch, and compatibility-wrapper facade.
 desktop PNG rendering, sidecar writing, and render-output validation live in
 `tools/hostessctl/telemetry_render.py` so render evidence remains a focused
 helper family instead of growing the CLI root.
@@ -63,13 +63,18 @@ Manifold broker WebSocket transport lives in
 envelopes, ACK normalization, retry connection, and stream-event timestamp
 aliasing are isolated from route orchestration. Projected Motion Breath broker
 publication and receipt listening live in
-`tools/hostessctl/pmb_broker_bridge.py`; the CLI root still decides when to run
-the PMB live processor and how to assemble final recording evidence.
+`tools/hostessctl/pmb_broker_bridge.py`.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. The CLI root still launches desktop,
 Android, and Quest routes, but PMB contract constants, replay/self-test
 evidence builders, PMB validation reports, and host-run evidence writers are a
 separate helper family.
+Manifold value recording planning and broker capture orchestration live in
+`tools/hostessctl/manifold_recording.py`: the provider registry,
+`record-values` route planner, Quest broker WebSocket capture, Makepad
+controller-pose provider setup, and PMB live processor bridge execution are
+kept out of the CLI root. `hostessctl.py` preserves thin wrappers for existing
+tests and scripts.
 Broker telemetry and Manifold value-recording evidence construction lives in
 `tools/hostessctl/recording_evidence.py`. Recording evidence schemas,
 validators, scorecards, and host-run wrappers are isolated from command

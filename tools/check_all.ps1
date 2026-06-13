@@ -23,6 +23,7 @@ try {
         "tools\hostessctl\android_files.py",
         "tools\hostessctl\broker_transport.py",
         "tools\hostessctl\cli_parser.py",
+        "tools\hostessctl\manifold_recording.py",
         "tools\hostessctl\pmb_broker_bridge.py",
         "tools\hostessctl\pmb_evidence.py",
         "tools\hostessctl\recording_evidence.py",
