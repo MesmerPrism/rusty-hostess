@@ -69,6 +69,18 @@ def add_valid_gpu_proof_epoch(summary):
     return summary
 
 
+def remove_force_stage_markers(summary):
+    summary["markers"]["gpu_field_force_sampling_probe"] = 0
+    summary["markers"]["gpu_field_particle_force_probe"] = 0
+    summary["proof_lines"] = [
+        line
+        for line in summary["proof_lines"]
+        if "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE" not in line
+        and "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE" not in line
+    ]
+    return summary
+
+
 class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
     def test_resolves_canonical_summary_from_evidence_root(self):
         with TemporaryDirectory() as temp_dir:
@@ -163,6 +175,48 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
             result.summary["field_particle_force_runtime_particle_false_count"],
         )
         self.assertEqual(0, result.summary["gpu_proof_epoch_line_count"])
+
+    def test_accepts_mesh_sdf_only_stage_without_force_proofs(self):
+        summary = remove_force_stage_markers(add_valid_gpu_proof_epoch(valid_summary()))
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_mesh_sdf_program_reuse=True,
+                require_mesh_sdf_source_buffer_reuse=True,
+                require_mesh_sdf_derived_buffer_reuse=True,
+                require_mesh_sdf_min_sample_count=8,
+                require_gpu_proof_epoch=True,
+            ),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(0, result.summary["field_force_sampling_line_count"])
+        self.assertEqual(0, result.summary["field_particle_force_line_count"])
+        self.assertEqual(
+            0,
+            result.summary["stage_marker_counts"]["gpu_field_force_sampling_probe"],
+        )
+
+    def test_can_require_later_force_stage_markers(self):
+        summary = remove_force_stage_markers(valid_summary())
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_field_force_sampling=True,
+                require_gpu_field_particle_force=True,
+            ),
+        )
+
+        self.assertFalse(result.ok)
+        self.assertTrue(
+            any("GPU_FIELD_FORCE_SAMPLING_PROBE" in issue for issue in result.issues)
+        )
+        self.assertTrue(
+            any("GPU_FIELD_PARTICLE_FORCE_PROBE" in issue for issue in result.issues)
+        )
 
     def test_can_require_gpu_proof_epoch(self):
         summary = add_valid_gpu_proof_epoch(valid_summary())

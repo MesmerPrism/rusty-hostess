@@ -23,13 +23,15 @@ DEFAULT_MAX_HOSTESS_STALE_NONZERO_COUNT = 90.0
 DEFAULT_MIN_APP_FRAME_RATE_HZ = 85.0
 DEFAULT_MIN_XR_EFFECTIVE_FRAME_RATE_HZ = 89.0
 
-REQUIRED_MARKERS = {
+CORE_REQUIRED_MARKERS = {
     "proof_schedule": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE",
     "gpu_skinning_probe": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_PROBE",
     "gpu_skinning_mesh_residency": "RUSTY_QUEST_MAKEPAD_GPU_SKINNING_MESH_RESIDENCY",
     "gpu_mesh_sdf_probe": "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE",
     "gpu_field_construction": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION",
     "gpu_field_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE",
+}
+OPTIONAL_STAGE_MARKERS = {
     "gpu_field_force_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
     "gpu_field_particle_force_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
 }
@@ -53,6 +55,8 @@ class EvidenceThresholds:
     require_mesh_sdf_derived_buffer_reuse: bool = False
     require_mesh_sdf_min_sample_count: int = 0
     require_gpu_proof_epoch: bool = False
+    require_gpu_field_force_sampling: bool = False
+    require_gpu_field_particle_force: bool = False
 
 
 @dataclass(frozen=True)
@@ -111,7 +115,16 @@ def validate_summary(
         issues.append(f"unexpected schema: {schema or 'missing'}")
 
     markers = object_value(summary, "markers")
-    for key, marker_name in REQUIRED_MARKERS.items():
+    required_markers = dict(CORE_REQUIRED_MARKERS)
+    if thresholds.require_gpu_field_force_sampling:
+        required_markers["gpu_field_force_sampling_probe"] = OPTIONAL_STAGE_MARKERS[
+            "gpu_field_force_sampling_probe"
+        ]
+    if thresholds.require_gpu_field_particle_force:
+        required_markers["gpu_field_particle_force_probe"] = OPTIONAL_STAGE_MARKERS[
+            "gpu_field_particle_force_probe"
+        ]
+    for key, marker_name in required_markers.items():
         if numeric(markers.get(key)) < 1:
             issues.append(f"missing required marker count for {marker_name}")
     if thresholds.require_gpu_proof_epoch:
@@ -193,7 +206,7 @@ def validate_summary(
         issues.append("proof_lines is not a list")
         proof_lines = []
     proof_text = "\n".join(str(line) for line in proof_lines)
-    for marker_name in REQUIRED_MARKERS.values():
+    for marker_name in required_markers.values():
         if marker_name not in proof_text:
             issues.append(f"proof line missing {marker_name}")
     if thresholds.require_gpu_proof_epoch:
@@ -366,34 +379,56 @@ def validate_summary(
     field_force_sampling_low_rate_count = count_lines_containing(
         field_force_sampling_lines, "highRateJsonPayload=false"
     )
-    if field_force_sampling_ready_count != len(field_force_sampling_lines):
-        issues.append(
-            "GPU field force sampling probe did not keep runtimeForceSamplingBoundaryReady=true"
-        )
-    if field_force_sampling_field_ready_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep runtimeFieldBoundaryReady=true")
-    if field_force_sampling_resident_count != len(field_force_sampling_lines):
-        issues.append(
-            "GPU field force sampling probe did not report residentFieldBufferSampled=true"
-        )
-    if field_force_sampling_generation_match_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not match sourceFieldGeneration")
-    if field_force_sampling_kernel_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not report fieldForceSamplingKernel=true")
-    if field_force_sampling_particle_kernel_false_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep fieldParticleKernel=false")
-    if field_force_sampling_runtime_particle_false_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep runtimeParticleIntegration=false")
-    if field_force_sampling_force_authority_false_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep forceAuthorityReady=false")
-    if field_force_sampling_runtime_authority_false_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep runtimeForceAuthority=false")
-    if not any("fieldKind=dense-sdf" in line for line in field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not report fieldKind=dense-sdf")
-    if field_force_sampling_gpu_not_ready_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep gpuComputeReady=false")
-    if field_force_sampling_low_rate_count != len(field_force_sampling_lines):
-        issues.append("GPU field force sampling probe did not keep highRateJsonPayload=false")
+    if field_force_sampling_lines:
+        if field_force_sampling_ready_count != len(field_force_sampling_lines):
+            issues.append(
+                "GPU field force sampling probe did not keep "
+                "runtimeForceSamplingBoundaryReady=true"
+            )
+        if field_force_sampling_field_ready_count != len(field_force_sampling_lines):
+            issues.append(
+                "GPU field force sampling probe did not keep "
+                "runtimeFieldBoundaryReady=true"
+            )
+        if field_force_sampling_resident_count != len(field_force_sampling_lines):
+            issues.append(
+                "GPU field force sampling probe did not report "
+                "residentFieldBufferSampled=true"
+            )
+        if field_force_sampling_generation_match_count != len(field_force_sampling_lines):
+            issues.append("GPU field force sampling probe did not match sourceFieldGeneration")
+        if field_force_sampling_kernel_count != len(field_force_sampling_lines):
+            issues.append(
+                "GPU field force sampling probe did not report "
+                "fieldForceSamplingKernel=true"
+            )
+        if field_force_sampling_particle_kernel_false_count != len(
+            field_force_sampling_lines
+        ):
+            issues.append("GPU field force sampling probe did not keep fieldParticleKernel=false")
+        if field_force_sampling_runtime_particle_false_count != len(
+            field_force_sampling_lines
+        ):
+            issues.append(
+                "GPU field force sampling probe did not keep "
+                "runtimeParticleIntegration=false"
+            )
+        if field_force_sampling_force_authority_false_count != len(
+            field_force_sampling_lines
+        ):
+            issues.append("GPU field force sampling probe did not keep forceAuthorityReady=false")
+        if field_force_sampling_runtime_authority_false_count != len(
+            field_force_sampling_lines
+        ):
+            issues.append("GPU field force sampling probe did not keep runtimeForceAuthority=false")
+        if not any("fieldKind=dense-sdf" in line for line in field_force_sampling_lines):
+            issues.append("GPU field force sampling probe did not report fieldKind=dense-sdf")
+        if field_force_sampling_gpu_not_ready_count != len(field_force_sampling_lines):
+            issues.append("GPU field force sampling probe did not keep gpuComputeReady=false")
+        if field_force_sampling_low_rate_count != len(field_force_sampling_lines):
+            issues.append(
+                "GPU field force sampling probe did not keep highRateJsonPayload=false"
+            )
     field_particle_force_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
     )
@@ -436,37 +471,57 @@ def validate_summary(
     field_particle_force_low_rate_count = count_lines_containing(
         field_particle_force_lines, "highRateJsonPayload=false"
     )
-    if field_particle_force_ready_count != len(field_particle_force_lines):
-        issues.append(
-            "GPU field particle-force probe did not keep "
-            "runtimeParticleForceComparisonReady=true"
-        )
-    if field_particle_force_field_ready_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep runtimeFieldBoundaryReady=true")
-    if field_particle_force_resident_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report residentFieldBufferSampled=true")
-    if field_particle_force_generation_match_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not match sourceFieldGeneration")
-    if field_particle_force_kernel_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report fieldParticleKernel=true")
-    if field_particle_force_force_kernel_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report fieldForceSamplingKernel=true")
-    if field_particle_force_sample_source_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report Matter particle snapshot source")
-    if field_particle_force_matter_equation_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report Matter force equation")
-    if field_particle_force_runtime_particle_false_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep runtimeParticleIntegration=false")
-    if field_particle_force_force_authority_false_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep forceAuthorityReady=false")
-    if field_particle_force_runtime_authority_false_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep runtimeForceAuthority=false")
-    if not any("fieldKind=dense-sdf" in line for line in field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not report fieldKind=dense-sdf")
-    if field_particle_force_gpu_not_ready_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep gpuComputeReady=false")
-    if field_particle_force_low_rate_count != len(field_particle_force_lines):
-        issues.append("GPU field particle-force probe did not keep highRateJsonPayload=false")
+    if field_particle_force_lines:
+        if field_particle_force_ready_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not keep "
+                "runtimeParticleForceComparisonReady=true"
+            )
+        if field_particle_force_field_ready_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not keep runtimeFieldBoundaryReady=true"
+            )
+        if field_particle_force_resident_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not report "
+                "residentFieldBufferSampled=true"
+            )
+        if field_particle_force_generation_match_count != len(field_particle_force_lines):
+            issues.append("GPU field particle-force probe did not match sourceFieldGeneration")
+        if field_particle_force_kernel_count != len(field_particle_force_lines):
+            issues.append("GPU field particle-force probe did not report fieldParticleKernel=true")
+        if field_particle_force_force_kernel_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not report fieldForceSamplingKernel=true"
+            )
+        if field_particle_force_sample_source_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not report Matter particle snapshot source"
+            )
+        if field_particle_force_matter_equation_count != len(field_particle_force_lines):
+            issues.append("GPU field particle-force probe did not report Matter force equation")
+        if field_particle_force_runtime_particle_false_count != len(
+            field_particle_force_lines
+        ):
+            issues.append(
+                "GPU field particle-force probe did not keep runtimeParticleIntegration=false"
+            )
+        if field_particle_force_force_authority_false_count != len(
+            field_particle_force_lines
+        ):
+            issues.append("GPU field particle-force probe did not keep forceAuthorityReady=false")
+        if field_particle_force_runtime_authority_false_count != len(
+            field_particle_force_lines
+        ):
+            issues.append("GPU field particle-force probe did not keep runtimeForceAuthority=false")
+        if not any("fieldKind=dense-sdf" in line for line in field_particle_force_lines):
+            issues.append("GPU field particle-force probe did not report fieldKind=dense-sdf")
+        if field_particle_force_gpu_not_ready_count != len(field_particle_force_lines):
+            issues.append("GPU field particle-force probe did not keep gpuComputeReady=false")
+        if field_particle_force_low_rate_count != len(field_particle_force_lines):
+            issues.append(
+                "GPU field particle-force probe did not keep highRateJsonPayload=false"
+            )
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -627,7 +682,10 @@ def validate_summary(
         "field_particle_force_gpu_not_ready_count": field_particle_force_gpu_not_ready_count,
         "field_particle_force_low_rate_count": field_particle_force_low_rate_count,
         "required_marker_counts": {
-            key: int(numeric(markers.get(key))) for key in REQUIRED_MARKERS
+            key: int(numeric(markers.get(key))) for key in required_markers
+        },
+        "stage_marker_counts": {
+            key: int(numeric(markers.get(key))) for key in OPTIONAL_STAGE_MARKERS
         },
         "optional_marker_counts": {
             key: int(numeric(markers.get(key))) for key in OPTIONAL_MARKERS
@@ -768,6 +826,24 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "without runtime/settings replay rebuild."
         ),
     )
+    parser.add_argument(
+        "--require-gpu-field-force-sampling",
+        action="store_true",
+        help=(
+            "Require the optional GPU dense-SDF force-sampling proof marker. "
+            "Use this only for the force-sampling stage, not the mesh-SDF "
+            "construction stage."
+        ),
+    )
+    parser.add_argument(
+        "--require-gpu-field-particle-force",
+        action="store_true",
+        help=(
+            "Require the optional GPU particle-force comparison proof marker. "
+            "Use this only for the particle-force stage, not the mesh-SDF "
+            "construction stage."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -786,6 +862,8 @@ def main(argv: list[str] | None = None) -> int:
         require_mesh_sdf_derived_buffer_reuse=args.require_mesh_sdf_derived_buffer_reuse,
         require_mesh_sdf_min_sample_count=args.require_mesh_sdf_min_sample_count,
         require_gpu_proof_epoch=args.require_gpu_proof_epoch,
+        require_gpu_field_force_sampling=args.require_gpu_field_force_sampling,
+        require_gpu_field_particle_force=args.require_gpu_field_particle_force,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {
