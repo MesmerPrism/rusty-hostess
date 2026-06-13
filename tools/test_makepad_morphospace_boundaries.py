@@ -81,6 +81,35 @@ class MakepadMorphospaceBoundaryTests(unittest.TestCase):
         self.assertNotIn("fn projection_runtime_alias_tokens", root)
         self.assertNotIn("fn sanitize_marker_token", root)
 
+    def test_runtime_config_projection_registry_stays_split_from_core_parser(self):
+        root = (HOSTESS_MAKEPAD_SRC / "makepad_runtime_config.rs").read_text(
+            encoding="utf-8"
+        )
+        alias_model_path = HOSTESS_MAKEPAD_SRC / "makepad_runtime_config" / "alias_model.rs"
+        registry_path = HOSTESS_MAKEPAD_SRC / "makepad_runtime_config" / "projection_keys.rs"
+        tests_path = HOSTESS_MAKEPAD_SRC / "makepad_runtime_config" / "tests.rs"
+        self.assertTrue(alias_model_path.exists())
+        self.assertTrue(registry_path.exists())
+        self.assertTrue(tests_path.exists())
+        alias_model = alias_model_path.read_text(encoding="utf-8")
+        registry = registry_path.read_text(encoding="utf-8")
+        tests = tests_path.read_text(encoding="utf-8")
+
+        self.assertIn("mod alias_model;", root)
+        self.assertIn("mod projection_keys;", root)
+        self.assertIn("RuntimeKeyAliasStatus", alias_model)
+        self.assertIn("LegacyRuntimeKey", alias_model)
+        self.assertIn("pub use projection_keys::*;", root)
+        self.assertIn("PROJECTION_RUNTIME_KEY_DEFINITIONS", registry)
+        self.assertIn("pub fn projection_runtime_key_definition", registry)
+        self.assertIn("mod tests;", root)
+        self.assertIn("projection_runtime_golden_matrix_is_backend_neutral", tests)
+        self.assertNotIn("LegacyRuntimeKey", root)
+        self.assertNotIn("Deprecated,", root)
+        self.assertNotIn("pub const KEY_CAMERA_PROJECTION_MODE", root)
+        self.assertNotIn("PROJECTION_RUNTIME_KEY_DEFINITIONS", root)
+        self.assertNotIn("projection_runtime_golden_matrix_is_backend_neutral", root)
+
     def test_camera_projection_flow_stays_split_from_app_root(self):
         main = (HOSTESS_MAKEPAD_SRC / "main.rs").read_text(encoding="utf-8")
         flow_path = HOSTESS_MAKEPAD_SRC / "camera_projection_flow.rs"

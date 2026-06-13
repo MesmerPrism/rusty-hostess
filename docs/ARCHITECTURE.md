@@ -198,10 +198,15 @@ The current app emits
 detail read, recording the scoped revision key, subscribed scopes, selected
 gate, and applied/rejected status.
 
-`apps/hostess-t-makepad/src/makepad_runtime_config.rs` owns canonical
-renderer-neutral projection runtime keys, typed parsing, layered resolution,
-and the runtime-config facade. Projection manifest marker formatting and
-alias-evidence tokenization live in
+`apps/hostess-t-makepad/src/makepad_runtime_config.rs` owns typed parsing,
+layered resolution, and the runtime-config facade. Canonical renderer-neutral
+projection runtime keys and ownership metadata live in
+`apps/hostess-t-makepad/src/makepad_runtime_config/projection_keys.rs`.
+Alias evidence types live in
+`apps/hostess-t-makepad/src/makepad_runtime_config/alias_model.rs`, keeping
+legacy/deprecated vocabulary with the alias ledger instead of the generic
+runtime-config type section.
+Projection manifest marker formatting and alias-evidence tokenization live in
 `apps/hostess-t-makepad/src/makepad_runtime_config/manifest.rs` so the core
 parser/resolver does not carry diagnostic marker formatting. Accepted external
 spellings for launch extras, Android properties, and environment variables live in
