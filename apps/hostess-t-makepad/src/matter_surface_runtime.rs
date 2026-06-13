@@ -419,6 +419,8 @@ impl App {
             self.cadence_xr_update_count,
             self.cadence_draw_event_count,
         );
+        let gpu_force_authority_runtime_readiness =
+            gpu_probe_schedule.force_authority_runtime_readiness(gpu_probe_steady_state_ready);
         if gpu_probe_steady_state_ready && self.matter_surface_gpu_schedule_markers_emitted == 0 {
             self.reset_matter_surface_gpu_proof_markers();
             let identity =
@@ -473,6 +475,7 @@ impl App {
                     pending,
                     &mesh_sdf_phase,
                     &mut self.matter_surface_gpu_force_authority_residency_tracker,
+                    gpu_force_authority_runtime_readiness,
                 )
             });
             if let Some(markers) = completed_mesh_sdf_markers {

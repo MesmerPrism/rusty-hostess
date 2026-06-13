@@ -875,20 +875,50 @@ def validate_summary(
     force_residency_bounded_only_count = count_lines_containing(
         force_residency_lines, "boundedProofOnly=true"
     )
+    force_residency_steady_state_declared_count = count_lines_containing(
+        force_residency_lines, "steadyStateResidencyReady="
+    )
     force_residency_steady_state_false_count = count_lines_containing(
         force_residency_lines, "steadyStateResidencyReady=false"
+    )
+    force_residency_steady_state_true_count = count_lines_containing(
+        force_residency_lines, "steadyStateResidencyReady=true"
+    )
+    force_residency_freshness_declared_count = count_lines_containing(
+        force_residency_lines, "freshnessReady="
     )
     force_residency_freshness_false_count = count_lines_containing(
         force_residency_lines, "freshnessReady=false"
     )
+    force_residency_freshness_true_count = count_lines_containing(
+        force_residency_lines, "freshnessReady=true"
+    )
+    force_residency_cadence_declared_count = count_lines_containing(
+        force_residency_lines, "cadenceReady="
+    )
     force_residency_cadence_false_count = count_lines_containing(
         force_residency_lines, "cadenceReady=false"
+    )
+    force_residency_cadence_true_count = count_lines_containing(
+        force_residency_lines, "cadenceReady=true"
+    )
+    force_residency_expanded_oracle_declared_count = count_lines_containing(
+        force_residency_lines, "expandedOracleComparisonReady="
     )
     force_residency_expanded_oracle_false_count = count_lines_containing(
         force_residency_lines, "expandedOracleComparisonReady=false"
     )
+    force_residency_expanded_oracle_true_count = count_lines_containing(
+        force_residency_lines, "expandedOracleComparisonReady=true"
+    )
+    force_residency_provider_ab_declared_count = count_lines_containing(
+        force_residency_lines, "liveRecordedProviderAbReady="
+    )
     force_residency_provider_ab_false_count = count_lines_containing(
         force_residency_lines, "liveRecordedProviderAbReady=false"
+    )
+    force_residency_provider_ab_true_count = count_lines_containing(
+        force_residency_lines, "liveRecordedProviderAbReady=true"
     )
     force_residency_force_authority_false_count = count_lines_containing(
         force_residency_lines, "forceAuthorityReady=false"
@@ -1011,20 +1041,22 @@ def validate_summary(
             issues.append("GPU force authority residency did not declare derived buffer reuse")
         if force_residency_bounded_only_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not report boundedProofOnly=true")
-        if force_residency_steady_state_false_count != len(force_residency_lines):
+        if force_residency_steady_state_declared_count != len(force_residency_lines):
             issues.append(
-                "GPU force authority residency claimed steady-state residency too early"
+                "GPU force authority residency did not declare steady-state readiness"
             )
-        if force_residency_freshness_false_count != len(force_residency_lines):
-            issues.append("GPU force authority residency claimed freshness too early")
-        if force_residency_cadence_false_count != len(force_residency_lines):
-            issues.append("GPU force authority residency claimed cadence too early")
-        if force_residency_expanded_oracle_false_count != len(force_residency_lines):
+        if force_residency_freshness_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare freshness readiness")
+        if force_residency_cadence_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare cadence readiness")
+        if force_residency_expanded_oracle_declared_count != len(force_residency_lines):
             issues.append(
-                "GPU force authority residency claimed expanded oracle comparison too early"
+                "GPU force authority residency did not declare expanded oracle comparison readiness"
             )
-        if force_residency_provider_ab_false_count != len(force_residency_lines):
-            issues.append("GPU force authority residency claimed live/recorded A/B too early")
+        if force_residency_provider_ab_declared_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare live/recorded A/B readiness"
+            )
         if force_residency_force_authority_false_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not keep forceAuthorityReady=false")
         if force_residency_runtime_authority_false_count != len(force_residency_lines):
@@ -1285,15 +1317,35 @@ def validate_summary(
         ),
         "force_residency_derived_reuse_count": force_residency_derived_reuse_count,
         "force_residency_bounded_only_count": force_residency_bounded_only_count,
+        "force_residency_steady_state_declared_count": (
+            force_residency_steady_state_declared_count
+        ),
         "force_residency_steady_state_false_count": (
             force_residency_steady_state_false_count
         ),
+        "force_residency_steady_state_true_count": force_residency_steady_state_true_count,
+        "force_residency_freshness_declared_count": (
+            force_residency_freshness_declared_count
+        ),
         "force_residency_freshness_false_count": force_residency_freshness_false_count,
+        "force_residency_freshness_true_count": force_residency_freshness_true_count,
+        "force_residency_cadence_declared_count": force_residency_cadence_declared_count,
         "force_residency_cadence_false_count": force_residency_cadence_false_count,
+        "force_residency_cadence_true_count": force_residency_cadence_true_count,
+        "force_residency_expanded_oracle_declared_count": (
+            force_residency_expanded_oracle_declared_count
+        ),
         "force_residency_expanded_oracle_false_count": (
             force_residency_expanded_oracle_false_count
         ),
+        "force_residency_expanded_oracle_true_count": (
+            force_residency_expanded_oracle_true_count
+        ),
+        "force_residency_provider_ab_declared_count": (
+            force_residency_provider_ab_declared_count
+        ),
         "force_residency_provider_ab_false_count": force_residency_provider_ab_false_count,
+        "force_residency_provider_ab_true_count": force_residency_provider_ab_true_count,
         "force_residency_force_authority_false_count": (
             force_residency_force_authority_false_count
         ),

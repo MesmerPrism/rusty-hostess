@@ -274,8 +274,9 @@ recorded live-input-equivalent GPU proof evidence. Keep
 `positions-only-surface` as baked-surface smoke evidence. The explicit
 recorded-hand proof schedule should report `recordedHandReplaySelected=true`,
 `liveEquivalentHandInputSelected=true`, `blockingGpuDiagnostics=false`, and
-`meshSdfProbeTargetMarkers=2`; it must produce one mesh-SDF setup marker and
-one reuse marker with `programReused=true`. Each completed mesh-SDF readback
+`meshSdfProbeTargetMarkers=5`; it must produce one mesh-SDF setup marker and
+four reuse markers with `programReused=true` so the residency tracker can reach
+the required four reused resident proofs. Each completed mesh-SDF readback
 must also emit `RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION`,
 `RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE`, and
 `RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE` as low-rate resident
@@ -298,10 +299,14 @@ comparisons. `RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY` is the
 exclusive runtime-selector health receipt: current runs keep
 `activeForceAuthorityKind=matter-cpu`, while future promotion may select
 `gpu-dense-sdf-field-particle-force` only after all health gates pass. Hostess
-threads the cumulative mesh-SDF proof ordinal into this marker as
-`observedResidentProofs`; the setup proof and reuse proof must not both report
-`1`. The same marker should expose source/derived buffer resident and reuse
-fields so validation can distinguish first-use setup from steady-state reuse.
+threads the cumulative resident proof counts into this marker as
+`observedResidentProofs` and `reusedResidentProofs`; the setup proof and reuse
+proofs must not all report `1`. The same marker should expose source/derived
+buffer resident and reuse fields so validation can distinguish first-use setup
+from steady-state reuse. It may report `steadyStateResidencyReady=true` or
+`cadenceReady=true` before promotion, but must keep
+`runtimeSelectionPermitted=false` and Matter CPU fallback active until freshness,
+expanded CPU-oracle comparison, and live/recorded provider A/B are also proven.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates

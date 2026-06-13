@@ -6,13 +6,21 @@
 
 use crate::matter_surface_source_selection::MatterSurfaceSourceSelection;
 use crate::runtime_settings::marker_token;
+use rusty_quest_makepad_camera_shell::{
+    QuestMakepadGpuForceAuthorityRuntimeReadiness,
+    QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS,
+};
 
 pub(crate) const MATTER_SURFACE_LIVE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 24;
 pub(crate) const MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS: f64 = 1.0 / 15.0;
 pub(crate) const MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS: f64 = 1.0;
 pub(crate) const MATTER_SURFACE_DEFAULT_MESH_SDF_PROBE_TARGET_MARKERS: usize = 1;
-pub(crate) const MATTER_SURFACE_RECORDED_MESH_SDF_PROBE_TARGET_MARKERS: usize = 2;
-pub(crate) const MATTER_SURFACE_LIVE_MESH_SDF_PROBE_TARGET_MARKERS: usize = 2;
+pub(crate) const MATTER_SURFACE_STEADY_STATE_MESH_SDF_PROBE_TARGET_MARKERS: usize =
+    QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS + 1;
+pub(crate) const MATTER_SURFACE_RECORDED_MESH_SDF_PROBE_TARGET_MARKERS: usize =
+    MATTER_SURFACE_STEADY_STATE_MESH_SDF_PROBE_TARGET_MARKERS;
+pub(crate) const MATTER_SURFACE_LIVE_MESH_SDF_PROBE_TARGET_MARKERS: usize =
+    MATTER_SURFACE_STEADY_STATE_MESH_SDF_PROBE_TARGET_MARKERS;
 
 pub(crate) fn matter_surface_step_interval_seconds(
     selection: &MatterSurfaceSourceSelection,
@@ -107,6 +115,18 @@ impl MatterSurfaceGpuProofSchedule {
             self.mesh_sdf_probe_target_markers,
         )
     }
+
+    pub(crate) fn force_authority_runtime_readiness(
+        self,
+        cadence_ready: bool,
+    ) -> QuestMakepadGpuForceAuthorityRuntimeReadiness {
+        QuestMakepadGpuForceAuthorityRuntimeReadiness {
+            freshness_ready: false,
+            cadence_ready: cadence_ready && !self.blocking_gpu_diagnostics,
+            expanded_oracle_comparison_ready: false,
+            live_recorded_provider_ab_ready: false,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -175,7 +195,7 @@ mod tests {
         assert!(marker.contains("recordedHandReplaySelected=true"));
         assert!(marker.contains("liveEquivalentHandInputSelected=true"));
         assert!(marker.contains("blockingGpuDiagnostics=false"));
-        assert!(marker.contains("meshSdfProbeTargetMarkers=2"));
+        assert!(marker.contains("meshSdfProbeTargetMarkers=5"));
     }
 
     #[test]
@@ -193,8 +213,25 @@ mod tests {
         assert!(marker.contains("liveSourceSubmitCadence=bounded-evidence"));
         assert!(marker.contains("sourceAwareLiveFirstProof=true"));
         assert!(marker.contains("blockingGpuDiagnostics=false"));
-        assert!(marker.contains("meshSdfProbeTargetMarkers=2"));
+        assert!(marker.contains("meshSdfProbeTargetMarkers=5"));
         assert!(marker.contains("gpuAdapterBoundaryUnchanged=true"));
         assert!(marker.contains("highRateJsonPayload=false"));
+    }
+
+    #[test]
+    fn steady_state_runtime_readiness_exposes_cadence_but_keeps_future_gates_closed() {
+        let selection = MatterSurfaceSourceSelection::from_value("recorded-hand-replay", "test");
+        let schedule = MatterSurfaceGpuProofSchedule::for_source_selection(&selection, 900);
+
+        assert_eq!(
+            schedule.mesh_sdf_probe_target_markers,
+            QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS + 1
+        );
+
+        let readiness = schedule.force_authority_runtime_readiness(true);
+        assert!(!readiness.freshness_ready);
+        assert!(readiness.cadence_ready);
+        assert!(!readiness.expanded_oracle_comparison_ready);
+        assert!(!readiness.live_recorded_provider_ab_ready);
     }
 }

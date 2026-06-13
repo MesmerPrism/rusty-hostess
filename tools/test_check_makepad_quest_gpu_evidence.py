@@ -284,6 +284,40 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
             result.summary["force_residency_runtime_authority_false_count"],
         )
 
+    def test_accepts_steady_state_residency_and_cadence_with_cpu_fallback(self):
+        summary = valid_summary()
+        summary["proof_lines"] = [
+            line.replace("profileGateSatisfied=false", "profileGateSatisfied=true")
+            .replace(
+                "gpuForceAuthorityProfileEnabled=false",
+                "gpuForceAuthorityProfileEnabled=true",
+            )
+            .replace("observedResidentProofs=1", "observedResidentProofs=5")
+            .replace("observedResidentProofs=2", "observedResidentProofs=5")
+            .replace("reusedResidentProofs=0", "reusedResidentProofs=4")
+            .replace("reusedResidentProofs=1", "reusedResidentProofs=4")
+            .replace("steadyStateResidencyReady=false", "steadyStateResidencyReady=true")
+            .replace("cadenceReady=false", "cadenceReady=true")
+            .replace(
+                "fallbackReason=profile-prefers-matter-cpu",
+                "fallbackReason=gpu-freshness-not-proven",
+            )
+            for line in summary["proof_lines"]
+        ]
+
+        result = validate_summary(summary, EvidenceThresholds())
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(2, result.summary["force_residency_selection_blocked_count"])
+        self.assertEqual(2, result.summary["force_residency_steady_state_true_count"])
+        self.assertEqual(2, result.summary["force_residency_cadence_true_count"])
+        self.assertEqual(2, result.summary["force_residency_freshness_false_count"])
+        self.assertEqual(
+            2,
+            result.summary["force_residency_runtime_authority_false_count"],
+        )
+
     def test_accepts_mesh_sdf_only_stage_without_force_proofs(self):
         summary = remove_force_stage_markers(add_valid_gpu_proof_epoch(valid_summary()))
 

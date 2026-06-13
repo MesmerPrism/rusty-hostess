@@ -15,13 +15,13 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuFieldParticleForceProbeInput, QuestMakepadGpuFieldSamplingProbe,
     QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuForceAuthorityCandidate,
     QuestMakepadGpuForceAuthorityGate, QuestMakepadGpuForceAuthorityResidencyTracker,
-    QuestMakepadGpuMeshSdfProbe, QuestMakepadGpuMeshSdfProbeInput,
-    QuestMakepadGpuMeshSdfProbeReadback, QuestMakepadGpuSkinningMeshProbe,
-    QuestMakepadGpuSkinningMeshProbeInput, QuestMakepadGpuSkinningMeshProbeReadback,
-    QuestMakepadGpuSkinningMeshVertex, QuestMakepadGpuSkinningProbe,
-    QuestMakepadGpuSkinningProbeInput, QuestMakepadGpuSkinningProbeReadback,
-    QuestMakepadGpuSkinningProbeSample, QuestMakepadMatterSurfaceFrame,
-    QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    QuestMakepadGpuForceAuthorityRuntimeReadiness, QuestMakepadGpuMeshSdfProbe,
+    QuestMakepadGpuMeshSdfProbeInput, QuestMakepadGpuMeshSdfProbeReadback,
+    QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
+    QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
+    QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
+    QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
+    QuestMakepadMatterSurfaceFrame, QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_SAMPLES,
@@ -188,6 +188,7 @@ pub(crate) fn gpu_mesh_sdf_probe_poll_marker_lines(
     pending: &PendingGpuMeshSdfProbe,
     phase: &str,
     residency_tracker: &mut QuestMakepadGpuForceAuthorityResidencyTracker,
+    runtime_readiness: QuestMakepadGpuForceAuthorityRuntimeReadiness,
 ) -> Option<Vec<String>> {
     let readback = cx.xr_gpu_f32_mesh_sdf_probe_poll(pending.ticket.request_id)?;
     gpu_mesh_sdf_probe_marker_lines_from_readback(
@@ -199,6 +200,7 @@ pub(crate) fn gpu_mesh_sdf_probe_poll_marker_lines(
         readback,
         phase,
         residency_tracker,
+        runtime_readiness,
     )
 }
 
@@ -265,6 +267,7 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
     readback: XrGpuF32MeshSdfProbeResult,
     phase: &str,
     residency_tracker: &mut QuestMakepadGpuForceAuthorityResidencyTracker,
+    runtime_readiness: QuestMakepadGpuForceAuthorityRuntimeReadiness,
 ) -> Option<Vec<String>> {
     let mut readback_sample_indices = [0_usize; QUEST_MAKEPAD_GPU_MESH_SDF_PROBE_SAMPLES];
     for (target, source) in readback_sample_indices
@@ -334,6 +337,7 @@ fn gpu_mesh_sdf_probe_marker_lines_from_readback(
             requested_force_authority,
             phase,
             residency_tracker,
+            runtime_readiness,
         ) {
             markers.extend(particle_markers);
         }
@@ -520,6 +524,7 @@ fn gpu_field_particle_force_probe_marker_lines(
     requested_force_authority: QuestMakepadForceAuthorityMode,
     phase: &str,
     residency_tracker: &mut QuestMakepadGpuForceAuthorityResidencyTracker,
+    runtime_readiness: QuestMakepadGpuForceAuthorityRuntimeReadiness,
 ) -> Option<Vec<String>> {
     if !receipt.runtime_field_boundary_ready() {
         return None;
@@ -570,6 +575,7 @@ fn gpu_field_particle_force_probe_marker_lines(
         readback,
         phase,
         residency_tracker,
+        runtime_readiness,
     )
 }
 
@@ -581,6 +587,7 @@ fn gpu_field_particle_force_probe_marker_lines_from_readback(
     readback: XrGpuF32FieldForceSampleProbeResult,
     phase: &str,
     residency_tracker: &mut QuestMakepadGpuForceAuthorityResidencyTracker,
+    runtime_readiness: QuestMakepadGpuForceAuthorityRuntimeReadiness,
 ) -> Option<Vec<String>> {
     let probe = QuestMakepadGpuFieldParticleForceProbe::from_receipt_and_input(
         receipt,
@@ -621,7 +628,8 @@ fn gpu_field_particle_force_probe_marker_lines_from_readback(
             requested_force_authority,
         ) {
             markers.push(gate.marker_line(phase));
-            let residency_health = residency_tracker.observe_gate(&gate);
+            let residency_health =
+                residency_tracker.observe_gate_with_runtime_readiness(&gate, runtime_readiness);
             markers.push(residency_health.marker_line(phase));
         }
     }
