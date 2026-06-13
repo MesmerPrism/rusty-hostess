@@ -104,6 +104,15 @@ The current app emits
 detail read, recording the scoped revision key, subscribed scopes, selected
 gate, and applied/rejected status.
 
+`apps/hostess-t-makepad/src/makepad_runtime_config.rs` owns canonical
+renderer-neutral projection runtime keys, typed parsing, layered resolution,
+and manifest marker formatting. Accepted external spellings for launch extras,
+Android properties, and environment variables live in
+`apps/hostess-t-makepad/src/makepad_runtime_config/aliases.rs` and are
+re-exported through the parent module only for facade compatibility. Keep
+legacy or retired names out of the canonical registry unless a compatibility
+bridge is explicitly approved and covered by the alias tests.
+
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live
 run is tied back to the Manifold Hostess contract spine.
