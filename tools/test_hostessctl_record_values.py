@@ -496,7 +496,7 @@ class HostessCtlRecordValuesTests(unittest.TestCase):
         self.assertEqual(command["params"]["stream"], "stream.motion.object_pose")
 
     def test_broker_websocket_client_defaults_to_manifold_path(self) -> None:
-        with patch("tools.hostessctl.hostessctl.socket.create_connection") as create_connection:
+        with patch("tools.hostessctl.broker_transport.socket.create_connection") as create_connection:
             fake_socket = create_connection.return_value
             fake_socket.recv.return_value = (
                 b"HTTP/1.1 101 Switching Protocols\r\n"

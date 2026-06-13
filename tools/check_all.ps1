@@ -21,6 +21,8 @@ try {
     $PythonFiles = @(
         "tools\hostessctl\hostessctl.py",
         "tools\hostessctl\android_files.py",
+        "tools\hostessctl\broker_transport.py",
+        "tools\hostessctl\pmb_broker_bridge.py",
         "tools\hostessctl\pmb_evidence.py",
         "tools\hostessctl\recording_evidence.py",
         "tools\hostessctl\telemetry_render.py",

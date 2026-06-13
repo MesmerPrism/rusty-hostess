@@ -3,11 +3,7 @@
 from __future__ import annotations
 
 import argparse
-import base64
-import hashlib
 import json
-import os
-import socket
 import subprocess
 import sys
 import time
@@ -22,8 +18,29 @@ sys.path.insert(0, str(REPO_ROOT))
 from tools.check_live_capture_evidence import package_snapshot  # noqa: E402
 from tools.hostessctl import android_files  # noqa: E402
 from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
+from tools.hostessctl.broker_transport import (  # noqa: E402
+    MANIFOLD_BROKER_EVENTS_PATH,
+    MANIFOLD_COMMAND_SCHEMA,
+    BrokerWebSocketClient,
+    accept_broker_stream_event,
+    broker_ack_accepted,
+    broker_command_message,
+    connect_broker_websocket_with_retry,
+    with_transport_event_aliases,
+)
 from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
     makepad_visual_profile_runtime_properties,
+)
+from tools.hostessctl.pmb_broker_bridge import (  # noqa: E402
+    listen_for_pmb_receipts,
+    pmb_breath_payload,
+    pmb_breath_source_kind,
+    pmb_breath_source_stream_id,
+    publish_pmb_feedback_samples,
+    publish_pmb_stream_sample,
+    sample_time_unix_ns_from_sample,
+    select_pmb_output_samples,
+    select_pmb_selected_breath_samples,
 )
 from tools.hostessctl.pmb_evidence import (  # noqa: E402
     PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
@@ -87,8 +104,6 @@ BROKER_PACKAGE = MANIFOLD_BROKER_PACKAGE
 BROKER_ACTIVITY = MANIFOLD_BROKER_ACTIVITY
 BROKER_PORT = 8765
 BROKER_LOCAL_FORWARD_PORT = 18765
-MANIFOLD_COMMAND_SCHEMA = "rusty.manifold.command.envelope.v1"
-MANIFOLD_BROKER_EVENTS_PATH = "/manifold/v1/events"
 MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
 MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
 MAKEPAD_ANDROID_XR_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadAppXr"
@@ -1623,130 +1638,6 @@ def single_value_live_capture_args(
     )
 
 
-class BrokerWebSocketClient:
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        *,
-        path: str = MANIFOLD_BROKER_EVENTS_PATH,
-        timeout: float = 5.0,
-    ) -> None:
-        self.host = host
-        self.port = port
-        self.path = path
-        self.sock = socket.create_connection((host, port), timeout=timeout)
-        self.sock.settimeout(timeout)
-        self.key = base64.b64encode(os.urandom(16)).decode("ascii")
-        request = (
-            f"GET {path} HTTP/1.1\r\n"
-            f"Host: {host}:{port}\r\n"
-            "Upgrade: websocket\r\n"
-            "Connection: Upgrade\r\n"
-            f"Sec-WebSocket-Key: {self.key}\r\n"
-            "Sec-WebSocket-Version: 13\r\n"
-            "\r\n"
-        )
-        self.sock.sendall(request.encode("ascii"))
-        response = self._read_http_response()
-        status_line = response.split(b"\r\n", 1)[0]
-        if b" 101 " not in status_line:
-            raise RuntimeError(f"broker websocket handshake failed: {status_line.decode('ascii', 'replace')}")
-        expected_accept = base64.b64encode(
-            hashlib.sha1((self.key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11").encode("ascii")).digest()
-        ).decode("ascii")
-        headers = {}
-        for line in response.split(b"\r\n")[1:]:
-            if b":" not in line:
-                continue
-            name, value = line.split(b":", 1)
-            headers[name.decode("ascii", "ignore").strip().lower()] = value.decode("ascii", "ignore").strip()
-        if headers.get("sec-websocket-accept") != expected_accept:
-            raise RuntimeError("broker websocket handshake accept header did not match")
-
-    def close(self) -> None:
-        try:
-            self._send_frame(b"", opcode=0x8)
-        except OSError:
-            pass
-        try:
-            self.sock.close()
-        except OSError:
-            pass
-
-    def send_json(self, payload: dict[str, Any]) -> None:
-        data = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        self._send_frame(data, opcode=0x1)
-
-    def recv_json(self, *, timeout: float) -> dict[str, Any] | None:
-        old_timeout = self.sock.gettimeout()
-        self.sock.settimeout(timeout)
-        try:
-            while True:
-                opcode, payload = self._recv_frame()
-                if opcode == 0x1:
-                    return json.loads(payload.decode("utf-8"))
-                if opcode == 0x8:
-                    return None
-                if opcode == 0x9:
-                    self._send_frame(payload, opcode=0xA)
-        except socket.timeout:
-            return None
-        finally:
-            self.sock.settimeout(old_timeout)
-
-    def _read_http_response(self) -> bytes:
-        data = bytearray()
-        while b"\r\n\r\n" not in data:
-            chunk = self.sock.recv(4096)
-            if not chunk:
-                break
-            data.extend(chunk)
-            if len(data) > 65536:
-                raise RuntimeError("broker websocket handshake response exceeded 64 KiB")
-        return bytes(data)
-
-    def _send_frame(self, payload: bytes, *, opcode: int) -> None:
-        header = bytearray()
-        header.append(0x80 | (opcode & 0x0F))
-        length = len(payload)
-        if length < 126:
-            header.append(0x80 | length)
-        elif length <= 0xFFFF:
-            header.append(0x80 | 126)
-            header.extend(length.to_bytes(2, "big"))
-        else:
-            header.append(0x80 | 127)
-            header.extend(length.to_bytes(8, "big"))
-        mask = os.urandom(4)
-        masked = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
-        self.sock.sendall(bytes(header) + mask + masked)
-
-    def _recv_frame(self) -> tuple[int, bytes]:
-        first = self._read_exact(2)
-        opcode = first[0] & 0x0F
-        masked = bool(first[1] & 0x80)
-        length = first[1] & 0x7F
-        if length == 126:
-            length = int.from_bytes(self._read_exact(2), "big")
-        elif length == 127:
-            length = int.from_bytes(self._read_exact(8), "big")
-        mask = self._read_exact(4) if masked else b""
-        payload = self._read_exact(length) if length else b""
-        if masked:
-            payload = bytes(value ^ mask[index % 4] for index, value in enumerate(payload))
-        return opcode, payload
-
-    def _read_exact(self, size: int) -> bytes:
-        data = bytearray()
-        while len(data) < size:
-            chunk = self.sock.recv(size - len(data))
-            if not chunk:
-                raise RuntimeError("broker websocket closed while reading")
-            data.extend(chunk)
-        return bytes(data)
-
-
 def record_broker_websocket_streams(
     args: argparse.Namespace,
     provider_plans: list[dict[str, Any]],
@@ -2089,63 +1980,6 @@ def adb_prefix(args: argparse.Namespace) -> list[str]:
     return [args.adb, "-s", args.serial]
 
 
-def broker_command_message(
-    command: str,
-    params: dict[str, Any] | None = None,
-    *,
-    request_id: str | None = None,
-) -> dict[str, Any]:
-    return {
-        "type": "command",
-        "schema": MANIFOLD_COMMAND_SCHEMA,
-        "request_id": request_id or f"hostess-record-values-{command.replace('.', '-')}",
-        "command": command,
-        "params": params or {},
-        "client_id": "hostessctl.record_values",
-        "app_package": "rusty-hostess",
-    }
-
-
-def broker_ack_accepted(reply: dict[str, Any]) -> bool:
-    if "accepted" in reply:
-        return bool(reply.get("accepted"))
-    return bool(reply.get("ok", reply.get("success", True)))
-
-
-def connect_broker_websocket_with_retry(
-    host: str,
-    port: int,
-    provider_actions: list[dict[str, Any]],
-    errors: list[str],
-) -> BrokerWebSocketClient:
-    deadline = time.monotonic() + 15.0
-    attempt = 0
-    last_error: Exception | None = None
-    while time.monotonic() < deadline:
-        attempt += 1
-        try:
-            client = BrokerWebSocketClient(host, port, timeout=2.0)
-            provider_actions.append(
-                {
-                    "action": "connect-broker-websocket",
-                    "attempt": attempt,
-                    "status": "pass",
-                    "host": host,
-                    "port": port,
-                }
-            )
-            return client
-        except OSError as ex:
-            last_error = ex
-            time.sleep(0.25)
-        except RuntimeError as ex:
-            last_error = ex
-            time.sleep(0.25)
-    message = f"broker websocket connection failed: {last_error}"
-    errors.append(message)
-    raise RuntimeError(message)
-
-
 def configure_makepad_controller_pose_provider(
     args: argparse.Namespace,
     run_adb: Any,
@@ -2442,355 +2276,6 @@ def run_pmb_live_processor_bridge(
             },
         ],
     }
-
-
-def publish_pmb_feedback_samples(
-    args: argparse.Namespace,
-    route_report: dict[str, Any],
-    send_broker_command: Any,
-) -> dict[str, Any]:
-    limit = max(0, int(getattr(args, "pmb_feedback_publish_limit", 0)))
-    breath_samples = select_pmb_output_samples(route_report.get("breath_samples", []), limit)
-    selected_source_preference = str(getattr(args, "pmb_breath_selected_source", "auto") or "auto")
-    selected_breath_samples, selected_source_effective = select_pmb_selected_breath_samples(
-        breath_samples,
-        selected_source_preference,
-        limit,
-    )
-    feedback_samples = select_pmb_output_samples(route_report.get("feedback_samples", []), limit)
-    breath_results: list[dict[str, Any]] = []
-    for index, sample in enumerate(breath_samples):
-        sequence_id = int(sample.get("sequence_id") or index + 1)
-        breath_results.append(
-            publish_pmb_stream_sample(
-                send_broker_command,
-                stream_id=PMB_BREATH_VOLUME_STREAM,
-                sequence_id=sequence_id,
-                payload=pmb_breath_payload(sample, sequence_id, PMB_BREATH_VOLUME_STREAM),
-            )
-        )
-        source_stream_id = pmb_breath_source_stream_id(sample)
-        if source_stream_id is not None:
-            breath_results.append(
-                publish_pmb_stream_sample(
-                    send_broker_command,
-                    stream_id=source_stream_id,
-                    sequence_id=sequence_id,
-                    payload=pmb_breath_payload(sample, sequence_id, source_stream_id),
-                )
-            )
-    selected_breath_results = [
-        publish_pmb_stream_sample(
-            send_broker_command,
-            stream_id=PMB_BREATH_VOLUME_SELECTED_STREAM,
-            sequence_id=int(sample.get("sequence_id") or index + 1),
-            payload=pmb_breath_payload(
-                sample,
-                int(sample.get("sequence_id") or index + 1),
-                PMB_BREATH_VOLUME_SELECTED_STREAM,
-                selected=True,
-                selected_source_preference=selected_source_preference,
-                selected_source_effective=selected_source_effective,
-            ),
-        )
-        for index, sample in enumerate(selected_breath_samples)
-    ]
-    breath_results.extend(selected_breath_results)
-    selection_state_results: list[dict[str, Any]] = []
-    if limit > 0:
-        selection_state_results.append(
-            publish_pmb_stream_sample(
-                send_broker_command,
-                stream_id=PMB_BREATH_SELECTION_STATE_STREAM,
-                sequence_id=1,
-                payload={
-                    "schema": "rusty.manifold.breath.selection_state.v1",
-                    "stream_id": PMB_BREATH_SELECTION_STATE_STREAM,
-                    "sequence_id": 1,
-                    "selected_stream_id": PMB_BREATH_VOLUME_SELECTED_STREAM,
-                    "selected_source_preference": selected_source_preference,
-                    "selected_source_effective": selected_source_effective,
-                    "source_stream_ids": [
-                        PMB_BREATH_VOLUME_POLAR_STREAM,
-                        PMB_BREATH_VOLUME_CONTROLLER_STREAM,
-                    ],
-                    "selected_sample_count": len(selected_breath_samples),
-                    "publisher": "hostessctl.record_values",
-                },
-            )
-        )
-    breath_results.extend(selection_state_results)
-    feedback_results = [
-        publish_pmb_stream_sample(
-            send_broker_command,
-            stream_id=PMB_BREATH_FEEDBACK_STATE_STREAM,
-            sequence_id=int(sample.get("sequence_id") or index + 1),
-            payload={
-                "schema": "rusty.manifold.breath.feedback_state.v1",
-                "stream_id": PMB_BREATH_FEEDBACK_STATE_STREAM,
-                "sequence_id": int(sample.get("sequence_id") or index + 1),
-                "source_breath_sequence_id": sample.get("source_breath_sequence_id"),
-                "source_id": sample.get("source_id"),
-                "sample_time_unix_ns": sample.get("sample_time_unix_ns"),
-                "volume01": sample.get("volume01"),
-                "phase": sample.get("phase"),
-                "quality": sample.get("quality"),
-                "processor_id": "processor.projected_motion_breath.live_bridge",
-                "publisher": "hostessctl.record_values",
-            },
-        )
-        for index, sample in enumerate(feedback_samples)
-    ]
-    return {
-        "limit": limit,
-        "selected_source_preference": selected_source_preference,
-        "selected_source_effective": selected_source_effective,
-        "breath_requested_count": len(route_report.get("breath_samples", [])),
-        "feedback_requested_count": len(route_report.get("feedback_samples", [])),
-        "breath_published_count": sum(
-            1
-            for result in breath_results
-            if result.get("stream_id") == PMB_BREATH_VOLUME_STREAM and result.get("status") == "pass"
-        ),
-        "selected_breath_published_count": sum(
-            1
-            for result in selected_breath_results
-            if result.get("status") == "pass"
-        ),
-        "selection_state_published_count": sum(
-            1
-            for result in selection_state_results
-            if result.get("status") == "pass"
-        ),
-        "feedback_published_count": sum(1 for result in feedback_results if result.get("status") == "pass"),
-        "published_count": sum(1 for result in breath_results + feedback_results if result.get("status") == "pass"),
-        "published": any(result.get("status") == "pass" for result in breath_results + feedback_results),
-        "breath_results": breath_results,
-        "selected_breath_results": selected_breath_results,
-        "feedback_results": feedback_results,
-    }
-
-
-def pmb_breath_payload(
-    sample: dict[str, Any],
-    sequence_id: int,
-    stream_id: str,
-    *,
-    selected: bool = False,
-    selected_source_preference: str = "auto",
-    selected_source_effective: str = "auto",
-) -> dict[str, Any]:
-    payload = {
-        "schema": "rusty.manifold.breath.volume.v1",
-        "stream_id": stream_id,
-        "sequence_id": sequence_id,
-        "source_id": sample.get("source_id"),
-        "source_kind": pmb_breath_source_kind(sample),
-        "input_stream_id": sample.get("input_stream_id"),
-        "normalized_stream_id": sample.get("normalized_stream_id"),
-        "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
-        "volume01": sample.get("volume01"),
-        "phase": sample.get("phase"),
-        "quality": sample.get("quality"),
-        "quality01": sample.get("quality01", sample.get("tracking01", 1.0)),
-        "tracking01": sample.get("tracking01"),
-        "processor_id": "processor.projected_motion_breath.live_bridge",
-        "publisher": "hostessctl.record_values",
-    }
-    if selected:
-        payload.update(
-            {
-                "selected": True,
-                "selected_source_preference": selected_source_preference,
-                "selected_source_effective": selected_source_effective,
-            }
-        )
-    return payload
-
-
-def pmb_breath_source_kind(sample: dict[str, Any]) -> str:
-    text = " ".join(
-        str(sample.get(key) or "")
-        for key in ("source_id", "input_stream_id", "normalized_stream_id")
-    ).lower()
-    if "polar" in text or "bio:polar" in text:
-        return "polar"
-    if "controller" in text or "object_pose" in text or "motion.object" in text:
-        return "controller"
-    return "unknown"
-
-
-def pmb_breath_source_stream_id(sample: dict[str, Any]) -> str | None:
-    source_kind = pmb_breath_source_kind(sample)
-    if source_kind == "polar":
-        return PMB_BREATH_VOLUME_POLAR_STREAM
-    if source_kind == "controller":
-        return PMB_BREATH_VOLUME_CONTROLLER_STREAM
-    return None
-
-
-def select_pmb_selected_breath_samples(
-    breath_samples: list[dict[str, Any]],
-    selected_source_preference: str,
-    limit: int,
-) -> tuple[list[dict[str, Any]], str]:
-    if limit <= 0:
-        return [], selected_source_preference
-    source_kinds = [pmb_breath_source_kind(sample) for sample in breath_samples]
-    effective = selected_source_preference
-    if selected_source_preference == "auto":
-        if "polar" in source_kinds:
-            effective = "polar"
-        elif "controller" in source_kinds:
-            effective = "controller"
-        else:
-            effective = "unknown"
-    selected = [
-        sample
-        for sample in breath_samples
-        if effective == "unknown" or pmb_breath_source_kind(sample) == effective
-    ]
-    return selected[:limit], effective
-
-
-def select_pmb_output_samples(raw_samples: Any, limit: int) -> list[dict[str, Any]]:
-    if limit <= 0 or not isinstance(raw_samples, list):
-        return []
-    by_source: dict[str, list[dict[str, Any]]] = {}
-    source_order: list[str] = []
-    for sample in raw_samples:
-        if not isinstance(sample, dict):
-            continue
-        source_id = str(sample.get("source_id") or "source.unknown")
-        if source_id not in by_source:
-            by_source[source_id] = []
-            source_order.append(source_id)
-        by_source[source_id].append(sample)
-    selected: list[dict[str, Any]] = []
-    cursor = 0
-    while len(selected) < limit and source_order:
-        progressed = False
-        for source_id in source_order:
-            source_samples = by_source[source_id]
-            if cursor < len(source_samples):
-                selected.append(source_samples[cursor])
-                progressed = True
-                if len(selected) >= limit:
-                    break
-        if not progressed:
-            break
-        cursor += 1
-    return selected
-
-
-def publish_pmb_stream_sample(
-    send_broker_command: Any,
-    *,
-    stream_id: str,
-    sequence_id: int,
-    payload: dict[str, Any],
-) -> dict[str, Any]:
-    ack = send_broker_command(
-        "publish_stream_event",
-        {
-            "stream": stream_id,
-            "sequence_id": sequence_id,
-            "payload": payload,
-        },
-    )
-    return {
-        "stream_id": stream_id,
-        "sequence_id": sequence_id,
-        "status": ack.get("status"),
-        "request_id": ack.get("request_id"),
-    }
-
-
-def sample_time_unix_ns_from_sample(sample: dict[str, Any]) -> int:
-    value = sample.get("sample_time_unix_ns")
-    if isinstance(value, (int, float)):
-        return int(value)
-    sample_time_s = sample.get("sample_time_s")
-    if isinstance(sample_time_s, (int, float)):
-        return int(max(0.0, float(sample_time_s)) * 1_000_000_000)
-    return 0
-
-
-def listen_for_pmb_receipts(
-    args: argparse.Namespace,
-    ws: BrokerWebSocketClient,
-    stream_rows: dict[str, dict[str, Any]],
-    events_jsonl: Path,
-    broker_acks: list[dict[str, Any]],
-) -> None:
-    deadline = time.monotonic() + max(0.0, float(getattr(args, "pmb_receipt_listen_seconds", 0.0)))
-    with events_jsonl.open("a", encoding="utf-8") as events_file:
-        while time.monotonic() < deadline:
-            remaining = max(0.05, min(0.25, deadline - time.monotonic()))
-            message = ws.recv_json(timeout=remaining)
-            if message is None:
-                continue
-            if message.get("type") == "stream_event":
-                accept_broker_stream_event(message, stream_rows, events_jsonl, events_file=events_file)
-            else:
-                broker_acks.append(
-                    {
-                        "command": str(message.get("command") or message.get("type") or "broker-message"),
-                        "request_id": message.get("request_id"),
-                        "status": "observed",
-                        "reply": message,
-                    }
-                )
-
-
-def accept_broker_stream_event(
-    event: dict[str, Any],
-    stream_rows: dict[str, dict[str, Any]],
-    events_jsonl: Path,
-    *,
-    events_file: Any | None = None,
-) -> None:
-    event = with_transport_event_aliases(event)
-    payload = event.get("payload") if isinstance(event.get("payload"), dict) else {}
-    stream = str(event.get("stream") or event.get("stream_id") or payload.get("stream_id") or "")
-    if stream not in stream_rows:
-        return
-    now = datetime.now(UTC).isoformat()
-    row = stream_rows[stream]
-    row["event_count"] = int(row["event_count"]) + 1
-    row["sample_count"] = int(row["sample_count"]) + 1
-    if row["first_event_at_utc"] is None:
-        row["first_event_at_utc"] = now
-    row["last_event_at_utc"] = now
-    line = json.dumps(event, separators=(",", ":"), sort_keys=True)
-    if events_file is not None:
-        events_file.write(line + "\n")
-    else:
-        with events_jsonl.open("a", encoding="utf-8") as file:
-            file.write(line + "\n")
-
-
-def with_transport_event_aliases(event: dict[str, Any]) -> dict[str, Any]:
-    normalized = dict(event)
-    payload = normalized.get("payload")
-    if isinstance(payload, dict):
-        payload = dict(payload)
-        normalized["payload"] = payload
-    else:
-        payload = {}
-
-    for old_key, new_key in (
-        ("broker_time_unix_ns", "transport_time_unix_ns"),
-        ("broker_receive_time_unix_ns", "transport_receive_time_unix_ns"),
-    ):
-        if new_key not in normalized and old_key in normalized:
-            normalized[new_key] = normalized[old_key]
-        if new_key not in payload and old_key in payload:
-            payload[new_key] = payload[old_key]
-
-    return normalized
-
-
 
 
 def redact_command(command: list[str]) -> list[str]:
