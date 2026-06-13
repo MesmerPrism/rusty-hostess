@@ -258,8 +258,9 @@ state, panel live-design registration, draw shader defaults, shader uniform
 application, camera texture binding, and horizontal alignment tuning
 application for the stereo camera panel; `matter_world_particle_billboard.rs`
 and `matter_world_adf_debug.rs` own the Hostess-local world renderer widgets
-and their Makepad widget defaults. Keep `main.rs` as app-shell wiring and the
-Hostess app layout registration.
+and their Makepad widget defaults; `makepad_app_live_design.rs` owns the
+Hostess app layout registration. Keep `main.rs` as app-shell runtime wiring,
+event handling, and module registration.
 
 For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:

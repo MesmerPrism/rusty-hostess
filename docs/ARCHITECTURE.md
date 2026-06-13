@@ -158,8 +158,7 @@ event orchestration and delegates source planning through thin wrappers.
 uniform application, texture slot binding, target-footprint push state, and
 horizontal alignment tuning application. It also owns the panel live-design
 `script_mod!` block, including draw shader defaults and widget defaults. The
-app root registers the panel module before the Hostess app layout script and
-keeps the app UI `startup()` block as app-shell wiring.
+app root registers the panel module before the Hostess app layout script.
 
 `apps/hostess-t-makepad/src/matter_world_particle_billboard.rs` and
 `apps/hostess-t-makepad/src/matter_world_adf_debug.rs` own the
@@ -167,6 +166,11 @@ Hostess-local world-particle and ADF debug renderer widgets plus their
 Makepad widget-default `script_mod!` blocks. Matter, Optics, and
 Quest-Makepad remain the runtime truth and renderer-neutral row authorities;
 these modules only draw bounded Makepad evidence rows.
+
+`apps/hostess-t-makepad/src/makepad_app_live_design.rs` owns the Hostess app
+layout `script_mod!` block and `startup()` UI tree. The app root calls this
+module after all widget/default modules are registered, then keeps runtime
+state, event handling, and data-plane adoption wiring in Rust.
 
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact

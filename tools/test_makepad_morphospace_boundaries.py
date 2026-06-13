@@ -51,7 +51,8 @@ class MakepadMorphospaceBoundaryTests(unittest.TestCase):
 
         self.assertIn("mod matter_world_particle_billboard;", main)
         self.assertIn("mod matter_surface_runtime;", main)
-        self.assertIn("MatterWorldParticleBillboardCloud", main)
+        self.assertIn("matter_world_particle_billboard::script_mod(vm)", main)
+        self.assertIn("MatterWorldParticleBillboardCloud", widget)
         self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_RENDERER_ID", runtime)
         self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_ANIMATION_SOURCE", runtime)
         self.assertIn("QUEST_MAKEPAD_WORLD_PARTICLE_BILLBOARD_REFERENCE", runtime)
