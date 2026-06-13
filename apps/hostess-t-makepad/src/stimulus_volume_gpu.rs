@@ -5,7 +5,9 @@
 //! and emits the resulting evidence line.
 
 use crate::runtime_settings::marker_token;
-use crate::stimulus_stereo_field::StimulusStereoFieldState;
+use crate::stimulus_stereo_field::{
+    StimulusStereoFieldState, STIMULUS_VOLUME_FRAGMENT_RENDER_PATH,
+};
 use makepad_widgets::makepad_platform::{
     XrGpuF32VolumeImagePreviewOutput, XrGpuF32VolumeImagePreviewPixel,
     XrGpuF32VolumeImagePreviewResult, XrGpuF32VolumeImagePreviewTextureAdoption,
@@ -140,7 +142,7 @@ impl StimulusVolumeImagePreviewReady {
         binding: &StimulusVolumeTextureBindingEvidence,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource={} resourcePlane={} sourceRequestId={} imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat={} textureUploadBytes={} cpuTextureUploadPerformed={} platformTextureAdopted={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage={} imageOwnershipTransferred={} storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} textureResourceGeneration={} replacedExistingTextureResource={} queueWaitIdlePerformed={} elapsedMs={}",
+            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath={} validationTexturePath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource={} resourcePlane={} sourceRequestId={} imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat={} textureUploadBytes={} cpuTextureUploadPerformed={} platformTextureAdopted={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage={} imageOwnershipTransferred={} storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} textureResourceGeneration={} replacedExistingTextureResource={} queueWaitIdlePerformed={} elapsedMs={}",
             marker_token(phase),
             if !self.readback_matched() {
                 "rejected-source-mismatch"
@@ -152,6 +154,7 @@ impl StimulusVolumeImagePreviewReady {
             panel_bound,
             marker_token(&self.profile_id),
             marker_token(&self.profile_sha256),
+            STIMULUS_VOLUME_FRAGMENT_RENDER_PATH,
             binding.texture_source,
             binding.resource_plane,
             self.request_id,

@@ -1,8 +1,10 @@
-//! Hostess-local Makepad preview renderer for staged Optics stimulus profiles.
+//! Hostess-local Makepad GPU renderer for staged Optics stimulus profiles.
 //!
-//! This is a headset visibility bridge, not the final compute renderer. Optics
-//! owns the profile schema and layer graph; this widget proves that the staged
-//! browser profile can drive a full-viewport stereo Makepad draw path.
+//! Optics owns the profile schema and layer graph. This widget is the
+//! Quest-visible presentation bridge: it renders a full-viewport per-eye
+//! fragment volume path and keeps the small compute texture path as validation
+//! evidence/fallback while the renderer-neutral backend is split into Optics and
+//! Makepad adapters.
 
 use crate::makepad_widgets::*;
 use crate::projection_settings::{
@@ -23,6 +25,9 @@ pub(crate) const STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA: &str =
 const STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT: usize = 8;
 static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 pub(crate) const STIMULUS_VOLUME_TEXTURE_SLOT: usize = 0;
+pub(crate) const STIMULUS_VOLUME_FRAGMENT_RENDER_PATH: &str =
+    "makepad-xr-fragment-volume-raymarch-v1";
+pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 16;
 
 pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
     [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -246,6 +251,44 @@ impl StimulusStereoFieldState {
         Self::default()
     }
 
+    pub(crate) fn volume_fragment_renderer_ready(&self) -> bool {
+        self.enabled && self.volume_present
+    }
+
+    pub(crate) fn volume_render_path(&self) -> &'static str {
+        if self.volume_fragment_renderer_ready() {
+            STIMULUS_VOLUME_FRAGMENT_RENDER_PATH
+        } else {
+            "makepad-xr-fragment-preview"
+        }
+    }
+
+    pub(crate) fn volume_shader_raymarch_steps(&self) -> f32 {
+        if !self.volume_fragment_renderer_ready() {
+            return 0.0;
+        }
+        self.volume_step_count
+            .max(1)
+            .min(STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES) as f32
+    }
+
+    pub(crate) fn volume_grid_frequency(&self) -> f32 {
+        let max_axis = self
+            .volume_grid_dimensions
+            .iter()
+            .copied()
+            .max()
+            .unwrap_or(1)
+            .max(1) as f32;
+        (max_axis / 8.0).clamp(1.0, 64.0)
+    }
+
+    pub(crate) fn volume_eccentricity(&self) -> f32 {
+        let x = self.volume_grid_dimensions[0].max(1) as f32;
+        let y = self.volume_grid_dimensions[1].max(1) as f32;
+        (x / y).clamp(0.35, 2.75)
+    }
+
     pub(crate) fn marker_line(
         &self,
         phase: &str,
@@ -254,7 +297,7 @@ impl StimulusStereoFieldState {
         projection_rows_ready: bool,
     ) -> String {
         format!(
-            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
+            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
             STIMULUS_STEREO_FIELD_MARKER_PREFIX,
             STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
             marker_token(phase),
@@ -270,6 +313,10 @@ impl StimulusStereoFieldState {
             marker_token(&self.tuning_sha256),
             marker_token(&self.presentation_mode),
             marker_token(&self.stereo_binding),
+            self.volume_render_path(),
+            self.volume_fragment_renderer_ready(),
+            self.volume_fragment_renderer_ready(),
+            self.volume_fragment_renderer_ready(),
             self.temporal_frequency_hz,
             self.spatial_frequency,
             self.geometry_mix,
@@ -280,6 +327,7 @@ impl StimulusStereoFieldState {
             marker_token(&self.volume_storage_hint),
             marker_grid_dimensions(self.volume_grid_dimensions),
             self.volume_step_count,
+            self.volume_shader_raymarch_steps(),
             marker_token(&self.kernel_abi_id),
             self.compute_pass_count,
             self.volume_readback_probe_samples,
@@ -301,7 +349,7 @@ impl StimulusStereoFieldState {
             return None;
         }
         Some(format!(
-            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath=makepad-xr-fragment-preview resourcePlane=staged-optics-json-profile gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
+            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath={} resourcePlane=staged-optics-json-profile fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
             STIMULUS_VOLUME_ADOPTION_MARKER,
             STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA,
             marker_token(phase),
@@ -314,10 +362,12 @@ impl StimulusStereoFieldState {
             marker_token(&self.volume_storage_hint),
             marker_grid_dimensions(self.volume_grid_dimensions),
             self.volume_step_count,
+            self.volume_shader_raymarch_steps(),
             marker_token(&self.kernel_abi_id),
             self.compute_pass_count,
             self.volume_readback_probe_samples,
             self.stereo_field_output_layers,
+            self.volume_render_path(),
         ))
     }
 }
@@ -409,6 +459,22 @@ pub struct DrawStimulusStereoField {
     pub volume_texture_ready: f32,
     #[live(0.0_f32)]
     pub volume_texture_blend: f32,
+    #[live(0.0_f32)]
+    pub volume_renderer_ready: f32,
+    #[live(0.0_f32)]
+    pub volume_renderer_blend: f32,
+    #[live(0.0_f32)]
+    pub volume_raymarch_steps: f32,
+    #[live(1.0_f32)]
+    pub volume_grid_frequency: f32,
+    #[live(0.72_f32)]
+    pub volume_density_gain: f32,
+    #[live(1.25_f32)]
+    pub volume_absorption: f32,
+    #[live(0.0_f32)]
+    pub volume_phase: f32,
+    #[live(1.0_f32)]
+    pub volume_eccentricity: f32,
 }
 
 impl DrawStimulusStereoField {
@@ -448,6 +514,21 @@ impl DrawStimulusStereoField {
         self.projection_preview_fov_y_degrees = makepad_projection_preview_fov_y_degrees();
         self.projection_preview_offset_y_meters = makepad_projection_preview_offset_y_meters();
         self.projection_raw_overscan = makepad_projection_raw_overscan();
+        let volume_renderer_ready = state.volume_fragment_renderer_ready();
+        self.volume_renderer_ready = if volume_renderer_ready { 1.0 } else { 0.0 };
+        self.volume_renderer_blend = if volume_renderer_ready {
+            state.geometry_mix.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        self.volume_raymarch_steps = state.volume_shader_raymarch_steps();
+        self.volume_grid_frequency = state.volume_grid_frequency();
+        self.volume_density_gain = 0.72;
+        self.volume_absorption = 1.25;
+        self.volume_phase = 0.37
+            + state.volume_step_count as f32 * 0.003
+            + time_seconds * state.temporal_frequency_hz.max(0.01) * 0.35;
+        self.volume_eccentricity = state.volume_eccentricity();
     }
 
     fn apply_projection_rows(&mut self, projection_rows: StimulusSurfaceProjectionRows) {
@@ -575,7 +656,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} stereoFiducialAnchors=center-and-four-corners",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialAnchors=center-and-four-corners",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -586,9 +667,15 @@ impl Widget for StimulusStereoFieldPanel {
                     submitted,
                     marker_token(&self.state.profile_id),
                     marker_token(&self.state.profile_sha256),
+                    self.state.volume_render_path(),
+                    self.state.volume_fragment_renderer_ready(),
+                    self.state.volume_fragment_renderer_ready(),
+                    self.state.volume_fragment_renderer_ready(),
                     self.projection_rows.ready,
                     self.volume_texture_bound,
                     self.volume_texture_blend,
+                    self.draw_field.volume_renderer_blend,
+                    self.draw_field.volume_raymarch_steps,
                 ));
             }
         }
@@ -676,7 +763,7 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn volume_adoption_marker_preserves_non_compute_claim() {
+    fn volume_adoption_marker_claims_fragment_gpu_renderer_not_compute_kernel() {
         let payload = StimulusProfilePayload {
             config: StimulusEffectiveConfig {
                 enabled: true,
@@ -712,9 +799,27 @@ mod tests {
         };
 
         let state = StimulusStereoFieldState::from_profile_payload(&payload).unwrap();
+        assert!(state.volume_fragment_renderer_ready());
+        assert_eq!(
+            state.volume_render_path(),
+            STIMULUS_VOLUME_FRAGMENT_RENDER_PATH
+        );
+        assert_eq!(
+            state.volume_shader_raymarch_steps(),
+            STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES as f32
+        );
+
         let draw_marker = state.marker_line("test", 1.25, true, true);
+        assert!(draw_marker.contains(&format!(
+            "renderPath={STIMULUS_VOLUME_FRAGMENT_RENDER_PATH}"
+        )));
+        assert!(draw_marker.contains("fragmentVolumeRenderer=true"));
+        assert!(draw_marker.contains("runtimeVolumeRenderer=true"));
+        assert!(draw_marker.contains("gpuRenderReady=true"));
+        assert!(draw_marker.contains("gpuComputeReady=false"));
         assert!(draw_marker.contains("volumePresent=true"));
         assert!(draw_marker.contains("volumeGridDimensions=32x32x32"));
+        assert!(draw_marker.contains("shaderRaymarchSamples=16"));
         assert!(draw_marker.contains("computeKernel=false"));
         assert!(draw_marker.contains("projectionSurfaceRowsReady=true"));
 
@@ -725,6 +830,12 @@ mod tests {
         assert!(volume_marker.contains("status=profile-adopted"));
         assert!(volume_marker.contains("volumeReadbackProbeSamples=512"));
         assert!(volume_marker.contains("stereoFieldOutputLayers=2"));
+        assert!(volume_marker.contains(&format!(
+            "renderPath={STIMULUS_VOLUME_FRAGMENT_RENDER_PATH}"
+        )));
+        assert!(volume_marker.contains("fragmentVolumeRenderer=true"));
+        assert!(volume_marker.contains("runtimeVolumeRenderer=true"));
+        assert!(volume_marker.contains("gpuRenderReady=true"));
         assert!(volume_marker.contains("gpuComputeReady=false"));
         assert!(volume_marker.contains("computeKernel=false"));
         assert!(volume_marker.contains("highRateJsonPayload=false"));
