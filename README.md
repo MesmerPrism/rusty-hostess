@@ -126,6 +126,17 @@ effective-settings JSON. The policy is wakeup hint, global revision/hash,
 scoped revision/hash, then detailed adoption with applied/rejected evidence.
 High-rate hand, mesh, field, particle, and GPU-buffer payloads must stay in
 sibling data-plane files or adapter buffers, never in settings/control JSON.
+The same staging helper also copies a sibling `stimulus/` directory for
+browser-created Optics stimulus profiles. Effective settings carry only the
+stimulus enable flag, app-private profile/tuning paths, expected SHA-256
+digests, schema, and `StereoEyeField` presentation mode; the profile body
+remains an app-private JSON payload for the Quest Makepad renderer adapter.
+When that profile declares `rusty.optics.stimulus.volume.v1`, Hostess emits
+`RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_ADOPTION` from the staged profile summary
+with grid, step, bounded readback, and stereo-output fields. This marker is
+profile adoption evidence only: `gpuComputeReady=false`,
+`computeKernel=false`, and `highRateJsonPayload=false` remain explicit until a
+Makepad/Vulkan command-buffer readback proof exists.
 Collision, SDF, ADF, and particle controls are also sourced from the same
 effective-settings report. Hostess now consumes the camera-shell adapter's
 native Matter-surface runtime boundary and records receipt evidence for the

@@ -37,6 +37,9 @@ mod shell_xr_runtime;
 mod source_metadata;
 mod source_sampling;
 mod stereo_frame;
+mod stimulus_stereo_field;
+mod stimulus_stereo_field_live;
+mod stimulus_volume_gpu;
 mod texture_probe_stats;
 use crate::makepad_runtime_config as makepad_config;
 use camera_pair::{
@@ -149,8 +152,9 @@ use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
     QuestMakepadForceAuthorityMode, QuestMakepadGpuForceAuthorityResidencyTracker,
     QuestMakepadMatterSurfaceWorker, QuestMakepadWorldAdfDebugBatch,
-    QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
-    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    QuestMakepadWorldParticleBatch, RemoteCameraEffectiveConfig,
+    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
+    DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -162,11 +166,28 @@ use source_sampling::{
     MakepadSourceSamplingHandoff,
 };
 use std::{
-    sync::atomic::{AtomicBool, AtomicUsize, Ordering},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize, Ordering},
+        Mutex,
+    },
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
+use stimulus_stereo_field::{
+    StimulusStereoFieldPanel, StimulusStereoFieldState, StimulusSurfaceProjectionRows,
+    STIMULUS_VOLUME_TEXTURE_SLOT,
+};
+use stimulus_volume_gpu::{
+    stimulus_volume_gpu_probe_poll_marker_line, stimulus_volume_gpu_probe_submit,
+    stimulus_volume_image_preview_input_from_state, stimulus_volume_image_preview_poll_ready,
+    stimulus_volume_image_preview_submit, stimulus_volume_probe_input_from_state,
+    stimulus_volume_raymarch_preview_input_from_state,
+    stimulus_volume_raymarch_preview_poll_marker_line, stimulus_volume_raymarch_preview_submit,
+    PendingStimulusVolumeGpuProbe, PendingStimulusVolumeImagePreview,
+    PendingStimulusVolumeRaymarchPreview, StimulusVolumeImagePreviewReady,
+    StimulusVolumeTextureBindingEvidence,
+};
 use texture_probe_stats::texture_plane_content_stats;
 
 app_main!(App);
@@ -185,6 +206,7 @@ static VIDEO_EVENT_RAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_UPDATE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static TEXTURE_CONTENT_PROBE_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
 static FRAME_ADOPTION_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+static EFFECTIVE_REMOTE_CAMERA: Mutex<Option<RemoteCameraEffectiveConfig>> = Mutex::new(None);
 #[cfg(target_os = "android")]
 static ANDROID_XR_START_FALLBACK_REQUESTED: AtomicBool = AtomicBool::new(false);
 
@@ -200,6 +222,10 @@ const MATTER_WORLD_PARTICLE_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_PARTICLE_BILLB
 const MATTER_WORLD_PARTICLE_DRAW_MARKER_LIMIT: usize = 8;
 const MATTER_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX;
 const MATTER_WORLD_ADF_DEBUG_DRAW_MARKER_LIMIT: usize = 8;
+const STIMULUS_STEREO_FIELD_MARKER_LIMIT: usize = 8;
+const STIMULUS_VOLUME_GPU_PROBE_MARKER_LIMIT: usize = 1;
+const STIMULUS_VOLUME_RAYMARCH_PREVIEW_MARKER_LIMIT: usize = 1;
+const STIMULUS_VOLUME_IMAGE_PREVIEW_MARKER_LIMIT: usize = 1;
 const MAKEPAD_XR_INITIAL_CONTENT_FORWARD_OFFSET_METERS: f32 = 0.28;
 const MAKEPAD_XR_INITIAL_CONTENT_VERTICAL_OFFSET_METERS: f32 = -0.58;
 const MATTER_WORLD_PARTICLE_START_HEAD_DISTANCE_METERS: f32 = 0.50;
@@ -563,53 +589,6 @@ script_mod! {
             let p = (seed_uv - center) / radius;
             let len = max(length(p), 1.0);
             return center + (p / len) * radius;
-        }
-
-        screen_to_head_surface_uv: fn(screen_uv: vec2f) -> vec2f {
-            let eye_selector = self.active_eye_is_right();
-            let eye_sign = mix(-1.0, 1.0, eye_selector);
-            let eye_origin4 = self.draw_pass.camera_inv * vec4(0.0, 0.0, 0.0, 1.0);
-            let right4 = self.draw_pass.camera_inv * vec4(1.0, 0.0, 0.0, 0.0);
-            let up4 = self.draw_pass.camera_inv * vec4(0.0, 1.0, 0.0, 0.0);
-            let forward4 = self.draw_pass.camera_inv * vec4(0.0, 0.0, -1.0, 0.0);
-            let eye_origin = eye_origin4.xyz;
-            let right = normalize(right4.xyz);
-            let up = normalize(up4.xyz);
-            let forward = normalize(forward4.xyz);
-            let head_origin = eye_origin - right * (eye_sign * self.display_eye_offset_meters);
-
-            let ndc = vec2(screen_uv.x * 2.0 - 1.0, 1.0 - screen_uv.y * 2.0);
-            let projection_inv = inverse(self.draw_pass.camera_projection);
-            let near4 = projection_inv * vec4(ndc.x, ndc.y, -1.0, 1.0);
-            let far4 = projection_inv * vec4(ndc.x, ndc.y, 1.0, 1.0);
-            let near_w = mix(1.0, near4.w, step(0.00001, abs(near4.w)));
-            let far_w = mix(1.0, far4.w, step(0.00001, abs(far4.w)));
-            let near_eye = near4.xyz / near_w;
-            let far_eye = far4.xyz / far_w;
-            let ray_eye_raw = normalize(far_eye - near_eye);
-            let ray_eye = ray_eye_raw * mix(1.0, -1.0, step(0.0, ray_eye_raw.z));
-            let ray4 = self.draw_pass.camera_inv * vec4(ray_eye.x, ray_eye.y, ray_eye.z, 0.0);
-            let ray = normalize(ray4.xyz);
-
-            let depth = max(self.projection_depth_meters, 0.05);
-            let surface_center =
-                head_origin +
-                forward * depth +
-                up * self.projection_preview_offset_y_meters;
-            let denom = dot(ray, forward);
-            let safe_denom = mix(0.0001, denom, step(0.0001, abs(denom)));
-            let t = dot(surface_center - eye_origin, forward) / safe_denom;
-            let surface_point = eye_origin + ray * t;
-            let half_height =
-                tan(self.projection_preview_fov_y_degrees * 0.5 * 0.01745329251) *
-                depth *
-                max(self.projection_raw_overscan, 1.0);
-            let half_width = half_height * max(self.display_aspect, 0.1);
-            let delta = surface_point - surface_center;
-            return vec2(
-                0.5 + dot(delta, right) / max(half_width * 2.0, 0.0001),
-                0.5 - dot(delta, up) / max(half_height * 2.0, 0.0001)
-            );
         }
 
         uv_valid: fn(coord: vec2f) -> float {
@@ -1590,6 +1569,11 @@ script_mod! {
             camera_projection_scene := XrNode{
                 pos: vec3(0.0, 0.0, 0.0)
 
+                stimulus_stereo_field := mod.widgets.StimulusStereoFieldPanel{
+                    body: mod.widgets.XrBodyKind.Fixed
+                    pos: vec3(0.0, 0.0, -1.0)
+                }
+
                 camera_projection_panel := mod.widgets.MakepadStereoCameraPanel{
                     body: mod.widgets.XrBodyKind.Fixed
                     size: vec3(1.0, 1.0, 0.010)
@@ -1739,6 +1723,28 @@ pub struct App {
     camera_shell_effective_render_scale_present: bool,
     #[rust]
     camera_shell_effective_camera_streaming_enabled: bool,
+    #[rust]
+    stimulus_stereo_field_state: StimulusStereoFieldState,
+    #[rust]
+    stimulus_surface_projection_rows: StimulusSurfaceProjectionRows,
+    #[rust]
+    stimulus_stereo_field_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_gpu_probe_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_gpu_probe_pending: Option<PendingStimulusVolumeGpuProbe>,
+    #[rust]
+    stimulus_volume_raymarch_preview_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_raymarch_preview_pending: Option<PendingStimulusVolumeRaymarchPreview>,
+    #[rust]
+    stimulus_volume_image_preview_markers_emitted: usize,
+    #[rust]
+    stimulus_volume_image_preview_pending: Option<PendingStimulusVolumeImagePreview>,
+    #[rust]
+    stimulus_volume_image_preview_texture: Option<Texture>,
+    #[rust]
+    stimulus_volume_texture_adoption_markers_emitted: usize,
     #[rust]
     makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
@@ -3504,6 +3510,27 @@ impl App {
         )
     }
 
+    fn set_effective_remote_camera(remote_camera: Option<RemoteCameraEffectiveConfig>) {
+        if let Ok(mut slot) = EFFECTIVE_REMOTE_CAMERA.lock() {
+            *slot = remote_camera;
+        }
+    }
+
+    fn effective_remote_camera_receiver() -> Option<RemoteCameraEffectiveConfig> {
+        EFFECTIVE_REMOTE_CAMERA
+            .lock()
+            .ok()
+            .and_then(|slot| slot.clone())
+            .filter(|config| {
+                config.enabled
+                    && config.incoming_lane_count > 0
+                    && matches!(
+                        config.endpoint_role.as_str(),
+                        "receiver" | "sender_receiver"
+                    )
+            })
+    }
+
     fn apply_makepad_video_input_discovery_enabled(
         &mut self,
         cx: &mut Cx,
@@ -3578,6 +3605,7 @@ impl App {
         self.camera_shell_effective_camera_streaming_enabled = selection
             .camera_streaming_enabled
             .unwrap_or(DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED);
+        Self::set_effective_remote_camera(selection.remote_camera.clone());
         self.matter_world_particle_draw_limit = selection
             .particle_render_draw_limit
             .unwrap_or(DEFAULT_PARTICLE_RENDER_DRAW_LIMIT)
@@ -3624,6 +3652,40 @@ impl App {
         self.matter_particle_texture.reset_markers();
         self.live_hand_surface_source.reset_markers();
         self.matter_surface_source_selection = MatterSurfaceSourceSelection::from_runtime();
+        self.stimulus_stereo_field_state = if let Some(payload) =
+            selection.stimulus_profile.as_ref()
+        {
+            match StimulusStereoFieldState::from_profile_payload(payload) {
+                Ok(state) => state,
+                Err(error) => {
+                    emit_marker_line(&format!(
+                            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=rejected issue={} profileSelected=true renderPath=makepad-xr-fragment-preview",
+                            marker_token(phase),
+                            marker_token(&error),
+                        ));
+                    StimulusStereoFieldState::disabled()
+                }
+            }
+        } else {
+            if let Some(issue) = selection.stimulus_issue.as_deref() {
+                emit_marker_line(&format!(
+                        "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=rejected issue={} profileSelected=false renderPath=makepad-xr-fragment-preview",
+                        marker_token(phase),
+                        marker_token(issue),
+                    ));
+            }
+            StimulusStereoFieldState::disabled()
+        };
+        self.stimulus_surface_projection_rows = StimulusSurfaceProjectionRows::default();
+        self.stimulus_stereo_field_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_pending = None;
+        self.stimulus_volume_raymarch_preview_markers_emitted = 0;
+        self.stimulus_volume_raymarch_preview_pending = None;
+        self.stimulus_volume_image_preview_markers_emitted = 0;
+        self.stimulus_volume_image_preview_pending = None;
+        self.stimulus_volume_image_preview_texture = None;
+        self.stimulus_volume_texture_adoption_markers_emitted = 0;
         emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
         emit_marker_line(&adoption_marker_line);
         self.mesh_replay_runtime = selection.runtime;
@@ -3753,6 +3815,9 @@ impl App {
     }
 
     fn broker_h264_enabled() -> bool {
+        if Self::effective_remote_camera_receiver().is_some() {
+            return true;
+        }
         let transport_requests_broker = std::env::var("RUSTY_MAKEPAD_TRANSPORT_PROFILE")
             .map(|value| value.to_ascii_lowercase().contains("broker-h264"))
             .unwrap_or(false);
@@ -3806,16 +3871,27 @@ impl App {
     }
 
     fn broker_h264_stream_port(eye: StereoEye) -> u16 {
+        let remote_receiver = Self::effective_remote_camera_receiver();
+        let default_left = if remote_receiver.is_some() {
+            DEFAULT_REMOTE_CAMERA_RECEIVER_LEFT_STREAM_PORT
+        } else {
+            DEFAULT_BROKER_H264_STREAM_PORT
+        };
+        let default_right = if remote_receiver.is_some() {
+            DEFAULT_REMOTE_CAMERA_RECEIVER_RIGHT_STREAM_PORT
+        } else {
+            DEFAULT_BROKER_H264_RIGHT_STREAM_PORT
+        };
         match eye {
             StereoEye::Left => hotload_u16(
                 KEY_MAKEPAD_BROKER_H264_STREAM_PORT,
-                DEFAULT_BROKER_H264_STREAM_PORT,
+                default_left,
                 1,
                 u16::MAX,
             ),
             StereoEye::Right => hotload_u16(
                 KEY_MAKEPAD_BROKER_H264_RIGHT_STREAM_PORT,
-                DEFAULT_BROKER_H264_RIGHT_STREAM_PORT,
+                default_right,
                 1,
                 u16::MAX,
             ),
@@ -3845,6 +3921,7 @@ impl App {
     }
 
     fn broker_h264_source_for_eye(eye: StereoEye) -> ExternalH264VideoSource {
+        let remote_receiver = Self::effective_remote_camera_receiver();
         let synthetic_projection_profile = hotload_text(
             KEY_MAKEPAD_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
             DEFAULT_BROKER_H264_SYNTHETIC_PROJECTION_PROFILE,
@@ -3866,7 +3943,11 @@ impl App {
             stream_port: Self::broker_h264_stream_port(eye),
             source_mode: hotload_text(
                 KEY_MAKEPAD_BROKER_H264_SOURCE_MODE,
-                DEFAULT_BROKER_H264_SOURCE_MODE,
+                if remote_receiver.is_some() {
+                    DEFAULT_REMOTE_CAMERA_RECEIVER_SOURCE_MODE
+                } else {
+                    DEFAULT_BROKER_H264_SOURCE_MODE
+                },
             ),
             decode_output_mode,
             synthetic_pattern: hotload_text(
@@ -3888,7 +3969,10 @@ impl App {
             },
             stereo_pair_id: hotload_text(
                 KEY_MAKEPAD_BROKER_H264_STEREO_PAIR_ID,
-                DEFAULT_BROKER_H264_STEREO_PAIR_ID,
+                remote_receiver
+                    .as_ref()
+                    .map(|config| config.session_id.as_str())
+                    .unwrap_or(DEFAULT_BROKER_H264_STEREO_PAIR_ID),
             ),
             stereo_pair_role: match eye {
                 StereoEye::Left => "left".to_string(),
@@ -3914,13 +3998,21 @@ impl App {
             ),
             capture_ms: hotload_u32(
                 KEY_MAKEPAD_BROKER_H264_CAPTURE_MS,
-                DEFAULT_BROKER_H264_CAPTURE_MS,
+                if remote_receiver.is_some() {
+                    0
+                } else {
+                    DEFAULT_BROKER_H264_CAPTURE_MS
+                },
                 0,
                 120_000,
             ),
             max_packets: hotload_u32(
                 KEY_MAKEPAD_BROKER_H264_MAX_PACKETS,
-                DEFAULT_BROKER_H264_MAX_PACKETS,
+                if remote_receiver.is_some() {
+                    0
+                } else {
+                    DEFAULT_BROKER_H264_MAX_PACKETS
+                },
                 0,
                 2400,
             ),
@@ -3956,7 +4048,7 @@ impl App {
             ),
             live_stream: hotload_bool(
                 KEY_MAKEPAD_BROKER_H264_LIVE_STREAM,
-                DEFAULT_BROKER_H264_LIVE_STREAM,
+                DEFAULT_BROKER_H264_LIVE_STREAM || remote_receiver.is_some(),
             ),
         }
     }
@@ -4526,12 +4618,14 @@ impl App {
     }
 
     #[cfg(target_os = "android")]
-    fn update_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+    fn xr_display_views_from_update(
+        update: &XrUpdateEvent,
+    ) -> android_camera_probe::XrDisplayViews {
         let state = update.state.as_ref();
         let left = state.left_eye_view;
         let right = state.right_eye_view;
         let predicted_display_time_ns = (state.time * 1_000_000_000.0).round() as i64;
-        let views = android_camera_probe::XrDisplayViews {
+        android_camera_probe::XrDisplayViews {
             left: android_camera_probe::XrDisplayEyeView {
                 position: [
                     left.pose.position.x,
@@ -4574,7 +4668,33 @@ impl App {
             projection_preview_fov_y_degrees: makepad_projection_preview_fov_y_degrees(),
             projection_preview_offset_y_meters: makepad_projection_preview_offset_y_meters(),
             projection_raw_overscan: makepad_projection_raw_overscan(),
-        };
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn update_stimulus_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+        if !self.stimulus_stereo_field_state.enabled {
+            return;
+        }
+        let views = Self::xr_display_views_from_update(update);
+        if let Some(plan) = android_camera_probe::broker_full_frame_projection_plan_from_xr_views(
+            "stimulus-left",
+            "stimulus-right",
+            1024,
+            1024,
+            views,
+        ) {
+            self.stimulus_surface_projection_rows =
+                StimulusSurfaceProjectionRows::from_homographies(
+                    plan.left_screen_to_surface_h,
+                    plan.right_screen_to_surface_h,
+                );
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn update_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+        let views = Self::xr_display_views_from_update(update);
         let updated = if Self::broker_h264_enabled() {
             self.refresh_broker_h264_projection_plan(views)
         } else {
@@ -5141,6 +5261,249 @@ impl App {
         }
         self.apply_matter_world_particles_to_cloud(cx, "cadence");
         self.apply_matter_world_adf_debug_to_cells(cx, "cadence");
+        self.apply_stimulus_stereo_field_to_panel(cx, "cadence", now_seconds);
+    }
+
+    fn apply_stimulus_stereo_field_to_panel(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        now_seconds: f64,
+    ) -> bool {
+        let field_ref = self.ui.widget(cx, ids!(stimulus_stereo_field));
+        let Some(mut field) = field_ref.borrow_mut::<StimulusStereoFieldPanel>() else {
+            if self.stimulus_stereo_field_state.enabled
+                && self.stimulus_stereo_field_markers_emitted < STIMULUS_STEREO_FIELD_MARKER_LIMIT
+            {
+                emit_marker_line(&format!(
+                    "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW schema=rusty.hostess.makepad.stimulus_draw.v1 phase={} status=error issue=stimulus_stereo_field_widget_missing panelBound=false profileId={} renderPath=makepad-xr-fragment-preview",
+                    marker_token(phase),
+                    marker_token(&self.stimulus_stereo_field_state.profile_id),
+                ));
+                self.stimulus_stereo_field_markers_emitted += 1;
+            }
+            return false;
+        };
+        let time_seconds = now_seconds.max(0.0).min(f32::MAX as f64) as f32;
+        let changed = field.set_stimulus_state(
+            cx,
+            self.stimulus_stereo_field_state.clone(),
+            time_seconds,
+            self.stimulus_surface_projection_rows,
+            self.stimulus_volume_image_preview_texture.clone(),
+        );
+        if self.stimulus_stereo_field_state.enabled
+            && (changed
+                || self.stimulus_stereo_field_markers_emitted < STIMULUS_STEREO_FIELD_MARKER_LIMIT)
+        {
+            emit_marker_line(&self.stimulus_stereo_field_state.marker_line(
+                phase,
+                time_seconds,
+                true,
+                self.stimulus_surface_projection_rows.ready,
+            ));
+            if let Some(marker_line) = self
+                .stimulus_stereo_field_state
+                .volume_adoption_marker_line(phase, true)
+            {
+                emit_marker_line(&marker_line);
+            }
+            self.stimulus_stereo_field_markers_emitted += 1;
+        }
+        drop(field);
+        self.update_stimulus_volume_gpu_probe(cx, phase);
+        self.update_stimulus_volume_raymarch_preview(cx, phase);
+        self.update_stimulus_volume_image_preview(cx, phase, time_seconds);
+        true
+    }
+
+    fn update_stimulus_volume_gpu_probe(&mut self, cx: &mut Cx, phase: &str) {
+        if !self.stimulus_stereo_field_state.enabled
+            || !self.stimulus_stereo_field_state.volume_present
+        {
+            self.stimulus_volume_gpu_probe_pending = None;
+            return;
+        }
+
+        if let Some(marker_line) = self
+            .stimulus_volume_gpu_probe_pending
+            .as_ref()
+            .and_then(|pending| stimulus_volume_gpu_probe_poll_marker_line(cx, pending, phase))
+        {
+            emit_marker_line(&marker_line);
+            self.stimulus_volume_gpu_probe_markers_emitted += 1;
+            self.stimulus_volume_gpu_probe_pending = None;
+            return;
+        }
+
+        if self.stimulus_volume_gpu_probe_markers_emitted >= STIMULUS_VOLUME_GPU_PROBE_MARKER_LIMIT
+            || self.stimulus_volume_gpu_probe_pending.is_some()
+        {
+            return;
+        }
+
+        let Some(input) = stimulus_volume_probe_input_from_state(&self.stimulus_stereo_field_state)
+        else {
+            return;
+        };
+        if let Some(pending) = stimulus_volume_gpu_probe_submit(cx, &input) {
+            self.stimulus_volume_gpu_probe_pending = Some(pending);
+        }
+    }
+
+    fn update_stimulus_volume_raymarch_preview(&mut self, cx: &mut Cx, phase: &str) {
+        if !self.stimulus_stereo_field_state.enabled
+            || !self.stimulus_stereo_field_state.volume_present
+        {
+            self.stimulus_volume_raymarch_preview_pending = None;
+            return;
+        }
+
+        if let Some(marker_line) = self
+            .stimulus_volume_raymarch_preview_pending
+            .as_ref()
+            .and_then(|pending| {
+                stimulus_volume_raymarch_preview_poll_marker_line(cx, pending, phase)
+            })
+        {
+            emit_marker_line(&marker_line);
+            self.stimulus_volume_raymarch_preview_markers_emitted += 1;
+            self.stimulus_volume_raymarch_preview_pending = None;
+            return;
+        }
+
+        if self.stimulus_volume_gpu_probe_markers_emitted == 0
+            || self.stimulus_volume_raymarch_preview_markers_emitted
+                >= STIMULUS_VOLUME_RAYMARCH_PREVIEW_MARKER_LIMIT
+            || self.stimulus_volume_raymarch_preview_pending.is_some()
+        {
+            return;
+        }
+
+        let Some(input) =
+            stimulus_volume_raymarch_preview_input_from_state(&self.stimulus_stereo_field_state)
+        else {
+            return;
+        };
+        if let Some(pending) = stimulus_volume_raymarch_preview_submit(cx, &input) {
+            self.stimulus_volume_raymarch_preview_pending = Some(pending);
+        }
+    }
+
+    fn update_stimulus_volume_image_preview(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        time_seconds: f32,
+    ) {
+        if !self.stimulus_stereo_field_state.enabled
+            || !self.stimulus_stereo_field_state.volume_present
+        {
+            self.stimulus_volume_image_preview_pending = None;
+            self.stimulus_volume_image_preview_texture = None;
+            return;
+        }
+
+        if let Some(ready) = self
+            .stimulus_volume_image_preview_pending
+            .as_ref()
+            .and_then(|pending| stimulus_volume_image_preview_poll_ready(cx, pending, phase))
+        {
+            emit_marker_line(&ready.marker_line);
+            self.stimulus_volume_image_preview_markers_emitted += 1;
+            self.stimulus_volume_image_preview_pending = None;
+            self.adopt_stimulus_volume_image_preview_texture(cx, phase, time_seconds, ready);
+            return;
+        }
+
+        if self.stimulus_volume_raymarch_preview_markers_emitted == 0
+            || self.stimulus_volume_image_preview_markers_emitted
+                >= STIMULUS_VOLUME_IMAGE_PREVIEW_MARKER_LIMIT
+            || self.stimulus_volume_image_preview_pending.is_some()
+        {
+            return;
+        }
+
+        let Some(input) =
+            stimulus_volume_image_preview_input_from_state(&self.stimulus_stereo_field_state)
+        else {
+            return;
+        };
+        if let Some(pending) = stimulus_volume_image_preview_submit(cx, &input) {
+            self.stimulus_volume_image_preview_pending = Some(pending);
+        }
+    }
+
+    fn adopt_stimulus_volume_image_preview_texture(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        time_seconds: f32,
+        ready: StimulusVolumeImagePreviewReady,
+    ) {
+        let binding = if ready.readback_matched() {
+            let gpu_texture = Texture::new_with_format(
+                cx,
+                TextureFormat::PlatformRGBAf32 {
+                    width: ready.readback.image_width,
+                    height: ready.readback.image_height,
+                },
+            );
+            if let Some(adoption) = cx.xr_gpu_f32_volume_image_preview_adopt_texture(
+                ready.request_id,
+                gpu_texture.texture_id(),
+            ) {
+                self.stimulus_volume_image_preview_texture = Some(gpu_texture);
+                StimulusVolumeTextureBindingEvidence::gpu_adoption(adoption)
+            } else {
+                let texture = Texture::new_with_format(
+                    cx,
+                    TextureFormat::VecRGBAf32 {
+                        width: ready.readback.image_width,
+                        height: ready.readback.image_height,
+                        data: Some(ready.texture_rgba.clone()),
+                        updated: TextureUpdated::Full,
+                    },
+                );
+                self.stimulus_volume_image_preview_texture = Some(texture);
+                StimulusVolumeTextureBindingEvidence::cpu_upload(ready.texture_upload_bytes())
+            }
+        } else {
+            self.stimulus_volume_image_preview_texture = None;
+            StimulusVolumeTextureBindingEvidence::cpu_upload(0)
+        };
+
+        let panel_bound =
+            self.bind_stimulus_stereo_field_panel(cx, time_seconds, "volume-texture-adopted");
+        if self.stimulus_volume_texture_adoption_markers_emitted < 1 {
+            emit_marker_line(&ready.texture_adoption_marker_line(
+                phase,
+                panel_bound,
+                STIMULUS_VOLUME_TEXTURE_SLOT,
+                &binding,
+            ));
+            self.stimulus_volume_texture_adoption_markers_emitted += 1;
+        }
+    }
+
+    fn bind_stimulus_stereo_field_panel(
+        &mut self,
+        cx: &mut Cx,
+        time_seconds: f32,
+        _phase: &str,
+    ) -> bool {
+        let field_ref = self.ui.widget(cx, ids!(stimulus_stereo_field));
+        let Some(mut field) = field_ref.borrow_mut::<StimulusStereoFieldPanel>() else {
+            return false;
+        };
+        field.set_stimulus_state(
+            cx,
+            self.stimulus_stereo_field_state.clone(),
+            time_seconds,
+            self.stimulus_surface_projection_rows,
+            self.stimulus_volume_image_preview_texture.clone(),
+        );
+        true
     }
 
     fn apply_mesh_replay_uniforms_to_panel(
@@ -5225,6 +5588,8 @@ impl App {
                 self.record_xr_pose_snapshot(_update);
                 self.handle_manifold_breath_feedback_subscription();
                 self.handle_manifold_pose_publish(_update);
+                #[cfg(target_os = "android")]
+                self.update_stimulus_runtime_xr_projection(_update);
                 if camera_streaming_enabled {
                     self.handle_projection_target_joystick(cx, _update);
                     self.handle_projection_target_breath_feedback(cx);
@@ -7408,6 +7773,7 @@ impl AppMain for App {
     fn script_mod(vm: &mut ScriptVm) -> ScriptValue {
         crate::makepad_widgets::script_mod(vm);
         makepad_xr::script_mod(vm);
+        crate::stimulus_stereo_field_live::script_mod(vm);
         self::script_mod(vm)
     }
 

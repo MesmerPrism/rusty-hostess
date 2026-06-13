@@ -40,6 +40,9 @@ pub(crate) const DEFAULT_BROKER_H264_DECODE_TIMEOUT_MS: u32 = 20_000;
 pub(crate) const DEFAULT_BROKER_H264_LIVE_STREAM: bool = true;
 pub(crate) const DEFAULT_BROKER_H264_STEREO_PAIR_ID: &str = "makepad-broker-h264-stereo-camera";
 pub(crate) const DEFAULT_BROKER_H264_STEREO_PAIR_MAX_DELTA_NS: u32 = 25_000_000;
+pub(crate) const DEFAULT_REMOTE_CAMERA_RECEIVER_LEFT_STREAM_PORT: u16 = 8979;
+pub(crate) const DEFAULT_REMOTE_CAMERA_RECEIVER_RIGHT_STREAM_PORT: u16 = 8980;
+pub(crate) const DEFAULT_REMOTE_CAMERA_RECEIVER_SOURCE_MODE: &str = "existing-stream";
 pub(crate) const DEFAULT_MAKEPAD_CAMERA_STREAMING_ENABLED: bool = true;
 pub(crate) const DEFAULT_MAKEPAD_DIRECT_CAMERA_HARDWARE_BUFFER_EXTERNAL: bool = true;
 pub(crate) const DEFAULT_MANIFOLD_POSE_PUBLISH_ENABLED: bool = false;
@@ -441,6 +444,58 @@ pub(crate) fn apply_effective_settings_runtime_overrides(
             RuntimeConfigSource::File,
         );
     }
+    if let Some(remote_camera) = receipt.remote_camera() {
+        if remote_camera.enabled && remote_camera.incoming_lane_count > 0 {
+            set_runtime_bool(
+                config,
+                KEY_MAKEPAD_BROKER_H264_ENABLED,
+                true,
+                RuntimeConfigSource::File,
+            );
+            set_runtime_text(
+                config,
+                KEY_MAKEPAD_BROKER_H264_HOST,
+                DEFAULT_BROKER_H264_HOST.to_string(),
+                RuntimeConfigSource::File,
+            );
+            set_runtime_integer(
+                config,
+                KEY_MAKEPAD_BROKER_H264_STREAM_PORT,
+                i64::from(DEFAULT_REMOTE_CAMERA_RECEIVER_LEFT_STREAM_PORT),
+                RuntimeConfigSource::File,
+            );
+            set_runtime_integer(
+                config,
+                KEY_MAKEPAD_BROKER_H264_RIGHT_STREAM_PORT,
+                i64::from(DEFAULT_REMOTE_CAMERA_RECEIVER_RIGHT_STREAM_PORT),
+                RuntimeConfigSource::File,
+            );
+            set_runtime_text(
+                config,
+                KEY_MAKEPAD_BROKER_H264_SOURCE_MODE,
+                DEFAULT_REMOTE_CAMERA_RECEIVER_SOURCE_MODE.to_string(),
+                RuntimeConfigSource::File,
+            );
+            set_runtime_integer(
+                config,
+                KEY_MAKEPAD_BROKER_H264_CAPTURE_MS,
+                0,
+                RuntimeConfigSource::File,
+            );
+            set_runtime_integer(
+                config,
+                KEY_MAKEPAD_BROKER_H264_MAX_PACKETS,
+                0,
+                RuntimeConfigSource::File,
+            );
+            set_runtime_bool(
+                config,
+                KEY_MAKEPAD_BROKER_H264_LIVE_STREAM,
+                true,
+                RuntimeConfigSource::File,
+            );
+        }
+    }
 }
 
 fn set_runtime_text(
@@ -476,6 +531,17 @@ fn set_runtime_bool(
         .expect("runtime config keys should be public-safe constants");
 }
 
+fn set_runtime_integer(
+    config: &mut RuntimeConfig,
+    key: &'static str,
+    value: i64,
+    source: RuntimeConfigSource,
+) {
+    config
+        .set(key, RuntimeValue::Integer(value), source)
+        .expect("runtime config keys should be public-safe constants");
+}
+
 pub(crate) fn runtime_text(config: &RuntimeConfig, key: &str) -> String {
     config
         .get(key)
@@ -489,6 +555,14 @@ pub(crate) fn runtime_float(config: &RuntimeConfig, key: &str) -> f64 {
         .get(key)
         .and_then(RuntimeValue::as_float)
         .unwrap_or(0.0)
+}
+
+#[cfg(test)]
+pub(crate) fn runtime_integer(config: &RuntimeConfig, key: &str) -> i64 {
+    config
+        .get(key)
+        .and_then(RuntimeValue::as_integer)
+        .unwrap_or(0)
 }
 
 pub(crate) fn runtime_bool(config: &RuntimeConfig, key: &str) -> bool {
@@ -741,6 +815,106 @@ mod tests {
         apply_effective_settings_runtime_overrides(&mut config, &receipt);
 
         assert!(!runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED));
+    }
+
+    #[test]
+    fn effective_settings_remote_camera_arms_existing_h264_receiver() {
+        let remote_settings = [
+            ("makepad.camera.streaming.enabled", serde_json::json!(true)),
+            ("quest.remote_camera.enabled", serde_json::json!(true)),
+            (
+                "quest.remote_camera.session_id",
+                serde_json::json!("session.remote_camera.q2q_two_way_lan_smoke"),
+            ),
+            (
+                "quest.remote_camera.topology_id",
+                serde_json::json!("quest_to_quest_two_way"),
+            ),
+            (
+                "quest.remote_camera.endpoint_device_id",
+                serde_json::json!("quest-a"),
+            ),
+            (
+                "quest.remote_camera.endpoint_device_kind",
+                serde_json::json!("quest"),
+            ),
+            (
+                "quest.remote_camera.endpoint_role",
+                serde_json::json!("sender_receiver"),
+            ),
+            ("quest.remote_camera.lane_count", serde_json::json!(4)),
+            (
+                "quest.remote_camera.incoming_lane_count",
+                serde_json::json!(2),
+            ),
+            (
+                "quest.remote_camera.outgoing_lane_count",
+                serde_json::json!(2),
+            ),
+            (
+                "quest.remote_camera.transport_kind",
+                serde_json::json!("lan_tcp"),
+            ),
+        ];
+        let remote = effective_settings_with_values(EFFECTIVE_SETTINGS_FIXTURE, &remote_settings);
+        let path = write_temp_json("effective-settings-remote-camera-q2q", &remote);
+        let receipt =
+            crate::makepad_effective_settings::read_makepad_effective_settings_from_path(&path);
+        let mut config = RuntimeConfig::new();
+
+        apply_effective_settings_runtime_overrides(&mut config, &receipt);
+
+        assert!(runtime_bool(&config, KEY_MAKEPAD_CAMERA_STREAMING_ENABLED));
+        assert!(runtime_bool(&config, KEY_MAKEPAD_BROKER_H264_ENABLED));
+        assert_eq!(
+            runtime_text(&config, KEY_MAKEPAD_BROKER_H264_SOURCE_MODE),
+            DEFAULT_REMOTE_CAMERA_RECEIVER_SOURCE_MODE
+        );
+        assert_eq!(
+            runtime_integer(&config, KEY_MAKEPAD_BROKER_H264_STREAM_PORT),
+            i64::from(DEFAULT_REMOTE_CAMERA_RECEIVER_LEFT_STREAM_PORT)
+        );
+        assert_eq!(
+            runtime_integer(&config, KEY_MAKEPAD_BROKER_H264_RIGHT_STREAM_PORT),
+            i64::from(DEFAULT_REMOTE_CAMERA_RECEIVER_RIGHT_STREAM_PORT)
+        );
+        assert_eq!(
+            runtime_integer(&config, KEY_MAKEPAD_BROKER_H264_MAX_PACKETS),
+            0
+        );
+        assert!(runtime_bool(&config, KEY_MAKEPAD_BROKER_H264_LIVE_STREAM));
+    }
+
+    fn effective_settings_with_values(json: &str, values: &[(&str, serde_json::Value)]) -> String {
+        values
+            .iter()
+            .fold(json.to_string(), |updated, (setting_id, value)| {
+                effective_settings_with_value(&updated, setting_id, value.clone())
+            })
+    }
+
+    fn effective_settings_with_value(
+        json: &str,
+        setting_id: &str,
+        value: serde_json::Value,
+    ) -> String {
+        let mut report: serde_json::Value =
+            serde_json::from_str(json).expect("effective settings JSON");
+        let settings = report
+            .get_mut("settings")
+            .and_then(serde_json::Value::as_array_mut)
+            .expect("settings array");
+        let setting = settings
+            .iter_mut()
+            .find(|candidate| {
+                candidate
+                    .get("setting_id")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some_and(|candidate| candidate == setting_id)
+            })
+            .expect("effective setting");
+        setting["value"] = value;
+        serde_json::to_string(&report).expect("effective settings JSON")
     }
 
     fn write_temp_json(name: &str, text: &str) -> PathBuf {
