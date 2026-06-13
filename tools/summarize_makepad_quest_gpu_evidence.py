@@ -40,6 +40,9 @@ except ImportError:  # pragma: no cover - direct script fallback
         "gpu_force_authority_gate": (
             "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE"
         ),
+        "gpu_force_authority_residency": (
+            "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY"
+        ),
     }
     OPTIONAL_MARKERS = {
         "gpu_proof_epoch": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH",
@@ -63,6 +66,7 @@ GPU_FIELD_FORCE_SAMPLING_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_
 GPU_FIELD_PARTICLE_FORCE_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE"
 GPU_FORCE_AUTHORITY_CANDIDATE_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE"
 GPU_FORCE_AUTHORITY_GATE_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE"
+GPU_FORCE_AUTHORITY_RESIDENCY_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY"
 GPU_PROOF_EPOCH_MARKER = "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH"
 PROOF_MARKERS = {**REQUIRED_MARKERS, **OPTIONAL_MARKERS}
 
@@ -554,6 +558,9 @@ def summarize_evidence(
         ),
         "gpu_force_authority_gate": len(
             marker_lines(hostess_lines, GPU_FORCE_AUTHORITY_GATE_MARKER)
+        ),
+        "gpu_force_authority_residency": len(
+            marker_lines(hostess_lines, GPU_FORCE_AUTHORITY_RESIDENCY_MARKER)
         ),
         "gpu_proof_epoch": len(marker_lines(hostess_lines, GPU_PROOF_EPOCH_MARKER)),
         "sample_count_8": sum("sampleCount=8" in line for line in proof_lines),

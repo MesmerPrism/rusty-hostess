@@ -14,13 +14,14 @@ use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuFieldForceSamplingProbeReadback, QuestMakepadGpuFieldParticleForceProbe,
     QuestMakepadGpuFieldParticleForceProbeInput, QuestMakepadGpuFieldSamplingProbe,
     QuestMakepadGpuFieldSamplingProbeReadback, QuestMakepadGpuForceAuthorityCandidate,
-    QuestMakepadGpuForceAuthorityGate, QuestMakepadGpuMeshSdfProbe,
-    QuestMakepadGpuMeshSdfProbeInput, QuestMakepadGpuMeshSdfProbeReadback,
-    QuestMakepadGpuSkinningMeshProbe, QuestMakepadGpuSkinningMeshProbeInput,
-    QuestMakepadGpuSkinningMeshProbeReadback, QuestMakepadGpuSkinningMeshVertex,
-    QuestMakepadGpuSkinningProbe, QuestMakepadGpuSkinningProbeInput,
-    QuestMakepadGpuSkinningProbeReadback, QuestMakepadGpuSkinningProbeSample,
-    QuestMakepadMatterSurfaceFrame, QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
+    QuestMakepadGpuForceAuthorityGate, QuestMakepadGpuForceAuthorityResidencyHealth,
+    QuestMakepadGpuMeshSdfProbe, QuestMakepadGpuMeshSdfProbeInput,
+    QuestMakepadGpuMeshSdfProbeReadback, QuestMakepadGpuSkinningMeshProbe,
+    QuestMakepadGpuSkinningMeshProbeInput, QuestMakepadGpuSkinningMeshProbeReadback,
+    QuestMakepadGpuSkinningMeshVertex, QuestMakepadGpuSkinningProbe,
+    QuestMakepadGpuSkinningProbeInput, QuestMakepadGpuSkinningProbeReadback,
+    QuestMakepadGpuSkinningProbeSample, QuestMakepadMatterSurfaceFrame,
+    QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE_SAMPLES,
     QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_DEFAULT_TOLERANCE,
     QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE_SAMPLES,
@@ -613,6 +614,8 @@ fn gpu_field_particle_force_probe_marker_lines_from_readback(
             requested_force_authority,
         ) {
             markers.push(gate.marker_line(phase));
+            let residency_health = QuestMakepadGpuForceAuthorityResidencyHealth::from_gate(&gate);
+            markers.push(residency_health.marker_line(phase));
         }
     }
     Some(markers)
