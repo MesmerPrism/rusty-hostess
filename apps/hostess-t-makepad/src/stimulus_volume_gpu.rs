@@ -4,6 +4,7 @@
 //! generic Vulkan compute/readback API. Hostess only prepares, submits, polls,
 //! and emits the resulting evidence line.
 
+use crate::runtime_settings::marker_token;
 use crate::stimulus_stereo_field::StimulusStereoFieldState;
 use makepad_widgets::makepad_platform::{
     XrGpuF32VolumeImagePreviewOutput, XrGpuF32VolumeImagePreviewPixel,
@@ -64,6 +65,66 @@ struct PreparedStimulusVolumeRaymarchPreview {
 struct PreparedStimulusVolumeImagePreview {
     pixels: [XrGpuF32VolumeImagePreviewPixel; XR_GPU_F32_VOLUME_IMAGE_PREVIEW_PIXELS],
     pixel_count: usize,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct StimulusVolumeImagePreviewReady {
+    pub(crate) marker_line: String,
+    pub(crate) texture_rgba: Vec<f32>,
+    pub(crate) readback: QuestMakepadStimulusVolumeImagePreviewReadback,
+    pub(crate) profile_id: String,
+    pub(crate) profile_sha256: String,
+}
+
+impl StimulusVolumeImagePreviewReady {
+    pub(crate) fn readback_matched(&self) -> bool {
+        self.readback.readback_matched()
+    }
+
+    pub(crate) fn texture_upload_bytes(&self) -> usize {
+        self.texture_rgba.len() * std::mem::size_of::<f32>()
+    }
+
+    pub(crate) fn texture_adoption_marker_line(
+        &self,
+        phase: &str,
+        panel_bound: bool,
+        shader_texture_slot: usize,
+    ) -> String {
+        format!(
+            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource=volume-image-preview-readback-cpu-upload resourcePlane=hostess-cpu-uploaded-makepad-texture imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat=VecRGBAf32 textureUploadBytes={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage=false storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} queueWaitIdlePerformed={} elapsedMs={}",
+            marker_token(phase),
+            if self.readback_matched() {
+                "runtime-texture-bound"
+            } else {
+                "rejected-source-mismatch"
+            },
+            panel_bound,
+            marker_token(&self.profile_id),
+            marker_token(&self.profile_sha256),
+            self.readback.image_width,
+            self.readback.image_height,
+            self.readback.image_layers,
+            self.readback.eye_tile_width,
+            self.readback.eye_tile_height,
+            self.readback.eye_count,
+            self.readback.pixel_count,
+            self.texture_upload_bytes(),
+            shader_texture_slot,
+            panel_bound && self.readback_matched(),
+            self.readback.sampled_texture_bound,
+            self.readback_matched(),
+            self.readback.sampled_image_usage,
+            self.readback.storage_image_written,
+            self.readback.transfer_readback_performed,
+            self.readback.sampled_image_usage,
+            self.readback.queue_submit_serial,
+            self.readback.fence_serial,
+            self.readback.resource_generation,
+            self.readback.queue_wait_idle_performed,
+            finite_f64_marker_token(self.readback.elapsed_ms),
+        )
+    }
 }
 
 pub(crate) fn stimulus_volume_probe_input_from_state(
@@ -178,13 +239,13 @@ pub(crate) fn stimulus_volume_image_preview_submit(
     })
 }
 
-pub(crate) fn stimulus_volume_image_preview_poll_marker_line(
+pub(crate) fn stimulus_volume_image_preview_poll_ready(
     cx: &mut Cx,
     pending: &PendingStimulusVolumeImagePreview,
     phase: &str,
-) -> Option<String> {
+) -> Option<StimulusVolumeImagePreviewReady> {
     let readback = cx.xr_gpu_f32_volume_image_preview_poll(pending.ticket.request_id)?;
-    stimulus_volume_image_preview_marker_line_from_readback(&pending.input, readback, phase)
+    stimulus_volume_image_preview_ready_from_readback(&pending.input, readback, phase)
 }
 
 fn prepare_stimulus_volume_gpu_probe(
@@ -380,11 +441,11 @@ fn stimulus_volume_raymarch_preview_marker_line_from_readback(
     Some(proof.marker_line(phase))
 }
 
-fn stimulus_volume_image_preview_marker_line_from_readback(
+fn stimulus_volume_image_preview_ready_from_readback(
     input: &QuestMakepadStimulusVolumeImagePreviewInput,
     readback: XrGpuF32VolumeImagePreviewResult,
     phase: &str,
-) -> Option<String> {
+) -> Option<StimulusVolumeImagePreviewReady> {
     let mut outputs = [QuestMakepadStimulusVolumeImagePreviewOutput::default();
         QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW_PIXELS];
     let mut expected_outputs = [QuestMakepadStimulusVolumeImagePreviewOutput::default();
@@ -412,37 +473,42 @@ fn stimulus_volume_image_preview_marker_line_from_readback(
         *target = quest_volume_image_preview_output(source);
     }
 
-    let proof = QuestMakepadStimulusVolumeImagePreview::from_input(
-        input,
-        QuestMakepadStimulusVolumeImagePreviewReadback {
-            image_width: readback.image_width,
-            image_height: readback.image_height,
-            image_layers: readback.image_layers,
-            eye_tile_width: readback.eye_tile_width,
-            eye_tile_height: readback.eye_tile_height,
-            eye_count: readback.eye_count,
-            pixel_count: readback.pixel_count,
-            component_count: readback.component_count,
-            mismatched_components: readback.mismatched_components,
-            max_abs_error: readback.max_abs_error,
-            tolerance: readback.tolerance,
-            outputs,
-            expected_outputs,
-            queue_submit_serial: readback.queue_submit_serial,
-            fence_serial: readback.fence_serial,
-            resource_generation: readback.resource_generation,
-            pending_retire_count: readback.pending_retire_count,
-            retained_resource_count: readback.retained_resource_count,
-            retired_after_fence_count: readback.retired_after_fence_count,
-            storage_image_written: readback.storage_image_written,
-            transfer_readback_performed: readback.transfer_readback_performed,
-            sampled_image_usage: readback.sampled_image_usage,
-            sampled_texture_bound: readback.sampled_texture_bound,
-            queue_wait_idle_performed: readback.queue_wait_idle_performed,
-            elapsed_ms: readback.elapsed_ms,
-        },
-    );
-    Some(proof.marker_line(phase))
+    let readback = QuestMakepadStimulusVolumeImagePreviewReadback {
+        image_width: readback.image_width,
+        image_height: readback.image_height,
+        image_layers: readback.image_layers,
+        eye_tile_width: readback.eye_tile_width,
+        eye_tile_height: readback.eye_tile_height,
+        eye_count: readback.eye_count,
+        pixel_count: readback.pixel_count,
+        component_count: readback.component_count,
+        mismatched_components: readback.mismatched_components,
+        max_abs_error: readback.max_abs_error,
+        tolerance: readback.tolerance,
+        outputs,
+        expected_outputs,
+        queue_submit_serial: readback.queue_submit_serial,
+        fence_serial: readback.fence_serial,
+        resource_generation: readback.resource_generation,
+        pending_retire_count: readback.pending_retire_count,
+        retained_resource_count: readback.retained_resource_count,
+        retired_after_fence_count: readback.retired_after_fence_count,
+        storage_image_written: readback.storage_image_written,
+        transfer_readback_performed: readback.transfer_readback_performed,
+        sampled_image_usage: readback.sampled_image_usage,
+        sampled_texture_bound: readback.sampled_texture_bound,
+        queue_wait_idle_performed: readback.queue_wait_idle_performed,
+        elapsed_ms: readback.elapsed_ms,
+    };
+
+    let proof = QuestMakepadStimulusVolumeImagePreview::from_input(input, readback);
+    Some(StimulusVolumeImagePreviewReady {
+        marker_line: proof.marker_line(phase),
+        texture_rgba: stimulus_volume_image_preview_texture_rgba(&proof.readback),
+        readback: proof.readback,
+        profile_id: input.raymarch_input.profile_id.clone(),
+        profile_sha256: input.raymarch_input.profile_sha256.clone(),
+    })
 }
 
 fn makepad_volume_probe_sample(
@@ -508,6 +574,36 @@ fn quest_volume_image_preview_output(
     QuestMakepadStimulusVolumeImagePreviewOutput { rgba: output.rgba }
 }
 
+fn stimulus_volume_image_preview_texture_rgba(
+    readback: &QuestMakepadStimulusVolumeImagePreviewReadback,
+) -> Vec<f32> {
+    let image_pixel_count = readback.image_width.saturating_mul(readback.image_height);
+    let mut texture_rgba = vec![0.0; image_pixel_count.saturating_mul(4)];
+    for pixel in texture_rgba.chunks_exact_mut(4) {
+        pixel[3] = 1.0;
+    }
+
+    for (index, output) in readback
+        .outputs
+        .iter()
+        .copied()
+        .take(readback.pixel_count.min(image_pixel_count))
+        .enumerate()
+    {
+        let start = index * 4;
+        texture_rgba[start..start + 4].copy_from_slice(&output.rgba);
+    }
+    texture_rgba
+}
+
+fn finite_f64_marker_token(value: f64) -> String {
+    if value.is_finite() {
+        format!("{value:.3}")
+    } else {
+        "nonfinite".to_string()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -540,5 +636,72 @@ mod tests {
             QUEST_MAKEPAD_STIMULUS_VOLUME_GPU_PROBE_SAMPLES
         );
         assert_eq!(input.declared_readback_samples, 512);
+    }
+
+    #[test]
+    fn image_preview_ready_builds_texture_payload_and_adoption_marker() {
+        let state = StimulusStereoFieldState {
+            enabled: true,
+            profile_id: "stimulus.profile.volume.test".to_owned(),
+            profile_sha256: "0123456789abcdef".to_owned(),
+            volume_present: true,
+            volume_schema: "rusty.optics.stimulus.volume.v1".to_owned(),
+            volume_id: "stimulus.volume.test".to_owned(),
+            volume_field_kind: "ProceduralLayerStack3d".to_owned(),
+            volume_storage_hint: "StorageBuffer".to_owned(),
+            volume_grid_dimensions: [32, 32, 32],
+            volume_step_count: 32,
+            kernel_abi_id: "stimulus.kernel.volume_compute_v1".to_owned(),
+            compute_pass_count: 3,
+            volume_readback_probe_samples: 512,
+            stereo_field_output_layers: 2,
+            ..StimulusStereoFieldState::default()
+        };
+        let input = stimulus_volume_image_preview_input_from_state(&state).expect("image input");
+        let mut result = XrGpuF32VolumeImagePreviewResult {
+            image_width: input.image_width,
+            image_height: input.image_height,
+            image_layers: input.image_layers,
+            eye_tile_width: input.eye_tile_width,
+            eye_tile_height: input.eye_tile_height,
+            eye_count: input.eye_count,
+            pixel_count: input.pixel_count,
+            component_count: input.pixel_count * 4,
+            tolerance: QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW_DEFAULT_TOLERANCE,
+            storage_image_written: true,
+            transfer_readback_performed: true,
+            sampled_image_usage: true,
+            sampled_texture_bound: true,
+            queue_submit_serial: 12,
+            fence_serial: 12,
+            resource_generation: 1,
+            ..XrGpuF32VolumeImagePreviewResult::default()
+        };
+        for (index, output) in result
+            .outputs
+            .iter_mut()
+            .enumerate()
+            .take(input.pixel_count)
+        {
+            let value = index as f32 / input.pixel_count as f32;
+            output.rgba = [value, 1.0 - value, 0.25, 0.75];
+        }
+        result.expected_outputs = result.outputs;
+
+        let ready = stimulus_volume_image_preview_ready_from_readback(&input, result, "unit")
+            .expect("ready image preview");
+
+        assert!(ready.readback_matched());
+        assert_eq!(
+            ready.texture_rgba.len(),
+            input.image_width * input.image_height * 4
+        );
+        assert_eq!(&ready.texture_rgba[0..4], &[0.0, 1.0, 0.25, 0.75]);
+        let marker = ready.texture_adoption_marker_line("unit", true, 0);
+        assert!(marker.contains("runtimeTextureBound=true"));
+        assert!(marker.contains("textureSource=volume-image-preview-readback-cpu-upload"));
+        assert!(marker.contains("zeroCopyVulkanImage=false"));
+        assert!(marker.contains("gpuComputeReady=false"));
+        assert!(marker.contains("textureUploadBytes=512"));
     }
 }

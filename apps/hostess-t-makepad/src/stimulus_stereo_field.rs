@@ -22,6 +22,7 @@ pub(crate) const STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA: &str =
     "rusty.hostess.makepad.stimulus_volume_adoption.v1";
 const STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT: usize = 8;
 static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+pub(crate) const STIMULUS_VOLUME_TEXTURE_SLOT: usize = 0;
 
 pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
     [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
@@ -404,6 +405,10 @@ pub struct DrawStimulusStereoField {
     pub right_screen_to_surface_h21: f32,
     #[live(1.0_f32)]
     pub right_screen_to_surface_h22: f32,
+    #[live(0.0_f32)]
+    pub volume_texture_ready: f32,
+    #[live(0.0_f32)]
+    pub volume_texture_blend: f32,
 }
 
 impl DrawStimulusStereoField {
@@ -469,6 +474,27 @@ impl DrawStimulusStereoField {
         self.right_screen_to_surface_h22 = right[2][2];
     }
 
+    fn apply_volume_preview_texture(&mut self, texture: Option<Texture>, blend: f32) -> bool {
+        let texture_ready = texture.is_some();
+        match texture {
+            Some(texture) => self
+                .draw_super
+                .draw_vars
+                .set_texture(STIMULUS_VOLUME_TEXTURE_SLOT, &texture),
+            None => self
+                .draw_super
+                .draw_vars
+                .empty_texture(STIMULUS_VOLUME_TEXTURE_SLOT),
+        }
+        self.volume_texture_ready = if texture_ready { 1.0 } else { 0.0 };
+        self.volume_texture_blend = if texture_ready {
+            blend.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        texture_ready
+    }
+
     fn draw(&mut self, cx: &mut CxDraw) -> bool {
         if self.draw_super.draw_vars.can_instance() {
             let new_area = cx.add_instance(&self.draw_super.draw_vars);
@@ -490,6 +516,10 @@ pub struct StimulusStereoFieldPanel {
     state: StimulusStereoFieldState,
     #[rust]
     projection_rows: StimulusSurfaceProjectionRows,
+    #[rust]
+    volume_texture_bound: bool,
+    #[rust]
+    volume_texture_blend: f32,
     #[cast]
     #[deref]
     node: XrNode,
@@ -502,12 +532,30 @@ impl StimulusStereoFieldPanel {
         state: StimulusStereoFieldState,
         time_seconds: f32,
         projection_rows: StimulusSurfaceProjectionRows,
+        volume_preview_texture: Option<Texture>,
     ) -> bool {
-        let changed = self.state != state || self.projection_rows != projection_rows;
+        let requested_volume_blend = if state.enabled && state.volume_present {
+            state.geometry_mix.clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+        let effective_volume_texture = if state.enabled && state.volume_present {
+            volume_preview_texture
+        } else {
+            None
+        };
+        let changed = self.state != state
+            || self.projection_rows != projection_rows
+            || self.volume_texture_bound != effective_volume_texture.is_some()
+            || (self.volume_texture_blend - requested_volume_blend).abs() > 0.0001;
         self.state = state;
         self.projection_rows = projection_rows;
         self.draw_field.apply_state(&self.state, time_seconds);
         self.draw_field.apply_projection_rows(self.projection_rows);
+        self.volume_texture_bound = self
+            .draw_field
+            .apply_volume_preview_texture(effective_volume_texture, requested_volume_blend);
+        self.volume_texture_blend = requested_volume_blend;
         self.draw_field.draw_super.draw_vars.redraw(cx);
         self.node.redraw(cx);
         changed
@@ -527,7 +575,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} stereoFiducialAnchors=center-and-four-corners",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -539,6 +587,8 @@ impl Widget for StimulusStereoFieldPanel {
                     marker_token(&self.state.profile_id),
                     marker_token(&self.state.profile_sha256),
                     self.projection_rows.ready,
+                    self.volume_texture_bound,
+                    self.volume_texture_blend,
                 ));
             }
         }

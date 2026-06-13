@@ -172,16 +172,16 @@ use std::{
 use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
 use stimulus_stereo_field::{
     DrawStimulusStereoField, StimulusStereoFieldPanel, StimulusStereoFieldState,
-    StimulusSurfaceProjectionRows,
+    StimulusSurfaceProjectionRows, STIMULUS_VOLUME_TEXTURE_SLOT,
 };
 use stimulus_volume_gpu::{
     stimulus_volume_gpu_probe_poll_marker_line, stimulus_volume_gpu_probe_submit,
-    stimulus_volume_image_preview_input_from_state, stimulus_volume_image_preview_poll_marker_line,
+    stimulus_volume_image_preview_input_from_state, stimulus_volume_image_preview_poll_ready,
     stimulus_volume_image_preview_submit, stimulus_volume_probe_input_from_state,
     stimulus_volume_raymarch_preview_input_from_state,
     stimulus_volume_raymarch_preview_poll_marker_line, stimulus_volume_raymarch_preview_submit,
     PendingStimulusVolumeGpuProbe, PendingStimulusVolumeImagePreview,
-    PendingStimulusVolumeRaymarchPreview,
+    PendingStimulusVolumeRaymarchPreview, StimulusVolumeImagePreviewReady,
 };
 use texture_probe_stats::texture_plane_content_stats;
 
@@ -266,6 +266,9 @@ script_mod! {
         projection_preview_offset_y_meters: -0.168832
         projection_raw_overscan: 1.0
         projection_rows_ready: 0.0
+        volume_preview_texture: texture_2d(float)
+        volume_texture_ready: 0.0
+        volume_texture_blend: 0.0
         left_screen_to_surface_h00: 1.0
         left_screen_to_surface_h01: 0.0
         left_screen_to_surface_h02: 0.0
@@ -341,6 +344,29 @@ script_mod! {
             return mix(left_uv, right_uv, display_eye_selector)
         }
 
+        volume_preview_sample: fn(surface_uv: vec2f, display_eye_selector: float) -> vec4 {
+            let atlas_uv = clamp(
+                vec2(surface_uv.x * 0.5 + display_eye_selector * 0.5, surface_uv.y),
+                vec2(0.001, 0.001),
+                vec2(0.999, 0.999)
+            )
+            return self.volume_preview_texture.sample(atlas_uv)
+        }
+
+        fiducial_mask: fn(surface_uv: vec2f) -> float {
+            let center_delta = abs(surface_uv - vec2(0.5, 0.5))
+            let center_vertical =
+                (1.0 - step(0.010, center_delta.x)) * (1.0 - step(0.115, center_delta.y))
+            let center_horizontal =
+                (1.0 - step(0.010, center_delta.y)) * (1.0 - step(0.115, center_delta.x))
+            let corner_radius = 0.030
+            let corner_a = 1.0 - smoothstep(0.0, corner_radius, length(surface_uv - vec2(0.08, 0.08)))
+            let corner_b = 1.0 - smoothstep(0.0, corner_radius, length(surface_uv - vec2(0.92, 0.08)))
+            let corner_c = 1.0 - smoothstep(0.0, corner_radius, length(surface_uv - vec2(0.08, 0.92)))
+            let corner_d = 1.0 - smoothstep(0.0, corner_radius, length(surface_uv - vec2(0.92, 0.92)))
+            return clamp(max(max(center_vertical, center_horizontal), max(max(corner_a, corner_b), max(corner_c, corner_d))), 0.0, 1.0)
+        }
+
         pixel: fn() {
             let renderer_uv = clamp(self.v_uv, vec2(0.0, 0.0), vec2(1.0, 1.0))
             let display_eye_screen_uv = vec2(renderer_uv.x, 1.0 - renderer_uv.y)
@@ -367,8 +393,14 @@ script_mod! {
             let pulse = 0.34 + 0.66 * (0.5 + 0.5 * sin(phase))
             let color = mix(self.color_low.xyz, self.color_high.xyz, luma)
             let rgb = color * max(radial, 0.18) * max(edge, 0.18) * pulse
+            let volume_sample = self.volume_preview_sample(clamp(surface_uv, vec2(0.0, 0.0), vec2(1.0, 1.0)), display_eye_selector)
+            let volume_rgb = volume_sample.xyz * max(volume_sample.w, 0.18)
+            let volume_mix = clamp(self.volume_texture_ready * self.volume_texture_blend, 0.0, 1.0)
+            let fiducial = self.fiducial_mask(clamp(surface_uv, vec2(0.0, 0.0), vec2(1.0, 1.0))) * self.volume_texture_ready
+            let fiducial_color = mix(vec3(0.08, 0.78, 1.00), vec3(1.00, 0.24, 0.12), display_eye_selector)
+            let blended_rgb = rgb.mix(volume_rgb, volume_mix).mix(fiducial_color, clamp(fiducial * 0.85, 0.0, 1.0))
             let proof_floor = vec3(0.025, 0.0, 0.012) * step(0.5, self.enabled)
-            return vec4(max(rgb, proof_floor), 1.0)
+            return vec4(max(blended_rgb, proof_floor), 1.0)
         }
 
         fragment: fn() {
@@ -1564,6 +1596,8 @@ script_mod! {
             temporal_frequency_hz: 0.0
             spatial_frequency: 8.0
             geometry_mix: 1.0
+            volume_texture_ready: 0.0
+            volume_texture_blend: 0.0
             color_low: vec4(0.0, 0.0, 0.0, 1.0)
             color_high: vec4(1.0, 1.0, 1.0, 1.0)
         }
@@ -1879,6 +1913,10 @@ pub struct App {
     stimulus_volume_image_preview_markers_emitted: usize,
     #[rust]
     stimulus_volume_image_preview_pending: Option<PendingStimulusVolumeImagePreview>,
+    #[rust]
+    stimulus_volume_image_preview_texture: Option<Texture>,
+    #[rust]
+    stimulus_volume_texture_adoption_markers_emitted: usize,
     #[rust]
     makepad_video_input_discovery_enabled: Option<bool>,
     #[rust]
@@ -3814,6 +3852,8 @@ impl App {
         self.stimulus_volume_raymarch_preview_pending = None;
         self.stimulus_volume_image_preview_markers_emitted = 0;
         self.stimulus_volume_image_preview_pending = None;
+        self.stimulus_volume_image_preview_texture = None;
+        self.stimulus_volume_texture_adoption_markers_emitted = 0;
         emit_marker_line(&self.matter_surface_source_selection.marker_line(phase));
         emit_marker_line(&adoption_marker_line);
         self.mesh_replay_runtime = selection.runtime;
@@ -5416,6 +5456,7 @@ impl App {
             self.stimulus_stereo_field_state.clone(),
             time_seconds,
             self.stimulus_surface_projection_rows,
+            self.stimulus_volume_image_preview_texture.clone(),
         );
         if self.stimulus_stereo_field_state.enabled
             && (changed
@@ -5435,9 +5476,10 @@ impl App {
             }
             self.stimulus_stereo_field_markers_emitted += 1;
         }
+        drop(field);
         self.update_stimulus_volume_gpu_probe(cx, phase);
         self.update_stimulus_volume_raymarch_preview(cx, phase);
-        self.update_stimulus_volume_image_preview(cx, phase);
+        self.update_stimulus_volume_image_preview(cx, phase, time_seconds);
         true
     }
 
@@ -5514,22 +5556,29 @@ impl App {
         }
     }
 
-    fn update_stimulus_volume_image_preview(&mut self, cx: &mut Cx, phase: &str) {
+    fn update_stimulus_volume_image_preview(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        time_seconds: f32,
+    ) {
         if !self.stimulus_stereo_field_state.enabled
             || !self.stimulus_stereo_field_state.volume_present
         {
             self.stimulus_volume_image_preview_pending = None;
+            self.stimulus_volume_image_preview_texture = None;
             return;
         }
 
-        if let Some(marker_line) = self
+        if let Some(ready) = self
             .stimulus_volume_image_preview_pending
             .as_ref()
-            .and_then(|pending| stimulus_volume_image_preview_poll_marker_line(cx, pending, phase))
+            .and_then(|pending| stimulus_volume_image_preview_poll_ready(cx, pending, phase))
         {
-            emit_marker_line(&marker_line);
+            emit_marker_line(&ready.marker_line);
             self.stimulus_volume_image_preview_markers_emitted += 1;
             self.stimulus_volume_image_preview_pending = None;
+            self.adopt_stimulus_volume_image_preview_texture(cx, phase, time_seconds, ready);
             return;
         }
 
@@ -5549,6 +5598,60 @@ impl App {
         if let Some(pending) = stimulus_volume_image_preview_submit(cx, &input) {
             self.stimulus_volume_image_preview_pending = Some(pending);
         }
+    }
+
+    fn adopt_stimulus_volume_image_preview_texture(
+        &mut self,
+        cx: &mut Cx,
+        phase: &str,
+        time_seconds: f32,
+        ready: StimulusVolumeImagePreviewReady,
+    ) {
+        if ready.readback_matched() {
+            let texture = Texture::new_with_format(
+                cx,
+                TextureFormat::VecRGBAf32 {
+                    width: ready.readback.image_width,
+                    height: ready.readback.image_height,
+                    data: Some(ready.texture_rgba.clone()),
+                    updated: TextureUpdated::Full,
+                },
+            );
+            self.stimulus_volume_image_preview_texture = Some(texture);
+        } else {
+            self.stimulus_volume_image_preview_texture = None;
+        }
+
+        let panel_bound =
+            self.bind_stimulus_stereo_field_panel(cx, time_seconds, "volume-texture-adopted");
+        if self.stimulus_volume_texture_adoption_markers_emitted < 1 {
+            emit_marker_line(&ready.texture_adoption_marker_line(
+                phase,
+                panel_bound,
+                STIMULUS_VOLUME_TEXTURE_SLOT,
+            ));
+            self.stimulus_volume_texture_adoption_markers_emitted += 1;
+        }
+    }
+
+    fn bind_stimulus_stereo_field_panel(
+        &mut self,
+        cx: &mut Cx,
+        time_seconds: f32,
+        _phase: &str,
+    ) -> bool {
+        let field_ref = self.ui.widget(cx, ids!(stimulus_stereo_field));
+        let Some(mut field) = field_ref.borrow_mut::<StimulusStereoFieldPanel>() else {
+            return false;
+        };
+        field.set_stimulus_state(
+            cx,
+            self.stimulus_stereo_field_state.clone(),
+            time_seconds,
+            self.stimulus_surface_projection_rows,
+            self.stimulus_volume_image_preview_texture.clone(),
+        );
+        true
     }
 
     fn apply_mesh_replay_uniforms_to_panel(
