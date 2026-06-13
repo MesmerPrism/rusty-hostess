@@ -1736,6 +1736,8 @@ pub struct App {
     #[rust]
     mesh_replay_effective_settings_revision_key: Option<String>,
     #[rust]
+    mesh_replay_effective_settings_gpu_proof_revision_key: Option<String>,
+    #[rust]
     mesh_replay_effective_settings_modified_ns: u128,
     #[rust]
     mesh_replay_effective_settings_has_modified_ns: bool,
@@ -3544,6 +3546,7 @@ impl App {
         }
 
         let runtime_revision_key = identity.runtime_settings_revision_key();
+        let gpu_proof_revision_key = identity.gpu_proof_settings_revision_key();
         let selection = makepad_effective_settings::read_selected_mesh_replay_runtime();
         let runtime_ready = selection.runtime.is_some();
         let marker_line = if selection.runtime.is_none() {
@@ -3555,6 +3558,7 @@ impl App {
             selection.adoption_marker_line(phase, &identity, runtime_revision_key.as_deref());
         self.mesh_replay_effective_settings_path = selection.source_effective_settings_path.clone();
         self.mesh_replay_effective_settings_revision_key = runtime_revision_key.clone();
+        self.mesh_replay_effective_settings_gpu_proof_revision_key = gpu_proof_revision_key;
         self.mesh_replay_effective_settings_modified_ns =
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
@@ -3585,18 +3589,7 @@ impl App {
         self.matter_surface_frame_markers_emitted = 0;
         self.matter_surface_worker_markers_emitted = 0;
         self.matter_surface_live_source_worker_markers_emitted = 0;
-        self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
-        self.matter_surface_gpu_storage_probe_markers_emitted = 0;
-        self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
-        self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
-        self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
-        self.matter_surface_gpu_skinning_probe_pending = None;
-        self.matter_surface_gpu_skinning_mesh_probe_markers_emitted = 0;
-        self.matter_surface_gpu_skinning_mesh_probe_pending = None;
-        self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
-        self.matter_surface_gpu_mesh_sdf_probe_pending = None;
-        self.matter_surface_gpu_sync_probe_last_frame = 0;
-        self.matter_surface_gpu_schedule_markers_emitted = 0;
+        self.reset_matter_surface_gpu_proof_markers();
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
@@ -5085,6 +5078,7 @@ impl App {
                 >= SETTINGS_HOTLOAD_CHECK_PERIOD_FRAMES
         {
             self.mesh_replay_settings_check_frame = self.cadence_frame_count;
+            self.refresh_matter_surface_gpu_proof_epoch_from_selected_settings("hotload");
             if self.refresh_mesh_replay_runtime_from_selected_settings("hotload", false) {
                 self.apply_camera_shell_render_scale(cx, "hotload");
             }

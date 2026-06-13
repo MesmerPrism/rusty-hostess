@@ -29,6 +29,7 @@ const EFFECTIVE_SETTINGS_RUNTIME_SCOPES: &[&str] = &[
     "matter_surface",
     "particles",
 ];
+const EFFECTIVE_SETTINGS_GPU_PROOF_SCOPES: &[&str] = &["gpu_proof"];
 
 macro_rules! insert_json_field {
     ($object:expr, $key:expr, $value:expr $(,)?) => {{
@@ -148,6 +149,26 @@ pub(crate) struct MakepadEffectiveSettingsIdentity {
 impl MakepadEffectiveSettingsIdentity {
     pub(crate) fn runtime_settings_revision_key(&self) -> Option<String> {
         self.scoped_revision_key(EFFECTIVE_SETTINGS_RUNTIME_SCOPES)
+    }
+
+    pub(crate) fn gpu_proof_settings_revision_key(&self) -> Option<String> {
+        self.scoped_revision_key(EFFECTIVE_SETTINGS_GPU_PROOF_SCOPES)
+    }
+
+    pub(crate) fn gpu_proof_settings_changed_from(
+        &self,
+        previous_path: Option<&str>,
+        previous_gpu_proof_revision_key: Option<&str>,
+    ) -> bool {
+        if self.source_effective_settings_path.as_deref() != previous_path {
+            return false;
+        }
+        if let Some(gpu_proof_revision_key) =
+            self.scoped_revision_key(EFFECTIVE_SETTINGS_GPU_PROOF_SCOPES)
+        {
+            return Some(gpu_proof_revision_key.as_str()) != previous_gpu_proof_revision_key;
+        }
+        false
     }
 
     pub(crate) fn runtime_settings_changed_from(
@@ -1424,6 +1445,44 @@ mod tests {
     }
 
     #[test]
+    fn effective_settings_identity_tracks_gpu_proof_scope_without_runtime_reload() {
+        let path = write_temp_json("effective-settings-gpu-proof-identity", "{not json");
+        write_revision_sidecar_with_hashes_and_gpu_proof(
+            &path,
+            "mesh-a",
+            "camera-a",
+            "matter-a",
+            "particles-a",
+            "proof-a",
+        );
+        let first = makepad_effective_settings_identity_from_path(&path);
+
+        write_revision_sidecar_with_hashes_and_gpu_proof(
+            &path,
+            "mesh-a",
+            "camera-a",
+            "matter-a",
+            "particles-a",
+            "proof-b",
+        );
+        let proof_changed = makepad_effective_settings_identity_from_path(&path);
+
+        assert!(!proof_changed.runtime_settings_changed_from(
+            first.source_effective_settings_path.as_deref(),
+            first.source_modified_ns,
+            first.runtime_settings_revision_key().as_deref()
+        ));
+        assert!(proof_changed.gpu_proof_settings_changed_from(
+            first.source_effective_settings_path.as_deref(),
+            first.gpu_proof_settings_revision_key().as_deref()
+        ));
+        assert_eq!(
+            proof_changed.gpu_proof_settings_revision_key().as_deref(),
+            Some("gpu_proof=proof-b")
+        );
+    }
+
+    #[test]
     fn builds_recorded_replay_runtime_from_staged_sequence() {
         let recorded_settings = EFFECTIVE_SETTINGS_FIXTURE.replace(
             MESH_REPLAY_SOURCE_PUBLIC_SYNTHETIC_HAND_SEQUENCE,
@@ -1588,7 +1647,51 @@ mod tests {
         matter_surface_hash: &str,
         particles_hash: &str,
     ) {
+        write_revision_sidecar_with_hashes_and_optional_gpu_proof(
+            settings_path,
+            mesh_replay_hash,
+            camera_projection_hash,
+            matter_surface_hash,
+            particles_hash,
+            None,
+        );
+    }
+
+    fn write_revision_sidecar_with_hashes_and_gpu_proof(
+        settings_path: &Path,
+        mesh_replay_hash: &str,
+        camera_projection_hash: &str,
+        matter_surface_hash: &str,
+        particles_hash: &str,
+        gpu_proof_hash: &str,
+    ) {
+        write_revision_sidecar_with_hashes_and_optional_gpu_proof(
+            settings_path,
+            mesh_replay_hash,
+            camera_projection_hash,
+            matter_surface_hash,
+            particles_hash,
+            Some(gpu_proof_hash),
+        );
+    }
+
+    fn write_revision_sidecar_with_hashes_and_optional_gpu_proof(
+        settings_path: &Path,
+        mesh_replay_hash: &str,
+        camera_projection_hash: &str,
+        matter_surface_hash: &str,
+        particles_hash: &str,
+        gpu_proof_hash: Option<&str>,
+    ) {
         let sidecar_path = settings_path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
+        let gpu_proof_scope = gpu_proof_hash
+            .map(|hash| {
+                format!(
+                    r#",
+    "gpu_proof": {{ "revision_hash_sha256": "{hash}" }}"#
+                )
+            })
+            .unwrap_or_default();
         let text = format!(
             r#"{{
   "schema": "{EFFECTIVE_SETTINGS_REVISION_SCHEMA}",
@@ -1598,7 +1701,7 @@ mod tests {
     "mesh_replay": {{ "revision_hash_sha256": "{mesh_replay_hash}" }},
     "camera_projection": {{ "revision_hash_sha256": "{camera_projection_hash}" }},
     "matter_surface": {{ "revision_hash_sha256": "{matter_surface_hash}" }},
-    "particles": {{ "revision_hash_sha256": "{particles_hash}" }}
+    "particles": {{ "revision_hash_sha256": "{particles_hash}" }}{gpu_proof_scope}
   }}
 }}"#
         );

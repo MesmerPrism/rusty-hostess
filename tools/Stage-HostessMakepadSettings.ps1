@@ -6,6 +6,8 @@ param(
     [string]$RemoteTmp = "/data/local/tmp/rusty-hostess-makepad-settings-staging",
     [string]$InternalSettingsDir = "files/hostess-t/settings",
     [string]$ReportOut = "",
+    [string]$GpuProofEpoch = "",
+    [switch]$RevisionManifestOnly,
     [switch]$DryRun,
     [switch]$KeepRemoteTmp
 )
@@ -145,10 +147,32 @@ function New-SettingsScopeRevision {
     }
 }
 
+function New-ExplicitScopeRevision {
+    param(
+        [string]$Scope,
+        [string]$Epoch
+    )
+
+    $ScopePayload = [ordered]@{
+        scope = $Scope
+        epoch = $Epoch
+        purpose = "bounded-gpu-proof-marker-reemit"
+    }
+    $ScopeJson = $ScopePayload | ConvertTo-Json -Depth 10 -Compress
+    [ordered]@{
+        revision_hash_sha256 = Get-Sha256HexForText $ScopeJson
+        setting_count = 0
+        setting_ids = @()
+        epoch = $Epoch
+        purpose = "bounded-gpu-proof-marker-reemit"
+    }
+}
+
 function Write-EffectiveSettingsRevisionManifest {
     param(
         [string]$Source,
-        [string]$Out
+        [string]$Out,
+        [string]$GpuProofEpoch = ""
     )
 
     $SourceItem = Get-Item -LiteralPath $Source
@@ -168,6 +192,7 @@ function Write-EffectiveSettingsRevisionManifest {
         invalidation_policy = [ordered]@{
             global_gate = "source_sha256_or_source_revision"
             scope_gate = "revision_hash_sha256"
+            diagnostic_scope_gate = "gpu_proof revision_hash_sha256 resets bounded proof markers only"
             detail_read = "only_after_relevant_scope_changed"
             watcher_events_are_hints = $true
             high_rate_payload_in_settings_json = $false
@@ -193,6 +218,11 @@ function Write-EffectiveSettingsRevisionManifest {
                 -Prefixes @("makepad.particles.")
         }
     }
+    if (-not [string]::IsNullOrWhiteSpace($GpuProofEpoch)) {
+        $Manifest.scopes.gpu_proof = New-ExplicitScopeRevision `
+            -Scope "gpu_proof" `
+            -Epoch $GpuProofEpoch
+    }
     $Manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Out -Encoding UTF8
 }
 
@@ -211,13 +241,19 @@ $ResolvedAdb = Resolve-ToolPath -PathValue $Adb -DefaultPath $DefaultAdb
 $ResolvedBundleDir = (Resolve-Path $BundleDir).Path
 Assert-SafeRemoteTmp $RemoteTmp
 Assert-SafeInternalSettingsDir $InternalSettingsDir
+if ($RevisionManifestOnly -and [string]::IsNullOrWhiteSpace($GpuProofEpoch)) {
+    throw "RevisionManifestOnly requires GpuProofEpoch so the sidecar has an explicit diagnostic change."
+}
 
 $Payloads = New-Object System.Collections.ArrayList
 $GeneratedPayloadDir = Join-Path ([System.IO.Path]::GetTempPath()) "rusty-hostess-makepad-settings-staging"
 New-Item -ItemType Directory -Force -Path $GeneratedPayloadDir | Out-Null
 $EffectiveSettingsSource = Join-Path $ResolvedBundleDir "effective-settings.json"
 $EffectiveSettingsRevisionManifest = Join-Path $GeneratedPayloadDir "makepad-effective-settings.revision.json"
-Write-EffectiveSettingsRevisionManifest -Source $EffectiveSettingsSource -Out $EffectiveSettingsRevisionManifest
+Write-EffectiveSettingsRevisionManifest `
+    -Source $EffectiveSettingsSource `
+    -Out $EffectiveSettingsRevisionManifest `
+    -GpuProofEpoch $GpuProofEpoch
 Add-Payload -Payloads $Payloads `
     -Source $EffectiveSettingsSource `
     -RelativePath "makepad-effective-settings.json" `
@@ -249,6 +285,15 @@ foreach ($CaptureFile in @(
     }
 }
 
+if ($RevisionManifestOnly) {
+    $RevisionPayloads = New-Object System.Collections.ArrayList
+    Add-Payload -Payloads $RevisionPayloads `
+        -Source $EffectiveSettingsRevisionManifest `
+        -RelativePath "makepad-effective-settings.revision.json" `
+        -Role "effective-settings-revision"
+    $Payloads = $RevisionPayloads
+}
+
 if ([string]::IsNullOrWhiteSpace($ReportOut)) {
     $ReportOut = Join-Path $ResolvedBundleDir "hostess-makepad-settings-stage-report.json"
 }
@@ -260,6 +305,8 @@ $Report = [ordered]@{
     package = $Package
     adb = $ResolvedAdb
     bundle_dir = $ResolvedBundleDir
+    revision_manifest_only = [bool]$RevisionManifestOnly
+    gpu_proof_epoch = $GpuProofEpoch
     remote_tmp = $RemoteTmp
     internal_settings_dir = $InternalSettingsDir
     keep_remote_tmp = [bool]$KeepRemoteTmp
@@ -272,6 +319,7 @@ $Report = [ordered]@{
         settings_json_payload = "source selection and low-rate profile values only"
         settings_revision_manifest = "makepad-effective-settings.revision.json"
         settings_invalidation_policy = "global revision/hash gate, scoped revision/hash gate, then detailed JSON read"
+        gpu_proof_epoch_policy = "optional revision-only sidecar scope resets bounded GPU proof markers without replay/runtime reload"
         high_rate_payload_in_settings_json = $false
     }
 }
@@ -295,15 +343,24 @@ if (-not $DryRun) {
         "shell", "chmod", "-R", "755", $RemoteTmp
     )
 
-    Invoke-Checked "clear internal staged payload" $ResolvedAdb @(
-        "shell", "run-as", $Package, "rm", "-rf", $InternalSettingsDir
-    )
-    Invoke-Checked "create internal settings directory" $ResolvedAdb @(
-        "shell", "run-as", $Package, "mkdir", "-p", $InternalSettingsDir
-    )
-    Invoke-Checked "copy staged payload into app-private files" $ResolvedAdb @(
-        "shell", "run-as", $Package, "cp", "-R", "$RemoteTmp/.", "$InternalSettingsDir/"
-    )
+    if ($RevisionManifestOnly) {
+        Invoke-Checked "create internal settings directory" $ResolvedAdb @(
+            "shell", "run-as", $Package, "mkdir", "-p", $InternalSettingsDir
+        )
+        Invoke-Checked "copy revision manifest into app-private files" $ResolvedAdb @(
+            "shell", "run-as", $Package, "cp", "$RemoteTmp/makepad-effective-settings.revision.json", "$InternalSettingsDir/makepad-effective-settings.revision.json"
+        )
+    } else {
+        Invoke-Checked "clear internal staged payload" $ResolvedAdb @(
+            "shell", "run-as", $Package, "rm", "-rf", $InternalSettingsDir
+        )
+        Invoke-Checked "create internal settings directory" $ResolvedAdb @(
+            "shell", "run-as", $Package, "mkdir", "-p", $InternalSettingsDir
+        )
+        Invoke-Checked "copy staged payload into app-private files" $ResolvedAdb @(
+            "shell", "run-as", $Package, "cp", "-R", "$RemoteTmp/.", "$InternalSettingsDir/"
+        )
+    }
 
     $ListOutput = & $ResolvedAdb @(
         "shell", "run-as", $Package, "ls", "-lR", $InternalSettingsDir
@@ -323,5 +380,9 @@ Write-Output "Hostess Makepad settings staging report: $ReportOut"
 if ($DryRun) {
     Write-Output "Dry run only; no ADB writes performed."
 } else {
-    Write-Output "Hostess Makepad settings staged for $Package at $InternalSettingsDir"
+    if ($RevisionManifestOnly) {
+        Write-Output "Hostess Makepad settings revision manifest staged for $Package at $InternalSettingsDir"
+    } else {
+        Write-Output "Hostess Makepad settings staged for $Package at $InternalSettingsDir"
+    }
 }

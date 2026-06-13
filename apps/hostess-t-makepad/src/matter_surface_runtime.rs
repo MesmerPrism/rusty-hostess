@@ -67,6 +67,52 @@ impl App {
         )
     }
 
+    pub(crate) fn refresh_matter_surface_gpu_proof_epoch_from_selected_settings(
+        &mut self,
+        phase: &str,
+    ) -> bool {
+        let identity =
+            crate::makepad_effective_settings::selected_makepad_effective_settings_identity();
+        if !identity.gpu_proof_settings_changed_from(
+            self.mesh_replay_effective_settings_path.as_deref(),
+            self.mesh_replay_effective_settings_gpu_proof_revision_key
+                .as_deref(),
+        ) {
+            return false;
+        }
+
+        let gpu_proof_revision_key = identity.gpu_proof_settings_revision_key();
+        self.mesh_replay_effective_settings_gpu_proof_revision_key = gpu_proof_revision_key.clone();
+        self.reset_matter_surface_gpu_proof_markers();
+        emit_marker_line(&format!(
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH schema=rusty.hostess.makepad.matter_surface_gpu_proof_epoch.v1 phase={} status=applied sourcePath={} gpuProofRevisionKey={} proofCountersReset=true runtimeSettingsReloaded=false replayRuntimeRebuilt=false matterWorkerRestarted=false highRateJsonPayload=false",
+            marker_token(phase),
+            marker_token(
+                identity
+                    .source_effective_settings_path
+                    .as_deref()
+                    .unwrap_or("none")
+            ),
+            marker_token(gpu_proof_revision_key.as_deref().unwrap_or("none")),
+        ));
+        true
+    }
+
+    pub(crate) fn reset_matter_surface_gpu_proof_markers(&mut self) {
+        self.matter_surface_gpu_compute_preflight_markers_emitted = 0;
+        self.matter_surface_gpu_storage_probe_markers_emitted = 0;
+        self.matter_surface_gpu_oracle_compute_probe_markers_emitted = 0;
+        self.matter_surface_gpu_field_force_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_probe_pending = None;
+        self.matter_surface_gpu_skinning_mesh_probe_markers_emitted = 0;
+        self.matter_surface_gpu_skinning_mesh_probe_pending = None;
+        self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
+        self.matter_surface_gpu_mesh_sdf_probe_pending = None;
+        self.matter_surface_gpu_sync_probe_last_frame = 0;
+        self.matter_surface_gpu_schedule_markers_emitted = 0;
+    }
+
     pub(crate) fn update_matter_surface_runtime_for_evidence(
         &mut self,
         cx: &mut Cx,
