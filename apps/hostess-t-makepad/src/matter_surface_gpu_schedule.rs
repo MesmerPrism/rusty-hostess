@@ -13,7 +13,8 @@ use rusty_quest_makepad_camera_shell::{
 
 pub(crate) const MATTER_SURFACE_LIVE_GPU_PROBE_MIN_CADENCE_FRAMES: u64 = 24;
 pub(crate) const MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS: f64 = 1.0 / 15.0;
-pub(crate) const MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS: f64 = 1.0;
+pub(crate) const MATTER_SURFACE_LIVE_SOURCE_STEP_INTERVAL_SECONDS: f64 =
+    MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS;
 pub(crate) const MATTER_SURFACE_DEFAULT_MESH_SDF_PROBE_TARGET_MARKERS: usize = 1;
 pub(crate) const MATTER_SURFACE_STEADY_STATE_MESH_SDF_PROBE_TARGET_MARKERS: usize =
     QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS + 1;
@@ -179,7 +180,7 @@ impl MatterSurfaceGpuProofSchedule {
         draw_event_count: u64,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveObserveIntervalSeconds={:.6} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} recordedHandReplaySelected={} liveEquivalentHandInputSelected={} sourceAwareLiveFirstProof={} blockingGpuDiagnostics={} meshSdfProbeTargetMarkers={} cadenceGate=source-aware-first-proof liveSourceObserveCadence=bounded-evidence liveSourceSubmitCadence=bounded-evidence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_SCHEDULE schema=rusty.hostess.makepad.matter_surface_gpu_proof_schedule.v1 phase={} status=ready selectedMode={} minCadenceFrames={} defaultMinCadenceFrames={} liveMinCadenceFrames={} liveObserveIntervalSeconds={:.6} liveSourceStepIntervalSeconds={:.3} defaultStepIntervalSeconds={:.6} frameCount={} xrUpdateCount={} drawEventCount={} liveOpenXrHandProviderSelected={} recordedHandReplaySelected={} liveEquivalentHandInputSelected={} sourceAwareLiveFirstProof={} blockingGpuDiagnostics={} meshSdfProbeTargetMarkers={} cadenceGate=source-aware-first-proof liveSourceObserveCadence=bounded-evidence liveSourceSubmitCadence=live-observe-cadence gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
             marker_token(phase),
             marker_token(selection.mode().marker_value()),
             self.min_cadence_frames,
@@ -293,9 +294,9 @@ mod tests {
         assert!(marker.contains("minCadenceFrames=24"));
         assert!(marker.contains("defaultMinCadenceFrames=900"));
         assert!(marker.contains("liveObserveIntervalSeconds=0.066667"));
-        assert!(marker.contains("liveSourceStepIntervalSeconds=1.000"));
+        assert!(marker.contains("liveSourceStepIntervalSeconds=0.067"));
         assert!(marker.contains("liveSourceObserveCadence=bounded-evidence"));
-        assert!(marker.contains("liveSourceSubmitCadence=bounded-evidence"));
+        assert!(marker.contains("liveSourceSubmitCadence=live-observe-cadence"));
         assert!(marker.contains("sourceAwareLiveFirstProof=true"));
         assert!(marker.contains("blockingGpuDiagnostics=false"));
         assert!(marker.contains("meshSdfProbeTargetMarkers=5"));
