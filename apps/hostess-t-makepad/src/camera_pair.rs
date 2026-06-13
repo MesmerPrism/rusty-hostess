@@ -1,5 +1,7 @@
 #[cfg(target_os = "android")]
 use crate::android_camera_probe;
+#[cfg(target_os = "android")]
+use crate::frame_orientation::broker_pair_pose_source;
 use crate::hostess_camera_model::Rect2;
 use crate::projection_geometry::MakepadOpenXrProjectionContract;
 use crate::runtime_settings::{
@@ -616,18 +618,6 @@ pub(crate) fn makepad_display_source_eye_mapping() -> &'static str {
 
 pub(crate) fn makepad_display_left_from_right_source() -> bool {
     makepad_display_source_eye_mapping() == "display-left-from-right-source"
-}
-
-#[cfg(target_os = "android")]
-fn broker_pair_pose_source(
-    left: &BrokerH264ProjectionMetadata,
-    right: &BrokerH264ProjectionMetadata,
-) -> String {
-    if left.pose_source == right.pose_source {
-        left.pose_source.clone()
-    } else {
-        format!("{}+{}", left.pose_source, right.pose_source)
-    }
 }
 
 #[cfg(test)]

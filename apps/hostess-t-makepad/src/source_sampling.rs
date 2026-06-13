@@ -1,10 +1,10 @@
 use crate::camera_texture_path::MakepadCameraTexturePath;
+use crate::frame_orientation::FrameOrientationDecision;
 use crate::hostess_camera_model::SourceSamplingMode;
 use crate::hostess_contracts::{
     SourceSamplerYAxis, SourceSamplingContract, SourceSamplingTransformStage,
     StereoSourceEyeMapping,
 };
-use crate::FrameOrientationDecision;
 
 pub(crate) const MAKEPAD_SOURCE_UV_CONTRACT: &str =
     "screen_to_camera_content_uv_to_makepad_video_sampler";

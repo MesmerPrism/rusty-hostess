@@ -267,7 +267,9 @@ compact joint-frame recordings; `makepad_diagnostics.rs` owns marker cadence,
 token formatting, raw camera event markers, target-footprint augmentation, and
 camera YUV texture handle structs; `broker_h264_runtime.rs` owns broker-H264
 and remote-camera runtime key parsing plus `ExternalH264VideoSource`
-construction; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
+construction; `frame_orientation.rs` owns direct-camera and broker-H264
+source-raster orientation decisions plus shared broker pair pose-source
+combination; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
 state, panel live-design registration, draw shader defaults, shader uniform
 application, camera texture binding, and horizontal alignment tuning
 application for the stereo camera panel; `matter_world_particle_billboard.rs`

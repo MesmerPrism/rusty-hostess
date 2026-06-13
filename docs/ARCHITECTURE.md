@@ -153,6 +153,14 @@ selection, stream-port defaults, target-screen fallback rectangles, and
 `ExternalH264VideoSource` construction. The app root keeps the paired import
 event orchestration and delegates source planning through thin wrappers.
 
+`apps/hostess-t-makepad/src/frame_orientation.rs` owns Hostess-local
+direct-camera and broker-H264 source-raster orientation decisions plus shared
+broker pair pose-source combination. `source_sampling.rs` consumes the
+orientation decision when building source-sampling contracts and markers, and
+`camera_pair.rs` consumes the same pose-source helper for broker projection
+plans. The app root keeps camera projection panel binding and runtime event
+ordering.
+
 `apps/hostess-t-makepad/src/makepad_stereo_camera_panel.rs` owns the Rust
 `DrawMakepadStereoCameraPanel` and `MakepadStereoCameraPanel` types, shader
 uniform application, texture slot binding, target-footprint push state, and
