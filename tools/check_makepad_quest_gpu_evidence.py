@@ -34,10 +34,12 @@ CORE_REQUIRED_MARKERS = {
 OPTIONAL_STAGE_MARKERS = {
     "gpu_field_force_sampling_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
     "gpu_field_particle_force_probe": "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
+    "gpu_force_authority_candidate": "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE",
 }
 OPTIONAL_MARKERS = {
     "gpu_proof_epoch": "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH",
 }
+REQUIRED_MARKERS = {**CORE_REQUIRED_MARKERS, **OPTIONAL_STAGE_MARKERS}
 PROOF_SUMMARY_SCHEMA = "rusty.hostess.quest_live_hand_small_profile_summary.v1"
 CANONICAL_PROOF_SUMMARY_NAME = "live-hand-small-profile-summary.json"
 
@@ -57,6 +59,7 @@ class EvidenceThresholds:
     require_gpu_proof_epoch: bool = False
     require_gpu_field_force_sampling: bool = False
     require_gpu_field_particle_force: bool = False
+    require_gpu_force_authority_candidate: bool = False
 
 
 @dataclass(frozen=True)
@@ -123,6 +126,10 @@ def validate_summary(
     if thresholds.require_gpu_field_particle_force:
         required_markers["gpu_field_particle_force_probe"] = OPTIONAL_STAGE_MARKERS[
             "gpu_field_particle_force_probe"
+        ]
+    if thresholds.require_gpu_force_authority_candidate:
+        required_markers["gpu_force_authority_candidate"] = OPTIONAL_STAGE_MARKERS[
+            "gpu_force_authority_candidate"
         ]
     for key, marker_name in required_markers.items():
         if numeric(markers.get(key)) < 1:
@@ -252,6 +259,7 @@ def validate_summary(
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_SAMPLING_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_FORCE_SAMPLING_PROBE",
         "RUSTY_QUEST_MAKEPAD_GPU_FIELD_PARTICLE_FORCE_PROBE",
+        "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE",
     ):
         marker_lines = lines_containing(proof_lines, marker_name)
         if not marker_lines:
@@ -522,6 +530,80 @@ def validate_summary(
             issues.append(
                 "GPU field particle-force probe did not keep highRateJsonPayload=false"
             )
+    force_candidate_lines = lines_containing(
+        proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE"
+    )
+    force_candidate_ready_count = count_lines_containing(
+        force_candidate_lines, "forceAuthorityCandidateReady=true"
+    )
+    force_candidate_gpu_ready_count = count_lines_containing(
+        force_candidate_lines, "gpuComputeCandidateReady=true"
+    )
+    force_candidate_single_authority_count = count_lines_containing(
+        force_candidate_lines, "singleActiveForceAuthorityPreserved=true"
+    )
+    force_candidate_not_selected_count = count_lines_containing(
+        force_candidate_lines, "candidateSelected=false"
+    )
+    force_candidate_not_promoted_count = count_lines_containing(
+        force_candidate_lines, "candidatePromoted=false"
+    )
+    force_candidate_active_unchanged_count = count_lines_containing(
+        force_candidate_lines, "activeForceAuthorityChanged=false"
+    )
+    force_candidate_force_authority_false_count = count_lines_containing(
+        force_candidate_lines, "forceAuthorityReady=false"
+    )
+    force_candidate_runtime_authority_false_count = count_lines_containing(
+        force_candidate_lines, "runtimeForceAuthority=false"
+    )
+    force_candidate_runtime_particle_false_count = count_lines_containing(
+        force_candidate_lines, "runtimeParticleIntegration=false"
+    )
+    force_candidate_gpu_not_ready_count = count_lines_containing(
+        force_candidate_lines, "gpuComputeReady=false"
+    )
+    force_candidate_low_rate_count = count_lines_containing(
+        force_candidate_lines, "highRateJsonPayload=false"
+    )
+    force_candidate_settings_payload_false_count = count_lines_containing(
+        force_candidate_lines, "settingsControlPayload=false"
+    )
+    if force_candidate_lines:
+        if force_candidate_ready_count != len(force_candidate_lines):
+            issues.append(
+                "GPU force authority candidate did not keep forceAuthorityCandidateReady=true"
+            )
+        if force_candidate_gpu_ready_count != len(force_candidate_lines):
+            issues.append(
+                "GPU force authority candidate did not keep gpuComputeCandidateReady=true"
+            )
+        if force_candidate_single_authority_count != len(force_candidate_lines):
+            issues.append(
+                "GPU force authority candidate did not preserve single active authority"
+            )
+        if force_candidate_not_selected_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate was selected")
+        if force_candidate_not_promoted_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate was promoted")
+        if force_candidate_active_unchanged_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate changed active force authority")
+        if force_candidate_force_authority_false_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate did not keep forceAuthorityReady=false")
+        if force_candidate_runtime_authority_false_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate did not keep runtimeForceAuthority=false")
+        if force_candidate_runtime_particle_false_count != len(force_candidate_lines):
+            issues.append(
+                "GPU force authority candidate did not keep runtimeParticleIntegration=false"
+            )
+        if force_candidate_gpu_not_ready_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate did not keep gpuComputeReady=false")
+        if force_candidate_low_rate_count != len(force_candidate_lines):
+            issues.append("GPU force authority candidate did not keep highRateJsonPayload=false")
+        if force_candidate_settings_payload_false_count != len(force_candidate_lines):
+            issues.append(
+                "GPU force authority candidate did not keep settingsControlPayload=false"
+            )
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
     )
@@ -681,6 +763,27 @@ def validate_summary(
         ),
         "field_particle_force_gpu_not_ready_count": field_particle_force_gpu_not_ready_count,
         "field_particle_force_low_rate_count": field_particle_force_low_rate_count,
+        "force_candidate_line_count": len(force_candidate_lines),
+        "force_candidate_ready_count": force_candidate_ready_count,
+        "force_candidate_gpu_ready_count": force_candidate_gpu_ready_count,
+        "force_candidate_single_authority_count": force_candidate_single_authority_count,
+        "force_candidate_not_selected_count": force_candidate_not_selected_count,
+        "force_candidate_not_promoted_count": force_candidate_not_promoted_count,
+        "force_candidate_active_unchanged_count": force_candidate_active_unchanged_count,
+        "force_candidate_force_authority_false_count": (
+            force_candidate_force_authority_false_count
+        ),
+        "force_candidate_runtime_authority_false_count": (
+            force_candidate_runtime_authority_false_count
+        ),
+        "force_candidate_runtime_particle_false_count": (
+            force_candidate_runtime_particle_false_count
+        ),
+        "force_candidate_gpu_not_ready_count": force_candidate_gpu_not_ready_count,
+        "force_candidate_low_rate_count": force_candidate_low_rate_count,
+        "force_candidate_settings_payload_false_count": (
+            force_candidate_settings_payload_false_count
+        ),
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
         },
@@ -844,6 +947,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             "construction stage."
         ),
     )
+    parser.add_argument(
+        "--require-gpu-force-authority-candidate",
+        action="store_true",
+        help=(
+            "Require the optional non-authoritative GPU force-authority candidate "
+            "marker. Use this only after the bounded particle-force stage proves "
+            "candidate readiness without promotion."
+        ),
+    )
     return parser.parse_args(argv)
 
 
@@ -864,6 +976,7 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_proof_epoch=args.require_gpu_proof_epoch,
         require_gpu_field_force_sampling=args.require_gpu_field_force_sampling,
         require_gpu_field_particle_force=args.require_gpu_field_particle_force,
+        require_gpu_force_authority_candidate=args.require_gpu_force_authority_candidate,
     )
     result = validate_summary(load_summary(summary_path), thresholds)
     payload = {

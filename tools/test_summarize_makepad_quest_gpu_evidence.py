@@ -153,6 +153,19 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true forceAuthorityCandidateReady=true "
+                "gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true "
+                "candidateSelected=false candidatePromoted=false "
+                "activeForceAuthorityChanged=false runtimeParticleIntegration=false "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "gpuComputeReady=false highRateJsonPayload=false "
+                "settingsControlPayload=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE "
                 "readbackMatched=true queueWaitIdlePerformed=false "
                 "recordedInputEquivalent=true denseSdfConstructedOnGpu=true "
@@ -221,6 +234,19 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
                 "programReused=true shaderCompiledThisSubmit=false "
                 "pipelineCreatedThisSubmit=false",
             ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_CANDIDATE "
+                "readbackMatched=true queueWaitIdlePerformed=false "
+                "recordedInputEquivalent=true forceAuthorityCandidateReady=true "
+                "gpuComputeCandidateReady=true singleActiveForceAuthorityPreserved=true "
+                "candidateSelected=false candidatePromoted=false "
+                "activeForceAuthorityChanged=false runtimeParticleIntegration=false "
+                "forceAuthorityReady=false runtimeForceAuthority=false "
+                "gpuComputeReady=false highRateJsonPayload=false "
+                "settingsControlPayload=false",
+            ),
         ]
         log_lines = [
             log_line(
@@ -284,6 +310,7 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
         self.assertEqual(2, summary["markers"]["gpu_field_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_force_sampling_probe"])
         self.assertEqual(2, summary["markers"]["gpu_field_particle_force_probe"])
+        self.assertEqual(2, summary["markers"]["gpu_force_authority_candidate"])
         self.assertTrue(
             any(
                 "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH" in line
