@@ -14,6 +14,99 @@ pub(crate) const HOSTESS_WORLD_PARTICLE_BILLBOARD_DRAW_LIMIT_MAX: usize = 8192;
 const HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MIN: f32 = 0.05;
 const HOSTESS_WORLD_PARTICLE_BILLBOARD_SIZE_SCALE_MAX: f32 = 4.0;
 
+script_mod! {
+    use mod.pod.*
+    use mod.math.*
+    use mod.shader.*
+    use mod.draw
+    use mod.geom
+    use mod.prelude.widgets.*
+    use mod.widgets.*
+
+    mod.widgets.MatterWorldParticleBillboardCloudBase = #(MatterWorldParticleBillboardCloud::register_widget(vm))
+    mod.widgets.MatterWorldParticleBillboardCloud = set_type_default() do mod.widgets.MatterWorldParticleBillboardCloudBase{
+        body: mod.widgets.XrBodyKind.Fixed
+        shared_object_policy: mod.widgets.XrSharedObjectPolicy.None
+        draw_cube +: {
+            alpha_blend: true
+            backface_culling: false
+            light_dir: vec3(0.0, 0.0, 1.0)
+            billboard_uv: varying(vec2f)
+            billboard_state: varying(vec4f)
+
+            vertex: fn() {
+                let model_view = self.draw_list.view_transform * self.transform
+                let center_world = model_view * vec4(self.cube_pos.x, self.cube_pos.y, self.cube_pos.z, 1.0)
+                self.world = center_world
+
+                let face_live = step(0.5, self.geom.geom_normal.z)
+                let center_view = self.draw_pass.camera_view * center_world
+                if face_live < 0.5 || center_view.z >= -0.000001 {
+                    self.billboard_uv = vec2(0.0, 0.0)
+                    self.billboard_state = vec4(0.0, 0.0, 1.0, 0.0)
+                    self.lit_color = vec4(0.0, 0.0, 0.0, 0.0)
+                    self.vertex_pos = vec4(2.0, 2.0, 2.0, 1.0)
+                    return
+                }
+
+                let frame = clamp(self.cube_size.y, 0.0, 0.999985)
+                let rotation = self.cube_size.z + frame * 6.2831853
+                let cs = cos(rotation)
+                let sn = sin(rotation)
+                let raw_corner = self.geom.geom_pos.xy * 2.0
+                let corner = vec2(
+                    raw_corner.x * cs - raw_corner.y * sn,
+                    raw_corner.x * sn + raw_corner.y * cs
+                )
+
+                let eye_origin = (self.draw_pass.camera_inv * vec4(0.0, 0.0, 0.0, 1.0)).xyz
+                let normal_world = normalize((model_view * vec4(self.light_dir.x, self.light_dir.y, self.light_dir.z, 0.0)).xyz)
+                let eye_dir = normalize(eye_origin - center_world.xyz)
+                let facing = clamp(dot(normal_world, eye_dir), 0.0, 1.0)
+                let frame_scale = 0.92 + 0.20 * frame
+                let facing_scale = mix(0.86, 1.08, facing)
+                let diameter = max(self.cube_size.x, 0.002) * frame_scale * facing_scale
+                let view_pos = center_view + vec4(corner.x * diameter * 0.5, corner.y * diameter * 0.5, 0.0, 0.0)
+                let projected = self.draw_pass.camera_projection * view_pos
+                self.billboard_uv = corner * 0.5 + vec2(0.5, 0.5)
+                self.billboard_state = vec4(frame, facing, clamp((-center_view.z - 0.05) / 12.0, 0.0, 1.0), 1.0)
+                self.lit_color = self.color
+                self.vertex_pos = projected
+            }
+
+            pixel: fn() {
+                if self.billboard_state.w < 0.5 {
+                    discard()
+                }
+                let p = self.billboard_uv * 2.0 - vec2(1.0, 1.0)
+                let radius = length(p)
+                if radius > 1.02 {
+                    discard()
+                }
+                let frame = self.billboard_state.x
+                let animated_ring = 0.60 + 0.08 * sin(frame * 6.2831853 + p.x * 3.1 - p.y * 2.2)
+                let ring = 1.0 - smoothstep(0.050, 0.165, abs(radius - animated_ring))
+                let core = (1.0 - smoothstep(0.12, 0.42, radius)) * 0.28
+                let ripple = 0.72 + 0.28 * sin((p.x + p.y) * 7.0 + frame * 12.566371)
+                let edge = 1.0 - smoothstep(0.92, 1.02, radius)
+                let mask = clamp(max(core, ring * ripple) * edge, 0.0, 1.0)
+                if mask < 0.002 {
+                    discard()
+                }
+                let facing_tint = 0.80 + 0.20 * self.billboard_state.y
+                let depth_atten = pow(2.0, -1.5 * self.billboard_state.z)
+                let alpha = clamp(mask * self.color.w * 0.92, 0.0, 0.58)
+                let rgb = min(self.color.xyz * facing_tint * depth_atten, vec3(1.0, 1.0, 1.0))
+                return vec4(rgb.x * alpha, rgb.y * alpha, rgb.z * alpha, alpha)
+            }
+
+            fragment: fn() {
+                self.fb0 = depth_clip(self.world, self.pixel(), self.depth_clip)
+            }
+        }
+    }
+}
+
 #[derive(Script, Widget)]
 pub struct MatterWorldParticleBillboardCloud {
     #[redraw]

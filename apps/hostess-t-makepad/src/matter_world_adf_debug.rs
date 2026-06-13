@@ -11,6 +11,27 @@ use rusty_quest_makepad_camera_shell::QuestMakepadWorldAdfDebugBatch;
 pub(crate) const HOSTESS_WORLD_ADF_DEBUG_DRAW_LIMIT_MAX: usize = 2048;
 pub(crate) const HOSTESS_WORLD_ADF_DEBUG_RENDERER_ID: &str = "hostess-makepad-adf-debug-cell-boxes";
 
+script_mod! {
+    use mod.pod.*
+    use mod.math.*
+    use mod.shader.*
+    use mod.draw
+    use mod.geom
+    use mod.prelude.widgets.*
+    use mod.widgets.*
+
+    mod.widgets.MatterWorldAdfDebugCellsBase = #(MatterWorldAdfDebugCells::register_widget(vm))
+    mod.widgets.MatterWorldAdfDebugCells = set_type_default() do mod.widgets.MatterWorldAdfDebugCellsBase{
+        body: mod.widgets.XrBodyKind.Fixed
+        shared_object_policy: mod.widgets.XrSharedObjectPolicy.None
+        draw_cube +: {
+            alpha_blend: true
+            backface_culling: false
+            light_dir: vec3(0.35, 0.55, 1.0)
+        }
+    }
+}
+
 #[derive(Script, Widget)]
 pub struct MatterWorldAdfDebugCells {
     #[redraw]

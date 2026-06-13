@@ -161,6 +161,13 @@ horizontal alignment tuning application. It also owns the panel live-design
 app root registers the panel module before the Hostess app layout script and
 keeps the app UI `startup()` block as app-shell wiring.
 
+`apps/hostess-t-makepad/src/matter_world_particle_billboard.rs` and
+`apps/hostess-t-makepad/src/matter_world_adf_debug.rs` own the
+Hostess-local world-particle and ADF debug renderer widgets plus their
+Makepad widget-default `script_mod!` blocks. Matter, Optics, and
+Quest-Makepad remain the runtime truth and renderer-neutral row authorities;
+these modules only draw bounded Makepad evidence rows.
+
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact
 revision sidecar; runtime consumers compare global then scoped hashes before
