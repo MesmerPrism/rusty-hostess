@@ -50,6 +50,11 @@ The parser and platform dispatch stay in `tools/hostessctl/hostessctl.py`;
 desktop PNG rendering, sidecar writing, and render-output validation live in
 `tools/hostessctl/telemetry_render.py` so render evidence remains a focused
 helper family instead of growing the CLI root.
+Android shell-file and app-private `run-as` file transport lives in
+`tools/hostessctl/android_files.py`. The CLI root keeps route constants,
+target-specific launch/pull orchestration, and callback facades, while the
+helper owns low-level waiting, pulling, pushing, shell quoting, and Makepad
+render-sidecar polling.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust

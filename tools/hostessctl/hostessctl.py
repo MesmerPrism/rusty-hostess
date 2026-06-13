@@ -20,6 +20,7 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from tools.check_live_capture_evidence import package_snapshot, sha256_file  # noqa: E402
+from tools.hostessctl import android_files  # noqa: E402
 from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
 from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
     makepad_visual_profile_runtime_properties,
@@ -3457,49 +3458,59 @@ def append_rmssd_baseline_extras(command: list[str], args: argparse.Namespace) -
 
 
 def clear_android_live_artifacts(args: argparse.Namespace) -> None:
-    for remote in [ANDROID_REMOTE_EVIDENCE, ANDROID_REMOTE_RUNTIME_INPUT, ANDROID_REMOTE_GRAPH_REPORT]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(args, [ANDROID_REMOTE_EVIDENCE, ANDROID_REMOTE_RUNTIME_INPUT, ANDROID_REMOTE_GRAPH_REPORT])
 
 
 def clear_android_pmb_artifacts(args: argparse.Namespace) -> None:
-    for remote in [ANDROID_REMOTE_PMB_EVIDENCE, ANDROID_REMOTE_PMB_CORE_REPORT]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(args, [ANDROID_REMOTE_PMB_EVIDENCE, ANDROID_REMOTE_PMB_CORE_REPORT])
 
 
 def clear_android_pmb_controller_preflight_artifacts(args: argparse.Namespace) -> None:
-    for remote in [
-        ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE,
-        ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT,
-    ]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(
+        args,
+        [
+            ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE,
+            ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT,
+        ],
+    )
 
 
 def clear_android_pmb_simulated_live_artifacts(args: argparse.Namespace) -> None:
-    for remote in [
-        ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE,
-        ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
-        ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
-    ]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(
+        args,
+        [
+            ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE,
+            ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
+            ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
+        ],
+    )
 
 
 def clear_android_pmb_physical_live_artifacts(args: argparse.Namespace) -> None:
-    for remote in [
-        ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE,
-        ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT,
-        ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL,
-        ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT,
-        ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT,
-    ]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(
+        args,
+        [
+            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE,
+            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT,
+            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL,
+            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT,
+            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT,
+        ],
+    )
 
 
 def clear_android_broker_telemetry_artifacts(args: argparse.Namespace) -> None:
-    for remote in [
-        ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE,
-        ANDROID_REMOTE_BROKER_TELEMETRY_REPORT,
-    ]:
-        run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
+    clear_android_files(
+        args,
+        [
+            ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE,
+            ANDROID_REMOTE_BROKER_TELEMETRY_REPORT,
+        ],
+    )
+
+
+def clear_android_files(args: argparse.Namespace, remote_paths: list[str]) -> None:
+    android_files.clear_android_files(args, remote_paths, run=run)
 
 
 def wait_for_android_evidence(args: argparse.Namespace, timeout_seconds: float) -> None:
@@ -3507,16 +3518,7 @@ def wait_for_android_evidence(args: argparse.Namespace, timeout_seconds: float) 
 
 
 def wait_for_android_file(args: argparse.Namespace, remote_path: str, timeout_seconds: float) -> None:
-    deadline = time.monotonic() + max(timeout_seconds, 1.0)
-    while time.monotonic() < deadline:
-        result = run(
-            [args.adb, "-s", args.serial, "shell", "test", "-f", remote_path],
-            allow_failure=True,
-        )
-        if result.returncode == 0:
-            return
-        time.sleep(1.0)
-    raise SystemExit(f"timed out waiting for Android file: {remote_path}")
+    android_files.wait_for_android_file(args, remote_path, timeout_seconds, run=run)
 
 
 def wait_for_android_run_as_file(
@@ -3525,26 +3527,13 @@ def wait_for_android_run_as_file(
     relative_path: str,
     timeout_seconds: float,
 ) -> None:
-    deadline = time.monotonic() + max(timeout_seconds, 1.0)
-    while time.monotonic() < deadline:
-        result = run(
-            [
-                args.adb,
-                "-s",
-                args.serial,
-                "shell",
-                "run-as",
-                package,
-                "test",
-                "-f",
-                relative_path,
-            ],
-            allow_failure=True,
-        )
-        if result.returncode == 0:
-            return
-        time.sleep(1.0)
-    raise SystemExit(f"timed out waiting for app file: {package}:{relative_path}")
+    android_files.wait_for_android_run_as_file(
+        args,
+        package,
+        relative_path,
+        timeout_seconds,
+        run=run,
+    )
 
 
 def pull_android_run_as_file(
@@ -3553,7 +3542,7 @@ def pull_android_run_as_file(
     relative_path: str,
     out: Path,
 ) -> None:
-    out.write_bytes(read_android_run_as_file(args, package, relative_path))
+    android_files.pull_android_run_as_file(args, package, relative_path, out)
 
 
 def write_android_run_as_file(
@@ -3562,32 +3551,11 @@ def write_android_run_as_file(
     relative_path: str,
     payload: bytes,
 ) -> None:
-    result = subprocess.run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "exec-in",
-            "run-as",
-            package,
-            "sh",
-            "-c",
-            f"cat > {android_shell_quote(relative_path)}",
-        ],
-        check=False,
-        input=payload,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        raise SystemExit(
-            f"could not write app file {package}:{relative_path}: "
-            f"{result.stderr.decode(errors='replace').strip()}"
-        )
+    android_files.write_android_run_as_file(args, package, relative_path, payload)
 
 
 def android_shell_quote(value: str) -> str:
-    return "'" + value.replace("'", "'\"'\"'") + "'"
+    return android_files.android_shell_quote(value)
 
 
 def read_android_run_as_file(
@@ -3595,27 +3563,7 @@ def read_android_run_as_file(
     package: str,
     relative_path: str,
 ) -> bytes:
-    result = subprocess.run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "exec-out",
-            "run-as",
-            package,
-            "cat",
-            relative_path,
-        ],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0:
-        raise SystemExit(
-            f"could not pull app file {package}:{relative_path}: "
-            f"{result.stderr.decode(errors='replace').strip()}"
-        )
-    return result.stdout
+    return android_files.read_android_run_as_file(args, package, relative_path)
 
 
 def wait_for_makepad_render_sidecar(
@@ -3627,33 +3575,13 @@ def wait_for_makepad_render_sidecar(
     target: str,
     min_events: int,
 ) -> None:
-    deadline = time.monotonic() + max(timeout_seconds, 1.0)
-    last_reason = "sidecar not readable"
-    while time.monotonic() < deadline:
-        try:
-            payload = read_android_run_as_file(args, package, relative_path)
-            sidecar = json.loads(payload.decode("utf-8"))
-        except (SystemExit, UnicodeDecodeError, json.JSONDecodeError) as exc:
-            last_reason = str(exc)
-            time.sleep(1.0)
-            continue
-
-        event_count = int(sidecar.get("event_count") or 0)
-        if (
-            sidecar.get("status") == "pass"
-            and sidecar.get("render_page") == "watcher"
-            and sidecar.get("target") == target
-            and event_count >= min_events
-        ):
-            return
-        last_reason = (
-            f"status={sidecar.get('status')} page={sidecar.get('render_page')} "
-            f"target={sidecar.get('target')} events={event_count}"
-        )
-        time.sleep(1.0)
-    raise SystemExit(
-        f"timed out waiting for Makepad render sidecar: "
-        f"{package}:{relative_path} ({last_reason})"
+    android_files.wait_for_makepad_render_sidecar(
+        args,
+        package,
+        relative_path,
+        timeout_seconds,
+        target=target,
+        min_events=min_events,
     )
 
 
