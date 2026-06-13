@@ -19,7 +19,7 @@ The check covers the available local surface:
 For fast CLI/evidence edits, run the Python path first:
 
 ```powershell
-python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py
+python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\pmb_evidence.py tools\hostessctl\recording_evidence.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py
 python -m unittest discover -s tools -p "test_*.py"
 ```
 

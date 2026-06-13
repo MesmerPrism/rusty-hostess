@@ -55,6 +55,15 @@ Android shell-file and app-private `run-as` file transport lives in
 target-specific launch/pull orchestration, and callback facades, while the
 helper owns low-level waiting, pulling, pushing, shell quoting, and Makepad
 render-sidecar polling.
+Projected-motion-breath evidence construction and validation live in
+`tools/hostessctl/pmb_evidence.py`. The CLI root still launches desktop,
+Android, and Quest routes, but PMB contract constants, replay/self-test
+evidence builders, PMB validation reports, and host-run evidence writers are a
+separate helper family.
+Broker telemetry and Manifold value-recording evidence construction lives in
+`tools/hostessctl/recording_evidence.py`. Broker/WebSocket command flow remains
+in the CLI root for now; recording evidence schemas, validators, scorecards,
+and host-run wrappers are isolated from command orchestration.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust
