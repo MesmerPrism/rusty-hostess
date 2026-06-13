@@ -50,14 +50,27 @@ Argument parser construction lives in `tools/hostessctl/cli_parser.py`; it
 receives platform defaults from `tools/hostessctl/hostessctl.py` and does not
 import command implementations. The CLI root stays the platform default,
 dispatch, and compatibility-wrapper facade.
-desktop PNG rendering, sidecar writing, and render-output validation live in
+Shared process helpers live in `tools/hostessctl/runtime.py`, and package
+names, Android actions, remote artifact paths, Makepad defaults, and broker
+identity helpers live in `tools/hostessctl/platform_defaults.py`.
+Live capture, Polar selected-module replay, Android live/replay launch, live
+evidence validation, and runtime artifact pulls live in
+`tools/hostessctl/live_capture_routes.py`.
+Desktop PMB replay, PMB live-route self-test, and PMB shell-handoff validation
+live in `tools/hostessctl/pmb_desktop_routes.py`; Android/Quest PMB replay,
+controller preflight, and simulated/physical live routes live in
+`tools/hostessctl/pmb_android_routes.py`.
+Makepad PMB provider setup lives in `tools/hostessctl/makepad_pmb_setup.py`,
+and foreground broker telemetry observation lives in
+`tools/hostessctl/broker_telemetry_routes.py`.
+Telemetry command dispatch, Makepad render pulls, shell-contract launch, and
+snapshot command dispatch live in `tools/hostessctl/telemetry_routes.py`.
+Desktop PNG rendering, sidecar writing, and render-output validation live in
 `tools/hostessctl/telemetry_render.py` so render evidence remains a focused
 helper family instead of growing the CLI root.
 Android shell-file and app-private `run-as` file transport lives in
-`tools/hostessctl/android_files.py`. The CLI root keeps route constants,
-target-specific launch/pull orchestration, and callback facades, while the
-helper owns low-level waiting, pulling, pushing, shell quoting, and Makepad
-render-sidecar polling.
+`tools/hostessctl/android_files.py`, with route-level cleanup and compatibility
+facades in `tools/hostessctl/android_artifacts.py`.
 Manifold broker WebSocket transport lives in
 `tools/hostessctl/broker_transport.py`: handshake/framing, Manifold command
 envelopes, ACK normalization, retry connection, and stream-event timestamp
@@ -65,10 +78,10 @@ aliasing are isolated from route orchestration. Projected Motion Breath broker
 publication and receipt listening live in
 `tools/hostessctl/pmb_broker_bridge.py`.
 Projected-motion-breath evidence construction and validation live in
-`tools/hostessctl/pmb_evidence.py`. The CLI root still launches desktop,
-Android, and Quest routes, but PMB contract constants, replay/self-test
-evidence builders, PMB validation reports, and host-run evidence writers are a
-separate helper family.
+`tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
+and Quest route orchestration, while PMB contract constants, replay/self-test
+evidence builders, PMB validation reports, and host-run evidence writers remain
+a separate helper family.
 Manifold value recording planning and broker capture orchestration live in
 `tools/hostessctl/manifold_recording.py`: the provider registry,
 `record-values` route planner, Quest broker WebSocket capture, Makepad

@@ -1,13 +1,9 @@
-"""Small Hostess T command bridge for the first live-capture slot."""
+"""Hostess T command bridge facade."""
 
 from __future__ import annotations
 
 import argparse
-import json
-import subprocess
 import sys
-import time
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -15,10 +11,14 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
-from tools.check_live_capture_evidence import package_snapshot  # noqa: E402
-from tools.hostessctl import android_files  # noqa: E402
+from tools.hostessctl import android_artifacts  # noqa: E402
+from tools.hostessctl import broker_telemetry_routes  # noqa: E402
+from tools.hostessctl import live_capture_routes  # noqa: E402
+from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
-from tools.hostessctl import makepad_shell_contract as makepad_shell_contract_launcher  # noqa: E402
+from tools.hostessctl import pmb_android_routes  # noqa: E402
+from tools.hostessctl import pmb_desktop_routes  # noqa: E402
+from tools.hostessctl import telemetry_routes  # noqa: E402
 from tools.hostessctl.broker_transport import (  # noqa: E402
     MANIFOLD_BROKER_EVENTS_PATH,
     MANIFOLD_COMMAND_SCHEMA,
@@ -30,13 +30,61 @@ from tools.hostessctl.broker_transport import (  # noqa: E402
     with_transport_event_aliases,
 )
 from tools.hostessctl.cli_parser import build_hostessctl_parser  # noqa: E402
-from tools.hostessctl.makepad_visual_profile import (  # noqa: E402
-    makepad_visual_profile_runtime_properties,
-)
 from tools.hostessctl.manifold_recording import (  # noqa: E402
     adb_prefix,
     configure_makepad_controller_pose_provider,
     wait_for_makepad_controller_pose_ready,
+)
+from tools.hostessctl.platform_defaults import (  # noqa: E402
+    ANDROID_ACTION,
+    ANDROID_BROKER_TELEMETRY_ACTION,
+    ANDROID_PACKAGE,
+    ANDROID_PMB_CONTROLLER_PREFLIGHT_ACTION,
+    ANDROID_PMB_PHYSICAL_LIVE_ACTION,
+    ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION,
+    ANDROID_PMB_PHYSICAL_LIVE_SERVICE,
+    ANDROID_PMB_REPLAY_ACTION,
+    ANDROID_PMB_SIMULATED_LIVE_ACTION,
+    ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE,
+    ANDROID_REMOTE_BROKER_TELEMETRY_REPORT,
+    ANDROID_REMOTE_EVIDENCE,
+    ANDROID_REMOTE_GRAPH_REPORT,
+    ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE,
+    ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT,
+    ANDROID_REMOTE_PMB_CORE_REPORT,
+    ANDROID_REMOTE_PMB_EVIDENCE,
+    ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT,
+    ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT,
+    ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL,
+    ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE,
+    ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT,
+    ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
+    ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE,
+    ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
+    ANDROID_REMOTE_RENDER_ROOT,
+    ANDROID_REMOTE_RUNTIME_INPUT,
+    ANDROID_RENDER_ACTION,
+    ANDROID_REPLAY_ACTION,
+    BROKER_ACTIVITY,
+    BROKER_LOCAL_FORWARD_PORT,
+    BROKER_PACKAGE,
+    BROKER_PORT,
+    LEGACY_REFERENCE_BROKER_ACTIVITY,
+    LEGACY_REFERENCE_BROKER_PACKAGE,
+    MAKEPAD_ANDROID_ACTIVITY,
+    MAKEPAD_ANDROID_PACKAGE,
+    MAKEPAD_ANDROID_XR_ACTIVITY,
+    MAKEPAD_PROVIDER_ACTIVITY,
+    MAKEPAD_PROVIDER_PACKAGE,
+    MAKEPAD_RENDER_RELATIVE,
+    MAKEPAD_RENDER_SIDECAR_RELATIVE,
+    MANIFOLD_BROKER_ACTIVITY,
+    MANIFOLD_BROKER_PACKAGE,
+    attach_broker_identity,
+    broker_activity_for_package,
+    broker_identity,
+    selected_broker_activity,
+    selected_broker_package,
 )
 from tools.hostessctl.pmb_broker_bridge import (  # noqa: E402
     listen_for_pmb_receipts,
@@ -94,137 +142,7 @@ from tools.hostessctl.recording_evidence import (  # noqa: E402
     validate_manifold_value_recording_evidence,
     write_manifold_value_recording_host_run_evidence,
 )
-from tools.hostessctl.telemetry_render import (  # noqa: E402
-    render_desktop_telemetry,
-    render_sidecar_path,
-    sanitize_remote_name,
-    validate_render_output,
-)
-from tools.telemetry_snapshot import build_snapshot, write_snapshot  # noqa: E402
-
-ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.t"
-MANIFOLD_BROKER_PACKAGE = "io.github.mesmerprism.rustymanifold.broker"
-MANIFOLD_BROKER_ACTIVITY = f"{MANIFOLD_BROKER_PACKAGE}/.BrokerStartActivity"
-LEGACY_REFERENCE_BROKER_PACKAGE = "com.example.rustyxr.broker"
-LEGACY_REFERENCE_BROKER_ACTIVITY = f"{LEGACY_REFERENCE_BROKER_PACKAGE}/.BrokerStartActivity"
-BROKER_PACKAGE = MANIFOLD_BROKER_PACKAGE
-BROKER_ACTIVITY = MANIFOLD_BROKER_ACTIVITY
-BROKER_PORT = 8765
-BROKER_LOCAL_FORWARD_PORT = 18765
-MAKEPAD_ANDROID_PACKAGE = "io.github.mesmerprism.rustyhostess.makepad"
-MAKEPAD_ANDROID_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadApp"
-MAKEPAD_ANDROID_XR_ACTIVITY = f"{MAKEPAD_ANDROID_PACKAGE}/.MakepadAppXr"
-MAKEPAD_PROVIDER_PACKAGE = MAKEPAD_ANDROID_PACKAGE
-MAKEPAD_PROVIDER_ACTIVITY = MAKEPAD_ANDROID_XR_ACTIVITY
-ANDROID_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_CAPTURE"
-ANDROID_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_REPLAY"
-ANDROID_PMB_REPLAY_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_REPLAY"
-ANDROID_PMB_CONTROLLER_PREFLIGHT_ACTION = (
-    "io.github.mesmerprism.rustyhostess.t.RUN_PMB_CONTROLLER_PREFLIGHT"
-)
-ANDROID_PMB_SIMULATED_LIVE_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE"
-ANDROID_PMB_PHYSICAL_LIVE_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE"
-ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION = (
-    "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND"
-)
-ANDROID_BROKER_TELEMETRY_ACTION = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY"
-ANDROID_PMB_PHYSICAL_LIVE_SERVICE = f"{ANDROID_PACKAGE}/.PmbPhysicalLiveService"
-ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
-ANDROID_REMOTE_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.json"
-)
-ANDROID_REMOTE_RUNTIME_INPUT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.runtime-input.json"
-)
-ANDROID_REMOTE_GRAPH_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/live-capture/latest.graph-execution-report.json"
-)
-ANDROID_REMOTE_PMB_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-replay/latest.json"
-)
-ANDROID_REMOTE_PMB_CORE_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-replay/latest.core-validation-report.json"
-)
-ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-controller-preflight/latest.json"
-)
-ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-controller-preflight/latest.controller-preflight-report.json"
-)
-ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.json"
-)
-ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.live-route-report.json"
-)
-ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-simulated-live/latest.broker-publish-report.json"
-)
-ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.json"
-)
-ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.input-capture-report.json"
-)
-ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.transport-events.jsonl"
-)
-ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.live-route-report.json"
-)
-ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/pmb-physical-live/latest.broker-publish-report.json"
-)
-ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/broker-telemetry/latest.json"
-)
-ANDROID_REMOTE_BROKER_TELEMETRY_REPORT = (
-    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/broker-telemetry/latest.broker-telemetry-report.json"
-)
-ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
-MAKEPAD_RENDER_RELATIVE = "files/hostess-t/telemetry/makepad-telemetry-render.png"
-MAKEPAD_RENDER_SIDECAR_RELATIVE = f"{MAKEPAD_RENDER_RELATIVE}.json"
-
-
-def broker_activity_for_package(package_name: str) -> str:
-    return f"{package_name}/.BrokerStartActivity"
-
-
-def selected_broker_package(args: argparse.Namespace) -> str:
-    return str(getattr(args, "broker_package", None) or BROKER_PACKAGE)
-
-
-def selected_broker_activity(args: argparse.Namespace) -> str:
-    activity = getattr(args, "broker_activity", None)
-    if activity:
-        return str(activity)
-    return broker_activity_for_package(selected_broker_package(args))
-
-
-def broker_identity(args: argparse.Namespace) -> dict[str, Any]:
-    package_name = selected_broker_package(args)
-    activity = selected_broker_activity(args)
-    legacy_reference = package_name == LEGACY_REFERENCE_BROKER_PACKAGE
-    return {
-        "$schema": "rusty.hostess.manifold_broker_identity.v1",
-        "authority": "rusty.manifold",
-        "profile_id": (
-            "broker.profile.legacy_reference"
-            if legacy_reference
-            else "broker.profile.rusty_manifold_android"
-        ),
-        "package_name": package_name,
-        "activity": activity,
-        "default_selected": package_name == BROKER_PACKAGE and activity == BROKER_ACTIVITY,
-        "legacy_reference_package": legacy_reference,
-        "legacy_reference_allowed": legacy_reference,
-    }
-
-
-def attach_broker_identity(evidence: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
-    annotated = dict(evidence)
-    annotated["broker_identity"] = broker_identity(args)
-    return annotated
+from tools.hostessctl.runtime import run, run_captured  # noqa: E402
 
 
 MANIFOLD_VALUE_ALIASES = manifold_recording_routes.MANIFOLD_VALUE_ALIASES
@@ -235,6 +153,8 @@ manifold_value_provider_plan = manifold_recording_routes.manifold_value_provider
 manifold_recording_route_status = manifold_recording_routes.manifold_recording_route_status
 pmb_live_processor_inputs_ready = manifold_recording_routes.pmb_live_processor_inputs_ready
 single_value_live_capture_args = manifold_recording_routes.single_value_live_capture_args
+polar_package_root = live_capture_routes.polar_package_root
+pmb_physical_live_start_command = pmb_android_routes.pmb_physical_live_start_command
 
 
 def main() -> int:
@@ -286,15 +206,7 @@ def dispatch_command(args: argparse.Namespace) -> int:
 
 
 def install_android(args: argparse.Namespace) -> int:
-    run([args.adb, "-s", args.serial, "uninstall", ANDROID_PACKAGE], allow_failure=True)
-    run([args.adb, "-s", args.serial, "install", args.apk])
-    for permission in [
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.ACCESS_FINE_LOCATION",
-    ]:
-        run([args.adb, "-s", args.serial, "shell", "pm", "grant", ANDROID_PACKAGE, permission], allow_failure=True)
-    return 0
+    return live_capture_routes.install_android(args, run_func=run)
 
 
 def run_live_capture(args: argparse.Namespace) -> int:
@@ -310,777 +222,118 @@ def run_live_capture(args: argparse.Namespace) -> int:
 
 
 def run_desktop_capture(args: argparse.Namespace, out: Path) -> int:
-    command = [
-        sys.executable,
-        str(REPO_ROOT / "apps" / "hostess-t-desktop" / "capture_polar.py"),
-        "--packages-root",
-        args.packages_root,
-        "--mode",
-        args.stream if args.stream else "module",
-        "--duration-seconds",
-        str(args.duration_seconds),
-        "--acc-rate",
-        str(args.acc_rate),
-        "--runtime-core",
-        args.runtime_core,
-        "--out",
-        str(out),
-    ]
-    if args.device_address:
-        command.extend(["--device-address", args.device_address])
-    for module_id in args.module:
-        command.extend(["--module", module_id])
-    for source_arg, cli_arg in [
-        ("rmssd_baseline_ln_rmssd", "--rmssd-baseline-ln-rmssd"),
-        ("rmssd_baseline_mean_ln_rmssd", "--rmssd-baseline-mean-ln-rmssd"),
-        ("rmssd_baseline_sd_ln_rmssd", "--rmssd-baseline-sd-ln-rmssd"),
-        ("rmssd_baseline_window_count", "--rmssd-baseline-window-count"),
-    ]:
-        value = getattr(args, source_arg)
-        if value is not None:
-            command.extend([cli_arg, str(value)])
-    if args.rmssd_baseline_source:
-        command.extend(["--rmssd-baseline-source", args.rmssd_baseline_source])
-    capture = run(command, allow_failure=True)
-    validation = validate_evidence(args, out, "desktop")
-    return validation if validation != 0 else capture.returncode
+    return live_capture_routes.run_desktop_capture(
+        args,
+        out,
+        run_func=run,
+        validate_evidence_func=validate_evidence,
+    )
 
 
 def run_replay_capture(args: argparse.Namespace) -> int:
-    if args.target in {"phone", "quest"}:
-        return run_android_replay(args)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = polar_package_root(packages_root)
-    graph_path = package_root / "fixtures" / "valid" / "graph.json"
-    input_path = (
-        Path(args.input)
-        if args.input
-        else package_root / "fixtures" / "valid" / "processor-runtime-input-synthetic.json"
+    return live_capture_routes.run_replay_capture(
+        args,
+        run_func=run,
+        run_android_replay_func=run_android_replay,
+        validate_evidence_func=validate_evidence,
     )
-    graph_report_path = out.with_name(f"{out.stem}.graph-execution-report.json")
-    started_utc = datetime.now(UTC)
-    command = [
-        "cargo",
-        "run",
-        "-p",
-        "polar-h10-core",
-        "--",
-        "run-fixture",
-        "--graph",
-        str(graph_path),
-        "--input",
-        str(input_path),
-        "--select",
-        ",".join(args.module),
-        "--out",
-        str(graph_report_path),
-    ]
-    graph_run = run(command, allow_failure=True, cwd=packages_root)
-    ended_utc = datetime.now(UTC)
-    if not graph_report_path.exists():
-        return graph_run.returncode if graph_run.returncode != 0 else 2
-    graph_report = json.loads(graph_report_path.read_text(encoding="utf-8"))
-    streams = graph_report_streams(graph_report)
-    package = package_snapshot(packages_root)
-    package["package_id"] = "package.polar_h10"
-    evidence = {
-        "$schema": "rusty.manifold.live_capture_evidence.v1",
-        "status": graph_report.get("status", "fail"),
-        "host_profile": "desktop",
-        "started_at_utc": started_utc.isoformat(),
-        "ended_at_utc": ended_utc.isoformat(),
-        "software": {
-            "origin": "rusty-hostess",
-            "host_app": "app.rusty_hostess_t.desktop",
-            "host_app_version": "0.1.0",
-        },
-        "package": package,
-        "capture": {
-            "mode": "module",
-            "selected_module_ids": graph_report.get("selected_module_ids", []),
-            "dependency_stream_ids": graph_report.get("output_stream_ids", []),
-            "runtime_path": graph_report.get("runtime_path"),
-            "graph_id": graph_report.get("graph_id"),
-            "graph_revision": graph_report.get("graph_revision"),
-            "graph_execution_report": graph_report_path.name,
-        },
-        "commands": [
-            {
-                "command": "run_graph_fixture",
-                "status": "acknowledged" if graph_run.returncode == 0 else "rejected",
-                "runtime_path": graph_report.get("runtime_path"),
-            }
-        ],
-        "streams": streams,
-        "errors": [issue.get("message") for issue in graph_report.get("issues", [])],
-    }
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation = validate_evidence(args, out, "desktop")
-    return validation if validation != 0 else graph_run.returncode
-
-
-def run_pmb_replay_capture(args: argparse.Namespace) -> int:
-    if args.target in {"phone", "quest"}:
-        return run_android_pmb_replay(args)
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    core_report_path = out.with_name(f"{out.stem}.core-validation-report.json")
-    stdout_path = out.with_name(f"{out.stem}.stdout.txt")
-    stderr_path = out.with_name(f"{out.stem}.stderr.txt")
-    started_utc = datetime.now(UTC)
-    command = [
-        args.cargo,
-        "run",
-        "--quiet",
-        "-p",
-        "projected-motion-breath-core",
-        "--",
-        "validate-goldens",
-        "--package-root",
-        str(package_root),
-    ]
-    core_run = run_captured(command, allow_failure=True, cwd=packages_root)
-    ended_utc = datetime.now(UTC)
-    stdout_path.write_text(core_run.stdout, encoding="utf-8")
-    stderr_path.write_text(core_run.stderr, encoding="utf-8")
-    core_report, parse_error = parse_pmb_core_report(core_run.stdout)
-    if core_report is not None:
-        core_report_path.write_text(
-            json.dumps(core_report, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-    evidence = build_pmb_desktop_replay_execution_evidence(
-        packages_root=packages_root,
-        package_root=package_root,
-        command=command,
-        core_run=core_run,
-        core_report=core_report,
-        core_report_path=core_report_path,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-        started_utc=started_utc,
-        ended_utc=ended_utc,
-        parse_error=parse_error,
-    )
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_pmb_desktop_replay_execution_evidence(evidence)
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_host_run_evidence(out, validation_path, evidence)
-    return 0 if validation_report["status"] == "pass" else core_run.returncode or 2
-
-
-def run_pmb_live_route_self_test(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    route_report_path = out.with_name(f"{out.stem}.live-broker-route-report.json")
-    stdout_path = out.with_name(f"{out.stem}.stdout.txt")
-    stderr_path = out.with_name(f"{out.stem}.stderr.txt")
-    started_utc = datetime.now(UTC)
-    command = [
-        args.cargo,
-        "run",
-        "--quiet",
-        "-p",
-        "projected-motion-breath-core",
-        "--",
-        "live-route-self-test",
-        "--package-root",
-        str(package_root),
-    ]
-    core_run = run_captured(command, allow_failure=True, cwd=packages_root)
-    ended_utc = datetime.now(UTC)
-    stdout_path.write_text(core_run.stdout, encoding="utf-8")
-    stderr_path.write_text(core_run.stderr, encoding="utf-8")
-    route_report, parse_error = parse_pmb_core_report(core_run.stdout)
-    if route_report is not None:
-        route_report_path.write_text(
-            json.dumps(route_report, indent=2, sort_keys=True),
-            encoding="utf-8",
-        )
-    evidence = build_pmb_live_route_self_test_evidence(
-        packages_root=packages_root,
-        package_root=package_root,
-        command=command,
-        core_run=core_run,
-        route_report=route_report,
-        route_report_path=route_report_path,
-        stdout_path=stdout_path,
-        stderr_path=stderr_path,
-        started_utc=started_utc,
-        ended_utc=ended_utc,
-        parse_error=parse_error,
-    )
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_pmb_live_route_self_test_evidence(evidence)
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_live_route_host_run_evidence(out, validation_path, evidence)
-    return 0 if validation_report["status"] == "pass" else core_run.returncode or 2
-
-
-def run_pmb_shell_handoff(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    handoff_path = Path(args.handoff) if getattr(args, "handoff", None) else default_pmb_shell_handoff_path(package_root)
-    if not handoff_path.exists():
-        raise SystemExit(f"PMB shell handoff manifest not found: {handoff_path}")
-    started_utc = datetime.now(UTC)
-    evidence = build_pmb_shell_handoff_validation_evidence(
-        packages_root=packages_root,
-        package_root=package_root,
-        handoff_path=handoff_path,
-        started_utc=started_utc,
-        ended_utc=datetime.now(UTC),
-    )
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_pmb_shell_handoff_validation_evidence(evidence)
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_shell_handoff_host_run_evidence(out, validation_path, evidence)
-    return 0 if validation_report["status"] == "pass" else 2
 
 
 def run_android_capture(args: argparse.Namespace, out: Path) -> int:
-    if not args.adb or not args.serial:
-        raise SystemExit("--adb and --serial are required for phone and quest targets")
-    host_profile = "headset" if args.target == "quest" else "mobile"
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    clear_android_live_artifacts(args)
-    command = [
-        args.adb,
-        "-s",
-        args.serial,
-        "shell",
-        "am",
-        "start",
-        "-a",
-        ANDROID_ACTION,
-        "-n",
-        f"{ANDROID_PACKAGE}/.MainActivity",
-        "--es",
-        "mode",
-        args.stream if args.stream else "module",
-        "--es",
-        "host_profile",
-        host_profile,
-        "--el",
-        "duration_ms",
-        str(int(args.duration_seconds * 1000)),
-        "--ei",
-        "acc_rate_hz",
-        str(args.acc_rate),
-        "--es",
-        "telemetry_page",
-        args.telemetry_page,
-    ]
-    if args.device_address:
-        command.extend(["--es", "device_address", args.device_address])
-    if args.module:
-        command.extend(["--es", "modules", ",".join(args.module)])
-    append_rmssd_baseline_extras(command, args)
-    run(command)
-    wait_for_android_evidence(args, args.duration_seconds + 90.0)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
-    pull_android_runtime_artifacts(args, out)
-    return validate_evidence(args, out, "headset" if args.target == "quest" else "mobile")
+    return live_capture_routes.run_android_capture(
+        args,
+        out,
+        run_func=run,
+        clear_android_live_artifacts_func=clear_android_live_artifacts,
+        wait_for_android_evidence_func=wait_for_android_evidence,
+        pull_android_runtime_artifacts_func=pull_android_runtime_artifacts,
+        append_rmssd_baseline_extras_func=append_rmssd_baseline_extras,
+        validate_evidence_func=validate_evidence,
+    )
 
 
 def run_android_replay(args: argparse.Namespace) -> int:
-    if not args.adb or not args.serial:
-        raise SystemExit("--adb and --serial are required for phone and quest replay targets")
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    host_profile = "headset" if args.target == "quest" else "mobile"
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    clear_android_live_artifacts(args)
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_REPLAY_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-            "--es",
-            "host_profile",
-            host_profile,
-            "--es",
-            "modules",
-            ",".join(args.module),
-        ]
+    return live_capture_routes.run_android_replay(
+        args,
+        run_func=run,
+        clear_android_live_artifacts_func=clear_android_live_artifacts,
+        wait_for_android_evidence_func=wait_for_android_evidence,
+        pull_android_runtime_artifacts_func=pull_android_runtime_artifacts,
+        validate_evidence_func=validate_evidence,
     )
-    wait_for_android_evidence(args, 15.0)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_EVIDENCE, str(out)])
-    pull_android_runtime_artifacts(args, out)
-    return validate_evidence(args, out, host_profile)
+
+
+def run_pmb_replay_capture(args: argparse.Namespace) -> int:
+    return pmb_desktop_routes.run_pmb_replay_capture(
+        args,
+        run_captured_func=run_captured,
+        run_android_pmb_replay_func=run_android_pmb_replay,
+    )
+
+
+def run_pmb_live_route_self_test(args: argparse.Namespace) -> int:
+    return pmb_desktop_routes.run_pmb_live_route_self_test(args, run_captured_func=run_captured)
+
+
+def run_pmb_shell_handoff(args: argparse.Namespace) -> int:
+    return pmb_desktop_routes.run_pmb_shell_handoff(args)
 
 
 def run_android_pmb_replay(args: argparse.Namespace) -> int:
-    if not args.adb or not args.serial:
-        raise SystemExit("--adb and --serial are required for phone and quest PMB replay targets")
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    host_profile = "headset" if args.target == "quest" else "mobile"
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    clear_android_pmb_artifacts(args)
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_PMB_REPLAY_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-            "--es",
-            "host_profile",
-            host_profile,
-        ]
+    return pmb_android_routes.run_android_pmb_replay(
+        args,
+        run_func=run,
+        clear_android_pmb_artifacts_func=clear_android_pmb_artifacts,
+        wait_for_android_file_func=wait_for_android_file,
     )
-    wait_for_android_file(args, ANDROID_REMOTE_PMB_EVIDENCE, 30.0)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_EVIDENCE, str(out)])
-    core_report_path = out.with_name(f"{out.stem}.core-validation-report.json")
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_CORE_REPORT, str(core_report_path)])
-    evidence = json.loads(out.read_text(encoding="utf-8"))
-    validation_report = validate_pmb_android_replay_execution_evidence(
-        evidence,
-        package_root=package_root,
-        target=args.target,
-        host_profile=host_profile,
-    )
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_android_host_run_evidence(out, validation_path, evidence, args.target, host_profile)
-    return 0 if validation_report["status"] == "pass" else 2
 
 
 def run_pmb_controller_preflight(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    host_profile = "headset" if args.target == "quest" else "mobile"
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    clear_android_pmb_controller_preflight_artifacts(args)
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_PMB_CONTROLLER_PREFLIGHT_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-            "--es",
-            "host_profile",
-            host_profile,
-        ]
+    return pmb_android_routes.run_pmb_controller_preflight(
+        args,
+        run_func=run,
+        clear_android_pmb_controller_preflight_artifacts_func=clear_android_pmb_controller_preflight_artifacts,
+        wait_for_android_file_func=wait_for_android_file,
     )
-    wait_for_android_file(args, ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE, 30.0)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE, str(out)])
-    report_path = out.with_name(f"{out.stem}.controller-preflight-report.json")
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "pull",
-            ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT,
-            str(report_path),
-        ]
-    )
-    evidence = json.loads(out.read_text(encoding="utf-8"))
-    validation_report = validate_pmb_controller_preflight_evidence(
-        evidence,
-        package_root=package_root,
-        target=args.target,
-        host_profile=host_profile,
-    )
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_controller_preflight_host_run_evidence(
-            out,
-            validation_path,
-            evidence,
-            args.target,
-            host_profile,
-        )
-    return 0 if validation_report["status"] == "pass" else 2
 
 
 def run_pmb_quest_simulated_live(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    host_profile = "headset"
-    if not getattr(args, "no_launch_broker", False):
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
-    if not getattr(args, "no_launch_makepad", False):
-        configure_makepad_breath_feedback_receiver(args)
-    clear_android_pmb_simulated_live_artifacts(args)
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_PMB_SIMULATED_LIVE_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-            "--es",
-            "host_profile",
-            host_profile,
-            "--es",
-            "broker_host",
-            "127.0.0.1",
-            "--es",
-            "broker_port",
-            str(args.broker_port),
-            "--es",
-            "feedback_publish_limit",
-            str(args.feedback_publish_limit),
-            "--es",
-            "breath_selected_source",
-            str(getattr(args, "breath_selected_source", "auto") or "auto"),
-            "--es",
-            "receipt_listen_ms",
-            str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
-        ]
+    return pmb_android_routes.run_pmb_quest_simulated_live(
+        args,
+        run_func=run,
+        configure_makepad_breath_feedback_receiver_func=configure_makepad_breath_feedback_receiver,
+        clear_android_pmb_simulated_live_artifacts_func=clear_android_pmb_simulated_live_artifacts,
+        wait_for_android_file_func=wait_for_android_file,
+        selected_broker_activity_func=selected_broker_activity,
+        attach_broker_identity_func=attach_broker_identity,
     )
-    wait_for_android_file(args, ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE, 45.0)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE, str(out)])
-    route_report_path = out.with_name(f"{out.stem}.live-route-report.json")
-    broker_report_path = out.with_name(f"{out.stem}.broker-publish-report.json")
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "pull",
-            ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
-            str(route_report_path),
-        ]
-    )
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "pull",
-            ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
-            str(broker_report_path),
-        ]
-    )
-    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_pmb_quest_simulated_live_evidence(
-        evidence,
-        package_root=package_root,
-        target=args.target,
-        host_profile=host_profile,
-    )
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_quest_simulated_live_host_run_evidence(
-            out,
-            validation_path,
-            evidence,
-            args.target,
-            host_profile,
-        )
-    return 0 if validation_report["status"] == "pass" else 2
 
 
 def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    packages_root = Path(args.packages_root)
-    package_root = projected_motion_breath_package_root(packages_root)
-    if not package_root.exists():
-        raise SystemExit(f"projected-motion-breath package root not found: {package_root}")
-    if args.duration_seconds <= 0 and not getattr(args, "run_until_stopped", False):
-        raise SystemExit("--duration-seconds must be greater than zero")
-    if getattr(args, "run_until_stopped", False) and getattr(args, "foreground_hostess", False):
-        raise SystemExit("--run-until-stopped requires the background Hostess service")
-    host_profile = "headset"
-    if not getattr(args, "no_launch_broker", False):
-        grant_broker_runtime_permissions(args)
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
-    if not getattr(args, "no_launch_makepad", False):
-        configure_makepad_physical_pmb_provider(args)
-    clear_android_pmb_physical_live_artifacts(args)
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
-    command = pmb_physical_live_start_command(args, host_profile)
-    run(command)
-    if getattr(args, "run_until_stopped", False):
-        started = {
-            "$schema": "rusty.hostess.projected_motion_breath.physical_live_service_start.v1",
-            "status": "running",
-            "target": args.target,
-            "host_profile": host_profile,
-            "run_until_stopped": True,
-            "pmd_computed_on_quest": True,
-            "pmd_computed_on_pc": False,
-            "publish_mode": "event_driven_live_processor",
-            "selected_breath_stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-            "breath_selected_source": str(getattr(args, "breath_selected_source", "auto") or "auto"),
-            "broker_identity": broker_identity(args),
-            "command": command,
-        }
-        out.write_text(json.dumps(started, indent=2, sort_keys=True), encoding="utf-8")
-        return 0
-    wait_seconds = (
-        max(0.0, float(args.scan_timeout_seconds))
-        + max(0.0, float(args.duration_seconds))
-        + max(0.0, float(args.receipt_listen_seconds))
-        + 30.0
+    return pmb_android_routes.run_pmb_quest_physical_live(
+        args,
+        run_func=run,
+        grant_broker_runtime_permissions_func=grant_broker_runtime_permissions,
+        configure_makepad_physical_pmb_provider_func=configure_makepad_physical_pmb_provider,
+        clear_android_pmb_physical_live_artifacts_func=clear_android_pmb_physical_live_artifacts,
+        wait_for_android_file_func=wait_for_android_file,
+        selected_broker_activity_func=selected_broker_activity,
+        broker_identity_func=broker_identity,
+        attach_broker_identity_func=attach_broker_identity,
     )
-    wait_for_android_file(args, ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE, wait_seconds)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE, str(out)])
-    capture_report_path = out.with_name(f"{out.stem}.input-capture-report.json")
-    events_jsonl_path = out.with_name(f"{out.stem}.transport-events.jsonl")
-    route_report_path = out.with_name(f"{out.stem}.live-route-report.json")
-    broker_report_path = out.with_name(f"{out.stem}.broker-publish-report.json")
-    for remote, local in [
-        (ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT, capture_report_path),
-        (ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL, events_jsonl_path),
-        (ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT, route_report_path),
-        (ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT, broker_report_path),
-    ]:
-        run([args.adb, "-s", args.serial, "pull", remote, str(local)])
-    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_pmb_quest_physical_live_evidence(
-        evidence,
-        package_root=package_root,
-        target=args.target,
-        host_profile=host_profile,
-    )
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if validation_report["status"] == "pass":
-        write_pmb_quest_physical_live_host_run_evidence(
-            out,
-            validation_path,
-            evidence,
-            args.target,
-            host_profile,
-        )
-    return 0 if validation_report["status"] == "pass" else 2
-
-
-def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str) -> list[str]:
-    if getattr(args, "foreground_hostess", False):
-        command = [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_PMB_PHYSICAL_LIVE_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-        ]
-    else:
-        command = [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start-foreground-service",
-            "-a",
-            ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION,
-            "-n",
-            ANDROID_PMB_PHYSICAL_LIVE_SERVICE,
-        ]
-    command.extend([
-        "--es",
-        "host_profile",
-        host_profile,
-        "--es",
-        "broker_host",
-        "127.0.0.1",
-        "--es",
-        "broker_port",
-        str(args.broker_port),
-        "--es",
-        "duration_ms",
-        "0" if getattr(args, "run_until_stopped", False) else str(int(max(0.0, args.duration_seconds) * 1000.0)),
-        "--es",
-        "acc_rate_hz",
-        str(args.acc_rate),
-        "--es",
-        "scan_timeout_ms",
-        str(int(max(0.0, args.scan_timeout_seconds) * 1000.0)),
-        "--es",
-        "controller_wait_ms",
-        str(int(max(0.0, args.controller_wait_seconds) * 1000.0)),
-        "--es",
-        "feedback_publish_limit",
-        str(args.feedback_publish_limit),
-        "--es",
-        "breath_selected_source",
-        str(getattr(args, "breath_selected_source", "auto") or "auto"),
-        "--es",
-        "receipt_listen_ms",
-        str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
-    ])
-    if args.device_address:
-        command.extend(["--es", "device_address", args.device_address])
-    return command
 
 
 def observe_broker_telemetry_ui(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if args.duration_seconds <= 0:
-        raise SystemExit("--duration-seconds must be greater than zero")
-    if not getattr(args, "no_launch_broker", False):
-        grant_broker_runtime_permissions(args)
-        run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity(args)])
-    clear_android_broker_telemetry_artifacts(args)
-    command = [
-        args.adb,
-        "-s",
-        args.serial,
-        "shell",
-        "am",
-        "start",
-        "-a",
-        ANDROID_BROKER_TELEMETRY_ACTION,
-        "-n",
-        f"{ANDROID_PACKAGE}/.MainActivity",
-        "--es",
-        "host_profile",
-        "headset",
-        "--es",
-        "broker_host",
-        "127.0.0.1",
-        "--es",
-        "broker_port",
-        str(args.broker_port),
-        "--es",
-        "duration_ms",
-        str(int(max(0.0, args.duration_seconds) * 1000.0)),
-        "--es",
-        "acc_rate_hz",
-        str(args.acc_rate),
-        "--es",
-        "scan_timeout_ms",
-        str(int(max(0.0, args.scan_timeout_seconds) * 1000.0)),
-        "--es",
-        "telemetry_page",
-        args.telemetry_page,
-        "--ez",
-        "request_provider_start",
-        "false" if args.no_request_provider_start else "true",
-        "--ez",
-        "stop_provider_on_finish",
-        "false" if args.keep_provider_running else "true",
-    ]
-    if args.device_address:
-        command.extend(["--es", "device_address", args.device_address])
-    run(command)
-    wait_seconds = (
-        max(0.0, float(args.duration_seconds))
-        + (0.0 if args.no_request_provider_start else max(0.0, float(args.scan_timeout_seconds)))
-        + 20.0
+    return broker_telemetry_routes.observe_broker_telemetry_ui(
+        args,
+        run_func=run,
+        grant_broker_runtime_permissions_func=grant_broker_runtime_permissions,
+        clear_android_broker_telemetry_artifacts_func=clear_android_broker_telemetry_artifacts,
+        wait_for_android_file_func=wait_for_android_file,
+        selected_broker_activity_func=selected_broker_activity,
+        attach_broker_identity_func=attach_broker_identity,
+        render_telemetry_func=render_telemetry,
     )
-    wait_for_android_file(args, ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE, wait_seconds)
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE, str(out)])
-    report_path = out.with_name(f"{out.stem}.broker-telemetry-report.json")
-    run([args.adb, "-s", args.serial, "pull", ANDROID_REMOTE_BROKER_TELEMETRY_REPORT, str(report_path)])
-    evidence = attach_broker_identity(json.loads(out.read_text(encoding="utf-8")), args)
-    out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
-    validation_report = validate_broker_telemetry_observer_evidence(evidence)
-    validation_path = out.with_name(f"{out.stem}.validation-report.json")
-    validation_path.write_text(
-        json.dumps(validation_report, indent=2, sort_keys=True),
-        encoding="utf-8",
-    )
-    if args.render_out:
-        render_args = argparse.Namespace(
-            target=args.target,
-            adb=args.adb,
-            serial=args.serial,
-            out=args.render_out,
-            input=None,
-            name=Path(args.render_out).name,
-            page=args.telemetry_page,
-            source_evidence_path="hostess-t/evidence/broker-telemetry/latest.json",
-        )
-        render_telemetry(render_args)
-    return 0 if validation_report["status"] == "pass" else 2
-
-
 
 
 def run_manifold_value_recording(args: argparse.Namespace) -> int:
@@ -1125,239 +378,52 @@ def redact_command(command: list[str]) -> list[str]:
 
 
 def configure_makepad_breath_feedback_receiver(args: argparse.Namespace) -> None:
-    setprops = {
-        **makepad_visual_profile_runtime_properties(),
-        "debug.rusty.manifold.pose.publish.enabled": "false",
-        "debug.rusty.manifold.broker.host": "127.0.0.1",
-        "debug.rusty.manifold.broker.port": str(args.broker_port),
-        "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
-        "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
-        "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
-        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-        "debug.rustyquest.makepad.projection.target.breath.invert": "false",
-        "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
-        "debug.rustyquest.makepad.projection.target.joystick.controls": "offset-scale",
-    }
-    for key, value in setprops.items():
-        run([args.adb, "-s", args.serial, "shell", "setprop", key, value])
-    for permission in [
-        "android.permission.CAMERA",
-        "horizonos.permission.HEADSET_CAMERA",
-    ]:
-        run(
-            [args.adb, "-s", args.serial, "shell", "pm", "grant", args.makepad_package, permission],
-            allow_failure=True,
-        )
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", args.makepad_package], allow_failure=True)
-    run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.makepad_activity])
-    time.sleep(max(0.0, float(args.makepad_settle_seconds)))
+    makepad_pmb_setup.configure_makepad_breath_feedback_receiver(args, run_func=run)
 
 
 def configure_makepad_physical_pmb_provider(args: argparse.Namespace) -> None:
-    setprops = {
-        **makepad_visual_profile_runtime_properties(),
-        "debug.rusty.manifold.pose.publish.enabled": "true",
-        "debug.rusty.manifold.pose.stream": "stream.motion.object_pose",
-        "debug.rusty.manifold.pose.source": "provider.makepad.controller_pose",
-        "debug.rusty.manifold.pose.controller": args.makepad_pose_controller,
-        "debug.rusty.manifold.pose.kind": args.makepad_pose_kind,
-        "debug.rusty.manifold.pose.sample.hz": str(args.makepad_pose_sample_hz),
-        "debug.rusty.manifold.broker.host": "127.0.0.1",
-        "debug.rusty.manifold.broker.port": str(args.broker_port),
-        "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
-        "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
-        "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
-        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-        "debug.rustyquest.makepad.projection.target.breath.invert": "false",
-        "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
-        "debug.rustyquest.makepad.projection.target.joystick.controls": "offset-scale",
-    }
-    for key, value in setprops.items():
-        run([args.adb, "-s", args.serial, "shell", "setprop", key, value])
-    for permission in [
-        "android.permission.CAMERA",
-        "horizonos.permission.HEADSET_CAMERA",
-    ]:
-        run(
-            [args.adb, "-s", args.serial, "shell", "pm", "grant", args.makepad_package, permission],
-            allow_failure=True,
-        )
-    run([args.adb, "-s", args.serial, "shell", "am", "force-stop", args.makepad_package], allow_failure=True)
-    run([args.adb, "-s", args.serial, "shell", "am", "start", "-n", args.makepad_activity])
-    time.sleep(max(0.0, float(args.makepad_settle_seconds)))
+    makepad_pmb_setup.configure_makepad_physical_pmb_provider(args, run_func=run)
 
 
 def grant_broker_runtime_permissions(args: argparse.Namespace) -> None:
-    for permission in [
-        "android.permission.BLUETOOTH_SCAN",
-        "android.permission.BLUETOOTH_CONNECT",
-    ]:
-        run(
-            [args.adb, "-s", args.serial, "shell", "pm", "grant", selected_broker_package(args), permission],
-            allow_failure=True,
-        )
+    makepad_pmb_setup.grant_broker_runtime_permissions(
+        args,
+        run_func=run,
+        selected_broker_package_func=selected_broker_package,
+    )
 
 
 def render_telemetry(args: argparse.Namespace) -> int:
-    if args.target == "desktop":
-        return render_desktop_telemetry(args)
-    if not args.adb or not args.serial:
-        raise SystemExit("--adb and --serial are required for phone and quest render targets")
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    name = sanitize_remote_name(args.name or out.name or "latest-render.png")
-    if not name.endswith(".png"):
-        name = f"{name}.png"
-    remote = f"{ANDROID_REMOTE_RENDER_ROOT}/{name}"
-    remote_sidecar = f"{remote}.json"
-    run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote], allow_failure=True)
-    run([args.adb, "-s", args.serial, "shell", "rm", "-f", remote_sidecar], allow_failure=True)
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_RENDER_ACTION,
-            "-n",
-            f"{ANDROID_PACKAGE}/.MainActivity",
-            "--es",
-            "render_name",
-            name,
-            "--es",
-            "render_page",
-            args.page,
-            "--es",
-            "render_target",
-            args.target,
-            "--es",
-            "render_source_evidence_path",
-            args.source_evidence_path or "hostess-t/evidence/live-capture/latest.json",
-        ]
+    return telemetry_routes.render_telemetry(
+        args,
+        run_func=run,
+        wait_for_android_file_func=wait_for_android_file,
     )
-    wait_for_android_file(args, remote_sidecar, 10.0)
-    run([args.adb, "-s", args.serial, "pull", remote, str(out)])
-    sidecar = render_sidecar_path(out)
-    run([args.adb, "-s", args.serial, "pull", remote_sidecar, str(sidecar)])
-    validate_render_output(
-        out,
-        sidecar,
-        expected_page=args.page,
-        source_evidence_path=args.source_evidence_path or ANDROID_REMOTE_EVIDENCE,
-        target=args.target,
-    )
-    return 0
 
 
 def pull_makepad_render(args: argparse.Namespace) -> int:
-    out = Path(args.out)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    if not args.no_launch:
-        run(
-            [
-                args.adb,
-                "-s",
-                args.serial,
-                "shell",
-                "run-as",
-                MAKEPAD_ANDROID_PACKAGE,
-                "rm",
-                "-f",
-                MAKEPAD_RENDER_RELATIVE,
-                MAKEPAD_RENDER_SIDECAR_RELATIVE,
-            ],
-            allow_failure=True,
-        )
-        run(
-            [
-                args.adb,
-                "-s",
-                args.serial,
-                "shell",
-                "am",
-                "force-stop",
-                MAKEPAD_ANDROID_PACKAGE,
-            ],
-            allow_failure=True,
-        )
-        run(
-            [
-                args.adb,
-                "-s",
-                args.serial,
-                "shell",
-                "am",
-                "start",
-                "-n",
-                MAKEPAD_ANDROID_ACTIVITY,
-            ]
-        )
-    wait_for_android_run_as_file(
+    return telemetry_routes.pull_makepad_render(
         args,
-        MAKEPAD_ANDROID_PACKAGE,
-        MAKEPAD_RENDER_SIDECAR_RELATIVE,
-        args.wait_seconds,
+        run_func=run,
+        wait_for_android_run_as_file_func=wait_for_android_run_as_file,
+        wait_for_makepad_render_sidecar_func=wait_for_makepad_render_sidecar,
+        pull_android_run_as_file_func=pull_android_run_as_file,
     )
-    wait_for_makepad_render_sidecar(
-        args,
-        MAKEPAD_ANDROID_PACKAGE,
-        MAKEPAD_RENDER_SIDECAR_RELATIVE,
-        args.wait_seconds,
-        target="headset" if args.target == "quest" else "mobile",
-        min_events=args.min_events,
-    )
-    pull_android_run_as_file(args, MAKEPAD_ANDROID_PACKAGE, MAKEPAD_RENDER_RELATIVE, out)
-    sidecar = render_sidecar_path(out)
-    pull_android_run_as_file(
-        args,
-        MAKEPAD_ANDROID_PACKAGE,
-        MAKEPAD_RENDER_SIDECAR_RELATIVE,
-        sidecar,
-    )
-    validate_render_output(
-        out,
-        sidecar,
-        expected_page="watcher",
-        source_evidence_path="",
-        target="headset" if args.target == "quest" else "mobile",
-    )
-    return 0
 
 
 def launch_makepad_shell_contract(args: argparse.Namespace) -> int:
-    return makepad_shell_contract_launcher.launch_makepad_shell_contract(
+    return telemetry_routes.launch_makepad_shell_contract(
         args,
-        adb_prefix=adb_prefix,
-        host_app_for=host_app_for,
-        run=run,
-        wait_for_android_run_as_file=wait_for_android_run_as_file,
-        pull_android_run_as_file=pull_android_run_as_file,
-        write_android_run_as_file=write_android_run_as_file,
+        host_app_for_func=host_app_for,
+        run_func=run,
+        wait_for_android_run_as_file_func=wait_for_android_run_as_file,
+        pull_android_run_as_file_func=pull_android_run_as_file,
+        write_android_run_as_file_func=write_android_run_as_file,
     )
 
 
 def snapshot_telemetry(args: argparse.Namespace) -> int:
-    evidence_path = Path(args.input)
-    snapshot = build_snapshot(
-        evidence_path,
-        graph_report_path=Path(args.graph_report) if args.graph_report else None,
-        runtime_input_path=Path(args.runtime_input) if args.runtime_input else None,
-    )
-    write_snapshot(snapshot, Path(args.out))
-    return 0
+    return telemetry_routes.snapshot_telemetry(args)
 
 
 def shell_quote(value: str) -> str:
@@ -1365,81 +431,47 @@ def shell_quote(value: str) -> str:
 
 
 def append_rmssd_baseline_extras(command: list[str], args: argparse.Namespace) -> None:
-    for source_arg, extra_name in [
-        ("rmssd_baseline_ln_rmssd", "rmssd_baseline_ln_rmssd"),
-        ("rmssd_baseline_mean_ln_rmssd", "rmssd_baseline_mean_ln_rmssd"),
-        ("rmssd_baseline_sd_ln_rmssd", "rmssd_baseline_sd_ln_rmssd"),
-        ("rmssd_baseline_window_count", "rmssd_baseline_window_count"),
-    ]:
-        value = getattr(args, source_arg, None)
-        if value is not None:
-            command.extend(["--es", extra_name, str(value)])
-    if getattr(args, "rmssd_baseline_source", None):
-        command.extend(["--es", "rmssd_baseline_source", args.rmssd_baseline_source])
+    live_capture_routes.append_rmssd_baseline_extras(command, args)
 
 
 def clear_android_live_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(args, [ANDROID_REMOTE_EVIDENCE, ANDROID_REMOTE_RUNTIME_INPUT, ANDROID_REMOTE_GRAPH_REPORT])
+    android_artifacts.clear_android_live_artifacts(args, run_func=run)
 
 
 def clear_android_pmb_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(args, [ANDROID_REMOTE_PMB_EVIDENCE, ANDROID_REMOTE_PMB_CORE_REPORT])
+    android_artifacts.clear_android_pmb_artifacts(args, run_func=run)
 
 
 def clear_android_pmb_controller_preflight_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(
-        args,
-        [
-            ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_EVIDENCE,
-            ANDROID_REMOTE_PMB_CONTROLLER_PREFLIGHT_REPORT,
-        ],
-    )
+    android_artifacts.clear_android_pmb_controller_preflight_artifacts(args, run_func=run)
 
 
 def clear_android_pmb_simulated_live_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(
-        args,
-        [
-            ANDROID_REMOTE_PMB_SIMULATED_LIVE_EVIDENCE,
-            ANDROID_REMOTE_PMB_SIMULATED_LIVE_ROUTE_REPORT,
-            ANDROID_REMOTE_PMB_SIMULATED_LIVE_BROKER_REPORT,
-        ],
-    )
+    android_artifacts.clear_android_pmb_simulated_live_artifacts(args, run_func=run)
 
 
 def clear_android_pmb_physical_live_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(
-        args,
-        [
-            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE,
-            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_CAPTURE_REPORT,
-            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVENTS_JSONL,
-            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_ROUTE_REPORT,
-            ANDROID_REMOTE_PMB_PHYSICAL_LIVE_BROKER_REPORT,
-        ],
-    )
+    android_artifacts.clear_android_pmb_physical_live_artifacts(args, run_func=run)
 
 
 def clear_android_broker_telemetry_artifacts(args: argparse.Namespace) -> None:
-    clear_android_files(
-        args,
-        [
-            ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE,
-            ANDROID_REMOTE_BROKER_TELEMETRY_REPORT,
-        ],
-    )
+    android_artifacts.clear_android_broker_telemetry_artifacts(args, run_func=run)
 
 
 def clear_android_files(args: argparse.Namespace, remote_paths: list[str]) -> None:
-    android_files.clear_android_files(args, remote_paths, run=run)
+    android_artifacts.clear_android_files(args, remote_paths, run_func=run)
 
 
 def wait_for_android_evidence(args: argparse.Namespace, timeout_seconds: float) -> None:
-    wait_for_android_file(args, ANDROID_REMOTE_EVIDENCE, timeout_seconds)
+    android_artifacts.wait_for_android_evidence(
+        args,
+        timeout_seconds,
+        wait_for_android_file_func=wait_for_android_file,
+    )
 
 
 def wait_for_android_file(args: argparse.Namespace, remote_path: str, timeout_seconds: float) -> None:
-    android_files.wait_for_android_file(args, remote_path, timeout_seconds, run=run)
+    android_artifacts.wait_for_android_file(args, remote_path, timeout_seconds, run_func=run)
 
 
 def wait_for_android_run_as_file(
@@ -1448,12 +480,12 @@ def wait_for_android_run_as_file(
     relative_path: str,
     timeout_seconds: float,
 ) -> None:
-    android_files.wait_for_android_run_as_file(
+    android_artifacts.wait_for_android_run_as_file(
         args,
         package,
         relative_path,
         timeout_seconds,
-        run=run,
+        run_func=run,
     )
 
 
@@ -1463,7 +495,7 @@ def pull_android_run_as_file(
     relative_path: str,
     out: Path,
 ) -> None:
-    android_files.pull_android_run_as_file(args, package, relative_path, out)
+    android_artifacts.pull_android_run_as_file(args, package, relative_path, out)
 
 
 def write_android_run_as_file(
@@ -1472,11 +504,11 @@ def write_android_run_as_file(
     relative_path: str,
     payload: bytes,
 ) -> None:
-    android_files.write_android_run_as_file(args, package, relative_path, payload)
+    android_artifacts.write_android_run_as_file(args, package, relative_path, payload)
 
 
 def android_shell_quote(value: str) -> str:
-    return android_files.android_shell_quote(value)
+    return android_artifacts.android_shell_quote(value)
 
 
 def read_android_run_as_file(
@@ -1484,7 +516,7 @@ def read_android_run_as_file(
     package: str,
     relative_path: str,
 ) -> bytes:
-    return android_files.read_android_run_as_file(args, package, relative_path)
+    return android_artifacts.read_android_run_as_file(args, package, relative_path)
 
 
 def wait_for_makepad_render_sidecar(
@@ -1496,7 +528,7 @@ def wait_for_makepad_render_sidecar(
     target: str,
     min_events: int,
 ) -> None:
-    android_files.wait_for_makepad_render_sidecar(
+    android_artifacts.wait_for_makepad_render_sidecar(
         args,
         package,
         relative_path,
@@ -1507,75 +539,11 @@ def wait_for_makepad_render_sidecar(
 
 
 def pull_android_runtime_artifacts(args: argparse.Namespace, out: Path) -> None:
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "pull",
-            ANDROID_REMOTE_RUNTIME_INPUT,
-            str(out.with_name(f"{out.stem}.runtime-input.json")),
-        ],
-        allow_failure=True,
-    )
-    run(
-        [
-            args.adb,
-            "-s",
-            args.serial,
-            "pull",
-            ANDROID_REMOTE_GRAPH_REPORT,
-            str(out.with_name(f"{out.stem}.graph-execution-report.json")),
-        ],
-        allow_failure=True,
-    )
+    live_capture_routes.pull_android_runtime_artifacts(args, out, run_func=run)
 
 
 def validate_evidence(args: argparse.Namespace, out: Path, host_profile: str) -> int:
-    report_out = out.with_name(f"{out.stem}.validation-report.json")
-    command = [
-        sys.executable,
-        str(REPO_ROOT / "tools" / "check_live_capture_evidence.py"),
-        "--input",
-        str(out),
-        "--packages-root",
-        args.packages_root,
-        "--expect-host",
-        host_profile,
-    ]
-    if getattr(args, "stream", None):
-        command.extend(["--expect-stream", args.stream])
-    for module_id in args.module:
-        command.extend(["--expect-module", module_id])
-    command.extend(["--report-out", str(report_out)])
-    result = run(command, allow_failure=True)
-    if result.returncode == 0:
-        write_contract_evidence(out, report_out, host_profile)
-    return result.returncode
-
-
-def run(
-    command: list[str], *, allow_failure: bool = False, cwd: Path | None = None
-) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(command, text=True, cwd=cwd)
-    if result.returncode != 0 and not allow_failure:
-        raise SystemExit(result.returncode)
-    return result
-
-
-def run_captured(
-    command: list[str], *, allow_failure: bool = False, cwd: Path | None = None
-) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        command,
-        text=True,
-        cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if result.returncode != 0 and not allow_failure:
-        raise SystemExit(result.returncode)
-    return result
+    return live_capture_routes.validate_evidence(args, out, host_profile, run_func=run)
 
 
 if __name__ == "__main__":
