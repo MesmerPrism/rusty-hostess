@@ -39,6 +39,10 @@ JSON that includes package manifest hashes.
   `run-as` file helpers used by Hostess CLI routes. Route-specific constants
   and command dispatch remain in `hostessctl.py`; low-level waiting, pulling,
   pushing, quoting, and Makepad render-sidecar polling live in this helper.
+- `tools/hostessctl/cli_parser.py`: `hostessctl` argument-surface
+  construction. It receives platform defaults from the CLI root and does not
+  import route implementations, keeping parser churn separate from command
+  behavior.
 - `tools/hostessctl/broker_transport.py`: Manifold broker WebSocket protocol
   primitives, command envelope helpers, ACK normalization, retry connection,
   and stream-event aliasing used by recording routes. The CLI root re-exports
@@ -84,7 +88,7 @@ JSON that includes package manifest hashes.
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\broker_transport.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_evidence.py tools\hostessctl\recording_evidence.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_files.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_evidence.py tools\hostessctl\recording_evidence.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>

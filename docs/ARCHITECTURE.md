@@ -46,7 +46,10 @@ authority, or module authority.
 The desktop CLI can render equivalent evidence pages from completed run
 artifacts. Rendered PNGs must include dimensions, nonblank content evidence,
 and a JSON sidecar before they are accepted as visual evidence.
-The parser and platform dispatch stay in `tools/hostessctl/hostessctl.py`;
+Argument parser construction lives in `tools/hostessctl/cli_parser.py`; it
+receives platform defaults from `tools/hostessctl/hostessctl.py` and does not
+import command implementations. The CLI root stays the platform default,
+dispatch, and route orchestration facade.
 desktop PNG rendering, sidecar writing, and render-output validation live in
 `tools/hostessctl/telemetry_render.py` so render evidence remains a focused
 helper family instead of growing the CLI root.

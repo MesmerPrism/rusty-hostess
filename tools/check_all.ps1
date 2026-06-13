@@ -22,6 +22,7 @@ try {
         "tools\hostessctl\hostessctl.py",
         "tools\hostessctl\android_files.py",
         "tools\hostessctl\broker_transport.py",
+        "tools\hostessctl\cli_parser.py",
         "tools\hostessctl\pmb_broker_bridge.py",
         "tools\hostessctl\pmb_evidence.py",
         "tools\hostessctl\recording_evidence.py",
@@ -35,6 +36,7 @@ try {
         "tools\test_telemetry_snapshot.py",
         "tools\test_check_makepad_quest_gpu_evidence.py",
         "tools\test_check_makepad_quest_live_recorded_ab.py",
+        "tools\test_hostessctl_cli_parser.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
     ) | Where-Object { Test-Path $_ }
