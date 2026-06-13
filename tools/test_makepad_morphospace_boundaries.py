@@ -81,6 +81,22 @@ class MakepadMorphospaceBoundaryTests(unittest.TestCase):
         self.assertNotIn("fn projection_runtime_alias_tokens", root)
         self.assertNotIn("fn sanitize_marker_token", root)
 
+    def test_camera_projection_flow_stays_split_from_app_root(self):
+        main = (HOSTESS_MAKEPAD_SRC / "main.rs").read_text(encoding="utf-8")
+        flow_path = HOSTESS_MAKEPAD_SRC / "camera_projection_flow.rs"
+        self.assertTrue(flow_path.exists())
+        flow = flow_path.read_text(encoding="utf-8")
+
+        self.assertIn("mod camera_projection_flow;", main)
+        self.assertIn("pub(super) fn handle_paired_import_event", flow)
+        self.assertIn("pub(super) fn bind_camera_projection_panel", flow)
+        self.assertIn("pub(super) fn emit_cadence_sample", flow)
+        self.assertIn("pub(super) fn try_adopt_pending_stereo_camera_frame", flow)
+        self.assertIn("pub(super) fn complete_paired_import_if_ready", flow)
+        self.assertNotIn("fn bind_camera_projection_panel", main)
+        self.assertNotIn("fn record_pending_camera_frame", main)
+        self.assertNotIn("fn emit_stereo_frame_adoption_marker", main)
+
 
 if __name__ == "__main__":
     unittest.main()

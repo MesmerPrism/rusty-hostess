@@ -267,7 +267,10 @@ compact joint-frame recordings; `makepad_diagnostics.rs` owns marker cadence,
 token formatting, raw camera event markers, target-footprint augmentation, and
 camera YUV texture handle structs; `broker_h264_runtime.rs` owns broker-H264
 and remote-camera runtime key parsing plus `ExternalH264VideoSource`
-construction; `frame_orientation.rs` owns direct-camera and broker-H264
+construction; `camera_projection_flow.rs` owns paired camera import,
+frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
+projection-panel binding, and projection-complete marker flow;
+`frame_orientation.rs` owns direct-camera and broker-H264
 source-raster orientation decisions plus shared broker pair pose-source
 combination; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
 state, panel live-design registration, draw shader defaults, shader uniform
@@ -275,8 +278,8 @@ application, camera texture binding, and horizontal alignment tuning
 application for the stereo camera panel; `matter_world_particle_billboard.rs`
 and `matter_world_adf_debug.rs` own the Hostess-local world renderer widgets
 and their Makepad widget defaults; `makepad_app_live_design.rs` owns the
-Hostess app layout registration. Keep `main.rs` as app-shell runtime wiring,
-event handling, and module registration.
+Hostess app layout registration. Keep `main.rs` as app-shell state,
+top-level event ordering, and module registration.
 
 For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:

@@ -150,16 +150,23 @@ augmentation so the Makepad app root remains app-shell wiring.
 `apps/hostess-t-makepad/src/broker_h264_runtime.rs` owns broker-H264 and
 remote-camera runtime key parsing, texture-path selection, source-sampling
 selection, stream-port defaults, target-screen fallback rectangles, and
-`ExternalH264VideoSource` construction. The app root keeps the paired import
-event orchestration and delegates source planning through thin wrappers.
+`ExternalH264VideoSource` construction.
+
+`apps/hostess-t-makepad/src/camera_projection_flow.rs` owns the paired camera
+import/projection runtime flow: broker stream-header metadata handling, video
+texture update bookkeeping, pending stereo-frame adoption, cadence sample
+markers, paired import timers, broker-H264 texture import requests, native
+video widget startup, YUV content probes, projection panel texture binding,
+projection-complete markers, stereo comparison parity markers, and direct
+Camera2 plan probing. The app root keeps top-level event ordering and calls
+this module through split `App` methods.
 
 `apps/hostess-t-makepad/src/frame_orientation.rs` owns Hostess-local
 direct-camera and broker-H264 source-raster orientation decisions plus shared
 broker pair pose-source combination. `source_sampling.rs` consumes the
 orientation decision when building source-sampling contracts and markers, and
 `camera_pair.rs` consumes the same pose-source helper for broker projection
-plans. The app root keeps camera projection panel binding and runtime event
-ordering.
+plans.
 
 `apps/hostess-t-makepad/src/makepad_stereo_camera_panel.rs` owns the Rust
 `DrawMakepadStereoCameraPanel` and `MakepadStereoCameraPanel` types, shader
