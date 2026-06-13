@@ -8,12 +8,12 @@ use crate::runtime_settings::marker_token;
 use crate::stimulus_stereo_field::StimulusStereoFieldState;
 use makepad_widgets::makepad_platform::{
     XrGpuF32VolumeImagePreviewOutput, XrGpuF32VolumeImagePreviewPixel,
-    XrGpuF32VolumeImagePreviewResult, XrGpuF32VolumeImagePreviewTicket, XrGpuF32VolumeProbeOutput,
-    XrGpuF32VolumeProbeResult, XrGpuF32VolumeProbeSample, XrGpuF32VolumeProbeTicket,
-    XrGpuF32VolumeRaymarchPreviewOutput, XrGpuF32VolumeRaymarchPreviewPixel,
-    XrGpuF32VolumeRaymarchPreviewResult, XrGpuF32VolumeRaymarchPreviewTicket,
-    XR_GPU_F32_VOLUME_IMAGE_PREVIEW_PIXELS, XR_GPU_F32_VOLUME_PROBE_SAMPLES,
-    XR_GPU_F32_VOLUME_RAYMARCH_PREVIEW_PIXELS,
+    XrGpuF32VolumeImagePreviewResult, XrGpuF32VolumeImagePreviewTextureAdoption,
+    XrGpuF32VolumeImagePreviewTicket, XrGpuF32VolumeProbeOutput, XrGpuF32VolumeProbeResult,
+    XrGpuF32VolumeProbeSample, XrGpuF32VolumeProbeTicket, XrGpuF32VolumeRaymarchPreviewOutput,
+    XrGpuF32VolumeRaymarchPreviewPixel, XrGpuF32VolumeRaymarchPreviewResult,
+    XrGpuF32VolumeRaymarchPreviewTicket, XR_GPU_F32_VOLUME_IMAGE_PREVIEW_PIXELS,
+    XR_GPU_F32_VOLUME_PROBE_SAMPLES, XR_GPU_F32_VOLUME_RAYMARCH_PREVIEW_PIXELS,
 };
 use makepad_widgets::*;
 use rusty_quest_makepad_camera_shell::{
@@ -69,11 +69,58 @@ struct PreparedStimulusVolumeImagePreview {
 
 #[derive(Clone, Debug)]
 pub(crate) struct StimulusVolumeImagePreviewReady {
+    pub(crate) request_id: u64,
     pub(crate) marker_line: String,
     pub(crate) texture_rgba: Vec<f32>,
     pub(crate) readback: QuestMakepadStimulusVolumeImagePreviewReadback,
     pub(crate) profile_id: String,
     pub(crate) profile_sha256: String,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct StimulusVolumeTextureBindingEvidence {
+    pub(crate) texture_source: &'static str,
+    pub(crate) resource_plane: &'static str,
+    pub(crate) texture_format: &'static str,
+    pub(crate) texture_upload_bytes: usize,
+    pub(crate) platform_texture_adopted: bool,
+    pub(crate) cpu_texture_upload_performed: bool,
+    pub(crate) zero_copy_vulkan_image: bool,
+    pub(crate) image_ownership_transferred: bool,
+    pub(crate) texture_resource_generation: u64,
+    pub(crate) replaced_existing_texture_resource: bool,
+}
+
+impl StimulusVolumeTextureBindingEvidence {
+    pub(crate) fn cpu_upload(texture_upload_bytes: usize) -> Self {
+        Self {
+            texture_source: "volume-image-preview-readback-cpu-upload",
+            resource_plane: "hostess-cpu-uploaded-makepad-texture",
+            texture_format: "VecRGBAf32",
+            texture_upload_bytes,
+            platform_texture_adopted: false,
+            cpu_texture_upload_performed: true,
+            zero_copy_vulkan_image: false,
+            image_ownership_transferred: false,
+            texture_resource_generation: 0,
+            replaced_existing_texture_resource: false,
+        }
+    }
+
+    pub(crate) fn gpu_adoption(adoption: XrGpuF32VolumeImagePreviewTextureAdoption) -> Self {
+        Self {
+            texture_source: "volume-image-preview-retained-vulkan-image",
+            resource_plane: "makepad-vulkan-retained-image-texture",
+            texture_format: "PlatformRGBAf32",
+            texture_upload_bytes: 0,
+            platform_texture_adopted: true,
+            cpu_texture_upload_performed: adoption.cpu_texture_upload_performed,
+            zero_copy_vulkan_image: adoption.zero_copy_vulkan_image,
+            image_ownership_transferred: adoption.image_ownership_transferred,
+            texture_resource_generation: adoption.texture_resource_generation,
+            replaced_existing_texture_resource: adoption.replaced_existing_texture_resource,
+        }
+    }
 }
 
 impl StimulusVolumeImagePreviewReady {
@@ -90,18 +137,24 @@ impl StimulusVolumeImagePreviewReady {
         phase: &str,
         panel_bound: bool,
         shader_texture_slot: usize,
+        binding: &StimulusVolumeTextureBindingEvidence,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource=volume-image-preview-readback-cpu-upload resourcePlane=hostess-cpu-uploaded-makepad-texture imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat=VecRGBAf32 textureUploadBytes={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage=false storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} queueWaitIdlePerformed={} elapsedMs={}",
+            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource={} resourcePlane={} sourceRequestId={} imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat={} textureUploadBytes={} cpuTextureUploadPerformed={} platformTextureAdopted={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage={} imageOwnershipTransferred={} storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} textureResourceGeneration={} replacedExistingTextureResource={} queueWaitIdlePerformed={} elapsedMs={}",
             marker_token(phase),
-            if self.readback_matched() {
-                "runtime-texture-bound"
-            } else {
+            if !self.readback_matched() {
                 "rejected-source-mismatch"
+            } else if binding.platform_texture_adopted {
+                "runtime-gpu-texture-bound"
+            } else {
+                "runtime-cpu-upload-texture-bound"
             },
             panel_bound,
             marker_token(&self.profile_id),
             marker_token(&self.profile_sha256),
+            binding.texture_source,
+            binding.resource_plane,
+            self.request_id,
             self.readback.image_width,
             self.readback.image_height,
             self.readback.image_layers,
@@ -109,11 +162,16 @@ impl StimulusVolumeImagePreviewReady {
             self.readback.eye_tile_height,
             self.readback.eye_count,
             self.readback.pixel_count,
-            self.texture_upload_bytes(),
+            binding.texture_format,
+            binding.texture_upload_bytes,
+            binding.cpu_texture_upload_performed,
+            binding.platform_texture_adopted,
             shader_texture_slot,
             panel_bound && self.readback_matched(),
             self.readback.sampled_texture_bound,
             self.readback_matched(),
+            binding.zero_copy_vulkan_image,
+            binding.image_ownership_transferred,
             self.readback.sampled_image_usage,
             self.readback.storage_image_written,
             self.readback.transfer_readback_performed,
@@ -121,6 +179,8 @@ impl StimulusVolumeImagePreviewReady {
             self.readback.queue_submit_serial,
             self.readback.fence_serial,
             self.readback.resource_generation,
+            binding.texture_resource_generation,
+            binding.replaced_existing_texture_resource,
             self.readback.queue_wait_idle_performed,
             finite_f64_marker_token(self.readback.elapsed_ms),
         )
@@ -245,7 +305,12 @@ pub(crate) fn stimulus_volume_image_preview_poll_ready(
     phase: &str,
 ) -> Option<StimulusVolumeImagePreviewReady> {
     let readback = cx.xr_gpu_f32_volume_image_preview_poll(pending.ticket.request_id)?;
-    stimulus_volume_image_preview_ready_from_readback(&pending.input, readback, phase)
+    stimulus_volume_image_preview_ready_from_readback(
+        &pending.input,
+        pending.ticket.request_id,
+        readback,
+        phase,
+    )
 }
 
 fn prepare_stimulus_volume_gpu_probe(
@@ -443,6 +508,7 @@ fn stimulus_volume_raymarch_preview_marker_line_from_readback(
 
 fn stimulus_volume_image_preview_ready_from_readback(
     input: &QuestMakepadStimulusVolumeImagePreviewInput,
+    request_id: u64,
     readback: XrGpuF32VolumeImagePreviewResult,
     phase: &str,
 ) -> Option<StimulusVolumeImagePreviewReady> {
@@ -503,6 +569,7 @@ fn stimulus_volume_image_preview_ready_from_readback(
 
     let proof = QuestMakepadStimulusVolumeImagePreview::from_input(input, readback);
     Some(StimulusVolumeImagePreviewReady {
+        request_id,
         marker_line: proof.marker_line(phase),
         texture_rgba: stimulus_volume_image_preview_texture_rgba(&proof.readback),
         readback: proof.readback,
@@ -688,7 +755,7 @@ mod tests {
         }
         result.expected_outputs = result.outputs;
 
-        let ready = stimulus_volume_image_preview_ready_from_readback(&input, result, "unit")
+        let ready = stimulus_volume_image_preview_ready_from_readback(&input, 12, result, "unit")
             .expect("ready image preview");
 
         assert!(ready.readback_matched());
@@ -697,11 +764,69 @@ mod tests {
             input.image_width * input.image_height * 4
         );
         assert_eq!(&ready.texture_rgba[0..4], &[0.0, 1.0, 0.25, 0.75]);
-        let marker = ready.texture_adoption_marker_line("unit", true, 0);
+        let marker = ready.texture_adoption_marker_line(
+            "unit",
+            true,
+            0,
+            &StimulusVolumeTextureBindingEvidence::cpu_upload(ready.texture_upload_bytes()),
+        );
+        assert!(marker.contains("status=runtime-cpu-upload-texture-bound"));
         assert!(marker.contains("runtimeTextureBound=true"));
         assert!(marker.contains("textureSource=volume-image-preview-readback-cpu-upload"));
         assert!(marker.contains("zeroCopyVulkanImage=false"));
         assert!(marker.contains("gpuComputeReady=false"));
         assert!(marker.contains("textureUploadBytes=512"));
+    }
+
+    #[test]
+    fn image_preview_gpu_binding_marker_preserves_compute_boundary() {
+        let ready = StimulusVolumeImagePreviewReady {
+            request_id: 44,
+            marker_line: "source".to_owned(),
+            texture_rgba: vec![0.0; 128],
+            readback: QuestMakepadStimulusVolumeImagePreviewReadback {
+                image_width: 8,
+                image_height: 4,
+                image_layers: 1,
+                eye_tile_width: 4,
+                eye_tile_height: 4,
+                eye_count: 2,
+                pixel_count: 32,
+                component_count: 128,
+                storage_image_written: true,
+                transfer_readback_performed: true,
+                sampled_image_usage: true,
+                sampled_texture_bound: true,
+                ..QuestMakepadStimulusVolumeImagePreviewReadback::default()
+            },
+            profile_id: "stimulus.profile.volume.test".to_owned(),
+            profile_sha256: "0123456789abcdef".to_owned(),
+        };
+        let binding = StimulusVolumeTextureBindingEvidence::gpu_adoption(
+            XrGpuF32VolumeImagePreviewTextureAdoption {
+                request_id: 44,
+                image_width: 8,
+                image_height: 4,
+                image_layers: 1,
+                queue_submit_serial: 44,
+                resource_generation: 1,
+                texture_resource_generation: 2,
+                runtime_texture_bound: true,
+                zero_copy_vulkan_image: true,
+                image_ownership_transferred: true,
+                ..XrGpuF32VolumeImagePreviewTextureAdoption::default()
+            },
+        );
+        let marker = ready.texture_adoption_marker_line("unit", true, 0, &binding);
+        assert!(marker.contains("status=runtime-gpu-texture-bound"));
+        assert!(marker.contains("textureSource=volume-image-preview-retained-vulkan-image"));
+        assert!(marker.contains("resourcePlane=makepad-vulkan-retained-image-texture"));
+        assert!(marker.contains("textureFormat=PlatformRGBAf32"));
+        assert!(marker.contains("textureUploadBytes=0"));
+        assert!(marker.contains("cpuTextureUploadPerformed=false"));
+        assert!(marker.contains("platformTextureAdopted=true"));
+        assert!(marker.contains("zeroCopyVulkanImage=true"));
+        assert!(marker.contains("imageOwnershipTransferred=true"));
+        assert!(marker.contains("gpuComputeReady=false"));
     }
 }

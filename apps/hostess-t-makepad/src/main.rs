@@ -182,6 +182,7 @@ use stimulus_volume_gpu::{
     stimulus_volume_raymarch_preview_poll_marker_line, stimulus_volume_raymarch_preview_submit,
     PendingStimulusVolumeGpuProbe, PendingStimulusVolumeImagePreview,
     PendingStimulusVolumeRaymarchPreview, StimulusVolumeImagePreviewReady,
+    StimulusVolumeTextureBindingEvidence,
 };
 use texture_probe_stats::texture_plane_content_stats;
 
@@ -5607,20 +5608,37 @@ impl App {
         time_seconds: f32,
         ready: StimulusVolumeImagePreviewReady,
     ) {
-        if ready.readback_matched() {
-            let texture = Texture::new_with_format(
+        let binding = if ready.readback_matched() {
+            let gpu_texture = Texture::new_with_format(
                 cx,
-                TextureFormat::VecRGBAf32 {
+                TextureFormat::PlatformRGBAf32 {
                     width: ready.readback.image_width,
                     height: ready.readback.image_height,
-                    data: Some(ready.texture_rgba.clone()),
-                    updated: TextureUpdated::Full,
                 },
             );
-            self.stimulus_volume_image_preview_texture = Some(texture);
+            if let Some(adoption) = cx.xr_gpu_f32_volume_image_preview_adopt_texture(
+                ready.request_id,
+                gpu_texture.texture_id(),
+            ) {
+                self.stimulus_volume_image_preview_texture = Some(gpu_texture);
+                StimulusVolumeTextureBindingEvidence::gpu_adoption(adoption)
+            } else {
+                let texture = Texture::new_with_format(
+                    cx,
+                    TextureFormat::VecRGBAf32 {
+                        width: ready.readback.image_width,
+                        height: ready.readback.image_height,
+                        data: Some(ready.texture_rgba.clone()),
+                        updated: TextureUpdated::Full,
+                    },
+                );
+                self.stimulus_volume_image_preview_texture = Some(texture);
+                StimulusVolumeTextureBindingEvidence::cpu_upload(ready.texture_upload_bytes())
+            }
         } else {
             self.stimulus_volume_image_preview_texture = None;
-        }
+            StimulusVolumeTextureBindingEvidence::cpu_upload(0)
+        };
 
         let panel_bound =
             self.bind_stimulus_stereo_field_panel(cx, time_seconds, "volume-texture-adopted");
@@ -5629,6 +5647,7 @@ impl App {
                 phase,
                 panel_bound,
                 STIMULUS_VOLUME_TEXTURE_SLOT,
+                &binding,
             ));
             self.stimulus_volume_texture_adoption_markers_emitted += 1;
         }
