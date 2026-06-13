@@ -34,6 +34,14 @@ script_mod! {
         source_b_weight: 1.0
         color_low: vec4(0.0, 0.0, 0.0, 1.0)
         color_high: vec4(1.0, 1.0, 1.0, 1.0)
+        post_contrast: 1.0
+        post_brightness: 0.0
+        intensity_gain: 1.0
+        background_grid_mix: 0.35
+        texture_flow_strength: 0.0
+        fiducial_intensity: 0.0
+        binocular_color_separation: 0.0
+        binocular_phase_offset_radians: 0.0
         display_eye_offset_meters: 0.032
         display_aspect: 1.0
         projection_depth_meters: 1.0
@@ -46,7 +54,7 @@ script_mod! {
         volume_texture_blend: 0.0
         volume_renderer_ready: 0.0
         volume_renderer_blend: 0.0
-        volume_raymarch_steps: 16.0
+        volume_raymarch_steps: 3.0
         volume_grid_frequency: 4.0
         volume_density_gain: 0.72
         volume_absorption: 1.25
@@ -156,8 +164,11 @@ script_mod! {
         }
 
         volume_hash3: fn(x: float, y: float, z: float) -> float {
-            let n = sin(x * 127.1 + y * 311.7 + z * 74.7) * 43758.5453123
-            return n - floor(n)
+            let n = x * 0.1031 + y * 0.11369 + z * 0.13787
+            let p = n - floor(n)
+            let q = p * (p + 33.33)
+            let r = q * (q + p + 19.19)
+            return r - floor(r)
         }
 
         volume_value_noise: fn(p: vec3f) -> float {
@@ -192,8 +203,7 @@ script_mod! {
         volume_fbm: fn(p: vec3f) -> float {
             let n0 = self.volume_value_noise(p)
             let n1 = self.volume_value_noise(vec3(p.x * 2.03 + 17.1, p.y * 2.03 + 29.7, p.z * 2.03 + 11.3))
-            let n2 = self.volume_value_noise(vec3(p.x * 4.01 + 41.2, p.y * 4.01 + 7.8, p.z * 4.01 + 23.4))
-            return n0 * 0.55 + n1 * 0.30 + n2 * 0.15
+            return n0 * 0.68 + n1 * 0.32
         }
 
         volume_oscillator_field: fn(p: vec3f) -> float {
@@ -242,37 +252,42 @@ script_mod! {
             let density = self.volume_density(p)
             let depth_fade = pow(1.0 - clamp(sample_t * 0.42, 0.0, 0.92), max(self.volume_absorption, 0.25))
             let sample_alpha = clamp(density * depth_fade, 0.0, 1.0)
-            let oscillator_light = 0.5 + 0.5 * self.volume_oscillator_field(p)
             let base_light = 0.44 + 0.56 * (0.5 + 0.5 * sin((p.z + p.x * 0.45) * max(self.volume_grid_frequency, 1.0) + self.volume_phase))
-            let local_light = mix(base_light, oscillator_light, clamp(self.volume_oscillator_mix * 0.32, 0.0, 0.32))
             let base_rgb = mix(self.color_low.xyz, self.color_high.xyz, clamp(density, 0.0, 1.0))
             let eye_tint = mix(vec3(0.08, 0.78, 1.00), vec3(1.00, 0.24, 0.12), display_eye_selector)
-            let rgb = base_rgb.mix(eye_tint, 0.12) * sample_alpha * local_light
+            let rgb = base_rgb.mix(eye_tint, clamp(self.binocular_color_separation, 0.0, 1.0)) * sample_alpha * base_light
             return vec4(rgb.x, rgb.y, rgb.z, sample_alpha)
         }
 
         volume_raymarch: fn(surface_uv: vec2f, display_eye_selector: float) -> vec4 {
-            let step_count = clamp(self.volume_raymarch_steps, 0.0, 16.0)
-            let s00 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.03125) * step(0.5, step_count)
-            let s01 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.09375) * step(1.5, step_count)
-            let s02 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.15625) * step(2.5, step_count)
-            let s03 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.21875) * step(3.5, step_count)
-            let s04 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.28125) * step(4.5, step_count)
-            let s05 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.34375) * step(5.5, step_count)
-            let s06 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.40625) * step(6.5, step_count)
-            let s07 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.46875) * step(7.5, step_count)
-            let s08 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.53125) * step(8.5, step_count)
-            let s09 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.59375) * step(9.5, step_count)
-            let s10 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.65625) * step(10.5, step_count)
-            let s11 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.71875) * step(11.5, step_count)
-            let s12 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.78125) * step(12.5, step_count)
-            let s13 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.84375) * step(13.5, step_count)
-            let s14 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.90625) * step(14.5, step_count)
-            let s15 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.96875) * step(15.5, step_count)
-            let sum = s00 + s01 + s02 + s03 + s04 + s05 + s06 + s07 + s08 + s09 + s10 + s11 + s12 + s13 + s14 + s15
+            let step_count = clamp(self.volume_raymarch_steps, 1.0, 4.0)
+            let s00 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.16667)
+            let s01 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.50000)
+            if step_count <= 2.5 {
+                let sum = s00 + s01
+                let alpha = clamp((sum.w / 2.0) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
+                let rgb = sum.xyz / max(sum.w, 0.001)
+                let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
+                let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
+                let out_rgb = ambient.mix(rgb, alpha)
+                return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
+            }
+            let s02 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.83333)
+            if step_count <= 3.5 {
+                let sum = s00 + s01 + s02
+                let alpha = clamp((sum.w / 3.0) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
+                let rgb = sum.xyz / max(sum.w, 0.001)
+                let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
+                let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
+                let out_rgb = ambient.mix(rgb, alpha)
+                return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
+            }
+            let s03 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.93750)
+            let sum = s00 + s01 + s02 + s03
             let alpha = clamp((sum.w / max(step_count, 1.0)) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
             let rgb = sum.xyz / max(sum.w, 0.001)
-            let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(self.volume_phase + display_eye_selector))
+            let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
+            let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
             let out_rgb = ambient.mix(rgb, alpha)
             return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
         }
@@ -297,23 +312,38 @@ script_mod! {
             let ripple = sin((d0 + d1 * self.source_b_weight) * self.spatial_frequency * tau - phase)
             let interference = sin((d0 - d1 * self.source_b_weight) * self.spatial_frequency * tau + phase * (1.0 + self.wave_modulation))
             let geometry_field = mix(stripes, 0.5 * (ripple + interference), clamp(self.geometry_mix, 0.0, 1.0))
-            let luma = smoothstep(-0.16, 0.16, geometry_field)
+            let grid_phase = phase * 1.31 + sin(phase * 0.37)
+            let grid_x = sin((p.x + p.y * 0.11) * self.spatial_frequency * tau * 0.72 + grid_phase)
+            let grid_y = sin((p.y - p.x * 0.17) * self.spatial_frequency * tau * 0.68 - grid_phase * 0.91)
+            let grid_diag = sin((p.x + p.y) * self.spatial_frequency * tau * 0.42 + phase * (1.0 + self.wave_modulation * 0.5))
+            let grid_luma = smoothstep(-0.10, 0.10, grid_x * grid_y * 0.68 + grid_diag * 0.32)
+            let luma = clamp(max(smoothstep(-0.16, 0.16, geometry_field), grid_luma * clamp(self.background_grid_mix, 0.0, 1.0)), 0.0, 1.0)
             let radius = length(uv)
             let radial = pow(clamp(1.0 - radius * 0.34, 0.0, 1.0), max(self.radial_decay, 0.0))
             let edge = mix(1.0, 1.0 - smoothstep(0.72, 1.38, radius), clamp(self.edge_fade * 5.0, 0.0, 1.0))
             let pulse = 0.34 + 0.66 * (0.5 + 0.5 * sin(phase))
+            let strobe_gate = clamp(pulse * (1.0 + 0.85 * clamp(self.geometry_mix, 0.0, 1.0)), 0.0, 1.0)
             let color = mix(self.color_low.xyz, self.color_high.xyz, luma)
-            let rgb = color * max(radial, 0.18) * max(edge, 0.18) * pulse
+            let rgb = color * max(radial, 0.18) * max(edge, 0.18) * strobe_gate
             let volume_render = self.volume_raymarch(bounded_surface_uv, display_eye_selector)
-            let volume_sample = self.volume_preview_sample(bounded_surface_uv, display_eye_selector)
-            let texture_validation_mix = clamp(self.volume_texture_ready * self.volume_texture_blend * 0.18, 0.0, 0.18)
-            let volume_rgb = (volume_render.xyz * max(volume_render.w, 0.18)).mix(volume_sample.xyz * max(volume_sample.w, 0.18), texture_validation_mix)
-            let volume_mix = clamp(self.volume_renderer_ready * self.volume_renderer_blend, 0.0, 1.0)
-            let fiducial = self.fiducial_mask(bounded_surface_uv) * max(self.volume_texture_ready, self.volume_renderer_ready)
+            let texture_flow = clamp(self.texture_flow_strength, 0.0, 0.12) * vec2(
+                sin(phase * 1.17 + bounded_surface_uv.y * tau * 2.0),
+                cos(phase * 0.91 + bounded_surface_uv.x * tau * 2.0)
+            )
+            let volume_sample = self.volume_preview_sample(clamp(bounded_surface_uv + texture_flow, vec2(0.0, 0.0), vec2(1.0, 1.0)), display_eye_selector)
+            let texture_runtime_mix = clamp(self.volume_texture_ready * self.volume_texture_blend * 0.55, 0.0, 0.55)
+            let procedural_rgb = volume_render.xyz * max(volume_render.w, 0.18)
+            let sampled_rgb = volume_sample.xyz * max(volume_sample.w, 0.18)
+            let grid_boost = mix(0.72, 1.45, clamp(grid_luma * self.background_grid_mix, 0.0, 1.0))
+            let volume_rgb = procedural_rgb.mix(sampled_rgb, texture_runtime_mix) * strobe_gate * grid_boost
+            let volume_mix = clamp(self.volume_renderer_ready * self.volume_renderer_blend * 0.92, 0.0, 0.92)
+            let fiducial = self.fiducial_mask(bounded_surface_uv) * max(self.volume_texture_ready, self.volume_renderer_ready) * clamp(self.fiducial_intensity, 0.0, 1.0)
             let fiducial_color = mix(vec3(0.08, 0.78, 1.00), vec3(1.00, 0.24, 0.12), display_eye_selector)
             let blended_rgb = rgb.mix(volume_rgb, volume_mix).mix(fiducial_color, clamp(fiducial * 0.85, 0.0, 1.0))
+            let contrasted_rgb = (blended_rgb - vec3(0.5, 0.5, 0.5)) * max(self.post_contrast, 0.0) + vec3(0.5, 0.5, 0.5) + vec3(self.post_brightness, self.post_brightness, self.post_brightness)
+            let processed_rgb = clamp(contrasted_rgb * max(self.intensity_gain, 0.0), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
             let proof_floor = vec3(0.025, 0.0, 0.012) * step(0.5, self.enabled)
-            return vec4(max(blended_rgb, proof_floor), 1.0)
+            return vec4(max(processed_rgb, proof_floor), 1.0)
         }
 
         fragment: fn() {
@@ -330,11 +360,19 @@ script_mod! {
             temporal_frequency_hz: 0.0
             spatial_frequency: 8.0
             geometry_mix: 1.0
+            post_contrast: 1.0
+            post_brightness: 0.0
+            intensity_gain: 1.0
+            background_grid_mix: 0.35
+            texture_flow_strength: 0.0
+            fiducial_intensity: 0.0
+            binocular_color_separation: 0.0
+            binocular_phase_offset_radians: 0.0
             volume_texture_ready: 0.0
             volume_texture_blend: 0.0
             volume_renderer_ready: 0.0
             volume_renderer_blend: 0.0
-            volume_raymarch_steps: 16.0
+            volume_raymarch_steps: 3.0
             volume_grid_frequency: 4.0
             volume_density_gain: 0.72
             volume_absorption: 1.25

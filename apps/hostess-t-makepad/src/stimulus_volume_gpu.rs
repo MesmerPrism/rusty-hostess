@@ -142,7 +142,7 @@ impl StimulusVolumeImagePreviewReady {
         binding: &StimulusVolumeTextureBindingEvidence,
     ) -> String {
         format!(
-            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath={} validationTexturePath=makepad-xr-fragment-preview sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource={} resourcePlane={} sourceRequestId={} imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat={} textureUploadBytes={} cpuTextureUploadPerformed={} platformTextureAdopted={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage={} imageOwnershipTransferred={} storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} highRateJsonPayload=false fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} textureResourceGeneration={} replacedExistingTextureResource={} queueWaitIdlePerformed={} elapsedMs={}",
+            "RUSTY_HOSTESS_MAKEPAD_STIMULUS_VOLUME_TEXTURE_ADOPTION schema=rusty.hostess.makepad.stimulus_volume_texture_adoption.v1 phase={} status={} panelBound={} profileId={} profileSha256={} renderPath={} validationTexturePath=makepad-xr-scalable-volume-texture sourceProof=RUSTY_QUEST_MAKEPAD_STIMULUS_VOLUME_IMAGE_PREVIEW textureSource={} resourcePlane={} sourceRequestId={} imageWidth={} imageHeight={} imageLayers={} eyeTileWidth={} eyeTileHeight={} eyeCount={} pixelCount={} textureFormat={} textureUploadBytes={} cpuTextureUploadPerformed={} platformTextureAdopted={} shaderTextureSlot={} stereoAtlasMapping=left-right-eye-tiles stereoFiducialAnchors=center-and-four-corners runtimeTextureBound={} sampledTextureBound={} sourceReadbackMatched={} zeroCopyVulkanImage={} imageOwnershipTransferred={} storageImageResident={} storageImageWritten={} transferReadbackPerformed={} sampledImageUsage={} scalableStereoAtlas=true sampledTextureRenderer=true highRateJsonPayload=false fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady={} computeKernel={} frameCriticalComputeReady=false queueSubmitSerial={} fenceSerial={} resourceGeneration={} textureResourceGeneration={} replacedExistingTextureResource={} queueWaitIdlePerformed={} elapsedMs={}",
             marker_token(phase),
             if !self.readback_matched() {
                 "rejected-source-mismatch"
@@ -179,6 +179,8 @@ impl StimulusVolumeImagePreviewReady {
             self.readback.storage_image_written,
             self.readback.transfer_readback_performed,
             self.readback.sampled_image_usage,
+            self.readback_matched() && self.readback.storage_image_written,
+            self.readback_matched() && self.readback.storage_image_written,
             self.readback.queue_submit_serial,
             self.readback.fence_serial,
             self.readback.resource_generation,
@@ -777,8 +779,11 @@ mod tests {
         assert!(marker.contains("runtimeTextureBound=true"));
         assert!(marker.contains("textureSource=volume-image-preview-readback-cpu-upload"));
         assert!(marker.contains("zeroCopyVulkanImage=false"));
-        assert!(marker.contains("gpuComputeReady=false"));
-        assert!(marker.contains("textureUploadBytes=512"));
+        assert!(marker.contains("gpuComputeReady=true"));
+        assert!(marker.contains("computeKernel=true"));
+        assert!(marker.contains("frameCriticalComputeReady=false"));
+        assert!(marker.contains("scalableStereoAtlas=true"));
+        assert!(marker.contains("textureUploadBytes=131072"));
     }
 
     #[test]
@@ -830,6 +835,8 @@ mod tests {
         assert!(marker.contains("platformTextureAdopted=true"));
         assert!(marker.contains("zeroCopyVulkanImage=true"));
         assert!(marker.contains("imageOwnershipTransferred=true"));
-        assert!(marker.contains("gpuComputeReady=false"));
+        assert!(marker.contains("gpuComputeReady=true"));
+        assert!(marker.contains("computeKernel=true"));
+        assert!(marker.contains("frameCriticalComputeReady=false"));
     }
 }

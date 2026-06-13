@@ -27,8 +27,8 @@ static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::ne
 pub(crate) const STIMULUS_VOLUME_TEXTURE_SLOT: usize = 0;
 pub(crate) const STIMULUS_VOLUME_FRAGMENT_RENDER_PATH: &str =
     "makepad-xr-fragment-volume-raymarch-v2";
-pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 16;
-pub(crate) const STIMULUS_VOLUME_NOISE_MODEL: &str = "value-fbm-3oct-v1";
+pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 3;
+pub(crate) const STIMULUS_VOLUME_NOISE_MODEL: &str = "value-fbm-mobile-2oct-v1";
 pub(crate) const STIMULUS_VOLUME_OSCILLATOR_MODEL: &str = "radial-axial-cross-v1";
 
 pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
@@ -82,6 +82,14 @@ pub(crate) struct StimulusStereoFieldState {
     pub(crate) radial_decay: f32,
     pub(crate) geometry_mix: f32,
     pub(crate) edge_fade: f32,
+    pub(crate) post_contrast: f32,
+    pub(crate) post_brightness: f32,
+    pub(crate) intensity_gain: f32,
+    pub(crate) background_grid_mix: f32,
+    pub(crate) texture_flow_strength: f32,
+    pub(crate) fiducial_intensity: f32,
+    pub(crate) binocular_color_separation: f32,
+    pub(crate) binocular_phase_offset_radians: f32,
     pub(crate) source_a: [f32; 2],
     pub(crate) source_b: [f32; 2],
     pub(crate) source_b_weight: f32,
@@ -94,6 +102,8 @@ pub(crate) struct StimulusStereoFieldState {
     pub(crate) volume_storage_hint: String,
     pub(crate) volume_grid_dimensions: [u64; 3],
     pub(crate) volume_step_count: u64,
+    pub(crate) volume_density_scale: f32,
+    pub(crate) volume_opacity_scale: f32,
     pub(crate) kernel_abi_id: String,
     pub(crate) compute_pass_count: usize,
     pub(crate) volume_readback_probe_samples: u64,
@@ -118,6 +128,14 @@ impl Default for StimulusStereoFieldState {
             radial_decay: 0.0,
             geometry_mix: 0.0,
             edge_fade: 0.0,
+            post_contrast: 1.0,
+            post_brightness: 0.0,
+            intensity_gain: 1.0,
+            background_grid_mix: 0.35,
+            texture_flow_strength: 0.0,
+            fiducial_intensity: 0.0,
+            binocular_color_separation: 0.0,
+            binocular_phase_offset_radians: 0.0,
             source_a: [-0.24, 0.0],
             source_b: [0.24, 0.0],
             source_b_weight: 1.0,
@@ -130,6 +148,8 @@ impl Default for StimulusStereoFieldState {
             volume_storage_hint: "none".to_string(),
             volume_grid_dimensions: [0, 0, 0],
             volume_step_count: 0,
+            volume_density_scale: 1.0,
+            volume_opacity_scale: 1.0,
             kernel_abi_id: "none".to_string(),
             compute_pass_count: 0,
             volume_readback_probe_samples: 0,
@@ -166,6 +186,40 @@ impl StimulusStereoFieldState {
         let edge_fade = json_f32(post, &["edge_fade"])
             .unwrap_or(0.0)
             .clamp(0.0, 1.0);
+        let post_contrast = json_f32(post, &["contrast"]).unwrap_or(1.0).clamp(0.0, 4.0);
+        let post_brightness = json_f32(post, &["brightness"])
+            .unwrap_or(0.0)
+            .clamp(-1.0, 1.0);
+        let intensity_gain = json_f32(post, &["intensity_gain"])
+            .unwrap_or(1.0)
+            .clamp(0.0, 4.0);
+        let background_grid_mix = json_f32(post, &["background_grid_mix"])
+            .unwrap_or(0.35)
+            .clamp(0.0, 1.0);
+        let texture_flow_strength = json_f32(post, &["texture_flow_strength"])
+            .unwrap_or(0.0)
+            .clamp(0.0, 0.12);
+        let fiducial_intensity = json_f32(presentation, &["fiducial_intensity"])
+            .or_else(|| {
+                json_bool(presentation, &["debug_fiducials_enabled"]).map(|enabled| {
+                    if enabled {
+                        0.85
+                    } else {
+                        0.0
+                    }
+                })
+            })
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        let binocular_color_separation = json_f32(presentation, &["binocular_color_separation"])
+            .or_else(|| json_f32(presentation, &["stereo_color_separation"]))
+            .unwrap_or(0.0)
+            .clamp(0.0, 1.0);
+        let binocular_phase_offset_radians =
+            json_f32(presentation, &["binocular_phase_offset_radians"])
+                .or_else(|| json_f32(presentation, &["stereo_phase_offset_radians"]))
+                .unwrap_or(0.0)
+                .clamp(-std::f32::consts::PI, std::f32::consts::PI);
         let layer = selected_layer(layer_graph).unwrap_or(Value::Null);
         let interference = layer.get("interference").unwrap_or(&Value::Null);
         let source_a = json_vec2(interference, "source_a").unwrap_or([-0.24, 0.0]);
@@ -193,6 +247,13 @@ impl StimulusStereoFieldState {
             .and_then(|stop| stop.get("color"))
             .and_then(json_color_rgba)
             .unwrap_or([1.0, 1.0, 1.0, 1.0]);
+        let volume = value.get("volume").unwrap_or(&Value::Null);
+        let volume_density_scale = json_f32(volume, &["density_scale"])
+            .unwrap_or(1.0)
+            .clamp(0.05, 4.0);
+        let volume_opacity_scale = json_f32(volume, &["opacity_scale"])
+            .unwrap_or(1.0)
+            .clamp(0.05, 4.0);
         let volume_summary = &payload.volume_summary;
 
         Ok(Self {
@@ -213,6 +274,14 @@ impl StimulusStereoFieldState {
             radial_decay,
             geometry_mix,
             edge_fade,
+            post_contrast,
+            post_brightness,
+            intensity_gain,
+            background_grid_mix,
+            texture_flow_strength,
+            fiducial_intensity,
+            binocular_color_separation,
+            binocular_phase_offset_radians,
             source_a,
             source_b,
             source_b_weight,
@@ -237,6 +306,8 @@ impl StimulusStereoFieldState {
                 .unwrap_or_else(|| "none".to_string()),
             volume_grid_dimensions: volume_summary.grid_dimensions.unwrap_or([0, 0, 0]),
             volume_step_count: volume_summary.step_count.unwrap_or(0),
+            volume_density_scale,
+            volume_opacity_scale,
             kernel_abi_id: volume_summary
                 .kernel_abi_id
                 .clone()
@@ -350,7 +421,7 @@ impl StimulusStereoFieldState {
         projection_rows_ready: bool,
     ) -> String {
         format!(
-            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
+            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} fiducialIntensity={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} volumeDensityScale={:.3} volumeOpacityScale={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
             STIMULUS_STEREO_FIELD_MARKER_PREFIX,
             STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
             marker_token(phase),
@@ -381,6 +452,16 @@ impl StimulusStereoFieldState {
             self.spatial_frequency,
             self.geometry_mix,
             self.edge_fade,
+            self.post_contrast,
+            self.post_brightness,
+            self.intensity_gain,
+            self.background_grid_mix,
+            self.texture_flow_strength,
+            self.fiducial_intensity,
+            self.binocular_color_separation,
+            self.binocular_phase_offset_radians,
+            self.volume_density_scale,
+            self.volume_opacity_scale,
             self.volume_present,
             marker_token(&self.volume_schema),
             marker_token(&self.volume_field_kind),
@@ -472,6 +553,22 @@ pub struct DrawStimulusStereoField {
     pub color_low: Vec4f,
     #[live(vec4(1.0, 1.0, 1.0, 1.0))]
     pub color_high: Vec4f,
+    #[live(1.0_f32)]
+    pub post_contrast: f32,
+    #[live(0.0_f32)]
+    pub post_brightness: f32,
+    #[live(1.0_f32)]
+    pub intensity_gain: f32,
+    #[live(0.35_f32)]
+    pub background_grid_mix: f32,
+    #[live(0.0_f32)]
+    pub texture_flow_strength: f32,
+    #[live(0.0_f32)]
+    pub fiducial_intensity: f32,
+    #[live(0.0_f32)]
+    pub binocular_color_separation: f32,
+    #[live(0.0_f32)]
+    pub binocular_phase_offset_radians: f32,
     #[live(0.032_f32)]
     pub display_eye_offset_meters: f32,
     #[live(1.0_f32)]
@@ -566,6 +663,14 @@ impl DrawStimulusStereoField {
         self.radial_decay = state.radial_decay;
         self.geometry_mix = state.geometry_mix;
         self.edge_fade = state.edge_fade;
+        self.post_contrast = state.post_contrast;
+        self.post_brightness = state.post_brightness;
+        self.intensity_gain = state.intensity_gain;
+        self.background_grid_mix = state.background_grid_mix;
+        self.texture_flow_strength = state.texture_flow_strength;
+        self.fiducial_intensity = state.fiducial_intensity;
+        self.binocular_color_separation = state.binocular_color_separation;
+        self.binocular_phase_offset_radians = state.binocular_phase_offset_radians;
         self.source_a_b = vec4f(
             state.source_a[0],
             state.source_a[1],
@@ -600,11 +705,12 @@ impl DrawStimulusStereoField {
         };
         self.volume_raymarch_steps = state.volume_shader_raymarch_steps();
         self.volume_grid_frequency = state.volume_grid_frequency();
-        self.volume_density_gain = 0.72;
-        self.volume_absorption = 1.25;
+        self.volume_density_gain =
+            (0.72 * state.volume_density_scale * state.volume_opacity_scale).clamp(0.10, 2.40);
+        self.volume_absorption = (1.10 + state.volume_opacity_scale * 0.35).clamp(0.40, 2.20);
         self.volume_phase = 0.37
             + state.volume_step_count as f32 * 0.003
-            + time_seconds * state.temporal_frequency_hz.max(0.01) * 0.35;
+            + time_seconds * state.temporal_frequency_hz.max(0.01);
         self.volume_eccentricity = state.volume_eccentricity();
         self.volume_noise_scale = state.volume_noise_scale();
         self.volume_noise_strength = state.volume_noise_strength();
@@ -708,7 +814,6 @@ impl StimulusStereoFieldPanel {
             None
         };
         let changed = self.state != state
-            || self.projection_rows != projection_rows
             || self.volume_texture_bound != effective_volume_texture.is_some()
             || (self.volume_texture_blend - requested_volume_blend).abs() > 0.0001;
         self.state = state;
@@ -738,7 +843,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialAnchors=center-and-four-corners",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialsEnabled={} stereoFiducialIntensity={:.3} stereoFiducialAnchors={}",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -760,11 +865,25 @@ impl Widget for StimulusStereoFieldPanel {
                     self.draw_field.volume_noise_motion,
                     self.draw_field.volume_oscillator_mix,
                     self.draw_field.volume_shell_mix,
+                    self.draw_field.post_contrast,
+                    self.draw_field.post_brightness,
+                    self.draw_field.intensity_gain,
+                    self.draw_field.background_grid_mix,
+                    self.draw_field.texture_flow_strength,
+                    self.draw_field.binocular_color_separation,
+                    self.draw_field.binocular_phase_offset_radians,
                     self.projection_rows.ready,
                     self.volume_texture_bound,
                     self.volume_texture_blend,
                     self.draw_field.volume_renderer_blend,
                     self.draw_field.volume_raymarch_steps,
+                    self.draw_field.fiducial_intensity > 0.0,
+                    self.draw_field.fiducial_intensity,
+                    if self.draw_field.fiducial_intensity > 0.0 {
+                        "center-and-four-corners"
+                    } else {
+                        "disabled"
+                    },
                 ));
             }
         }
@@ -804,6 +923,14 @@ fn json_f32(value: &Value, keys: &[&str]) -> Option<f32> {
         current = current.get(*key)?;
     }
     current.as_f64().map(|value| value as f32)
+}
+
+fn json_bool(value: &Value, keys: &[&str]) -> Option<bool> {
+    let mut current = value;
+    for key in keys {
+        current = current.get(*key)?;
+    }
+    current.as_bool()
 }
 
 fn json_vec2(value: &Value, key: &str) -> Option<[f32; 2]> {
@@ -868,7 +995,7 @@ mod tests {
             profile_path: PathBuf::from("stimulus/volume-profile.json"),
             profile_id: "stimulus.profile.volume.test".to_string(),
             profile_schema: "rusty.optics.stimulus.profile.v1".to_string(),
-            profile_json: r#"{"profile_id":"stimulus.profile.volume.test","schema_id":"rusty.optics.stimulus.profile.v1","presentation":{"mode":"StereoEyeField","coverage":"FullViewport","eye_count":2}}"#.to_string(),
+            profile_json: r#"{"profile_id":"stimulus.profile.volume.test","schema_id":"rusty.optics.stimulus.profile.v1","presentation":{"mode":"StereoEyeField","coverage":"FullViewport","eye_count":2,"fiducial_intensity":0.4},"layer_graph":{"post":{"contrast":2.4,"brightness":0.12,"intensity_gain":1.8,"background_grid_mix":0.7,"texture_flow_strength":0.05}},"volume":{"density_scale":1.6,"opacity_scale":1.5}}"#.to_string(),
             profile_sha256:
                 "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
                     .to_string(),
@@ -905,6 +1032,16 @@ mod tests {
         assert!((state.volume_noise_scale() - 3.0).abs() < 0.0001);
         assert!(state.volume_noise_strength() > 0.0);
         assert!(state.volume_oscillator_mix() > 0.0);
+        assert!((state.post_contrast - 2.4).abs() < 0.0001);
+        assert!((state.post_brightness - 0.12).abs() < 0.0001);
+        assert!((state.intensity_gain - 1.8).abs() < 0.0001);
+        assert!((state.background_grid_mix - 0.7).abs() < 0.0001);
+        assert!((state.texture_flow_strength - 0.05).abs() < 0.0001);
+        assert!((state.fiducial_intensity - 0.4).abs() < 0.0001);
+        assert!((state.binocular_color_separation - 0.0).abs() < 0.0001);
+        assert!((state.binocular_phase_offset_radians - 0.0).abs() < 0.0001);
+        assert!((state.volume_density_scale - 1.6).abs() < 0.0001);
+        assert!((state.volume_opacity_scale - 1.5).abs() < 0.0001);
 
         let draw_marker = state.marker_line("test", 1.25, true, true);
         assert!(draw_marker.contains(&format!(
@@ -921,7 +1058,19 @@ mod tests {
         assert!(draw_marker.contains("gpuComputeReady=false"));
         assert!(draw_marker.contains("volumePresent=true"));
         assert!(draw_marker.contains("volumeGridDimensions=32x32x32"));
-        assert!(draw_marker.contains("shaderRaymarchSamples=16"));
+        assert!(draw_marker.contains("postContrast=2.400"));
+        assert!(draw_marker.contains("postBrightness=0.120"));
+        assert!(draw_marker.contains("intensityGain=1.800"));
+        assert!(draw_marker.contains("backgroundGridMix=0.700"));
+        assert!(draw_marker.contains("textureFlowStrength=0.050"));
+        assert!(draw_marker.contains("fiducialIntensity=0.400"));
+        assert!(draw_marker.contains("binocularColorSeparation=0.000"));
+        assert!(draw_marker.contains("binocularPhaseOffsetRadians=0.000"));
+        assert!(draw_marker.contains("volumeDensityScale=1.600"));
+        assert!(draw_marker.contains("volumeOpacityScale=1.500"));
+        assert!(draw_marker.contains(&format!(
+            "shaderRaymarchSamples={STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES}"
+        )));
         assert!(draw_marker.contains("computeKernel=false"));
         assert!(draw_marker.contains("projectionSurfaceRowsReady=true"));
 
