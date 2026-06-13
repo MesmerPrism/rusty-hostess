@@ -13,6 +13,13 @@ The repo is intentionally separate from:
 Hostess T consumes package manifests as build or run inputs and emits evidence
 JSON that includes package manifest hashes.
 
+## Agent Instructions
+
+Use `AGENTS.md` as the first-hop policy surface. Detailed Hostess agent
+runbooks live under `docs/agent-instructions/`, including the Quest Makepad APK,
+settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
+`docs/agent-instructions/quest-makepad-runbook.md`.
+
 ## Current Apps
 
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
