@@ -807,6 +807,40 @@ def validate_summary(
     force_residency_not_promoted_count = count_lines_containing(
         force_residency_lines, "candidatePromoted=false"
     )
+    force_residency_tracker_source_count = count_lines_containing(
+        force_residency_lines,
+        "residencyTrackerSource=quest-makepad-gpu-force-authority-residency-tracker",
+    )
+    force_residency_reused_proofs_declared_count = count_lines_containing(
+        force_residency_lines, "reusedResidentProofs="
+    )
+    force_residency_continuity_declared_count = count_lines_containing(
+        force_residency_lines, "residencyContinuityReady="
+    )
+    force_residency_continuity_not_broken_count = count_lines_containing(
+        force_residency_lines, "residencyContinuityBroken=false"
+    )
+    force_residency_continuity_breaks_declared_count = count_lines_containing(
+        force_residency_lines, "residencyContinuityBreakCount="
+    )
+    force_residency_source_generation_declared_count = count_lines_containing(
+        force_residency_lines, "sourceMeshBufferGeneration="
+    )
+    force_residency_source_generation_matched_count = count_lines_containing(
+        force_residency_lines, "sourceMeshBufferGenerationMatched=true"
+    )
+    force_residency_derived_generation_declared_count = count_lines_containing(
+        force_residency_lines, "derivedBufferGeneration="
+    )
+    force_residency_derived_generation_matched_count = count_lines_containing(
+        force_residency_lines, "derivedBufferGenerationMatched=true"
+    )
+    force_residency_queue_monotonic_count = count_lines_containing(
+        force_residency_lines, "queueSubmitSerialMonotonic=true"
+    )
+    force_residency_fence_monotonic_count = count_lines_containing(
+        force_residency_lines, "fenceSerialMonotonic=true"
+    )
     force_residency_fallback_ready_count = count_lines_containing(
         force_residency_lines, "matterCpuFallbackReady=true"
     )
@@ -919,6 +953,42 @@ def validate_summary(
             issues.append("GPU force authority residency selected the candidate")
         if force_residency_not_promoted_count != len(force_residency_lines):
             issues.append("GPU force authority residency promoted the candidate")
+        if force_residency_tracker_source_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not report the residency tracker source"
+            )
+        if force_residency_reused_proofs_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare reusedResidentProofs")
+        if force_residency_continuity_declared_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare residency continuity readiness"
+            )
+        if force_residency_continuity_not_broken_count != len(force_residency_lines):
+            issues.append("GPU force authority residency reported a continuity break")
+        if force_residency_continuity_breaks_declared_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare continuity break count"
+            )
+        if force_residency_source_generation_declared_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare source mesh buffer generation"
+            )
+        if force_residency_source_generation_matched_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not match source mesh buffer generation"
+            )
+        if force_residency_derived_generation_declared_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare derived buffer generation"
+            )
+        if force_residency_derived_generation_matched_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not match derived buffer generation"
+            )
+        if force_residency_queue_monotonic_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not keep submit serials monotonic")
+        if force_residency_fence_monotonic_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not keep fence serials monotonic")
         if force_residency_fallback_ready_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not keep Matter CPU fallback ready")
         if force_residency_fallback_authority_count != len(force_residency_lines):

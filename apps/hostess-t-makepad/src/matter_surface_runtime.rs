@@ -117,6 +117,8 @@ impl App {
         self.matter_surface_gpu_skinning_mesh_probe_pending = None;
         self.matter_surface_gpu_mesh_sdf_probe_markers_emitted = 0;
         self.matter_surface_gpu_mesh_sdf_probe_pending = None;
+        self.matter_surface_gpu_force_authority_residency_tracker
+            .reset();
         self.matter_surface_gpu_sync_probe_last_frame = 0;
         self.matter_surface_gpu_schedule_markers_emitted = 0;
     }
@@ -464,19 +466,15 @@ impl App {
                 phase,
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted,
             );
-            let observed_resident_proofs =
-                self.matter_surface_gpu_mesh_sdf_probe_markers_emitted + 1;
-            let completed_mesh_sdf_markers = self
-                .matter_surface_gpu_mesh_sdf_probe_pending
-                .as_ref()
-                .and_then(|pending| {
-                    gpu_mesh_sdf_probe_poll_marker_lines(
-                        cx,
-                        pending,
-                        &mesh_sdf_phase,
-                        observed_resident_proofs,
-                    )
-                });
+            let pending_mesh_sdf_probe = self.matter_surface_gpu_mesh_sdf_probe_pending.clone();
+            let completed_mesh_sdf_markers = pending_mesh_sdf_probe.as_ref().and_then(|pending| {
+                gpu_mesh_sdf_probe_poll_marker_lines(
+                    cx,
+                    pending,
+                    &mesh_sdf_phase,
+                    &mut self.matter_surface_gpu_force_authority_residency_tracker,
+                )
+            });
             if let Some(markers) = completed_mesh_sdf_markers {
                 for marker in markers {
                     emit_marker_line(&marker);

@@ -145,10 +145,10 @@ use projection_target_controls::{
 };
 use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
-    QuestMakepadForceAuthorityMode, QuestMakepadMatterSurfaceWorker,
-    QuestMakepadWorldAdfDebugBatch, QuestMakepadWorldParticleBatch,
-    DEFAULT_PARTICLE_RENDER_ANIMATION_MODE, DEFAULT_PARTICLE_RENDER_DRAW_LIMIT,
-    DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
+    QuestMakepadForceAuthorityMode, QuestMakepadGpuForceAuthorityResidencyTracker,
+    QuestMakepadMatterSurfaceWorker, QuestMakepadWorldAdfDebugBatch,
+    QuestMakepadWorldParticleBatch, DEFAULT_PARTICLE_RENDER_ANIMATION_MODE,
+    DEFAULT_PARTICLE_RENDER_DRAW_LIMIT, DEFAULT_PARTICLE_RENDER_SIZE_SCALE,
 };
 use shell_contract::MakepadShellContractReadReceipt;
 use shell_runtime_capabilities::MakepadShellRuntimeCapabilityReceipt;
@@ -1686,6 +1686,9 @@ pub struct App {
     matter_surface_gpu_mesh_sdf_probe_markers_emitted: usize,
     #[rust]
     matter_surface_gpu_mesh_sdf_probe_pending: Option<PendingGpuMeshSdfProbe>,
+    #[rust]
+    matter_surface_gpu_force_authority_residency_tracker:
+        QuestMakepadGpuForceAuthorityResidencyTracker,
     #[rust]
     matter_surface_gpu_sync_probe_last_frame: u64,
     #[rust]
