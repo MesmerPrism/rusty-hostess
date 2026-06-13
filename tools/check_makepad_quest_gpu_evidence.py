@@ -71,6 +71,7 @@ class EvidenceThresholds:
     require_gpu_force_steady_state_fallback: bool = False
     require_gpu_force_fresh_expanded_oracle_fallback: bool = False
     require_gpu_force_expanded_oracle_provider_ab_fallback: bool = False
+    require_gpu_force_runtime_authority: bool = False
     min_field_particle_force_sample_count: int = 0
     min_force_residency_observed_proofs: int = 0
     min_force_residency_reused_proofs: int = 0
@@ -886,11 +887,28 @@ def validate_summary(
     force_residency_selection_blocked_count = count_lines_containing(
         force_residency_lines, "runtimeSelectionPermitted=false"
     )
+    force_residency_selection_permitted_count = count_lines_containing(
+        force_residency_lines, "runtimeSelectionPermitted=true"
+    )
     force_residency_active_kind_count = count_lines_containing(
         force_residency_lines, "activeForceAuthorityKind=matter-cpu"
     )
+    force_residency_active_gpu_kind_count = count_lines_containing(
+        force_residency_lines,
+        "activeForceAuthorityKind=gpu-dense-sdf-field-particle-force",
+    )
+    force_residency_active_kind_declared_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthorityKind="
+    )
     force_residency_active_source_count = count_lines_containing(
         force_residency_lines, "activeForceAuthoritySource=matter-runtime-profile"
+    )
+    force_residency_active_gpu_source_count = count_lines_containing(
+        force_residency_lines,
+        "activeForceAuthoritySource=quest-makepad-gpu-runtime-selector",
+    )
+    force_residency_active_source_declared_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthoritySource="
     )
     force_residency_oracle_authority_count = count_lines_containing(
         force_residency_lines, "matterCpuOracleForceAuthority="
@@ -898,11 +916,23 @@ def validate_summary(
     force_residency_active_preserved_count = count_lines_containing(
         force_residency_lines, "activeForceAuthorityPreserved=matter-cpu-runtime"
     )
+    force_residency_active_gpu_preserved_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthorityPreserved=gpu-backed-runtime"
+    )
+    force_residency_active_preserved_declared_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthorityPreserved="
+    )
     force_residency_not_selected_count = count_lines_containing(
         force_residency_lines, "candidateSelected=false"
     )
+    force_residency_selected_count = count_lines_containing(
+        force_residency_lines, "candidateSelected=true"
+    )
     force_residency_not_promoted_count = count_lines_containing(
         force_residency_lines, "candidatePromoted=false"
+    )
+    force_residency_promoted_count = count_lines_containing(
+        force_residency_lines, "candidatePromoted=true"
     )
     force_residency_tracker_source_count = count_lines_containing(
         force_residency_lines,
@@ -1023,14 +1053,26 @@ def validate_summary(
     force_residency_force_authority_false_count = count_lines_containing(
         force_residency_lines, "forceAuthorityReady=false"
     )
+    force_residency_force_authority_true_count = count_lines_containing(
+        force_residency_lines, "forceAuthorityReady=true"
+    )
     force_residency_runtime_authority_false_count = count_lines_containing(
         force_residency_lines, "runtimeForceAuthority=false"
+    )
+    force_residency_runtime_authority_true_count = count_lines_containing(
+        force_residency_lines, "runtimeForceAuthority=true"
     )
     force_residency_runtime_particle_false_count = count_lines_containing(
         force_residency_lines, "runtimeParticleIntegration=false"
     )
+    force_residency_runtime_particle_true_count = count_lines_containing(
+        force_residency_lines, "runtimeParticleIntegration=true"
+    )
     force_residency_gpu_not_ready_count = count_lines_containing(
         force_residency_lines, "gpuComputeReady=false"
+    )
+    force_residency_gpu_ready_count = count_lines_containing(
+        force_residency_lines, "gpuComputeReady=true"
     )
     force_residency_low_rate_count = count_lines_containing(
         force_residency_lines, "highRateJsonPayload=false"
@@ -1067,6 +1109,9 @@ def validate_summary(
         force_residency_lines,
         "fallbackReason=gpu-live-recorded-provider-ab-not-proven",
     )
+    force_residency_gpu_selected_count = count_lines_containing(
+        force_residency_lines, "fallbackReason=gpu-force-authority-selected"
+    )
     if force_residency_lines:
         if force_residency_candidate_ready_count != len(force_residency_lines):
             issues.append(
@@ -1092,26 +1137,85 @@ def validate_summary(
             )
         if force_residency_profile_declared_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not declare profileGateSatisfied")
-        if force_residency_selection_blocked_count != len(force_residency_lines):
-            issues.append("GPU force authority residency permitted runtime selection")
-        if force_residency_active_kind_count != len(force_residency_lines):
-            issues.append("GPU force authority residency did not keep Matter CPU active kind")
-        if force_residency_active_source_count != len(force_residency_lines):
-            issues.append(
-                "GPU force authority residency did not declare the active authority source"
-            )
+        if thresholds.require_gpu_force_runtime_authority:
+            if (
+                force_residency_selection_blocked_count
+                + force_residency_selection_permitted_count
+                != len(force_residency_lines)
+            ):
+                issues.append(
+                    "GPU force authority residency did not declare runtime selection state"
+                )
+            if force_residency_selection_permitted_count < 1:
+                issues.append(
+                    "GPU force authority residency never permitted runtime selection"
+                )
+            if force_residency_active_kind_declared_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not declare active force authority kind"
+                )
+            if force_residency_active_gpu_kind_count < 1:
+                issues.append(
+                    "GPU force authority residency never selected the GPU-backed authority kind"
+                )
+            if force_residency_active_source_declared_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not declare the active authority source"
+                )
+            if force_residency_active_gpu_source_count < 1:
+                issues.append(
+                    "GPU force authority residency never selected the GPU runtime selector"
+                )
+            if (
+                force_residency_active_preserved_declared_count
+                != len(force_residency_lines)
+            ):
+                issues.append(
+                    "GPU force authority residency did not declare active authority preservation"
+                )
+            if force_residency_active_gpu_preserved_count < 1:
+                issues.append(
+                    "GPU force authority residency never preserved the GPU-backed runtime"
+                )
+            if (
+                force_residency_not_selected_count + force_residency_selected_count
+                != len(force_residency_lines)
+            ):
+                issues.append(
+                    "GPU force authority residency did not declare candidate selection"
+                )
+            if force_residency_selected_count < 1:
+                issues.append("GPU force authority residency never selected the candidate")
+            if (
+                force_residency_not_promoted_count + force_residency_promoted_count
+                != len(force_residency_lines)
+            ):
+                issues.append(
+                    "GPU force authority residency did not declare candidate promotion"
+                )
+            if force_residency_promoted_count < 1:
+                issues.append("GPU force authority residency never promoted the candidate")
+        else:
+            if force_residency_selection_blocked_count != len(force_residency_lines):
+                issues.append("GPU force authority residency permitted runtime selection")
+            if force_residency_active_kind_count != len(force_residency_lines):
+                issues.append("GPU force authority residency did not keep Matter CPU active kind")
+            if force_residency_active_source_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not declare the active authority source"
+                )
+            if force_residency_active_preserved_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not preserve Matter CPU as active authority"
+                )
+            if force_residency_not_selected_count != len(force_residency_lines):
+                issues.append("GPU force authority residency selected the candidate")
+            if force_residency_not_promoted_count != len(force_residency_lines):
+                issues.append("GPU force authority residency promoted the candidate")
         if force_residency_oracle_authority_count != len(force_residency_lines):
             issues.append(
                 "GPU force authority residency did not declare the Matter CPU oracle authority"
             )
-        if force_residency_active_preserved_count != len(force_residency_lines):
-            issues.append(
-                "GPU force authority residency did not preserve Matter CPU as active authority"
-            )
-        if force_residency_not_selected_count != len(force_residency_lines):
-            issues.append("GPU force authority residency selected the candidate")
-        if force_residency_not_promoted_count != len(force_residency_lines):
-            issues.append("GPU force authority residency promoted the candidate")
         if force_residency_tracker_source_count != len(force_residency_lines):
             issues.append(
                 "GPU force authority residency did not report the residency tracker source"
@@ -1186,16 +1290,57 @@ def validate_summary(
             issues.append(
                 "GPU force authority residency did not declare live/recorded A/B readiness"
             )
-        if force_residency_force_authority_false_count != len(force_residency_lines):
-            issues.append("GPU force authority residency did not keep forceAuthorityReady=false")
-        if force_residency_runtime_authority_false_count != len(force_residency_lines):
-            issues.append("GPU force authority residency did not keep runtimeForceAuthority=false")
-        if force_residency_runtime_particle_false_count != len(force_residency_lines):
-            issues.append(
-                "GPU force authority residency did not keep runtimeParticleIntegration=false"
-            )
-        if force_residency_gpu_not_ready_count != len(force_residency_lines):
-            issues.append("GPU force authority residency did not keep gpuComputeReady=false")
+        if thresholds.require_gpu_force_runtime_authority:
+            if (
+                force_residency_force_authority_false_count
+                + force_residency_force_authority_true_count
+                != len(force_residency_lines)
+            ):
+                issues.append("GPU force authority residency did not declare forceAuthorityReady")
+            if force_residency_force_authority_true_count < 1:
+                issues.append("GPU force authority residency never reached forceAuthorityReady=true")
+            if (
+                force_residency_runtime_authority_false_count
+                + force_residency_runtime_authority_true_count
+                != len(force_residency_lines)
+            ):
+                issues.append("GPU force authority residency did not declare runtimeForceAuthority")
+            if force_residency_runtime_authority_true_count < 1:
+                issues.append(
+                    "GPU force authority residency never reached runtimeForceAuthority=true"
+                )
+            if (
+                force_residency_runtime_particle_false_count
+                + force_residency_runtime_particle_true_count
+                != len(force_residency_lines)
+            ):
+                issues.append(
+                    "GPU force authority residency did not declare runtimeParticleIntegration"
+                )
+            if force_residency_runtime_particle_true_count < 1:
+                issues.append(
+                    "GPU force authority residency never reached runtimeParticleIntegration=true"
+                )
+            if (
+                force_residency_gpu_not_ready_count + force_residency_gpu_ready_count
+                != len(force_residency_lines)
+            ):
+                issues.append("GPU force authority residency did not declare gpuComputeReady")
+            if force_residency_gpu_ready_count < 1:
+                issues.append("GPU force authority residency never reached gpuComputeReady=true")
+        else:
+            if force_residency_force_authority_false_count != len(force_residency_lines):
+                issues.append("GPU force authority residency did not keep forceAuthorityReady=false")
+            if force_residency_runtime_authority_false_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not keep runtimeForceAuthority=false"
+                )
+            if force_residency_runtime_particle_false_count != len(force_residency_lines):
+                issues.append(
+                    "GPU force authority residency did not keep runtimeParticleIntegration=false"
+                )
+            if force_residency_gpu_not_ready_count != len(force_residency_lines):
+                issues.append("GPU force authority residency did not keep gpuComputeReady=false")
         if force_residency_low_rate_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not keep highRateJsonPayload=false")
         if force_residency_settings_payload_false_count != len(force_residency_lines):
@@ -1269,11 +1414,12 @@ def validate_summary(
         if force_residency_active_kind_count != len(force_residency_lines):
             issues.append("GPU force authority steady-state fallback did not keep Matter CPU active")
     if thresholds.require_gpu_force_freshness:
+        allow_runtime_warmup_misses = thresholds.require_gpu_force_runtime_authority
         if not force_freshness_lines:
             issues.append("GPU force freshness was required but no freshness marker was present")
         if force_freshness_ready_count < 1:
             issues.append("GPU force freshness evidence did not reach freshnessReady=true")
-        if force_freshness_not_ready_count != 0:
+        if force_freshness_not_ready_count != 0 and not allow_runtime_warmup_misses:
             issues.append("GPU force freshness evidence still contained freshnessReady=false")
         if force_freshness_source_match_count != len(force_freshness_lines):
             issues.append("GPU force freshness evidence did not keep sourceIdMatched=true")
@@ -1289,6 +1435,7 @@ def validate_summary(
             force_freshness_lag_values
             and force_freshness_max_lag_values
             and force_freshness_max_lag_observed > force_freshness_max_lag_allowed
+            and not allow_runtime_warmup_misses
         ):
             issues.append(
                 "GPU force freshness sourceFrameLag max "
@@ -1369,6 +1516,67 @@ def validate_summary(
         if force_residency_active_kind_count != len(force_residency_lines):
             issues.append(
                 "GPU force expanded oracle fallback did not keep Matter CPU active"
+            )
+    if thresholds.require_gpu_force_runtime_authority:
+        if not field_particle_force_lines:
+            issues.append(
+                "runtime GPU force authority was required but no particle-force proof marker was present"
+            )
+        if field_particle_force_max_sample_count < EXPANDED_FORCE_ORACLE_SAMPLE_COUNT:
+            issues.append(
+                "GPU field particle-force proof max sampleCount "
+                f"{field_particle_force_max_sample_count} < "
+                f"{EXPANDED_FORCE_ORACLE_SAMPLE_COUNT}"
+            )
+        if not force_residency_lines:
+            issues.append(
+                "runtime GPU force authority was required but no residency marker was present"
+            )
+        if force_residency_steady_state_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach steadyStateResidencyReady=true"
+            )
+        if force_residency_freshness_true_count < 1:
+            issues.append("GPU force authority residency did not reach freshnessReady=true")
+        if force_residency_cadence_true_count < 1:
+            issues.append("GPU force authority residency did not reach cadenceReady=true")
+        if force_residency_expanded_oracle_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach expandedOracleComparisonReady=true"
+            )
+        if force_residency_provider_ab_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach liveRecordedProviderAbReady=true"
+            )
+        if force_residency_selection_permitted_count < 1:
+            issues.append(
+                "GPU force authority residency did not reach runtimeSelectionPermitted=true"
+            )
+        if force_residency_active_gpu_kind_count < 1:
+            issues.append(
+                "GPU force authority residency did not select gpu-dense-sdf-field-particle-force"
+            )
+        if force_residency_selected_count < 1:
+            issues.append("GPU force authority residency did not select the candidate")
+        if force_residency_promoted_count < 1:
+            issues.append("GPU force authority residency did not promote the candidate")
+        if force_residency_gpu_selected_count < 1:
+            issues.append(
+                "GPU force authority residency did not report fallbackReason=gpu-force-authority-selected"
+            )
+        if force_residency_force_authority_true_count < 1:
+            issues.append("GPU force authority residency did not set forceAuthorityReady=true")
+        if force_residency_runtime_authority_true_count < 1:
+            issues.append("GPU force authority residency did not set runtimeForceAuthority=true")
+        if force_residency_runtime_particle_true_count < 1:
+            issues.append(
+                "GPU force authority residency did not set runtimeParticleIntegration=true"
+            )
+        if force_residency_gpu_ready_count < 1:
+            issues.append("GPU force authority residency did not set gpuComputeReady=true")
+        if force_residency_fallback_ready_count != len(force_residency_lines):
+            issues.append(
+                "GPU force runtime authority did not keep Matter CPU fallback ready"
             )
     mesh_sdf_lines = lines_containing(
         proof_lines, "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
@@ -1618,12 +1826,31 @@ def validate_summary(
         "force_residency_profile_required_count": force_residency_profile_required_count,
         "force_residency_profile_declared_count": force_residency_profile_declared_count,
         "force_residency_selection_blocked_count": force_residency_selection_blocked_count,
+        "force_residency_selection_permitted_count": (
+            force_residency_selection_permitted_count
+        ),
         "force_residency_active_kind_count": force_residency_active_kind_count,
+        "force_residency_active_gpu_kind_count": force_residency_active_gpu_kind_count,
+        "force_residency_active_kind_declared_count": (
+            force_residency_active_kind_declared_count
+        ),
         "force_residency_active_source_count": force_residency_active_source_count,
+        "force_residency_active_gpu_source_count": force_residency_active_gpu_source_count,
+        "force_residency_active_source_declared_count": (
+            force_residency_active_source_declared_count
+        ),
         "force_residency_oracle_authority_count": force_residency_oracle_authority_count,
         "force_residency_active_preserved_count": force_residency_active_preserved_count,
+        "force_residency_active_gpu_preserved_count": (
+            force_residency_active_gpu_preserved_count
+        ),
+        "force_residency_active_preserved_declared_count": (
+            force_residency_active_preserved_declared_count
+        ),
         "force_residency_not_selected_count": force_residency_not_selected_count,
+        "force_residency_selected_count": force_residency_selected_count,
         "force_residency_not_promoted_count": force_residency_not_promoted_count,
+        "force_residency_promoted_count": force_residency_promoted_count,
         "force_residency_fallback_ready_count": force_residency_fallback_ready_count,
         "force_residency_fallback_authority_count": force_residency_fallback_authority_count,
         "force_residency_fallback_reason_count": force_residency_fallback_reason_count,
@@ -1674,13 +1901,23 @@ def validate_summary(
         "force_residency_force_authority_false_count": (
             force_residency_force_authority_false_count
         ),
+        "force_residency_force_authority_true_count": (
+            force_residency_force_authority_true_count
+        ),
         "force_residency_runtime_authority_false_count": (
             force_residency_runtime_authority_false_count
+        ),
+        "force_residency_runtime_authority_true_count": (
+            force_residency_runtime_authority_true_count
         ),
         "force_residency_runtime_particle_false_count": (
             force_residency_runtime_particle_false_count
         ),
+        "force_residency_runtime_particle_true_count": (
+            force_residency_runtime_particle_true_count
+        ),
         "force_residency_gpu_not_ready_count": force_residency_gpu_not_ready_count,
+        "force_residency_gpu_ready_count": force_residency_gpu_ready_count,
         "force_residency_low_rate_count": force_residency_low_rate_count,
         "force_residency_settings_payload_false_count": (
             force_residency_settings_payload_false_count
@@ -1697,6 +1934,7 @@ def validate_summary(
         "force_residency_provider_ab_fallback_count": (
             force_residency_provider_ab_fallback_count
         ),
+        "force_residency_gpu_selected_count": force_residency_gpu_selected_count,
         "required_marker_counts": {
             key: int(numeric(markers.get(key))) for key in required_markers
         },
@@ -1930,6 +2168,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--require-gpu-force-runtime-authority",
+        action="store_true",
+        help=(
+            "Require a promoted runtime GPU dense-SDF particle-force authority "
+            "marker after steady residency, freshness, cadence, expanded oracle, "
+            "and live/recorded provider A/B gates pass."
+        ),
+    )
+    parser.add_argument(
         "--min-field-particle-force-sample-count",
         type=int,
         default=0,
@@ -1979,6 +2226,7 @@ def main(argv: list[str] | None = None) -> int:
         require_gpu_force_expanded_oracle_provider_ab_fallback=(
             args.require_gpu_force_expanded_oracle_provider_ab_fallback
         ),
+        require_gpu_force_runtime_authority=args.require_gpu_force_runtime_authority,
         min_field_particle_force_sample_count=args.min_field_particle_force_sample_count,
         min_force_residency_observed_proofs=args.min_force_residency_observed_proofs,
         min_force_residency_reused_proofs=args.min_force_residency_reused_proofs,

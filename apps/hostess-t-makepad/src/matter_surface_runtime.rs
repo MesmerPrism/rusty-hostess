@@ -486,6 +486,7 @@ impl App {
                     .force_authority_runtime_readiness(
                         gpu_probe_steady_state_ready,
                         freshness.freshness_ready(),
+                        self.matter_surface_gpu_force_promotion_readiness,
                     );
                 gpu_mesh_sdf_probe_poll_marker_lines(
                     cx,

@@ -4,8 +4,11 @@
 //! adapters to run. It does not own Matter semantics, GPU kernels, or high-rate
 //! hand/mesh/field payloads.
 
-use crate::matter_surface_source_selection::MatterSurfaceSourceSelection;
 use crate::runtime_settings::marker_token;
+use crate::{
+    matter_surface_gpu_promotion::MatterSurfaceGpuForcePromotionReadiness,
+    matter_surface_source_selection::MatterSurfaceSourceSelection,
+};
 use rusty_quest_makepad_camera_shell::{
     QuestMakepadGpuForceAuthorityRuntimeReadiness,
     QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS,
@@ -204,12 +207,14 @@ impl MatterSurfaceGpuProofSchedule {
         self,
         cadence_ready: bool,
         freshness_ready: bool,
+        promotion_readiness: MatterSurfaceGpuForcePromotionReadiness,
     ) -> QuestMakepadGpuForceAuthorityRuntimeReadiness {
         QuestMakepadGpuForceAuthorityRuntimeReadiness {
             freshness_ready: freshness_ready && !self.blocking_gpu_diagnostics,
             cadence_ready: cadence_ready && !self.blocking_gpu_diagnostics,
             expanded_oracle_comparison_ready: false,
-            live_recorded_provider_ab_ready: false,
+            live_recorded_provider_ab_ready: promotion_readiness.live_recorded_provider_ab_ready()
+                && !self.blocking_gpu_diagnostics,
         }
     }
 }
@@ -218,6 +223,7 @@ impl MatterSurfaceGpuProofSchedule {
 mod tests {
     use super::*;
     use crate::matter_surface_source_selection::MatterSurfaceSourceSelection;
+    use rusty_quest_makepad_camera_shell::QuestMakepadGpuForceProviderAbReceipt;
 
     #[test]
     fn recorded_replay_keeps_default_gate() {
@@ -318,7 +324,11 @@ mod tests {
             QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY_REQUIRED_PROOFS + 1
         );
 
-        let readiness = schedule.force_authority_runtime_readiness(true, false);
+        let readiness = schedule.force_authority_runtime_readiness(
+            true,
+            false,
+            MatterSurfaceGpuForcePromotionReadiness::default(),
+        );
         assert!(!readiness.freshness_ready);
         assert!(readiness.cadence_ready);
         assert!(!readiness.expanded_oracle_comparison_ready);
@@ -335,8 +345,11 @@ mod tests {
         assert!(freshness.candidate_not_future());
         assert_eq!(freshness.source_frame_lag(), Some(3));
         assert!(freshness.freshness_ready());
-        let readiness =
-            schedule.force_authority_runtime_readiness(true, freshness.freshness_ready());
+        let readiness = schedule.force_authority_runtime_readiness(
+            true,
+            freshness.freshness_ready(),
+            MatterSurfaceGpuForcePromotionReadiness::default(),
+        );
         assert!(readiness.freshness_ready);
         assert!(readiness.cadence_ready);
         assert!(!readiness.expanded_oracle_comparison_ready);
@@ -381,5 +394,31 @@ mod tests {
         let marker = mismatched_source.marker_line("unit-test", true, &selection);
         assert!(marker.contains("sourceIdMatched=false"));
         assert!(marker.contains("freshnessReady=false"));
+    }
+
+    #[test]
+    fn runtime_readiness_consumes_explicit_provider_ab_receipt_only_when_unblocked() {
+        let promotion_readiness = MatterSurfaceGpuForcePromotionReadiness::from_provider_ab_receipt(
+            QuestMakepadGpuForceProviderAbReceipt::LiveRecordedProviderAbCheckV1,
+        );
+        let live_selection =
+            MatterSurfaceSourceSelection::from_value("live-openxr-hand-any", "test");
+        let live_schedule =
+            MatterSurfaceGpuProofSchedule::for_source_selection(&live_selection, 900);
+        let live_readiness =
+            live_schedule.force_authority_runtime_readiness(true, true, promotion_readiness);
+        assert!(live_readiness.freshness_ready);
+        assert!(live_readiness.cadence_ready);
+        assert!(live_readiness.live_recorded_provider_ab_ready);
+
+        let positions_selection =
+            MatterSurfaceSourceSelection::from_value("positions-only-surface", "test");
+        let positions_schedule =
+            MatterSurfaceGpuProofSchedule::for_source_selection(&positions_selection, 900);
+        let positions_readiness =
+            positions_schedule.force_authority_runtime_readiness(true, true, promotion_readiness);
+        assert!(!positions_readiness.freshness_ready);
+        assert!(!positions_readiness.cadence_ready);
+        assert!(!positions_readiness.live_recorded_provider_ab_ready);
     }
 }

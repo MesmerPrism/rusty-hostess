@@ -18,6 +18,7 @@ mod manifold_breath_feedback;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_gpu;
+mod matter_surface_gpu_promotion;
 mod matter_surface_gpu_schedule;
 mod matter_surface_runtime;
 mod matter_surface_source_selection;
@@ -51,6 +52,7 @@ use matter_particle_texture::{
 use matter_surface_gpu::{
     PendingGpuMeshSdfProbe, PendingGpuSkinningMeshProbe, PendingGpuSkinningProbe,
 };
+use matter_surface_gpu_promotion::MatterSurfaceGpuForcePromotionReadiness;
 use matter_surface_gpu_schedule::MATTER_SURFACE_LIVE_OBSERVE_INTERVAL_SECONDS;
 use matter_surface_runtime::MatterSurfacePanelOverlayFrame;
 use matter_surface_source_selection::MatterSurfaceSourceSelection;
@@ -1729,6 +1731,8 @@ pub struct App {
     camera_shell_feature_uniforms: MakepadCameraShellFeatureUniforms,
     #[rust]
     matter_surface_force_authority: QuestMakepadForceAuthorityMode,
+    #[rust]
+    matter_surface_gpu_force_promotion_readiness: MatterSurfaceGpuForcePromotionReadiness,
     #[rust]
     camera_shell_effective_render_scale: f32,
     #[rust]
@@ -3591,6 +3595,10 @@ impl App {
         self.camera_shell_feature_uniforms = selection.feature_uniforms;
         self.matter_surface_force_authority =
             selection.particle_force_authority.unwrap_or_default();
+        self.matter_surface_gpu_force_promotion_readiness =
+            MatterSurfaceGpuForcePromotionReadiness::from_provider_ab_receipt(
+                selection.gpu_force_provider_ab_receipt.unwrap_or_default(),
+            );
         self.matter_surface_worker = selection
             .matter_surface_runtime
             .map(QuestMakepadMatterSurfaceWorker::from_runtime);

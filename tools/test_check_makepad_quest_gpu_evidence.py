@@ -167,6 +167,47 @@ def add_expanded_gpu_force_provider_ab_fallback(summary):
     return summary
 
 
+def add_promoted_gpu_force_authority(summary):
+    summary = add_expanded_gpu_force_provider_ab_fallback(summary)
+    promoted_lines = []
+    for line in summary["proof_lines"]:
+        if "RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY" not in line:
+            promoted_lines.append(line)
+            continue
+        promoted_lines.append(
+            line.replace("liveRecordedProviderAbReady=false", "liveRecordedProviderAbReady=true")
+        .replace("runtimeSelectionPermitted=false", "runtimeSelectionPermitted=true")
+        .replace(
+            "activeForceAuthorityKind=matter-cpu",
+            "activeForceAuthorityKind=gpu-dense-sdf-field-particle-force",
+        )
+        .replace(
+            "activeForceAuthoritySource=matter-runtime-profile",
+            "activeForceAuthoritySource=quest-makepad-gpu-runtime-selector",
+        )
+        .replace(
+            "activeMatterForceAuthority=mesh-distance",
+            "activeMatterForceAuthority=oracle-only",
+        )
+        .replace(
+            "activeForceAuthorityPreserved=matter-cpu-runtime",
+            "activeForceAuthorityPreserved=gpu-backed-runtime",
+        )
+        .replace("candidateSelected=false", "candidateSelected=true")
+        .replace("candidatePromoted=false", "candidatePromoted=true")
+        .replace(
+            "fallbackReason=gpu-live-recorded-provider-ab-not-proven",
+            "fallbackReason=gpu-force-authority-selected",
+        )
+        .replace("runtimeParticleIntegration=false", "runtimeParticleIntegration=true")
+        .replace("forceAuthorityReady=false", "forceAuthorityReady=true")
+        .replace("runtimeForceAuthority=false", "runtimeForceAuthority=true")
+        .replace("gpuComputeReady=false", "gpuComputeReady=true")
+        )
+    summary["proof_lines"] = promoted_lines
+    return summary
+
+
 class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
     def test_resolves_canonical_summary_from_evidence_root(self):
         with TemporaryDirectory() as temp_dir:
@@ -481,6 +522,71 @@ class MakepadQuestGpuEvidenceCheckTests(unittest.TestCase):
             2,
             result.summary["force_residency_runtime_authority_false_count"],
         )
+
+    def test_accepts_promoted_runtime_gpu_force_authority(self):
+        summary = add_promoted_gpu_force_authority(valid_summary())
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_freshness=True,
+                require_gpu_force_runtime_authority=True,
+                min_field_particle_force_sample_count=16,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(
+            2,
+            result.summary["force_residency_selection_permitted_count"],
+        )
+        self.assertEqual(2, result.summary["force_residency_active_gpu_kind_count"])
+        self.assertEqual(2, result.summary["force_residency_selected_count"])
+        self.assertEqual(2, result.summary["force_residency_promoted_count"])
+        self.assertEqual(2, result.summary["force_residency_provider_ab_true_count"])
+        self.assertEqual(2, result.summary["force_residency_runtime_authority_true_count"])
+        self.assertEqual(2, result.summary["force_residency_runtime_particle_true_count"])
+        self.assertEqual(2, result.summary["force_residency_gpu_ready_count"])
+        self.assertEqual(2, result.summary["force_residency_gpu_selected_count"])
+
+    def test_accepts_promoted_runtime_gpu_force_authority_after_warmup_freshness_miss(
+        self,
+    ):
+        summary = add_promoted_gpu_force_authority(valid_summary())
+        warmed_lines = []
+        stale_freshness_injected = False
+        for line in summary["proof_lines"]:
+            if (
+                "RUSTY_HOSTESS_MAKEPAD_GPU_FORCE_FRESHNESS" in line
+                and not stale_freshness_injected
+            ):
+                line = line.replace("sourceFrameLag=1", "sourceFrameLag=6").replace(
+                    "freshnessReady=true", "freshnessReady=false"
+                )
+                stale_freshness_injected = True
+            warmed_lines.append(line)
+        summary["proof_lines"] = warmed_lines
+
+        result = validate_summary(
+            summary,
+            EvidenceThresholds(
+                require_gpu_force_profile_enabled=True,
+                require_gpu_force_freshness=True,
+                require_gpu_force_runtime_authority=True,
+                min_field_particle_force_sample_count=16,
+                min_force_residency_observed_proofs=5,
+                min_force_residency_reused_proofs=4,
+            ),
+        )
+
+        self.assertTrue(result.ok)
+        self.assertEqual([], result.issues)
+        self.assertEqual(1, result.summary["force_freshness_not_ready_count"])
+        self.assertEqual(2, result.summary["force_residency_runtime_authority_true_count"])
 
     def test_rejects_expanded_gpu_force_oracle_without_sample_expansion(self):
         summary = add_fresh_gpu_force_expanded_oracle_fallback(valid_summary())
