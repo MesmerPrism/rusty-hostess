@@ -172,6 +172,7 @@ use std::{
 use stereo_frame::{AdoptedStereoCameraFrame, CameraTextureFrameSample, StereoEye, XrPoseSnapshot};
 use stimulus_stereo_field::{
     DrawStimulusStereoField, StimulusStereoFieldPanel, StimulusStereoFieldState,
+    StimulusSurfaceProjectionRows,
 };
 use stimulus_volume_gpu::{
     stimulus_volume_gpu_probe_poll_marker_line, stimulus_volume_gpu_probe_submit,
@@ -258,6 +259,31 @@ script_mod! {
         source_b_weight: 1.0
         color_low: vec4(0.0, 0.0, 0.0, 1.0)
         color_high: vec4(1.0, 1.0, 1.0, 1.0)
+        display_eye_offset_meters: 0.032
+        display_aspect: 1.0
+        projection_depth_meters: 1.0
+        projection_preview_fov_y_degrees: 69.763084
+        projection_preview_offset_y_meters: -0.168832
+        projection_raw_overscan: 1.0
+        projection_rows_ready: 0.0
+        left_screen_to_surface_h00: 1.0
+        left_screen_to_surface_h01: 0.0
+        left_screen_to_surface_h02: 0.0
+        left_screen_to_surface_h10: 0.0
+        left_screen_to_surface_h11: 1.0
+        left_screen_to_surface_h12: 0.0
+        left_screen_to_surface_h20: 0.0
+        left_screen_to_surface_h21: 0.0
+        left_screen_to_surface_h22: 1.0
+        right_screen_to_surface_h00: 1.0
+        right_screen_to_surface_h01: 0.0
+        right_screen_to_surface_h02: 0.0
+        right_screen_to_surface_h10: 0.0
+        right_screen_to_surface_h11: 1.0
+        right_screen_to_surface_h12: 0.0
+        right_screen_to_surface_h20: 0.0
+        right_screen_to_surface_h21: 0.0
+        right_screen_to_surface_h22: 1.0
         v_uv: varying(vec2f)
 
         vertex: fn() {
@@ -268,11 +294,59 @@ script_mod! {
             self.vertex_pos = vec4(screen_uv.x * 2.0 - 1.0, screen_uv.y * 2.0 - 1.0, instance_marker, 1.0)
         }
 
+        apply_projection_homography: fn(
+            coord: vec2f,
+            h00: float,
+            h01: float,
+            h02: float,
+            h10: float,
+            h11: float,
+            h12: float,
+            h20: float,
+            h21: float,
+            h22: float
+        ) -> vec2f {
+            let x = h00 * coord.x + h01 * coord.y + h02
+            let y = h10 * coord.x + h11 * coord.y + h12
+            let w = h20 * coord.x + h21 * coord.y + h22
+            let safe_w = mix(1.0, w, step(0.00001, abs(w)))
+            return vec2(x, y) / safe_w
+        }
+
+        screen_surface_uv: fn(coord: vec2f, display_eye_selector: float) -> vec2f {
+            let left_uv = self.apply_projection_homography(
+                coord,
+                self.left_screen_to_surface_h00,
+                self.left_screen_to_surface_h01,
+                self.left_screen_to_surface_h02,
+                self.left_screen_to_surface_h10,
+                self.left_screen_to_surface_h11,
+                self.left_screen_to_surface_h12,
+                self.left_screen_to_surface_h20,
+                self.left_screen_to_surface_h21,
+                self.left_screen_to_surface_h22
+            )
+            let right_uv = self.apply_projection_homography(
+                coord,
+                self.right_screen_to_surface_h00,
+                self.right_screen_to_surface_h01,
+                self.right_screen_to_surface_h02,
+                self.right_screen_to_surface_h10,
+                self.right_screen_to_surface_h11,
+                self.right_screen_to_surface_h12,
+                self.right_screen_to_surface_h20,
+                self.right_screen_to_surface_h21,
+                self.right_screen_to_surface_h22
+            )
+            return mix(left_uv, right_uv, display_eye_selector)
+        }
+
         pixel: fn() {
-            let uv01 = clamp(self.v_uv, vec2(0.0, 0.0), vec2(1.0, 1.0))
-            let eye = clamp(xr_view_id(), 0.0, 1.0)
-            let eye_offset = (eye - 0.5) * 0.025
-            let uv = (uv01 * 2.0 - vec2(1.0, 1.0)) + vec2(eye_offset, 0.0)
+            let renderer_uv = clamp(self.v_uv, vec2(0.0, 0.0), vec2(1.0, 1.0))
+            let display_eye_screen_uv = vec2(renderer_uv.x, 1.0 - renderer_uv.y)
+            let display_eye_selector = clamp(xr_view_id(), 0.0, 1.0)
+            let surface_uv = self.screen_surface_uv(display_eye_screen_uv, display_eye_selector)
+            let uv = surface_uv * 2.0 - vec2(1.0, 1.0)
             let c = cos(self.rotation_radians)
             let s = sin(self.rotation_radians)
             let p = vec2(uv.x * c - uv.y * s, uv.x * s + uv.y * c)
@@ -646,53 +720,6 @@ script_mod! {
             let p = (seed_uv - center) / radius;
             let len = max(length(p), 1.0);
             return center + (p / len) * radius;
-        }
-
-        screen_to_head_surface_uv: fn(screen_uv: vec2f) -> vec2f {
-            let eye_selector = self.active_eye_is_right();
-            let eye_sign = mix(-1.0, 1.0, eye_selector);
-            let eye_origin4 = self.draw_pass.camera_inv * vec4(0.0, 0.0, 0.0, 1.0);
-            let right4 = self.draw_pass.camera_inv * vec4(1.0, 0.0, 0.0, 0.0);
-            let up4 = self.draw_pass.camera_inv * vec4(0.0, 1.0, 0.0, 0.0);
-            let forward4 = self.draw_pass.camera_inv * vec4(0.0, 0.0, -1.0, 0.0);
-            let eye_origin = eye_origin4.xyz;
-            let right = normalize(right4.xyz);
-            let up = normalize(up4.xyz);
-            let forward = normalize(forward4.xyz);
-            let head_origin = eye_origin - right * (eye_sign * self.display_eye_offset_meters);
-
-            let ndc = vec2(screen_uv.x * 2.0 - 1.0, 1.0 - screen_uv.y * 2.0);
-            let projection_inv = inverse(self.draw_pass.camera_projection);
-            let near4 = projection_inv * vec4(ndc.x, ndc.y, -1.0, 1.0);
-            let far4 = projection_inv * vec4(ndc.x, ndc.y, 1.0, 1.0);
-            let near_w = mix(1.0, near4.w, step(0.00001, abs(near4.w)));
-            let far_w = mix(1.0, far4.w, step(0.00001, abs(far4.w)));
-            let near_eye = near4.xyz / near_w;
-            let far_eye = far4.xyz / far_w;
-            let ray_eye_raw = normalize(far_eye - near_eye);
-            let ray_eye = ray_eye_raw * mix(1.0, -1.0, step(0.0, ray_eye_raw.z));
-            let ray4 = self.draw_pass.camera_inv * vec4(ray_eye.x, ray_eye.y, ray_eye.z, 0.0);
-            let ray = normalize(ray4.xyz);
-
-            let depth = max(self.projection_depth_meters, 0.05);
-            let surface_center =
-                head_origin +
-                forward * depth +
-                up * self.projection_preview_offset_y_meters;
-            let denom = dot(ray, forward);
-            let safe_denom = mix(0.0001, denom, step(0.0001, abs(denom)));
-            let t = dot(surface_center - eye_origin, forward) / safe_denom;
-            let surface_point = eye_origin + ray * t;
-            let half_height =
-                tan(self.projection_preview_fov_y_degrees * 0.5 * 0.01745329251) *
-                depth *
-                max(self.projection_raw_overscan, 1.0);
-            let half_width = half_height * max(self.display_aspect, 0.1);
-            let delta = surface_point - surface_center;
-            return vec2(
-                0.5 + dot(delta, right) / max(half_width * 2.0, 0.0001),
-                0.5 - dot(delta, up) / max(half_height * 2.0, 0.0001)
-            );
         }
 
         uv_valid: fn(coord: vec2f) -> float {
@@ -1836,6 +1863,8 @@ pub struct App {
     camera_shell_effective_camera_streaming_enabled: bool,
     #[rust]
     stimulus_stereo_field_state: StimulusStereoFieldState,
+    #[rust]
+    stimulus_surface_projection_rows: StimulusSurfaceProjectionRows,
     #[rust]
     stimulus_stereo_field_markers_emitted: usize,
     #[rust]
@@ -3777,6 +3806,7 @@ impl App {
             }
             StimulusStereoFieldState::disabled()
         };
+        self.stimulus_surface_projection_rows = StimulusSurfaceProjectionRows::default();
         self.stimulus_stereo_field_markers_emitted = 0;
         self.stimulus_volume_gpu_probe_markers_emitted = 0;
         self.stimulus_volume_gpu_probe_pending = None;
@@ -4715,12 +4745,14 @@ impl App {
     }
 
     #[cfg(target_os = "android")]
-    fn update_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+    fn xr_display_views_from_update(
+        update: &XrUpdateEvent,
+    ) -> android_camera_probe::XrDisplayViews {
         let state = update.state.as_ref();
         let left = state.left_eye_view;
         let right = state.right_eye_view;
         let predicted_display_time_ns = (state.time * 1_000_000_000.0).round() as i64;
-        let views = android_camera_probe::XrDisplayViews {
+        android_camera_probe::XrDisplayViews {
             left: android_camera_probe::XrDisplayEyeView {
                 position: [
                     left.pose.position.x,
@@ -4763,7 +4795,33 @@ impl App {
             projection_preview_fov_y_degrees: makepad_projection_preview_fov_y_degrees(),
             projection_preview_offset_y_meters: makepad_projection_preview_offset_y_meters(),
             projection_raw_overscan: makepad_projection_raw_overscan(),
-        };
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn update_stimulus_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+        if !self.stimulus_stereo_field_state.enabled {
+            return;
+        }
+        let views = Self::xr_display_views_from_update(update);
+        if let Some(plan) = android_camera_probe::broker_full_frame_projection_plan_from_xr_views(
+            "stimulus-left",
+            "stimulus-right",
+            1024,
+            1024,
+            views,
+        ) {
+            self.stimulus_surface_projection_rows =
+                StimulusSurfaceProjectionRows::from_homographies(
+                    plan.left_screen_to_surface_h,
+                    plan.right_screen_to_surface_h,
+                );
+        }
+    }
+
+    #[cfg(target_os = "android")]
+    fn update_runtime_xr_projection(&mut self, update: &XrUpdateEvent) {
+        let views = Self::xr_display_views_from_update(update);
         let updated = if Self::broker_h264_enabled() {
             self.refresh_broker_h264_projection_plan(views)
         } else {
@@ -5353,8 +5411,12 @@ impl App {
             return false;
         };
         let time_seconds = now_seconds.max(0.0).min(f32::MAX as f64) as f32;
-        let changed =
-            field.set_stimulus_state(cx, self.stimulus_stereo_field_state.clone(), time_seconds);
+        let changed = field.set_stimulus_state(
+            cx,
+            self.stimulus_stereo_field_state.clone(),
+            time_seconds,
+            self.stimulus_surface_projection_rows,
+        );
         if self.stimulus_stereo_field_state.enabled
             && (changed
                 || self.stimulus_stereo_field_markers_emitted < STIMULUS_STEREO_FIELD_MARKER_LIMIT)
@@ -5363,6 +5425,7 @@ impl App {
                 phase,
                 time_seconds,
                 true,
+                self.stimulus_surface_projection_rows.ready,
             ));
             if let Some(marker_line) = self
                 .stimulus_stereo_field_state
@@ -5570,6 +5633,8 @@ impl App {
                 self.record_xr_pose_snapshot(_update);
                 self.handle_manifold_breath_feedback_subscription();
                 self.handle_manifold_pose_publish(_update);
+                #[cfg(target_os = "android")]
+                self.update_stimulus_runtime_xr_projection(_update);
                 if camera_streaming_enabled {
                     self.handle_projection_target_joystick(cx, _update);
                     self.handle_projection_target_breath_feedback(cx);

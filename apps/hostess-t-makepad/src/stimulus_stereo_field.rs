@@ -5,6 +5,11 @@
 //! browser profile can drive a full-viewport stereo Makepad draw path.
 
 use crate::makepad_widgets::*;
+use crate::projection_settings::{
+    makepad_projection_depth_meters, makepad_projection_preview_fov_y_degrees,
+    makepad_projection_preview_offset_y_meters, makepad_projection_raw_overscan,
+};
+use crate::runtime_settings::{TARGET_DISPLAY_ASPECT, TARGET_DISPLAY_EYE_OFFSET_METERS};
 use makepad_xr::scene::XrNode;
 use rusty_quest_makepad_camera_shell::{StimulusProfilePayload, STIMULUS_VOLUME_ADOPTION_MARKER};
 use serde_json::Value;
@@ -17,6 +22,40 @@ pub(crate) const STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA: &str =
     "rusty.hostess.makepad.stimulus_volume_adoption.v1";
 const STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT: usize = 8;
 static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::new(0);
+
+pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
+    [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) struct StimulusSurfaceProjectionRows {
+    pub(crate) left_screen_to_surface_h: [[f32; 3]; 3],
+    pub(crate) right_screen_to_surface_h: [[f32; 3]; 3],
+    pub(crate) ready: bool,
+}
+
+impl StimulusSurfaceProjectionRows {
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
+    pub(crate) fn from_homographies(
+        left_screen_to_surface_h: [[f32; 3]; 3],
+        right_screen_to_surface_h: [[f32; 3]; 3],
+    ) -> Self {
+        Self {
+            left_screen_to_surface_h,
+            right_screen_to_surface_h,
+            ready: true,
+        }
+    }
+}
+
+impl Default for StimulusSurfaceProjectionRows {
+    fn default() -> Self {
+        Self {
+            left_screen_to_surface_h: STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY,
+            right_screen_to_surface_h: STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY,
+            ready: false,
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct StimulusStereoFieldState {
@@ -206,7 +245,13 @@ impl StimulusStereoFieldState {
         Self::default()
     }
 
-    pub(crate) fn marker_line(&self, phase: &str, time_seconds: f32, panel_bound: bool) -> String {
+    pub(crate) fn marker_line(
+        &self,
+        phase: &str,
+        time_seconds: f32,
+        panel_bound: bool,
+        projection_rows_ready: bool,
+    ) -> String {
         format!(
             "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
             STIMULUS_STEREO_FIELD_MARKER_PREFIX,
@@ -239,6 +284,10 @@ impl StimulusStereoFieldState {
             self.volume_readback_probe_samples,
             self.stereo_field_output_layers,
             time_seconds,
+        )
+        + &format!(
+            " projectionSurface=head-anchored-openxr-view-plane projectionSurfaceRowsReady={} projectionSurfaceCoordinateChain=display-eye-screen-uv-to-shared-head-surface-uv activeEyeSelector=xr_view_id stereoAlignment=per-eye-openxr-homography",
+            projection_rows_ready
         )
     }
 
@@ -305,6 +354,56 @@ pub struct DrawStimulusStereoField {
     pub color_low: Vec4f,
     #[live(vec4(1.0, 1.0, 1.0, 1.0))]
     pub color_high: Vec4f,
+    #[live(0.032_f32)]
+    pub display_eye_offset_meters: f32,
+    #[live(1.0_f32)]
+    pub display_aspect: f32,
+    #[live(1.0_f32)]
+    pub projection_depth_meters: f32,
+    #[live(69.763084_f32)]
+    pub projection_preview_fov_y_degrees: f32,
+    #[live(-0.168832_f32)]
+    pub projection_preview_offset_y_meters: f32,
+    #[live(1.0_f32)]
+    pub projection_raw_overscan: f32,
+    #[live(0.0_f32)]
+    pub projection_rows_ready: f32,
+    #[live(1.0_f32)]
+    pub left_screen_to_surface_h00: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h01: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h02: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h10: f32,
+    #[live(1.0_f32)]
+    pub left_screen_to_surface_h11: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h12: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h20: f32,
+    #[live(0.0_f32)]
+    pub left_screen_to_surface_h21: f32,
+    #[live(1.0_f32)]
+    pub left_screen_to_surface_h22: f32,
+    #[live(1.0_f32)]
+    pub right_screen_to_surface_h00: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h01: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h02: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h10: f32,
+    #[live(1.0_f32)]
+    pub right_screen_to_surface_h11: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h12: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h20: f32,
+    #[live(0.0_f32)]
+    pub right_screen_to_surface_h21: f32,
+    #[live(1.0_f32)]
+    pub right_screen_to_surface_h22: f32,
 }
 
 impl DrawStimulusStereoField {
@@ -338,6 +437,36 @@ impl DrawStimulusStereoField {
             state.color_high[2],
             state.color_high[3],
         );
+        self.display_eye_offset_meters = TARGET_DISPLAY_EYE_OFFSET_METERS;
+        self.display_aspect = TARGET_DISPLAY_ASPECT;
+        self.projection_depth_meters = makepad_projection_depth_meters();
+        self.projection_preview_fov_y_degrees = makepad_projection_preview_fov_y_degrees();
+        self.projection_preview_offset_y_meters = makepad_projection_preview_offset_y_meters();
+        self.projection_raw_overscan = makepad_projection_raw_overscan();
+    }
+
+    fn apply_projection_rows(&mut self, projection_rows: StimulusSurfaceProjectionRows) {
+        self.projection_rows_ready = if projection_rows.ready { 1.0 } else { 0.0 };
+        let left = projection_rows.left_screen_to_surface_h;
+        let right = projection_rows.right_screen_to_surface_h;
+        self.left_screen_to_surface_h00 = left[0][0];
+        self.left_screen_to_surface_h01 = left[0][1];
+        self.left_screen_to_surface_h02 = left[0][2];
+        self.left_screen_to_surface_h10 = left[1][0];
+        self.left_screen_to_surface_h11 = left[1][1];
+        self.left_screen_to_surface_h12 = left[1][2];
+        self.left_screen_to_surface_h20 = left[2][0];
+        self.left_screen_to_surface_h21 = left[2][1];
+        self.left_screen_to_surface_h22 = left[2][2];
+        self.right_screen_to_surface_h00 = right[0][0];
+        self.right_screen_to_surface_h01 = right[0][1];
+        self.right_screen_to_surface_h02 = right[0][2];
+        self.right_screen_to_surface_h10 = right[1][0];
+        self.right_screen_to_surface_h11 = right[1][1];
+        self.right_screen_to_surface_h12 = right[1][2];
+        self.right_screen_to_surface_h20 = right[2][0];
+        self.right_screen_to_surface_h21 = right[2][1];
+        self.right_screen_to_surface_h22 = right[2][2];
     }
 
     fn draw(&mut self, cx: &mut CxDraw) -> bool {
@@ -359,6 +488,8 @@ pub struct StimulusStereoFieldPanel {
     draw_field: DrawStimulusStereoField,
     #[rust]
     state: StimulusStereoFieldState,
+    #[rust]
+    projection_rows: StimulusSurfaceProjectionRows,
     #[cast]
     #[deref]
     node: XrNode,
@@ -370,10 +501,13 @@ impl StimulusStereoFieldPanel {
         cx: &mut Cx,
         state: StimulusStereoFieldState,
         time_seconds: f32,
+        projection_rows: StimulusSurfaceProjectionRows,
     ) -> bool {
-        let changed = self.state != state;
+        let changed = self.state != state || self.projection_rows != projection_rows;
         self.state = state;
+        self.projection_rows = projection_rows;
         self.draw_field.apply_state(&self.state, time_seconds);
+        self.draw_field.apply_projection_rows(self.projection_rows);
         self.draw_field.draw_super.draw_vars.redraw(cx);
         self.node.redraw(cx);
         changed
@@ -393,7 +527,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath=makepad-xr-fragment-preview computeKernel=false projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -404,6 +538,7 @@ impl Widget for StimulusStereoFieldPanel {
                     submitted,
                     marker_token(&self.state.profile_id),
                     marker_token(&self.state.profile_sha256),
+                    self.projection_rows.ready,
                 ));
             }
         }
@@ -527,10 +662,11 @@ mod tests {
         };
 
         let state = StimulusStereoFieldState::from_profile_payload(&payload).unwrap();
-        let draw_marker = state.marker_line("test", 1.25, true);
+        let draw_marker = state.marker_line("test", 1.25, true, true);
         assert!(draw_marker.contains("volumePresent=true"));
         assert!(draw_marker.contains("volumeGridDimensions=32x32x32"));
         assert!(draw_marker.contains("computeKernel=false"));
+        assert!(draw_marker.contains("projectionSurfaceRowsReady=true"));
 
         let volume_marker = state
             .volume_adoption_marker_line("test", true)
