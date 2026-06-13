@@ -322,7 +322,13 @@ impl App {
         source_frame: Option<&LiveHandSurfaceWorkerSourceSummary>,
         issue: Option<&str>,
     ) {
-        if self.matter_surface_live_source_worker_markers_emitted >= MATTER_SURFACE_MARKER_LIMIT {
+        let ready_source_frame = status == "ready" && source_frame.is_some();
+        let marker_limit = if ready_source_frame {
+            MATTER_SURFACE_MARKER_LIMIT
+        } else {
+            MATTER_SURFACE_MARKER_LIMIT.saturating_sub(1)
+        };
+        if self.matter_surface_live_source_worker_markers_emitted >= marker_limit {
             return;
         }
         let source_id = source_frame.map(|frame| frame.source_id).unwrap_or("none");
