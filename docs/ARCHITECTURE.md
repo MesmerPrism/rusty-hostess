@@ -147,6 +147,12 @@ marker emission, marker token formatting, bounded cadence helpers, raw camera
 event markers, YUV texture handles, and runtime target-footprint marker
 augmentation so the Makepad app root remains app-shell wiring.
 
+`apps/hostess-t-makepad/src/broker_h264_runtime.rs` owns broker-H264 and
+remote-camera runtime key parsing, texture-path selection, source-sampling
+selection, stream-port defaults, target-screen fallback rectangles, and
+`ExternalH264VideoSource` construction. The app root keeps the paired import
+event orchestration and delegates source planning through thin wrappers.
+
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact
 revision sidecar; runtime consumers compare global then scoped hashes before

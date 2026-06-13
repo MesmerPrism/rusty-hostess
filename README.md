@@ -251,7 +251,9 @@ evidence; `matter_surface_gpu.rs` owns the bounded Makepad XR/Vulkan sample
 conversion; `recorded_hand_surface.rs` owns loading staged bind-rig plus
 compact joint-frame recordings; `makepad_diagnostics.rs` owns marker cadence,
 token formatting, raw camera event markers, target-footprint augmentation, and
-camera YUV texture handle structs. Keep `main.rs` as app-shell wiring.
+camera YUV texture handle structs; `broker_h264_runtime.rs` owns broker-H264
+and remote-camera runtime key parsing plus `ExternalH264VideoSource`
+construction. Keep `main.rs` as app-shell wiring.
 
 For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:
