@@ -946,7 +946,7 @@ fn effective_settings_revision_identity_from_path(
     let manifest_path =
         effective_settings_path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
     let text = std::fs::read_to_string(&manifest_path).ok()?;
-    let value = serde_json::from_str::<Value>(&text).ok()?;
+    let value = serde_json::from_str::<Value>(text.trim_start_matches('\u{feff}')).ok()?;
     if value.get("schema").and_then(Value::as_str) != Some(EFFECTIVE_SETTINGS_REVISION_SCHEMA) {
         return None;
     }
@@ -1479,6 +1479,31 @@ mod tests {
         assert_eq!(
             proof_changed.gpu_proof_settings_revision_key().as_deref(),
             Some("gpu_proof=proof-b")
+        );
+    }
+
+    #[test]
+    fn effective_settings_identity_accepts_bom_prefixed_revision_sidecar() {
+        let path = write_temp_json("effective-settings-bom-identity", "{not json");
+        write_revision_sidecar_with_hashes_and_gpu_proof(
+            &path,
+            "mesh-a",
+            "camera-a",
+            "matter-a",
+            "particles-a",
+            "proof-a",
+        );
+        let sidecar_path = path.with_file_name(EFFECTIVE_SETTINGS_REVISION_FILE_NAME);
+        let sidecar_text = std::fs::read_to_string(&sidecar_path).expect("read generated sidecar");
+        std::fs::write(&sidecar_path, format!("\u{feff}{sidecar_text}"))
+            .expect("rewrite sidecar with BOM");
+
+        let identity = makepad_effective_settings_identity_from_path(&path);
+
+        assert!(identity.source_revision_key.is_some());
+        assert_eq!(
+            identity.gpu_proof_settings_revision_key().as_deref(),
+            Some("gpu_proof=proof-a")
         );
     }
 

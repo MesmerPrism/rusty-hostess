@@ -97,6 +97,18 @@ function Get-Sha256HexForText {
     }
 }
 
+function Set-Utf8NoBomText {
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$Path,
+        [Parameter(Mandatory=$true)]
+        [string]$Text
+    )
+
+    $Encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText([System.IO.Path]::GetFullPath($Path), $Text, $Encoding)
+}
+
 function Select-ScopeSettingIds {
     param(
         [object[]]$Settings,
@@ -223,7 +235,7 @@ function Write-EffectiveSettingsRevisionManifest {
             -Scope "gpu_proof" `
             -Epoch $GpuProofEpoch
     }
-    $Manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $Out -Encoding UTF8
+    Set-Utf8NoBomText -Path $Out -Text ($Manifest | ConvertTo-Json -Depth 10)
 }
 
 function Remote-Parent {
@@ -375,7 +387,8 @@ if (-not $DryRun) {
     }
 }
 
-$Report | ConvertTo-Json -Depth 8 | Set-Content -Path $ReportOut -Encoding UTF8
+$ReportJson = $Report | ConvertTo-Json -Depth 8
+Set-Utf8NoBomText -Path $ReportOut -Text $ReportJson
 Write-Output "Hostess Makepad settings staging report: $ReportOut"
 if ($DryRun) {
     Write-Output "Dry run only; no ADB writes performed."
