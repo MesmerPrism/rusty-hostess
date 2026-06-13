@@ -156,9 +156,10 @@ event orchestration and delegates source planning through thin wrappers.
 `apps/hostess-t-makepad/src/makepad_stereo_camera_panel.rs` owns the Rust
 `DrawMakepadStereoCameraPanel` and `MakepadStereoCameraPanel` types, shader
 uniform application, texture slot binding, target-footprint push state, and
-horizontal alignment tuning application. The live-design `script_mod!` block
-stays in the app root for now because it registers both this widget and the
-overall Hostess Makepad app UI.
+horizontal alignment tuning application. It also owns the panel live-design
+`script_mod!` block, including draw shader defaults and widget defaults. The
+app root registers the panel module before the Hostess app layout script and
+keeps the app UI `startup()` block as app-shell wiring.
 
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact
