@@ -8,6 +8,32 @@ pub use super::legacy_rusty_xr_schemas::{
     LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
 };
 
+/// Current Hostess-local schema id for home panel descriptors.
+pub const HOSTESS_HOME_PANEL_DESCRIPTOR_SCHEMA: &str = "rusty.hostess.home.panel.v1";
+
+/// Current Hostess-local schema id for launcher entries.
+pub const HOSTESS_HOME_LAUNCHER_ENTRY_SCHEMA: &str = "rusty.hostess.home.launcher_entry.v1";
+
+/// Current Hostess-local schema id for settings shortcut descriptors.
+pub const HOSTESS_HOME_SETTINGS_SHORTCUT_SCHEMA: &str = "rusty.hostess.home.settings_shortcut.v1";
+
+/// Current Hostess-local schema id for home session state.
+pub const HOSTESS_HOME_SESSION_STATE_SCHEMA: &str = "rusty.hostess.home.state.v1";
+
+/// Current Hostess-local schema id for kiosk command evidence.
+pub const HOSTESS_KIOSK_COMMAND_EVIDENCE_SCHEMA: &str = "rusty.hostess.kiosk.command_evidence.v1";
+
+/// Current Hostess-local schema id for kiosk command run records.
+pub const HOSTESS_KIOSK_COMMAND_RUN_RECORD_SCHEMA: &str =
+    "rusty.hostess.kiosk.command_run_record.v1";
+
+/// Current Hostess-local schema id for kiosk control-plane snapshots.
+pub const HOSTESS_KIOSK_CONTROL_PLANE_STATUS_SCHEMA: &str = "rusty.hostess.kiosk.control_plane.v1";
+
+/// Current Hostess-local schema id for focus recovery events.
+pub const HOSTESS_HOME_FOCUS_RECOVERY_EVENT_SCHEMA: &str =
+    "rusty.hostess.home.focus_recovery_event.v1";
+
 /// High-level mode for a Rusty Kiosk, developer-home, or broker surface.
 ///
 /// These are product and routing modes, not platform privileges. A normal app
@@ -86,7 +112,7 @@ pub struct HomePanelDescriptor {
 impl HomePanelDescriptor {
     pub fn new(panel_id: impl Into<String>, title: impl Into<String>, kind: HomePanelKind) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA.to_string(),
+            schema: HOSTESS_HOME_PANEL_DESCRIPTOR_SCHEMA.to_string(),
             panel_id: panel_id.into(),
             title: title.into(),
             kind,
@@ -133,8 +159,11 @@ impl HomePanelDescriptor {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA
-            && stable_id(&self.panel_id)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_HOME_PANEL_DESCRIPTOR_SCHEMA,
+            LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA,
+        ) && stable_id(&self.panel_id)
             && non_empty(&self.title)
             && size_range_valid(self.default_size_m, self.min_size_m, self.max_size_m)
             && self.commands.iter().all(|command| stable_id(command))
@@ -177,7 +206,7 @@ pub struct LauncherEntry {
 impl LauncherEntry {
     pub fn new(package_name: impl Into<String>, label: impl Into<String>) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA.to_string(),
+            schema: HOSTESS_HOME_LAUNCHER_ENTRY_SCHEMA.to_string(),
             package_name: package_name.into(),
             label: label.into(),
             launch_component: None,
@@ -214,8 +243,11 @@ impl LauncherEntry {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA
-            && package_like(&self.package_name)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_HOME_LAUNCHER_ENTRY_SCHEMA,
+            LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA,
+        ) && package_like(&self.package_name)
             && non_empty(&self.label)
             && self
                 .launch_component
@@ -272,7 +304,7 @@ impl SettingsShortcutDescriptor {
         category: SettingsShortcutCategory,
     ) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA.to_string(),
+            schema: HOSTESS_HOME_SETTINGS_SHORTCUT_SCHEMA.to_string(),
             shortcut_id: shortcut_id.into(),
             label: label.into(),
             android_action: android_action.into(),
@@ -299,8 +331,11 @@ impl SettingsShortcutDescriptor {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA
-            && stable_id(&self.shortcut_id)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_HOME_SETTINGS_SHORTCUT_SCHEMA,
+            LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA,
+        ) && stable_id(&self.shortcut_id)
             && non_empty(&self.label)
             && android_action_like(&self.android_action)
             && self
@@ -473,7 +508,7 @@ pub struct HomeSessionState {
 impl HomeSessionState {
     pub fn new(mode: HomeMode) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA.to_string(),
+            schema: HOSTESS_HOME_SESSION_STATE_SCHEMA.to_string(),
             mode,
             active_panels: Vec::new(),
             last_external_launch: None,
@@ -507,11 +542,14 @@ impl HomeSessionState {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA
-            && self
-                .active_panels
-                .iter()
-                .all(|panel_id| stable_id(panel_id))
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_HOME_SESSION_STATE_SCHEMA,
+            LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA,
+        ) && self
+            .active_panels
+            .iter()
+            .all(|panel_id| stable_id(panel_id))
             && self
                 .last_external_launch
                 .as_ref()
@@ -662,7 +700,7 @@ pub struct KioskCommandEvidence {
 impl KioskCommandEvidence {
     pub fn new(command_goal: impl Into<String>, provider: KioskCommandProvider) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA.to_string(),
+            schema: HOSTESS_KIOSK_COMMAND_EVIDENCE_SCHEMA.to_string(),
             command_goal: command_goal.into(),
             provider,
             preferred_command: None,
@@ -705,8 +743,11 @@ impl KioskCommandEvidence {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA
-            && stable_id(&self.command_goal)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_KIOSK_COMMAND_EVIDENCE_SCHEMA,
+            LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA,
+        ) && stable_id(&self.command_goal)
             && self
                 .preferred_command
                 .as_ref()
@@ -765,7 +806,7 @@ impl KioskCommandRunRecord {
         primary: KioskCommandEvidence,
     ) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA.to_string(),
+            schema: HOSTESS_KIOSK_COMMAND_RUN_RECORD_SCHEMA.to_string(),
             run_id: run_id.into(),
             command_goal: command_goal.into(),
             surface_intent: KioskSurfaceIntent::UnknownSurface,
@@ -825,8 +866,11 @@ impl KioskCommandRunRecord {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA
-            && stable_id(&self.run_id)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_KIOSK_COMMAND_RUN_RECORD_SCHEMA,
+            LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA,
+        ) && stable_id(&self.run_id)
             && stable_id(&self.command_goal)
             && self.primary.command_goal == self.command_goal
             && self.primary.is_valid()
@@ -887,7 +931,7 @@ pub struct KioskControlPlaneStatus {
 impl KioskControlPlaneStatus {
     pub fn broker_panel_2d() -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA.to_string(),
+            schema: HOSTESS_KIOSK_CONTROL_PLANE_STATUS_SCHEMA.to_string(),
             phase: KioskControlPlanePhase::BrokerPanel2d,
             surface_intent: KioskSurfaceIntent::RustyKioskDefault,
             home_mode: HomeMode::Normal2d,
@@ -1004,8 +1048,11 @@ impl KioskControlPlaneStatus {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA
-            && (!self.phase.has_app_owned_immersive_home() || self.immersive_home_visible)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
+            LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA,
+        ) && (!self.phase.has_app_owned_immersive_home() || self.immersive_home_visible)
             && (!self.continuous_adb_shell_required || self.shell_helper_connected)
             && (!self.meta_menu_active || self.surface_intent.is_meta_surface())
             && self
@@ -1094,7 +1141,7 @@ impl FocusRecoveryEvent {
         reason: impl Into<String>,
     ) -> Self {
         Self {
-            schema: LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA.to_string(),
+            schema: HOSTESS_HOME_FOCUS_RECOVERY_EVENT_SCHEMA.to_string(),
             event_id: event_id.into(),
             policy,
             action,
@@ -1128,8 +1175,11 @@ impl FocusRecoveryEvent {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema == LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA
-            && stable_id(&self.event_id)
+        schema_matches_current_or_legacy(
+            &self.schema,
+            HOSTESS_HOME_FOCUS_RECOVERY_EVENT_SCHEMA,
+            LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA,
+        ) && stable_id(&self.event_id)
             && non_empty(&self.reason)
             && self
                 .previous_foreground
@@ -1142,6 +1192,10 @@ impl FocusRecoveryEvent {
                 .map(|target| non_empty(target))
                 .unwrap_or(true)
     }
+}
+
+fn schema_matches_current_or_legacy(schema: &str, current: &str, legacy: &str) -> bool {
+    schema == current || schema == legacy
 }
 
 fn size_range_valid(default_size_m: Vec2, min_size_m: Vec2, max_size_m: Vec2) -> bool {
@@ -1193,6 +1247,111 @@ fn non_empty(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn home_contract_constructors_use_current_hostess_schema_defaults() {
+        assert_eq!(
+            HomePanelDescriptor::new("launcher", "Launcher", HomePanelKind::BrokerPage).schema,
+            HOSTESS_HOME_PANEL_DESCRIPTOR_SCHEMA
+        );
+        assert_eq!(
+            LauncherEntry::new("org.example.target", "Target App").schema,
+            HOSTESS_HOME_LAUNCHER_ENTRY_SCHEMA
+        );
+        assert_eq!(
+            SettingsShortcutDescriptor::new(
+                "wifi",
+                "Wi-Fi",
+                "android.settings.WIFI_SETTINGS",
+                SettingsShortcutCategory::Network,
+            )
+            .schema,
+            HOSTESS_HOME_SETTINGS_SHORTCUT_SCHEMA
+        );
+        assert_eq!(
+            HomeSessionState::new(HomeMode::Normal2d).schema,
+            HOSTESS_HOME_SESSION_STATE_SCHEMA
+        );
+        assert_eq!(
+            KioskCommandEvidence::new("surface.current", KioskCommandProvider::Broker).schema,
+            HOSTESS_KIOSK_COMMAND_EVIDENCE_SCHEMA
+        );
+        assert_eq!(
+            KioskCommandRunRecord::new(
+                "run-001",
+                "surface.current",
+                KioskCommandEvidence::new("surface.current", KioskCommandProvider::Broker),
+            )
+            .schema,
+            HOSTESS_KIOSK_COMMAND_RUN_RECORD_SCHEMA
+        );
+        assert_eq!(
+            KioskControlPlaneStatus::broker_panel_2d().schema,
+            HOSTESS_KIOSK_CONTROL_PLANE_STATUS_SCHEMA
+        );
+        assert_eq!(
+            FocusRecoveryEvent::new(
+                "event-001",
+                HomeSupervisorPolicy::ObserveOnly,
+                FocusRecoveryAction::Observe,
+                FocusRecoveryResult::NotAttempted,
+                "observed",
+            )
+            .schema,
+            HOSTESS_HOME_FOCUS_RECOVERY_EVENT_SCHEMA
+        );
+    }
+
+    #[test]
+    fn home_contracts_accept_frozen_legacy_schema_ids() {
+        let mut panel = HomePanelDescriptor::new("launcher", "Launcher", HomePanelKind::BrokerPage);
+        panel.schema = LEGACY_RUSTY_XR_HOME_PANEL_DESCRIPTOR_SCHEMA.to_string();
+        assert!(panel.is_valid());
+
+        let mut entry = LauncherEntry::new("org.example.target", "Target App");
+        entry.schema = LEGACY_RUSTY_XR_HOME_LAUNCHER_ENTRY_SCHEMA.to_string();
+        assert!(entry.is_valid());
+
+        let mut shortcut = SettingsShortcutDescriptor::new(
+            "wifi",
+            "Wi-Fi",
+            "android.settings.WIFI_SETTINGS",
+            SettingsShortcutCategory::Network,
+        );
+        shortcut.schema = LEGACY_RUSTY_XR_HOME_SETTINGS_SHORTCUT_SCHEMA.to_string();
+        assert!(shortcut.is_valid());
+
+        let mut state = HomeSessionState::new(HomeMode::Normal2d);
+        state.schema = LEGACY_RUSTY_XR_HOME_SESSION_STATE_SCHEMA.to_string();
+        assert!(state.is_valid());
+
+        let mut evidence =
+            KioskCommandEvidence::new("surface.current", KioskCommandProvider::Broker);
+        evidence.schema = LEGACY_RUSTY_XR_KIOSK_COMMAND_EVIDENCE_SCHEMA.to_string();
+        assert!(evidence.is_valid());
+
+        let mut run = KioskCommandRunRecord::new(
+            "run-001",
+            "surface.current",
+            KioskCommandEvidence::new("surface.current", KioskCommandProvider::Broker),
+        );
+        run.schema = LEGACY_RUSTY_XR_KIOSK_COMMAND_RUN_RECORD_SCHEMA.to_string();
+        assert!(run.is_valid());
+
+        let mut status = KioskControlPlaneStatus::broker_panel_2d();
+        status.schema = LEGACY_RUSTY_XR_KIOSK_CONTROL_PLANE_STATUS_SCHEMA.to_string();
+        assert!(status.is_valid());
+
+        let mut event = FocusRecoveryEvent::new(
+            "event-001",
+            HomeSupervisorPolicy::ObserveOnly,
+            FocusRecoveryAction::Observe,
+            FocusRecoveryResult::NotAttempted,
+            "observed",
+        );
+        event.schema = LEGACY_RUSTY_XR_HOME_FOCUS_RECOVERY_EVENT_SCHEMA.to_string();
+        assert!(event.is_valid());
+    }
 
     #[test]
     fn panel_descriptor_validates_size_and_helper_boundary() {

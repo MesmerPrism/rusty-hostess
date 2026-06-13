@@ -9,4 +9,5 @@ tmp/
 *.idsig
 *.keystore
 *.jsonl
+!tools/quest-camera-profile/fixtures/*.jsonl
 captures/

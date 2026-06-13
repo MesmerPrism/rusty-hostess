@@ -139,6 +139,16 @@ python tools\telemetry_stream.py --snapshot <snapshot.json> --out <telemetry.jso
 cargo run --manifest-path apps\hostess-t-makepad\Cargo.toml -- --snapshot <snapshot.json> --stream-jsonl <telemetry.jsonl>
 ```
 
+## Hostess Contract Schemas
+
+Hostess-local camera, home, and kiosk DTO constructors default to current
+`rusty.hostess.*` schema IDs. Frozen `rusty.xr.*` IDs are accepted only for
+serialized compatibility and are centralized in
+`apps/hostess-t-makepad/src/hostess_contracts/legacy_rusty_xr_schemas.rs`.
+Cross-backend source-sampling compatibility fixtures live under
+`tools/quest-camera-profile/fixtures/` and are covered by the serde-gated
+Hostess contract tests.
+
 ## Makepad Runtime Settings
 
 Hostess Makepad runtime settings use Morphospace Makepad names only. Use

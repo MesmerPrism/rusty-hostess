@@ -199,12 +199,16 @@ need property or environment cleanup live in
 `apps/hostess-t-makepad/src/makepad_runtime_config/retired_aliases.rs`. This
 ledger is documentation and hygiene input, not a resolver table.
 
-`apps/hostess-t-makepad/src/hostess_contracts/legacy_rusty_xr_schemas.rs`
-is the frozen compatibility ledger for old `rusty.xr.*` schema IDs still
-serialized by Hostess-local contract DTOs. Contract modules re-export those
-constants to preserve the existing facade, but new default-lane schema work
-belongs in the owning Morphospace lane rather than adding more old Rusty-XR
-defaults.
+Hostess-local camera, home, and kiosk DTO constructors now default to
+`rusty.hostess.*` schema IDs. `apps/hostess-t-makepad/src/hostess_contracts/legacy_rusty_xr_schemas.rs`
+is the frozen compatibility ledger for old `rusty.xr.*` schema IDs accepted
+from serialized compatibility inputs. Contract modules re-export both current
+Hostess defaults and legacy constants to preserve the existing facade, but new
+default-lane schema work belongs in the owning Morphospace lane rather than
+adding more old Rusty-XR defaults. The source-sampling serde fixture at
+`tools/quest-camera-profile/fixtures/source-sampling-contracts.cross-backend.jsonl`
+keeps current Hostess defaults and one legacy Rusty-XR input in the same
+validation path.
 
 After a raw capture validates, `hostessctl` writes a
 `rusty.manifold.host_run.run_evidence.v1` wrapper with a scorecard so the live

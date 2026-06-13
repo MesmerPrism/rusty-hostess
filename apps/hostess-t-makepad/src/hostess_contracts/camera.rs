@@ -6,6 +6,18 @@ pub use super::legacy_rusty_xr_schemas::{
     LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA,
 };
 
+/// Current Hostess-local schema id for source-sampling contracts.
+pub const HOSTESS_SOURCE_SAMPLING_CONTRACT_SCHEMA: &str =
+    "rusty.hostess.camera.source_sampling_contract.v1";
+
+/// Current Hostess-local schema id for camera texture lane contracts.
+pub const HOSTESS_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA: &str =
+    "rusty.hostess.camera.texture_lane_contract.v1";
+
+/// Current Hostess-local schema id for camera-source diagnostics.
+pub const HOSTESS_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA: &str =
+    "rusty.hostess.camera.source_diagnostics.v1";
+
 /// Pixel dimensions for a frame, view, or payload.
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -623,7 +635,7 @@ impl SourceSamplingContract {
         transform_stage: SourceSamplingTransformStage,
     ) -> Self {
         Self {
-            schema_version: LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string(),
+            schema_version: HOSTESS_SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string(),
             backend: backend.into(),
             mode: mode.into(),
             source_eye_mapping,
@@ -686,7 +698,7 @@ impl SourceSamplingContract {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema_version == LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA
+        source_sampling_schema_supported(&self.schema_version)
             && !self.backend.trim().is_empty()
             && !self.mode.trim().is_empty()
             && self.content_uv_rect.is_valid()
@@ -1230,7 +1242,7 @@ impl CameraTextureLaneContract {
         resource: CameraTextureLaneResource,
     ) -> Self {
         Self {
-            schema_version: LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string(),
+            schema_version: HOSTESS_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string(),
             lane_kind,
             source,
             resource,
@@ -1272,7 +1284,7 @@ impl CameraTextureLaneContract {
     }
 
     pub fn is_valid(&self) -> bool {
-        self.schema_version == LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
+        camera_texture_lane_schema_supported(&self.schema_version)
             && self.source.is_valid()
             && self.resource.is_valid()
             && self.transform.is_valid()
@@ -1281,6 +1293,16 @@ impl CameraTextureLaneContract {
             && self.lifecycle.is_valid()
             && self.projection.is_valid()
     }
+}
+
+fn source_sampling_schema_supported(schema: &str) -> bool {
+    schema == HOSTESS_SOURCE_SAMPLING_CONTRACT_SCHEMA
+        || schema == LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA
+}
+
+fn camera_texture_lane_schema_supported(schema: &str) -> bool {
+    schema == HOSTESS_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
+        || schema == LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
 }
 
 /// Public diagnostics for deciding whether a camera frame can be projected.
@@ -2295,6 +2317,10 @@ mod tests {
 
         assert!(contract.is_valid());
         assert_eq!(
+            contract.schema_version,
+            HOSTESS_SOURCE_SAMPLING_CONTRACT_SCHEMA
+        );
+        assert_eq!(
             SourceSamplingTransformStage::parse(
                 "post_homography_pre_source_visible_rect_then_texture_sample"
             ),
@@ -2311,6 +2337,37 @@ mod tests {
             Vec2::new(0.4, 1.0),
         ));
         assert!(!invalid.is_valid());
+    }
+
+    #[test]
+    fn camera_contracts_accept_frozen_legacy_schema_ids() {
+        let mut sampling = SourceSamplingContract::new(
+            "hwb",
+            "canvas",
+            StereoSourceEyeMapping::DisplayLeftFromLeftSource,
+            SourceSamplingTransformStage::PostHomographyPreTextureSample,
+        );
+        sampling.schema_version = LEGACY_RUSTY_XR_SOURCE_SAMPLING_CONTRACT_SCHEMA.to_string();
+        assert!(sampling.is_valid());
+
+        let source = CameraTextureLaneSource::new(
+            CameraTextureSourceKind::DirectCamera2,
+            "camera2",
+            ImageSize::new(1280, 1280),
+            "AHardwareBuffer",
+        );
+        let resource = CameraTextureLaneResource::new(
+            CameraTextureResourceKind::MakepadHardwareBufferExternal,
+            "Makepad Vulkan AHardwareBuffer import",
+            CameraTextureDescriptorShape::SampledImageAndSampler,
+        );
+        let mut lane = CameraTextureLaneContract::new(
+            CameraTextureLaneKind::MakepadHwbExternalDirectCamera2Raw,
+            source,
+            resource,
+        );
+        lane.schema_version = LEGACY_RUSTY_XR_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA.to_string();
+        assert!(lane.is_valid());
     }
 
     #[test]
@@ -2474,6 +2531,10 @@ mod tests {
 
         for contract in [hwb, oes, makepad_cpu, makepad_hwb] {
             assert!(contract.is_valid(), "{:?}", contract.lane_kind);
+            assert_eq!(
+                contract.schema_version,
+                HOSTESS_CAMERA_TEXTURE_LANE_CONTRACT_SCHEMA
+            );
         }
     }
 
@@ -2625,7 +2686,7 @@ mod tests {
     #[test]
     fn camera_source_diagnostics_round_trip_with_serde() {
         let report = CameraSourceDiagnosticsReport {
-            schema_version: LEGACY_RUSTY_XR_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA.to_string(),
+            schema_version: HOSTESS_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA.to_string(),
             requested_tier: Some("camera-source-diagnostics".to_string()),
             selected_provider: Some("logical-physical".to_string()),
             fallback_reason: Some("selected logical-physical 0a/0b".to_string()),
@@ -2669,6 +2730,10 @@ mod tests {
             serde_json::from_str(&encoded).expect("diagnostics should deserialize");
 
         assert_eq!(decoded, report);
+        assert_eq!(
+            decoded.schema_version,
+            HOSTESS_CAMERA_SOURCE_DIAGNOSTICS_SCHEMA
+        );
     }
 
     #[cfg(feature = "serde")]
@@ -2760,7 +2825,7 @@ mod tests {
         use std::collections::BTreeSet;
 
         let fixture = include_str!(
-            "../../../tools/quest-camera-profile/fixtures/source-sampling-contracts.cross-backend.jsonl"
+            "../../../../tools/quest-camera-profile/fixtures/source-sampling-contracts.cross-backend.jsonl"
         );
         let mut backends = BTreeSet::new();
         for (index, line) in fixture
