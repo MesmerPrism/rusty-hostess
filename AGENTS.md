@@ -294,7 +294,14 @@ make `RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_GATE` profile-satisfied, but
 Hostess must still report exactly one active authority, keep runtime selection
 blocked, and preserve Matter CPU rollback/fallback evidence until the GPU path
 has steady-state residency, freshness/cadence checks, and expanded CPU-oracle
-comparisons.
+comparisons. `RUSTY_QUEST_MAKEPAD_GPU_FORCE_AUTHORITY_RESIDENCY` is the
+exclusive runtime-selector health receipt: current runs keep
+`activeForceAuthorityKind=matter-cpu`, while future promotion may select
+`gpu-dense-sdf-field-particle-force` only after all health gates pass. Hostess
+threads the cumulative mesh-SDF proof ordinal into this marker as
+`observedResidentProofs`; the setup proof and reuse proof must not both report
+`1`. The same marker should expose source/derived buffer resident and reuse
+fields so validation can distinguish first-use setup from steady-state reuse.
 
 For the live-input-equivalent hand path, `live_hand_surface.rs` owns the
 Hostess/Makepad adapter from live `XrHandMeshBindData` plus `XrHand` updates

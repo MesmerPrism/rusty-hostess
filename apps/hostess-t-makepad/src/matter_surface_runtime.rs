@@ -464,11 +464,18 @@ impl App {
                 phase,
                 self.matter_surface_gpu_mesh_sdf_probe_markers_emitted,
             );
+            let observed_resident_proofs =
+                self.matter_surface_gpu_mesh_sdf_probe_markers_emitted + 1;
             let completed_mesh_sdf_markers = self
                 .matter_surface_gpu_mesh_sdf_probe_pending
                 .as_ref()
                 .and_then(|pending| {
-                    gpu_mesh_sdf_probe_poll_marker_lines(cx, pending, &mesh_sdf_phase)
+                    gpu_mesh_sdf_probe_poll_marker_lines(
+                        cx,
+                        pending,
+                        &mesh_sdf_phase,
+                        observed_resident_proofs,
+                    )
                 });
             if let Some(markers) = completed_mesh_sdf_markers {
                 for marker in markers {

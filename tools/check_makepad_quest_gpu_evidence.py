@@ -792,6 +792,15 @@ def validate_summary(
     force_residency_active_kind_count = count_lines_containing(
         force_residency_lines, "activeForceAuthorityKind=matter-cpu"
     )
+    force_residency_active_source_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthoritySource=matter-runtime-profile"
+    )
+    force_residency_oracle_authority_count = count_lines_containing(
+        force_residency_lines, "matterCpuOracleForceAuthority="
+    )
+    force_residency_active_preserved_count = count_lines_containing(
+        force_residency_lines, "activeForceAuthorityPreserved=matter-cpu-runtime"
+    )
     force_residency_not_selected_count = count_lines_containing(
         force_residency_lines, "candidateSelected=false"
     )
@@ -810,6 +819,24 @@ def validate_summary(
     force_residency_rollback_policy_count = count_lines_containing(
         force_residency_lines,
         "rollbackPolicy=matter-cpu-oracle-on-gpu-freshness-or-cadence-failure",
+    )
+    force_residency_source_resident_count = count_lines_containing(
+        force_residency_lines, "sourceMeshBuffersResident=true"
+    )
+    force_residency_source_reuse_declared_count = count_lines_containing(
+        force_residency_lines, "sourceMeshBuffersReused="
+    )
+    force_residency_source_reuse_count = count_lines_containing(
+        force_residency_lines, "sourceMeshBuffersReused=true"
+    )
+    force_residency_derived_resident_count = count_lines_containing(
+        force_residency_lines, "derivedBuffersResident=true"
+    )
+    force_residency_derived_reuse_declared_count = count_lines_containing(
+        force_residency_lines, "derivedBuffersReused="
+    )
+    force_residency_derived_reuse_count = count_lines_containing(
+        force_residency_lines, "derivedBuffersReused=true"
     )
     force_residency_bounded_only_count = count_lines_containing(
         force_residency_lines, "boundedProofOnly=true"
@@ -876,6 +903,18 @@ def validate_summary(
             issues.append("GPU force authority residency permitted runtime selection")
         if force_residency_active_kind_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not keep Matter CPU active kind")
+        if force_residency_active_source_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare the active authority source"
+            )
+        if force_residency_oracle_authority_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not declare the Matter CPU oracle authority"
+            )
+        if force_residency_active_preserved_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not preserve Matter CPU as active authority"
+            )
         if force_residency_not_selected_count != len(force_residency_lines):
             issues.append("GPU force authority residency selected the candidate")
         if force_residency_not_promoted_count != len(force_residency_lines):
@@ -888,6 +927,18 @@ def validate_summary(
             issues.append("GPU force authority residency did not declare fallback reason")
         if force_residency_rollback_policy_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not report Matter CPU rollback policy")
+        if force_residency_source_resident_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not report resident source mesh buffers"
+            )
+        if force_residency_source_reuse_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare source buffer reuse")
+        if force_residency_derived_resident_count != len(force_residency_lines):
+            issues.append(
+                "GPU force authority residency did not report resident derived buffers"
+            )
+        if force_residency_derived_reuse_declared_count != len(force_residency_lines):
+            issues.append("GPU force authority residency did not declare derived buffer reuse")
         if force_residency_bounded_only_count != len(force_residency_lines):
             issues.append("GPU force authority residency did not report boundedProofOnly=true")
         if force_residency_steady_state_false_count != len(force_residency_lines):
@@ -1144,12 +1195,25 @@ def validate_summary(
         "force_residency_profile_declared_count": force_residency_profile_declared_count,
         "force_residency_selection_blocked_count": force_residency_selection_blocked_count,
         "force_residency_active_kind_count": force_residency_active_kind_count,
+        "force_residency_active_source_count": force_residency_active_source_count,
+        "force_residency_oracle_authority_count": force_residency_oracle_authority_count,
+        "force_residency_active_preserved_count": force_residency_active_preserved_count,
         "force_residency_not_selected_count": force_residency_not_selected_count,
         "force_residency_not_promoted_count": force_residency_not_promoted_count,
         "force_residency_fallback_ready_count": force_residency_fallback_ready_count,
         "force_residency_fallback_authority_count": force_residency_fallback_authority_count,
         "force_residency_fallback_reason_count": force_residency_fallback_reason_count,
         "force_residency_rollback_policy_count": force_residency_rollback_policy_count,
+        "force_residency_source_resident_count": force_residency_source_resident_count,
+        "force_residency_source_reuse_declared_count": (
+            force_residency_source_reuse_declared_count
+        ),
+        "force_residency_source_reuse_count": force_residency_source_reuse_count,
+        "force_residency_derived_resident_count": force_residency_derived_resident_count,
+        "force_residency_derived_reuse_declared_count": (
+            force_residency_derived_reuse_declared_count
+        ),
+        "force_residency_derived_reuse_count": force_residency_derived_reuse_count,
         "force_residency_bounded_only_count": force_residency_bounded_only_count,
         "force_residency_steady_state_false_count": (
             force_residency_steady_state_false_count
