@@ -24,9 +24,11 @@ try {
         "tools\telemetry_snapshot.py",
         "tools\telemetry_stream.py",
         "tools\check_makepad_quest_gpu_evidence.py",
+        "tools\check_makepad_quest_live_recorded_ab.py",
         "tools\summarize_makepad_quest_gpu_evidence.py",
         "tools\test_telemetry_snapshot.py",
         "tools\test_check_makepad_quest_gpu_evidence.py",
+        "tools\test_check_makepad_quest_live_recorded_ab.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
     ) | Where-Object { Test-Path $_ }
@@ -57,7 +59,7 @@ try {
         Invoke-Checked "Makepad app cargo check" "cargo" @("check", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml")
     }
     $AdapterLib = "apps\hostess-t-android\native\polar-runtime-jni\src\lib.rs"
-    if (Test-Path $AdapterLib) {
+    if ((Test-Path $AdapterLib) -and (Test-Path $PackagesRootCandidate)) {
         Invoke-Checked "Android JNI adapter format" "rustfmt" @("--check", $AdapterLib)
         $PackagesRoot = Resolve-Path (Join-Path $RepoRoot "..\rusty-manifold-packages")
         $PolarCorePath = Resolve-Path (Join-Path $PackagesRoot "packages\polar-h10\crates\polar-h10-core")
@@ -86,7 +88,7 @@ try {
         Invoke-Checked "Android JNI adapter cargo check" "cargo" @("check", "--manifest-path", $AdapterManifest)
     }
     $PmbAdapterLib = "apps\hostess-t-android\native\pmb-runtime-jni\src\lib.rs"
-    if (Test-Path $PmbAdapterLib) {
+    if ((Test-Path $PmbAdapterLib) -and (Test-Path $PackagesRootCandidate)) {
         Invoke-Checked "Android PMB JNI adapter format" "rustfmt" @("--check", $PmbAdapterLib)
         $PackagesRoot = Resolve-Path (Join-Path $RepoRoot "..\rusty-manifold-packages")
         $PmbCorePath = Resolve-Path (Join-Path $PackagesRoot "packages\projected-motion-breath\crates\projected-motion-breath-core")

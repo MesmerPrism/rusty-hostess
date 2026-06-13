@@ -370,6 +370,29 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             log_line(
                 5884,
                 "HostessMakepad",
+                "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE "
+                "status=ready sourceId=live-meta-quest-hand-left handedness=left "
+                "frameIndex=19 bindVersion=3 jointCount=26 vertexCount=1360 "
+                "indexCount=6942 providerShape=bind-mesh-plus-compact-joint-frame "
+                "liveOpenXrHandProvider=true recordedInputEquivalent=true "
+                "gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
+                "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_WORKER_SOURCE "
+                "status=ready selectedMode=live-openxr-hand-left "
+                "sourceId=live-meta-quest-hand-left "
+                "providerShape=bind-mesh-plus-compact-joint-frame frameIndex=19 "
+                "vertexCount=1360 triangleCount=2314 issue=none "
+                "liveOpenXrHandProvider=true workerSourceSelected=true "
+                "compactFrameWorkerSubmit=true sourceFrameExpansionThread=matter-worker "
+                "gpuOraclePayloadsRequested=true recordedInputEquivalent=true "
+                "gpuAdapterBoundaryUnchanged=true highRateJsonPayload=false",
+            ),
+            log_line(
+                5884,
+                "HostessMakepad",
                 "RUSTY_MAKEPAD_CADENCE phase=sample status=ok "
                 "appFrameRateHz=90.00 xrUpdateRateHz=89.50 "
                 "xrEffectiveFrameRateHz=90.00 xrRepaintGpuMs=0.36 "
@@ -420,6 +443,13 @@ class MakepadQuestGpuEvidenceSummaryTests(unittest.TestCase):
             )
         )
         self.assertEqual(90.0, summary["cadence"]["app_frame_rate_hz"]["max"])
+        self.assertEqual(1, summary["live_hand_source"]["ready_line_count"])
+        self.assertEqual(
+            1, summary["live_hand_worker_source"]["compact_worker_ready_line_count"]
+        )
+        self.assertEqual(
+            1, summary["live_hand_worker_source"]["gpu_oracle_requested_line_count"]
+        )
         self.assertEqual(0, summary["vrapi_hostess_process"]["stale_90_plus_count"])
         self.assertEqual(14.0, summary["vrapi_hostess_process"]["stale"]["max"])
         self.assertEqual("ok", payloads["strict_scan"]["status"])

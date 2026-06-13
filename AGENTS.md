@@ -330,6 +330,19 @@ python tools\summarize_makepad_quest_gpu_evidence.py --input <evidence-root> --r
 python tools\check_makepad_quest_gpu_evidence.py --input <evidence-root-or-summary-json> --require-mesh-sdf-program-reuse --require-mesh-sdf-source-buffer-reuse --require-mesh-sdf-derived-buffer-reuse --require-mesh-sdf-min-sample-count 8
 ```
 
+Recorded/live provider A/B evidence is a separate promotion gate. Compare a
+recorded-hand evidence root and a live OpenXR hand evidence root with:
+
+```powershell
+python tools\check_makepad_quest_live_recorded_ab.py --recorded <recorded-evidence-root-or-summary-json> --live <live-evidence-root-or-summary-json> --out <ab-report.json>
+```
+
+This proves both sides used the same bind-mesh plus compact joint-frame worker
+boundary and matching topology counts. It still keeps
+`runtimeSelectionPermitted=false`, `runtimeForceAuthority=false`, and
+`gpuComputeReady=false`; a later Quest-Makepad promotion slice must consume
+that result explicitly before setting `liveRecordedProviderAbReady=true`.
+
 For the explicit GPU force-authority profile run, add the force-stage and
 steady fallback requirements:
 

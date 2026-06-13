@@ -59,6 +59,8 @@ HOSTESS_TAG = "HostessMakepad"
 CADENCE_MARKER = "RUSTY_MAKEPAD_CADENCE"
 SOURCE_SELECTION_MARKER = "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_SOURCE_SELECTION"
 RECORDED_WORKER_MARKER = "RUSTY_HOSTESS_MAKEPAD_RECORDED_HAND_SURFACE_WORKER_SOURCE"
+LIVE_SOURCE_MARKER = "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_SOURCE"
+LIVE_WORKER_MARKER = "RUSTY_HOSTESS_MAKEPAD_LIVE_HAND_SURFACE_WORKER_SOURCE"
 GPU_RESIDENCY_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_RESIDENCY"
 GPU_MESH_SDF_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_MESH_SDF_PROBE"
 GPU_FIELD_CONSTRUCTION_MARKER = "RUSTY_QUEST_MAKEPAD_GPU_FIELD_CONSTRUCTION"
@@ -263,6 +265,44 @@ def recorded_hand_source_summary(lines: list[str], max_sample_lines: int) -> dic
     return {
         "line_count": len(source_lines),
         "ready_line_count": sum("status=ready" in line for line in source_lines),
+        "compact_worker_ready_line_count": sum(
+            "compactFrameWorkerSubmit=true" in line and "status=ready" in line
+            for line in source_lines
+        ),
+        "gpu_oracle_requested_line_count": sum(
+            "gpuOraclePayloadsRequested=true" in line for line in source_lines
+        ),
+        "sample_lines": source_lines[:max_sample_lines],
+    }
+
+
+def live_hand_source_summary(lines: list[str], max_sample_lines: int) -> dict[str, Any]:
+    source_lines = marker_lines(lines, LIVE_SOURCE_MARKER)
+    return {
+        "line_count": len(source_lines),
+        "ready_line_count": sum("status=ready" in line for line in source_lines),
+        "error_line_count": sum("status=error" in line for line in source_lines),
+        "provider_shape_ready_line_count": sum(
+            "providerShape=bind-mesh-plus-compact-joint-frame" in line
+            and "status=ready" in line
+            for line in source_lines
+        ),
+        "recorded_equivalent_ready_line_count": sum(
+            "recordedInputEquivalent=true" in line and "status=ready" in line
+            for line in source_lines
+        ),
+        "sample_lines": source_lines[:max_sample_lines],
+    }
+
+
+def live_hand_worker_source_summary(
+    lines: list[str], max_sample_lines: int
+) -> dict[str, Any]:
+    source_lines = marker_lines(lines, LIVE_WORKER_MARKER)
+    return {
+        "line_count": len(source_lines),
+        "ready_line_count": sum("status=ready" in line for line in source_lines),
+        "waiting_line_count": sum("status=waiting" in line for line in source_lines),
         "compact_worker_ready_line_count": sum(
             "compactFrameWorkerSubmit=true" in line and "status=ready" in line
             for line in source_lines
@@ -542,6 +582,8 @@ def summarize_evidence(
             CADENCE_MARKER in line and "phase=start" in line for line in hostess_lines
         ),
         "recorded_worker_source": len(marker_lines(hostess_lines, RECORDED_WORKER_MARKER)),
+        "live_source": len(marker_lines(hostess_lines, LIVE_SOURCE_MARKER)),
+        "live_worker_source": len(marker_lines(hostess_lines, LIVE_WORKER_MARKER)),
         "gpu_residency": len(marker_lines(hostess_lines, GPU_RESIDENCY_MARKER)),
         "gpu_field_construction": len(
             marker_lines(hostess_lines, GPU_FIELD_CONSTRUCTION_MARKER)
@@ -578,6 +620,10 @@ def summarize_evidence(
         "markers": markers,
         "cadence": cadence_summary(hostess_messages),
         "recorded_hand_source": recorded_hand_source_summary(
+            hostess_lines, max_sample_lines
+        ),
+        "live_hand_source": live_hand_source_summary(hostess_lines, max_sample_lines),
+        "live_hand_worker_source": live_hand_worker_source_summary(
             hostess_lines, max_sample_lines
         ),
         "proof_lines": proof_lines,
