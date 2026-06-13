@@ -20,6 +20,7 @@ Push-Location $RepoRoot
 try {
     $PythonFiles = @(
         "tools\hostessctl\hostessctl.py",
+        "tools\hostessctl\telemetry_render.py",
         "tools\capture_window_printwindow.py",
         "tools\telemetry_snapshot.py",
         "tools\telemetry_stream.py",

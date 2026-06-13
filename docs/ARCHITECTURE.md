@@ -46,6 +46,10 @@ authority, or module authority.
 The desktop CLI can render equivalent evidence pages from completed run
 artifacts. Rendered PNGs must include dimensions, nonblank content evidence,
 and a JSON sidecar before they are accepted as visual evidence.
+The parser and platform dispatch stay in `tools/hostessctl/hostessctl.py`;
+desktop PNG rendering, sidecar writing, and render-output validation live in
+`tools/hostessctl/telemetry_render.py` so render evidence remains a focused
+helper family instead of growing the CLI root.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust

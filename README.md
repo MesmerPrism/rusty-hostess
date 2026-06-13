@@ -30,8 +30,11 @@ JSON that includes package manifest hashes.
   the scalable GUI path.
 - `tools/hostessctl/hostessctl.py render-telemetry`: Android-class app-rendered
   PNG export for phone and headset telemetry evidence, plus desktop PNG
-  rendering from completed evidence artifacts. Renders must pass dimension and
-  nonblank checks and write a JSON sidecar beside the PNG.
+  rendering from completed evidence artifacts. Desktop rendering, PNG
+  validation, and render-sidecar helpers live in
+  `tools/hostessctl/telemetry_render.py`; the CLI root stays the parser and
+  platform dispatch facade. Renders must pass dimension and nonblank checks
+  and write a JSON sidecar beside the PNG.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.
@@ -64,7 +67,7 @@ JSON that includes package manifest hashes.
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\telemetry_render.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
