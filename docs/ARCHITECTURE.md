@@ -111,6 +111,11 @@ Hostess staging handoff helpers follow the same facade pattern:
 payload manifest, and downstream shell selection behavior. The file-copy helper
 may copy files under validated staging roots, but these modules must not launch
 Studio, Hostess, Quest, Makepad, or Manifold runtimes.
+The Studio staging request tests follow the same facade pattern:
+`tools/test_studio_staging_request.py` remains the stable unittest entry point,
+while `tools/studio_staging/request_tests/` groups the coverage by
+intake/smoke workflow, platform-smoke control, platform-smoke evidence,
+PMB/release, Hostess staging handoff, and CLI fixture-writing families.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust

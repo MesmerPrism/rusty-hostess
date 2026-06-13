@@ -83,6 +83,39 @@ class StudioStagingModularityTests(unittest.TestCase):
                 facade,
             )
 
+    def test_studio_staging_request_tests_stay_split_by_family(self) -> None:
+        facade_path = REPO_ROOT / "tools" / "test_studio_staging_request.py"
+        request_tests_root = STAGING_ROOT / "request_tests"
+        facade = facade_path.read_text(encoding="utf-8")
+        modules = {
+            "request_intake_smoke.py": "class StudioStagingRequestIntakeSmokeTests",
+            "platform_smoke_control.py": "class StudioStagingPlatformSmokeControlTests",
+            "platform_smoke_evidence.py": (
+                "class StudioStagingPlatformSmokeEvidenceTests"
+            ),
+            "pmb_release.py": "class StudioStagingPmbReleaseTests",
+            "hostess_staging_handoff.py": "class StudioStagingHostessHandoffTests",
+            "cli.py": "class StudioStagingCliTests",
+        }
+
+        self.assertLessEqual(len(facade.splitlines()), 80)
+        self.assertNotIn("class StudioStagingRequestTests", facade)
+        self.assertNotIn("def test_cli_writes_schema_only_report_and_fixtures", facade)
+        self.assertNotIn(b"\r\n", facade_path.read_bytes())
+
+        for filename, required_symbol in modules.items():
+            module_path = request_tests_root / filename
+            self.assertTrue(module_path.exists(), filename)
+            module = module_path.read_text(encoding="utf-8")
+            self.assertIn(required_symbol, module)
+            self.assertLess(
+                len(module.splitlines()),
+                1500,
+                f"{filename} should stay reviewable as a test-family module",
+            )
+            self.assertNotIn(b"\r\n", module_path.read_bytes())
+            self.assertIn(required_symbol.removeprefix("class "), facade)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -101,6 +101,10 @@ JSON that includes package manifest hashes.
   in `staging_handoff_acceptance.py`, `staging_handoff_file_plan.py`,
   `staging_handoff_file_copy.py`, `staging_handoff_payload_manifest.py`, and
   `staging_handoff_downstream_shell.py`.
+- `tools/test_studio_staging_request.py`: compatibility facade for the Studio
+  staging request test suite. Test-family implementations live in
+  `tools/studio_staging/request_tests/` so intake/smoke, platform-smoke,
+  PMB/release, handoff, and CLI coverage stays reviewable.
 - `tools/hostessctl/hostessctl.py run-replay`: deterministic selected-module
   replay that calls the package Rust processor core and validates the resulting
   graph-resolved evidence.

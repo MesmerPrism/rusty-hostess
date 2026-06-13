@@ -23,9 +23,14 @@ Authority:
 Local validation:
 
 ```powershell
-python -m py_compile tools\studio_staging_request.py tools\test_studio_staging_request.py
+python -m py_compile tools\studio_staging_request.py tools\test_studio_staging_request.py tools\studio_staging\request_tests\__init__.py tools\studio_staging\request_tests\request_intake_smoke.py tools\studio_staging\request_tests\platform_smoke_control.py tools\studio_staging\request_tests\platform_smoke_evidence.py tools\studio_staging\request_tests\pmb_release.py tools\studio_staging\request_tests\hostess_staging_handoff.py tools\studio_staging\request_tests\cli.py
 python -m unittest tools.test_studio_staging_request
 ```
+
+`tools\test_studio_staging_request.py` is a compatibility facade. The actual
+test classes live under `tools\studio_staging\request_tests\` by test family so
+the Studio staging request suite remains reviewable while preserving the stable
+unittest module name above.
 
 Example intake:
 
