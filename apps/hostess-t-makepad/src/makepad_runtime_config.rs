@@ -20,8 +20,13 @@
 use std::{collections::BTreeMap, fmt, str::FromStr};
 
 mod aliases;
+mod retired_aliases;
 
 pub use aliases::{projection_runtime_key_alias, PROJECTION_RUNTIME_KEY_ALIASES};
+pub use retired_aliases::{
+    retired_projection_runtime_key_alias, RetiredRuntimeKeyAlias,
+    RETIRED_PROJECTION_RUNTIME_KEY_ALIASES,
+};
 
 /// Crate version exposed for lightweight smoke checks.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -1659,6 +1664,15 @@ mod tests {
 
     #[test]
     fn rejects_unregistered_makepad_scoped_projection_aliases() {
+        let retired_alias = retired_projection_runtime_key_alias(
+            "debug.rusty.makepad.projection.area.offset.left.uv",
+        )
+        .expect("retired mis-scoped property should be documented");
+        assert_eq!(
+            retired_alias.replacement,
+            "debug.rustyquest.makepad.projection.area.left.offset.x.uv"
+        );
+
         let error = parse_projection_runtime_pairs(
             RuntimeConfigSource::AndroidProperty,
             [(
@@ -1677,16 +1691,34 @@ mod tests {
     }
 
     #[test]
-    fn rejects_legacy_projection_aliases() {
-        for key in [
-            "rustyxr.projectionDepthMeters",
-            "debug.rustyxr.projection.depth.meters",
-            "debug.rusty.projection.depth.meters",
-            "RUSTY_XR_PROJECTION_DEPTH_METERS",
-        ] {
+    fn retired_projection_aliases_are_documented_but_not_accepted() {
+        let mut seen = BTreeMap::new();
+        for retired_alias in RETIRED_PROJECTION_RUNTIME_KEY_ALIASES {
+            assert!(
+                seen.insert(retired_alias.alias, retired_alias.replacement)
+                    .is_none(),
+                "duplicate retired alias {}",
+                retired_alias.alias
+            );
+            assert!(
+                projection_runtime_key_alias(retired_alias.alias).is_none(),
+                "retired alias {} must not be accepted",
+                retired_alias.alias
+            );
             assert_eq!(
-                resolve_projection_runtime_key(key).unwrap_err(),
-                RuntimeConfigError::UnknownRuntimeKeyAlias(key.to_string())
+                retired_projection_runtime_key_alias(retired_alias.alias),
+                Some(retired_alias)
+            );
+            assert!(
+                projection_runtime_key_definition(retired_alias.replacement).is_some()
+                    || projection_runtime_key_alias(retired_alias.replacement).is_some(),
+                "retired alias {} points to unknown replacement {}",
+                retired_alias.alias,
+                retired_alias.replacement
+            );
+            assert_eq!(
+                resolve_projection_runtime_key(retired_alias.alias).unwrap_err(),
+                RuntimeConfigError::UnknownRuntimeKeyAlias(retired_alias.alias.to_string())
             );
         }
     }

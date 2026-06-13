@@ -145,6 +145,10 @@ Android properties, and environment variables live in
 re-exported through the parent module only for facade compatibility. Keep
 legacy or retired names out of the canonical registry unless a compatibility
 bridge is explicitly approved and covered by the alias tests.
+Retired projection spellings that should be rejected by active parsing but may
+need property or environment cleanup live in
+`apps/hostess-t-makepad/src/makepad_runtime_config/retired_aliases.rs`. This
+ledger is documentation and hygiene input, not a resolver table.
 
 `apps/hostess-t-makepad/src/hostess_contracts/legacy_rusty_xr_schemas.rs`
 is the frozen compatibility ledger for old `rusty.xr.*` schema IDs still

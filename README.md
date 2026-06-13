@@ -118,6 +118,10 @@ Hostess Makepad runtime settings use Morphospace Makepad names only. Use
 canonical snake_case runtime keys, or current `makepad.*` launch aliases.
 Legacy `RUSTY_XR_*`, `debug.rustyxr.*`, and `rustyxr.*` spellings are not
 accepted by the active Hostess Makepad settings stack.
+Retired projection runtime spellings that may need cleanup from shell profiles
+or Android properties are documented in
+`apps/hostess-t-makepad/src/makepad_runtime_config/retired_aliases.rs`; that
+ledger is intentionally not part of active runtime resolution.
 
 The projection runtime trace marker is
 `RUSTY_MAKEPAD_PROJECTION_RUNTIME_MANIFEST` with schema
