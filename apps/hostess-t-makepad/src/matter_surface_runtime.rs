@@ -53,6 +53,20 @@ pub(crate) struct MatterSurfacePanelOverlayFrame {
 }
 
 impl App {
+    pub(crate) fn emit_matter_surface_gpu_proof_epoch_marker(
+        &self,
+        phase: &str,
+        source_path: Option<&str>,
+        gpu_proof_revision_key: Option<&str>,
+    ) {
+        emit_marker_line(&format!(
+            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH schema=rusty.hostess.makepad.matter_surface_gpu_proof_epoch.v1 phase={} status=applied sourcePath={} gpuProofRevisionKey={} proofCountersReset=true runtimeSettingsReloaded=false replayRuntimeRebuilt=false matterWorkerRestarted=false highRateJsonPayload=false",
+            marker_token(phase),
+            marker_token(source_path.unwrap_or("none")),
+            marker_token(gpu_proof_revision_key.unwrap_or("none")),
+        ));
+    }
+
     pub(crate) fn matter_world_particle_placement() -> QuestMakepadWorldParticlePlacement {
         QuestMakepadWorldParticlePlacement::content_local(
             MATTER_WORLD_PARTICLE_CONTENT_LOCAL_CENTER,
@@ -84,17 +98,11 @@ impl App {
         let gpu_proof_revision_key = identity.gpu_proof_settings_revision_key();
         self.mesh_replay_effective_settings_gpu_proof_revision_key = gpu_proof_revision_key.clone();
         self.reset_matter_surface_gpu_proof_markers();
-        emit_marker_line(&format!(
-            "RUSTY_HOSTESS_MAKEPAD_MATTER_SURFACE_GPU_PROOF_EPOCH schema=rusty.hostess.makepad.matter_surface_gpu_proof_epoch.v1 phase={} status=applied sourcePath={} gpuProofRevisionKey={} proofCountersReset=true runtimeSettingsReloaded=false replayRuntimeRebuilt=false matterWorkerRestarted=false highRateJsonPayload=false",
-            marker_token(phase),
-            marker_token(
-                identity
-                    .source_effective_settings_path
-                    .as_deref()
-                    .unwrap_or("none")
-            ),
-            marker_token(gpu_proof_revision_key.as_deref().unwrap_or("none")),
-        ));
+        self.emit_matter_surface_gpu_proof_epoch_marker(
+            phase,
+            identity.source_effective_settings_path.as_deref(),
+            gpu_proof_revision_key.as_deref(),
+        );
         true
     }
 
@@ -410,6 +418,14 @@ impl App {
             self.cadence_draw_event_count,
         );
         if gpu_probe_steady_state_ready && self.matter_surface_gpu_schedule_markers_emitted == 0 {
+            self.reset_matter_surface_gpu_proof_markers();
+            let identity =
+                crate::makepad_effective_settings::selected_makepad_effective_settings_identity();
+            self.emit_matter_surface_gpu_proof_epoch_marker(
+                phase,
+                identity.source_effective_settings_path.as_deref(),
+                identity.gpu_proof_settings_revision_key().as_deref(),
+            );
             emit_marker_line(&gpu_probe_schedule.marker_line(
                 phase,
                 &self.matter_surface_source_selection,

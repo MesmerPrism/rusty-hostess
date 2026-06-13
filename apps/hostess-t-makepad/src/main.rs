@@ -3561,7 +3561,7 @@ impl App {
             selection.adoption_marker_line(phase, &identity, runtime_revision_key.as_deref());
         self.mesh_replay_effective_settings_path = selection.source_effective_settings_path.clone();
         self.mesh_replay_effective_settings_revision_key = runtime_revision_key.clone();
-        self.mesh_replay_effective_settings_gpu_proof_revision_key = gpu_proof_revision_key;
+        self.mesh_replay_effective_settings_gpu_proof_revision_key = gpu_proof_revision_key.clone();
         self.mesh_replay_effective_settings_modified_ns =
             selection.source_modified_ns.unwrap_or_default();
         self.mesh_replay_effective_settings_has_modified_ns =
@@ -3595,6 +3595,11 @@ impl App {
         self.matter_surface_worker_markers_emitted = 0;
         self.matter_surface_live_source_worker_markers_emitted = 0;
         self.reset_matter_surface_gpu_proof_markers();
+        self.emit_matter_surface_gpu_proof_epoch_marker(
+            phase,
+            selection.source_effective_settings_path.as_deref(),
+            gpu_proof_revision_key.as_deref(),
+        );
         self.matter_surface_world_particle_markers_emitted = 0;
         self.matter_surface_world_particle_draw_markers_emitted = 0;
         self.matter_surface_world_particle_draw_waiting_marker_emitted = false;
