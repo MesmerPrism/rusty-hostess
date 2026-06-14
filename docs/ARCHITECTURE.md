@@ -128,9 +128,10 @@ Studio, Hostess, Quest, Makepad, or Manifold runtimes.
 The Studio staging request command follows that same facade pattern:
 `tools/studio_staging_request.py` remains the stable import/CLI surface,
 `tools/studio_staging/request_cli.py` owns command orchestration across the
-already split staging families, and `request_cli_parser.py` owns the argument
-surface. The CLI module may coordinate artifacts and validation outputs, but
-new schema or workflow authority belongs in the focused helper modules.
+already split staging families, `request_cli_parser.py` owns the argument
+surface, and `request_cli_validation.py` owns terminal validation-output
+generation. The CLI modules may coordinate artifacts and validation outputs,
+but new schema or workflow authority belongs in the focused helper modules.
 The Studio staging request tests follow the same facade pattern:
 `tools/test_studio_staging_request.py` remains the stable unittest entry point,
 while `tools/studio_staging/request_tests/` groups the coverage by

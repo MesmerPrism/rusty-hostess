@@ -23,7 +23,7 @@ Authority:
 Local validation:
 
 ```powershell
-python -m py_compile tools\studio_staging_request.py tools\test_studio_staging_request.py tools\studio_staging\request_tests\__init__.py tools\studio_staging\request_tests\request_intake_smoke.py tools\studio_staging\request_tests\platform_smoke_control.py tools\studio_staging\request_tests\platform_smoke_evidence.py tools\studio_staging\request_tests\pmb_release.py tools\studio_staging\request_tests\hostess_staging_handoff.py tools\studio_staging\request_tests\cli.py
+python -m py_compile tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\test_studio_staging_request.py tools\studio_staging\request_tests\__init__.py tools\studio_staging\request_tests\request_intake_smoke.py tools\studio_staging\request_tests\platform_smoke_control.py tools\studio_staging\request_tests\platform_smoke_evidence.py tools\studio_staging\request_tests\pmb_release.py tools\studio_staging\request_tests\hostess_staging_handoff.py tools\studio_staging\request_tests\cli.py
 python -m unittest tools.test_studio_staging_request
 ```
 

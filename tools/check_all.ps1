@@ -51,6 +51,7 @@ try {
         "tools\studio_staging_request.py",
         "tools\studio_staging\request_cli.py",
         "tools\studio_staging\request_cli_parser.py",
+        "tools\studio_staging\request_cli_validation.py",
         "tools\studio_staging\pmb_release.py",
         "tools\studio_staging\pmb_validation_handoff.py",
         "tools\studio_staging\pmb_replay_validation.py",
