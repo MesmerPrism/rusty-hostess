@@ -360,6 +360,11 @@ validation, and current-or-legacy schema acceptance;
 `app_mesh_replay_runtime.rs` owns selected effective-settings adoption, mesh
 replay stepping, Matter/particle/stimulus runtime resets, and panel/world
 cadence binding;
+`makepad_effective_settings.rs` remains the effective-settings
+receipt/runtime-selection facade, while `makepad_effective_settings/revision.rs`
+owns revision sidecar identity and scoped invalidation keys and
+`makepad_effective_settings/tests.rs` owns the effective-settings regression
+fixtures;
 `app_stimulus_runtime.rs` owns stimulus field panel binding, runtime XR
 projection rows, bounded volume preview probe polling, and image-preview
 texture adoption;

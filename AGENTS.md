@@ -76,6 +76,11 @@ generic code or sanitized sample fixtures.
   projection-plan and OpenXR geometry facade. The `projection_geometry\` child
   modules own focused projection support families; `markers.rs` owns Makepad
   stereo projection marker/report field formatting and marker-shape tests.
+- Keep `apps\hostess-t-makepad\src\makepad_effective_settings.rs` as the
+  effective-settings receipt/runtime-selection facade. The
+  `makepad_effective_settings\` child modules own focused settings families;
+  `revision.rs` owns revision sidecar identity and scoped invalidation keys,
+  while `tests.rs` owns the effective-settings regression fixtures.
 
 ## Quest Makepad APK Route
 

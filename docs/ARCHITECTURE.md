@@ -259,6 +259,14 @@ state, event handling, and data-plane adoption wiring in Rust.
 `apps/hostess-t-makepad/src/app_mesh_replay_runtime.rs` owns selected
 effective-settings adoption, mesh replay stepping, Matter/particle/stimulus
 runtime resets, and panel/world cadence binding.
+`apps/hostess-t-makepad/src/makepad_effective_settings.rs` remains the
+effective-settings receipt/runtime-selection facade.
+`apps/hostess-t-makepad/src/makepad_effective_settings/revision.rs` owns the
+revision sidecar identity, scoped invalidation keys, and path/mtime fallback
+comparison helper used by runtime and GPU-proof adoption gates.
+`apps/hostess-t-makepad/src/makepad_effective_settings/tests.rs` owns the
+effective-settings regression fixtures so the facade does not also act as the
+test suite container.
 `apps/hostess-t-makepad/src/app_stimulus_runtime.rs` owns stimulus field panel
 binding, runtime XR projection rows, bounded volume preview probe polling, and
 image-preview texture adoption.
