@@ -134,6 +134,14 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   in `staging_handoff_acceptance.py`, `staging_handoff_file_plan.py`,
   `staging_handoff_file_copy.py`, `staging_handoff_payload_manifest.py`, and
   `staging_handoff_downstream_shell.py`.
+- `tools/studio_staging_request.py`: stable Studio staging request CLI/import
+  facade. Domain builders remain re-exported here for existing callers.
+- `tools/studio_staging/request_cli.py`: Studio staging request command
+  orchestration. It wires intake, smoke, PMB, handoff, downstream shell, and
+  validation outputs without owning the schema helpers.
+- `tools/studio_staging/request_cli_parser.py`: Studio staging request
+  argument surface, kept separate from command orchestration so option churn
+  does not expand the facade.
 - `tools/test_studio_staging_request.py`: compatibility facade for the Studio
   staging request test suite. Test-family implementations live in
   `tools/studio_staging/request_tests/` so intake/smoke, platform-smoke,
@@ -169,7 +177,7 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
