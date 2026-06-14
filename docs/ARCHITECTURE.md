@@ -210,11 +210,13 @@ footprint/layout and border geometry, camera basis/projection math, homography
 and temporal smoothing, and timestamp matching.
 `apps/hostess-t-makepad/src/hostess_contracts/camera.rs` remains the
 camera-contract facade for shared primitives, diagnostics, frame metadata,
-projection state, and temporal policy. Its `hostess_contracts/camera/` child
+and calibration/source diagnostics. Its `hostess_contracts/camera/` child
 modules own focused camera contract families; `source_sampling.rs` owns
 source-sampling DTOs, texture transform helpers, and source-sampling schema
-acceptance, while `texture_lane.rs` owns camera texture-lane DTOs, validation,
-and current-or-legacy schema acceptance.
+acceptance, `temporal_projection.rs` owns frame timing, projection state,
+visual projection state, temporal policy, and metrics, while `texture_lane.rs`
+owns camera texture-lane DTOs, validation, and current-or-legacy schema
+acceptance.
 
 `apps/hostess-t-makepad/src/frame_orientation.rs` owns Hostess-local
 direct-camera and broker-H264 source-raster orientation decisions plus shared
