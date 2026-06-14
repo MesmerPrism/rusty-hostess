@@ -103,6 +103,11 @@ Studio platform-smoke staging helpers are split by workflow phase:
 report, and evidence review behavior. These helpers are staging contract and
 review evidence builders; they must not start Studio, Hostess, Quest, Makepad,
 or Manifold runtimes.
+Projected-motion-breath release staging helpers follow that same facade
+pattern: `tools/studio_staging/pmb_release.py` remains the import surface,
+while `pmb_validation_handoff.py`, `pmb_replay_validation.py`, and
+`operator_release.py` own validation handoff, replay validation, and
+operator-release readiness behavior.
 Hostess staging handoff helpers follow the same facade pattern:
 `tools/studio_staging/staging_handoff.py` remains the import surface, while
 `staging_handoff_acceptance.py`, `staging_handoff_file_plan.py`,
