@@ -35,6 +35,20 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   app-private evidence storage, and the Hostess JNI bridge. Its native Canvas
   telemetry view is fallback/debug-only platform evidence plumbing; Makepad is
   the scalable GUI path.
+- `apps/hostess-t-android/src/main/java/.../MainActivity.java`: Android
+  lifecycle, action routing, BLE capture, top-level evidence file writes, and
+  handler registration. Fallback render UI and PMB evidence/package helpers
+  live in sibling Java files.
+- `apps/hostess-t-android/src/main/java/.../PlatformDebugTelemetryView.java`:
+  fallback/debug Canvas telemetry renderer and PNG validation.
+- `apps/hostess-t-android/src/main/java/.../TelemetryRenderMetadata.java`:
+  telemetry render sidecar JSON contract.
+- `apps/hostess-t-android/src/main/java/.../HostessAssetStore.java` and
+  `PmbPackageAssets.java`: Android asset reads, package fixture copy, and
+  manifest SHA snapshots for packaged PMB assets.
+- `apps/hostess-t-android/src/main/java/.../PmbAndroidEvidence.java`: PMB
+  Android replay/controller-preflight evidence builders, scorecards, and
+  failure report helpers.
 - `tools/hostessctl/hostessctl.py`: compatibility facade for command dispatch,
   platform defaults, and existing imports. Route bodies live in focused helper
   modules so new command behavior does not accumulate in the CLI root.

@@ -75,6 +75,35 @@ try {
             $PmbReplayOut
         )
     }
+    $AndroidJavaRoot = "apps\hostess-t-android\src\main\java"
+    if (Test-Path $AndroidJavaRoot) {
+        $AndroidHome = if ($env:ANDROID_HOME) { $env:ANDROID_HOME } else { "S:\Work\tools\Android\windows-sdk" }
+        $JavaHome = if ($env:JAVA_HOME) { $env:JAVA_HOME } else { "S:\Work\tools\Java\temurin-17" }
+        $PlatformJar = Join-Path $AndroidHome "platforms\android-34\android.jar"
+        $Javac = Join-Path $JavaHome "bin\javac.exe"
+        if ((Test-Path $PlatformJar) -and (Test-Path $Javac)) {
+            $JavaCheckRoot = Join-Path $env:TEMP "hostess-android-java-check"
+            Remove-Item -Recurse -Force $JavaCheckRoot -ErrorAction SilentlyContinue
+            New-Item -ItemType Directory -Force -Path $JavaCheckRoot | Out-Null
+            $SourceList = Join-Path $JavaCheckRoot "sources.rsp"
+            Get-ChildItem -Path $AndroidJavaRoot -Recurse -Filter *.java |
+                ForEach-Object { $_.FullName } |
+                Set-Content -Encoding ASCII -Path $SourceList
+            Invoke-Checked "Android Java source compile" $Javac @(
+                "-source",
+                "17",
+                "-target",
+                "17",
+                "-classpath",
+                $PlatformJar,
+                "-d",
+                $JavaCheckRoot,
+                "@$SourceList"
+            )
+        } else {
+            Write-Host "[SKIP] Android Java source compile: missing $PlatformJar or $Javac"
+        }
+    }
     if (Test-Path "apps\hostess-t-makepad\Cargo.toml") {
         Invoke-Checked "Makepad app cargo check" "cargo" @("check", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml")
         Invoke-Checked "Makepad app Hostess contract serde tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "hostess_contracts")

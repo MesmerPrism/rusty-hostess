@@ -17,33 +17,21 @@ import android.bluetooth.le.ScanResult;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
-import android.graphics.Bitmap;
-import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.Paint;
-import android.graphics.Path;
-import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
-import android.view.View;
 
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Locale;
 import java.util.Queue;
@@ -59,8 +47,6 @@ public final class MainActivity extends Activity {
     private static final String ACTION_BROKER_TELEMETRY = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
-    private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
-    private static final String PMB_ASSET_ROOT = "manifold/packages/projected-motion-breath";
     private static final String SOFTWARE_ORIGIN = "rusty-hostess";
 
     private static final UUID HEART_RATE_SERVICE = UUID.fromString("0000180d-0000-1000-8000-00805f9b34fb");
@@ -87,9 +73,6 @@ public final class MainActivity extends Activity {
     private static final String MODULE_BREATH_DYNAMICS = "module.polar_h10.breath_dynamics";
     private static final String MODULE_HRVB_RESONANCE_AMPLITUDE = "module.polar_h10.hrvb_resonance_amplitude";
     private static final long RUNTIME_PREVIEW_INTERVAL_MS = 15000L;
-    private static final int MIN_RENDER_WIDTH = 320;
-    private static final int MIN_RENDER_HEIGHT = 240;
-    private static final int MIN_RENDER_CONTENT_PIXELS = 64;
 
     private final Handler handler = new Handler(Looper.getMainLooper());
     private PlatformDebugTelemetryView telemetryView;
@@ -228,16 +211,16 @@ public final class MainActivity extends Activity {
         File packageRoot = new File(getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
         try {
             resetDirectory(packageRoot);
-            copyPmbPackageAssets(packageRoot);
+            PmbPackageAssets.copyTo(assetStore(), packageRoot);
             JSONObject coreReport = PMBRuntime.validatePackage(packageRoot.getAbsolutePath());
             Instant endedAt = Instant.now();
-            List<String> errors = pmbCoreErrors(coreReport);
+            List<String> errors = PmbAndroidEvidence.pmbCoreErrors(coreReport);
             String status = errors.isEmpty() && "pass".equals(coreReport.optString("status")) ? "pass" : "fail";
             if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
                 throw new IOException("could not create PMB evidence folder");
             }
             writeText(new File(evidenceRoot, "latest.core-validation-report.json"), coreReport.toString(2));
-            JSONObject evidence = pmbReplayEvidence(hostProfile, startedAt, endedAt, status, coreReport, errors, null);
+            JSONObject evidence = pmbEvidence().pmbReplayEvidence(hostProfile, startedAt, endedAt, status, coreReport, errors, null);
             writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
             telemetryView.setRunState(status, "pmb_replay", modules);
         } catch (IOException | JSONException | RuntimeException ex) {
@@ -246,11 +229,11 @@ public final class MainActivity extends Activity {
                 if (!evidenceRoot.exists()) {
                     evidenceRoot.mkdirs();
                 }
-                JSONObject coreReport = pmbFailureCoreReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                JSONObject coreReport = PmbAndroidEvidence.pmbFailureCoreReport(packageRoot.getAbsolutePath(), ex.getMessage());
                 writeText(new File(evidenceRoot, "latest.core-validation-report.json"), coreReport.toString(2));
                 List<String> errors = new ArrayList<>();
                 errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
-                JSONObject evidence = pmbReplayEvidence(hostProfile, startedAt, endedAt, "fail", coreReport, errors, ex.toString());
+                JSONObject evidence = pmbEvidence().pmbReplayEvidence(hostProfile, startedAt, endedAt, "fail", coreReport, errors, ex.toString());
                 writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
             } catch (IOException | JSONException ignored) {
                 // The UI state is the fallback signal when app-private evidence cannot be written.
@@ -271,16 +254,16 @@ public final class MainActivity extends Activity {
         File packageRoot = new File(getExternalFilesDir(null), "hostess-t/packages/projected-motion-breath");
         try {
             resetDirectory(packageRoot);
-            copyPmbPackageAssets(packageRoot);
+            PmbPackageAssets.copyTo(assetStore(), packageRoot);
             JSONObject preflightReport = PMBRuntime.runControllerPreflight(packageRoot.getAbsolutePath());
             Instant endedAt = Instant.now();
-            List<String> errors = pmbCoreErrors(preflightReport);
+            List<String> errors = PmbAndroidEvidence.pmbCoreErrors(preflightReport);
             String status = errors.isEmpty() && "pass".equals(preflightReport.optString("status")) ? "pass" : "fail";
             if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
                 throw new IOException("could not create PMB controller preflight evidence folder");
             }
             writeText(new File(evidenceRoot, "latest.controller-preflight-report.json"), preflightReport.toString(2));
-            JSONObject evidence = pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, status, preflightReport, errors, null);
+            JSONObject evidence = pmbEvidence().pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, status, preflightReport, errors, null);
             writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
             telemetryView.setRunState(status, "pmb_controller_preflight", modules);
         } catch (IOException | JSONException | RuntimeException ex) {
@@ -289,11 +272,11 @@ public final class MainActivity extends Activity {
                 if (!evidenceRoot.exists()) {
                     evidenceRoot.mkdirs();
                 }
-                JSONObject preflightReport = pmbFailureControllerPreflightReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                JSONObject preflightReport = PmbAndroidEvidence.pmbFailureControllerPreflightReport(packageRoot.getAbsolutePath(), ex.getMessage());
                 writeText(new File(evidenceRoot, "latest.controller-preflight-report.json"), preflightReport.toString(2));
                 List<String> errors = new ArrayList<>();
                 errors.add(ex.getMessage() == null ? ex.toString() : ex.getMessage());
-                JSONObject evidence = pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, "fail", preflightReport, errors, ex.toString());
+                JSONObject evidence = pmbEvidence().pmbControllerPreflightEvidence(hostProfile, startedAt, endedAt, "fail", preflightReport, errors, ex.toString());
                 writeText(new File(evidenceRoot, "latest.json"), evidence.toString(2));
             } catch (IOException | JSONException ignored) {
                 // The UI state is the fallback signal when app-private evidence cannot be written.
@@ -346,9 +329,9 @@ public final class MainActivity extends Activity {
         String status = "fail";
         try {
             resetDirectory(packageRoot);
-            copyPmbPackageAssets(packageRoot);
+            PmbPackageAssets.copyTo(assetStore(), packageRoot);
             JSONObject routeReport = PMBRuntime.runLiveRouteSelfTest(packageRoot.getAbsolutePath());
-            List<String> errors = pmbCoreErrors(routeReport);
+            List<String> errors = PmbAndroidEvidence.pmbCoreErrors(routeReport);
             JSONObject brokerReport;
             try {
                 PmbBrokerBridge.Result brokerResult = PmbBrokerBridge.publishRoute(
@@ -360,7 +343,7 @@ public final class MainActivity extends Activity {
                         breathSelectedSource);
                 brokerReport = brokerResult.toJson();
             } catch (IOException | JSONException | RuntimeException brokerEx) {
-                brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, brokerEx.getMessage());
+                brokerReport = PmbAndroidEvidence.pmbFailureBrokerPublishReport(brokerHost, brokerPort, brokerEx.getMessage());
                 errors.add(brokerEx.getMessage() == null ? brokerEx.toString() : brokerEx.getMessage());
             }
             if (!"pass".equals(brokerReport.optString("status"))) {
@@ -386,7 +369,7 @@ public final class MainActivity extends Activity {
                     hostProfile,
                     startedAt,
                     endedAt,
-                    pmbPackageSnapshot(),
+                    PmbPackageAssets.snapshot(assetStore()),
                     routeReport,
                     brokerReport,
                     errors,
@@ -398,8 +381,8 @@ public final class MainActivity extends Activity {
                 if (!evidenceRoot.exists()) {
                     evidenceRoot.mkdirs();
                 }
-                JSONObject routeReport = pmbFailureLiveRouteReport(packageRoot.getAbsolutePath(), ex.getMessage());
-                JSONObject brokerReport = pmbFailureBrokerPublishReport(brokerHost, brokerPort, ex.getMessage());
+                JSONObject routeReport = PmbAndroidEvidence.pmbFailureLiveRouteReport(packageRoot.getAbsolutePath(), ex.getMessage());
+                JSONObject brokerReport = PmbAndroidEvidence.pmbFailureBrokerPublishReport(brokerHost, brokerPort, ex.getMessage());
                 writeText(new File(evidenceRoot, "latest.live-route-report.json"), routeReport.toString(2));
                 writeText(new File(evidenceRoot, "latest.broker-publish-report.json"), brokerReport.toString(2));
                 List<String> errors = new ArrayList<>();
@@ -408,7 +391,7 @@ public final class MainActivity extends Activity {
                         hostProfile,
                         startedAt,
                         endedAt,
-                        pmbPackageSnapshot(),
+                        PmbPackageAssets.snapshot(assetStore()),
                         routeReport,
                         brokerReport,
                         errors,
@@ -524,8 +507,10 @@ public final class MainActivity extends Activity {
                 throw new IOException("could not create render folder");
             }
             File out = new File(root, safeName);
-            RenderMetadata metadata = telemetryView.writePng(out);
-            writeText(new File(root, safeName + ".json"), renderMetadataJson("pass", target, safeName, sourceEvidencePath, metadata, null));
+            TelemetryRenderMetadata metadata = telemetryView.writePng(out);
+            writeText(
+                    new File(root, safeName + ".json"),
+                    TelemetryRenderMetadata.toJson("pass", target, safeName, sourceEvidencePath, metadata, null));
             telemetryView.setRenderStatus("rendered");
         } catch (IOException ex) {
             File root = new File(getExternalFilesDir(null), "hostess-t/evidence/render");
@@ -533,7 +518,9 @@ public final class MainActivity extends Activity {
                 if (!root.exists()) {
                     root.mkdirs();
                 }
-                writeText(new File(root, safeName + ".json"), renderMetadataJson("fail", target, safeName, sourceEvidencePath, null, ex.getMessage()));
+                writeText(
+                        new File(root, safeName + ".json"),
+                        TelemetryRenderMetadata.toJson("fail", target, safeName, sourceEvidencePath, null, ex.getMessage()));
             } catch (IOException ignored) {
                 // Keep the UI state as the fallback signal if the sidecar cannot be written.
             }
@@ -1377,432 +1364,6 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static String renderMetadataJson(String status, String target, String imageName, String sourceEvidencePath, RenderMetadata metadata, String error) {
-        StringBuilder builder = new StringBuilder();
-        builder.append("{\n");
-        builder.append("  \"").append("$schema").append("\": \"rusty.hostess.telemetry.render_evidence.v1\",\n");
-        builder.append("  \"status\": ").append(jsonQuote(status)).append(",\n");
-        builder.append("  \"rendered_at_utc\": ").append(jsonQuote(Instant.now().toString())).append(",\n");
-        builder.append("  \"target\": ").append(jsonQuote(target)).append(",\n");
-        builder.append("  \"render_page\": ").append(jsonQuote(metadata == null ? "unknown" : metadata.page)).append(",\n");
-        builder.append("  \"image_path\": ").append(jsonQuote(imageName)).append(",\n");
-        builder.append("  \"source_evidence_path\": ").append(jsonQuote(sourceEvidencePath)).append(",\n");
-        builder.append("  \"width\": ").append(metadata == null ? 0 : metadata.width).append(",\n");
-        builder.append("  \"height\": ").append(metadata == null ? 0 : metadata.height).append(",\n");
-        builder.append("  \"content_pixel_count\": ").append(metadata == null ? 0 : metadata.contentPixelCount).append(",\n");
-        builder.append("  \"validation\": {\n");
-        builder.append("    \"min_width\": ").append(MIN_RENDER_WIDTH).append(",\n");
-        builder.append("    \"min_height\": ").append(MIN_RENDER_HEIGHT).append(",\n");
-        builder.append("    \"min_content_pixels\": ").append(MIN_RENDER_CONTENT_PIXELS).append("\n");
-        builder.append("  }");
-        if (error != null) {
-            builder.append(",\n  \"error\": ").append(jsonQuote(error)).append("\n");
-        } else {
-            builder.append("\n");
-        }
-        builder.append("}\n");
-        return builder.toString();
-    }
-
-    private static String jsonQuote(String value) {
-        StringBuilder builder = new StringBuilder("\"");
-        String safe = value == null ? "" : value;
-        for (int index = 0; index < safe.length(); index++) {
-            char ch = safe.charAt(index);
-            if (ch == '\\' || ch == '"') {
-                builder.append('\\').append(ch);
-            } else if (ch == '\n') {
-                builder.append("\\n");
-            } else if (ch == '\r') {
-                builder.append("\\r");
-            } else if (ch == '\t') {
-                builder.append("\\t");
-            } else {
-                builder.append(ch);
-            }
-        }
-        return builder.append('"').toString();
-    }
-
-    private static final class RenderMetadata {
-        final int width;
-        final int height;
-        final int contentPixelCount;
-        final String page;
-
-        RenderMetadata(int width, int height, int contentPixelCount, String page) {
-            this.width = width;
-            this.height = height;
-            this.contentPixelCount = contentPixelCount;
-            this.page = page;
-        }
-    }
-
-    // Fallback/debug-only platform renderer. Makepad is the intended Hostess GUI surface.
-    private static final class PlatformDebugTelemetryView extends View {
-        private static final int MAX_POINTS = 240;
-        private static final int BACKGROUND = Color.rgb(248, 248, 246);
-        private static final int SURFACE = Color.WHITE;
-        private static final int BORDER = Color.rgb(214, 211, 205);
-        private static final int GRID = Color.rgb(231, 229, 224);
-        private static final int TEXT = Color.rgb(29, 29, 27);
-        private static final int MUTED = Color.rgb(92, 88, 82);
-        private static final int HR = Color.rgb(185, 60, 20);
-        private static final int RR = Color.rgb(15, 118, 110);
-        private static final int ACC = Color.rgb(79, 76, 71);
-        private static final int ECG = Color.rgb(159, 18, 57);
-        private static final int HRV = Color.rgb(37, 99, 235);
-        private static final int MODULE = Color.rgb(126, 34, 206);
-
-        private final Paint fillPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint strokePaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Paint plotPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
-        private final Path path = new Path();
-        private final RectF rect = new RectF();
-        private final ArrayDeque<Float> heartRates = new ArrayDeque<>();
-        private final ArrayDeque<Float> rrIntervals = new ArrayDeque<>();
-        private final ArrayDeque<Float> accMagnitude = new ArrayDeque<>();
-        private final ArrayDeque<Float> ecgSamples = new ArrayDeque<>();
-        private final ArrayDeque<Float> hrvLnRmssd = new ArrayDeque<>();
-        private final ArrayDeque<Float> rmssdGain = new ArrayDeque<>();
-        private final ArrayDeque<Float> coherenceScore = new ArrayDeque<>();
-        private final ArrayDeque<Float> breathVolume = new ArrayDeque<>();
-        private final ArrayDeque<Float> breathingRate = new ArrayDeque<>();
-        private final ArrayDeque<Float> hrvbAmplitude = new ArrayDeque<>();
-
-        private String status = "ready";
-        private String mode = "idle";
-        private String page = "raw";
-        private String renderStatus = "";
-        private String graphStatus = "waiting";
-        private int selectedModuleCount = 0;
-        private int hrEventCount = 0;
-        private int rrCount = 0;
-        private int accFrameCount = 0;
-        private int accSampleCount = 0;
-        private int ecgFrameCount = 0;
-        private int ecgSampleCount = 0;
-        private int malformedFrameCount = 0;
-
-        PlatformDebugTelemetryView(Context context) {
-            super(context);
-            setBackgroundColor(BACKGROUND);
-            plotPaint.setStyle(Paint.Style.STROKE);
-            plotPaint.setStrokeCap(Paint.Cap.ROUND);
-            plotPaint.setStrokeJoin(Paint.Join.ROUND);
-            plotPaint.setStrokeWidth(dp(2));
-            strokePaint.setStyle(Paint.Style.STROKE);
-            strokePaint.setStrokeWidth(dp(1));
-        }
-
-        void resetForRun(String mode, List<String> modules) {
-            this.mode = mode;
-            selectedModuleCount = modules.size();
-            heartRates.clear();
-            rrIntervals.clear();
-            accMagnitude.clear();
-            ecgSamples.clear();
-            hrvLnRmssd.clear();
-            rmssdGain.clear();
-            coherenceScore.clear();
-            breathVolume.clear();
-            breathingRate.clear();
-            hrvbAmplitude.clear();
-            hrEventCount = 0;
-            rrCount = 0;
-            accFrameCount = 0;
-            accSampleCount = 0;
-            ecgFrameCount = 0;
-            ecgSampleCount = 0;
-            malformedFrameCount = 0;
-            renderStatus = "";
-            graphStatus = modules.isEmpty() ? "direct" : "waiting";
-            invalidate();
-        }
-
-        void setPage(String page) {
-            this.page = page == null ? "raw" : page;
-            invalidate();
-        }
-
-        void setRunState(String status, String mode, List<String> modules) {
-            this.status = status;
-            this.mode = mode;
-            selectedModuleCount = modules.size();
-            if (modules.isEmpty()) {
-                graphStatus = "direct";
-            }
-            invalidate();
-        }
-
-        void addGraphReport(JSONObject report) {
-            graphStatus = report.optString("status", "unknown");
-            JSONArray streams = report.optJSONArray("streams");
-            if (streams == null) {
-                invalidate();
-                return;
-            }
-            for (int index = 0; index < streams.length(); index++) {
-                JSONObject stream = streams.optJSONObject(index);
-                if (stream == null || !"pass".equals(stream.optString("status"))) {
-                    continue;
-                }
-                String streamId = stream.optString("stream_id");
-                if (STREAM_HRV_WINDOW.equals(streamId)) {
-                    append(hrvLnRmssd, (float) stream.optDouble("ln_rmssd", 0.0));
-                } else if (STREAM_RMSSD_GAIN.equals(streamId)) {
-                    append(rmssdGain, (float) stream.optDouble("ln_rmssd_gain", 0.0));
-                } else if (STREAM_COHERENCE.equals(streamId)) {
-                    append(coherenceScore, (float) stream.optDouble("normalized_score", 0.0));
-                } else if (STREAM_BREATH_VOLUME.equals(streamId)) {
-                    append(breathVolume, (float) stream.optDouble("breath_volume_01", 0.0));
-                } else if (STREAM_BREATH_DYNAMICS.equals(streamId)) {
-                    append(breathingRate, (float) stream.optDouble("breathing_rate_bpm", 0.0));
-                } else if (STREAM_HRVB_RESONANCE_AMPLITUDE.equals(streamId)) {
-                    append(hrvbAmplitude, (float) stream.optDouble("amplitude_bpm", 0.0));
-                }
-            }
-            invalidate();
-        }
-
-        void addHeartRate(int bpm, List<Float> rrIntervalsMs, int malformed) {
-            hrEventCount += 1;
-            append(heartRates, bpm);
-            for (Float rr : rrIntervalsMs) {
-                if (rr != null) {
-                    rrCount += 1;
-                    append(rrIntervals, rr);
-                }
-            }
-            malformedFrameCount = malformed;
-            invalidate();
-        }
-
-        void addAccFrame(PmdFrameMetric frame, int malformed) {
-            accFrameCount += 1;
-            accSampleCount += frame.sampleCount;
-            for (AccSample sample : frame.accSamples) {
-                double magnitude = Math.sqrt(
-                        (sample.xMg * sample.xMg)
-                                + (sample.yMg * sample.yMg)
-                                + (sample.zMg * sample.zMg));
-                append(accMagnitude, (float) magnitude);
-            }
-            malformedFrameCount = malformed;
-            invalidate();
-        }
-
-        void addEcgFrame(PmdFrameMetric frame, int malformed) {
-            ecgFrameCount += 1;
-            ecgSampleCount += frame.sampleCount;
-            for (Integer sample : frame.ecgSamplesMicrovolts) {
-                append(ecgSamples, sample.floatValue());
-            }
-            malformedFrameCount = malformed;
-            invalidate();
-        }
-
-        void setMalformedFrameCount(int count) {
-            malformedFrameCount = count;
-            invalidate();
-        }
-
-        void setRenderStatus(String status) {
-            renderStatus = status == null ? "" : status;
-            invalidate();
-        }
-
-        RenderMetadata writePng(File out) throws IOException {
-            int width = Math.max(getWidth(), 1);
-            int height = Math.max(getHeight(), 1);
-            if (width < MIN_RENDER_WIDTH || height < MIN_RENDER_HEIGHT) {
-                throw new IOException("telemetry render too small: " + width + "x" + height);
-            }
-            Bitmap bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888);
-            try {
-                Canvas canvas = new Canvas(bitmap);
-                draw(canvas);
-                int firstPixel = bitmap.getPixel(0, 0);
-                int contentPixels = 0;
-                for (int y = 0; y < height; y++) {
-                    for (int x = 0; x < width; x++) {
-                        if (bitmap.getPixel(x, y) != firstPixel) {
-                            contentPixels += 1;
-                        }
-                    }
-                }
-                if (contentPixels < MIN_RENDER_CONTENT_PIXELS) {
-                    throw new IOException("telemetry render appears blank: " + contentPixels + " content pixels");
-                }
-                try (FileOutputStream stream = new FileOutputStream(out)) {
-                    if (!bitmap.compress(Bitmap.CompressFormat.PNG, 100, stream)) {
-                        throw new IOException("could not encode telemetry render");
-                    }
-                }
-                return new RenderMetadata(width, height, contentPixels, page);
-            } finally {
-                bitmap.recycle();
-            }
-        }
-
-        @Override
-        protected void onDraw(Canvas canvas) {
-            super.onDraw(canvas);
-            canvas.drawColor(BACKGROUND);
-            float width = getWidth();
-            float height = getHeight();
-            float margin = dp(14);
-            float headerHeight = dp(82);
-            drawHeader(canvas, margin, margin, width - margin * 2, headerHeight);
-            float top = margin + headerHeight + dp(10);
-            float gap = dp(8);
-            if ("modules".equals(page)) {
-                float available = Math.max(dp(336), height - top - margin - gap * 5);
-                float rowHeight = Math.max(dp(46), available / 6.0f);
-                drawPlot(canvas, "HRV", latestText(hrvLnRmssd, "lnRMSSD"), hrvLnRmssd.size() + " reports", hrvLnRmssd, HRV, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "GAIN", latestText(rmssdGain, "ln"), rmssdGain.size() + " reports", rmssdGain, MODULE, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "COH", latestText(coherenceScore, "score"), coherenceScore.size() + " reports", coherenceScore, RR, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "VOL", latestText(breathVolume, "01"), breathVolume.size() + " reports", breathVolume, ACC, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "BR", latestText(breathingRate, "bpm"), breathingRate.size() + " reports", breathingRate, HR, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "HRVB", latestText(hrvbAmplitude, "bpm"), hrvbAmplitude.size() + " reports", hrvbAmplitude, ECG, margin, top, width - margin * 2, rowHeight);
-            } else {
-                float available = Math.max(dp(224), height - top - margin - gap * 3);
-                float rowHeight = Math.max(dp(56), available / 4.0f);
-                drawPlot(canvas, "HR", latestText(heartRates, "bpm"), hrEventCount + " events", heartRates, HR, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "RR", latestText(rrIntervals, "ms"), rrCount + " intervals", rrIntervals, RR, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "ACC", latestText(accMagnitude, "mg"), accFrameCount + " frames / " + accSampleCount + " samples", accMagnitude, ACC, margin, top, width - margin * 2, rowHeight);
-                top += rowHeight + gap;
-                drawPlot(canvas, "ECG", latestText(ecgSamples, "uV"), ecgFrameCount + " frames / " + ecgSampleCount + " samples", ecgSamples, ECG, margin, top, width - margin * 2, rowHeight);
-            }
-        }
-
-        private void drawHeader(Canvas canvas, float left, float top, float width, float height) {
-            drawPanel(canvas, left, top, width, height);
-            textPaint.setColor(TEXT);
-            textPaint.setTextSize(sp(20));
-            textPaint.setFakeBoldText(true);
-            canvas.drawText("Rusty Hostess T", left + dp(14), top + dp(28), textPaint);
-            textPaint.setFakeBoldText(false);
-            textPaint.setTextSize(sp(14));
-            textPaint.setColor(MUTED);
-            canvas.drawText(status + " / " + mode, left + dp(14), top + dp(52), textPaint);
-            String selection = selectedModuleCount > 0 ? selectedModuleCount + " modules" : "direct stream";
-            String detail = page + " / " + selection + " / " + graphStatus + " / bad " + malformedFrameCount;
-            if (!renderStatus.isEmpty()) {
-                detail += " / " + renderStatus;
-            }
-            canvas.drawText(detail, left + dp(14), top + dp(72), textPaint);
-        }
-
-        private void drawPlot(
-                Canvas canvas,
-                String label,
-                String value,
-                String count,
-                ArrayDeque<Float> series,
-                int color,
-                float left,
-                float top,
-                float width,
-                float height) {
-            drawPanel(canvas, left, top, width, height);
-            float labelLeft = left + dp(12);
-            textPaint.setTextSize(sp(14));
-            textPaint.setFakeBoldText(true);
-            textPaint.setColor(TEXT);
-            canvas.drawText(label, labelLeft, top + dp(22), textPaint);
-            textPaint.setFakeBoldText(false);
-            textPaint.setColor(MUTED);
-            canvas.drawText(value, labelLeft, top + dp(42), textPaint);
-            float plotLeft = left + dp(92);
-            float plotTop = top + dp(14);
-            float plotWidth = Math.max(dp(80), width - dp(106));
-            float plotHeight = Math.max(dp(40), height - dp(26));
-            canvas.drawText(count, plotLeft, top + height - dp(12), textPaint);
-            strokePaint.setColor(GRID);
-            canvas.drawLine(plotLeft, plotTop + plotHeight / 2.0f, plotLeft + plotWidth, plotTop + plotHeight / 2.0f, strokePaint);
-            drawSeries(canvas, series, color, plotLeft, plotTop, plotWidth, plotHeight);
-        }
-
-        private void drawSeries(Canvas canvas, ArrayDeque<Float> series, int color, float left, float top, float width, float height) {
-            if (series.isEmpty()) {
-                textPaint.setTextSize(sp(13));
-                textPaint.setColor(MUTED);
-                canvas.drawText("waiting", left + dp(6), top + height / 2.0f, textPaint);
-                return;
-            }
-            if (series.size() == 1) {
-                plotPaint.setColor(color);
-                canvas.drawCircle(left + width / 2.0f, top + height / 2.0f, dp(4), plotPaint);
-                return;
-            }
-            float min = Float.MAX_VALUE;
-            float max = -Float.MAX_VALUE;
-            for (float value : series) {
-                min = Math.min(min, value);
-                max = Math.max(max, value);
-            }
-            if (Math.abs(max - min) < 0.0001f) {
-                max += 1.0f;
-                min -= 1.0f;
-            }
-            path.reset();
-            int index = 0;
-            int size = series.size();
-            for (float value : series) {
-                float x = left + (size == 1 ? 0.0f : (index * width / (size - 1)));
-                float y = top + height - ((value - min) / (max - min) * height);
-                if (index == 0) {
-                    path.moveTo(x, y);
-                } else {
-                    path.lineTo(x, y);
-                }
-                index += 1;
-            }
-            plotPaint.setColor(color);
-            canvas.drawPath(path, plotPaint);
-        }
-
-        private void drawPanel(Canvas canvas, float left, float top, float width, float height) {
-            rect.set(left, top, left + width, top + height);
-            fillPaint.setStyle(Paint.Style.FILL);
-            fillPaint.setColor(SURFACE);
-            canvas.drawRoundRect(rect, dp(8), dp(8), fillPaint);
-            strokePaint.setColor(BORDER);
-            canvas.drawRoundRect(rect, dp(8), dp(8), strokePaint);
-        }
-
-        private void append(ArrayDeque<Float> buffer, float value) {
-            buffer.addLast(value);
-            while (buffer.size() > MAX_POINTS) {
-                buffer.removeFirst();
-            }
-        }
-
-        private String latestText(ArrayDeque<Float> series, String unit) {
-            if (series.isEmpty()) {
-                return "-- " + unit;
-            }
-            return String.format(Locale.US, "%.1f %s", series.peekLast(), unit);
-        }
-
-        private float dp(float value) {
-            return value * getResources().getDisplayMetrics().density;
-        }
-
-        private float sp(float value) {
-            return value * getResources().getDisplayMetrics().scaledDensity;
-        }
-    }
-
     private static void writeText(File path, String text) throws IOException {
         try (FileOutputStream stream = new FileOutputStream(path)) {
             stream.write(text.getBytes(StandardCharsets.UTF_8));
@@ -1831,593 +1392,16 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private void copyAssetTree(String assetPath, File target) throws IOException {
-        String[] children = listAssets(assetPath);
-        if (children != null && children.length > 0) {
-            Arrays.sort(children);
-            if (!target.exists() && !target.mkdirs()) {
-                throw new IOException("could not create folder: " + target.getAbsolutePath());
-            }
-            for (String child : children) {
-                copyAssetTree(assetPath + "/" + child, new File(target, child));
-            }
-            return;
-        }
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("could not create folder: " + parent.getAbsolutePath());
-        }
-        try (InputStream input = openAsset(assetPath); FileOutputStream output = new FileOutputStream(target)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                output.write(buffer, 0, read);
-            }
-        }
+    private HostessAssetStore assetStore() {
+        return new HostessAssetStore(this);
     }
 
-    private void copyPmbPackageAssets(File targetRoot) throws IOException {
-        for (String relative : pmbPackageAssetFiles()) {
-            copyAssetFile(PMB_ASSET_ROOT + "/" + relative, new File(targetRoot, relative.replace('/', File.separatorChar)));
-        }
-    }
-
-    private List<String> pmbPackageAssetFiles() throws IOException {
-        List<String> files = new ArrayList<>();
-        String manifest = readAssetText(PMB_ASSET_ROOT + "/package-files.txt");
-        for (String rawFile : manifest.split("\\r?\\n")) {
-            String relative = rawFile.trim();
-            if (!relative.isEmpty() && !relative.contains("..")) {
-                files.add(relative);
-            }
-        }
-        return files;
-    }
-
-    private void copyAssetFile(String assetPath, File target) throws IOException {
-        File parent = target.getParentFile();
-        if (parent != null && !parent.exists() && !parent.mkdirs()) {
-            throw new IOException("could not create folder: " + parent.getAbsolutePath());
-        }
-        try (InputStream input = openAsset(assetPath); FileOutputStream output = new FileOutputStream(target)) {
-            byte[] buffer = new byte[8192];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                output.write(buffer, 0, read);
-            }
-        }
-    }
-
-    private String readAssetText(String assetPath) throws IOException {
-        try (InputStream input = openAsset(assetPath)) {
-            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
-            byte[] bytes = new byte[8192];
-            int read;
-            while ((read = input.read(bytes)) >= 0) {
-                buffer.write(bytes, 0, read);
-            }
-            return buffer.toString(StandardCharsets.UTF_8.name());
-        }
-    }
-
-    private JSONObject pmbReplayEvidence(
-            String hostProfile,
-            Instant startedAt,
-            Instant endedAt,
-            String status,
-            JSONObject coreReport,
-            List<String> errors,
-            String failureMessage) throws JSONException {
-        boolean quest = "headset".equals(hostProfile);
-        boolean coreExecuted = failureMessage == null;
-        JSONObject evidence = new JSONObject();
-        evidence.put("$schema", "rusty.hostess.projected_motion_breath.android_replay_execution_evidence.v1");
-        evidence.put("status", errors.isEmpty() && "pass".equals(status) ? "pass" : "fail");
-        evidence.put("target", quest ? "quest" : "phone");
-        evidence.put("host_profile", hostProfile);
-        evidence.put("started_at_utc", startedAt.toString());
-        evidence.put("ended_at_utc", endedAt.toString());
-        evidence.put("duration_ms", Math.max(0L, endedAt.toEpochMilli() - startedAt.toEpochMilli()));
-        evidence.put("software", new JSONObject()
-                .put("origin", SOFTWARE_ORIGIN)
-                .put("host_app", quest ? "app.rusty_hostess_t.quest" : "app.rusty_hostess_t.android")
-                .put("host_app_version", "0.1.0"));
-        evidence.put("package", pmbPackageSnapshot());
-        evidence.put("execution", new JSONObject()
-                .put("mode", "projected_motion_breath_android_synthetic_replay")
-                .put("runtime_path", PMBRuntime.RUNTIME_PATH)
-                .put("core_report_artifact", "latest.core-validation-report.json")
-                .put("processor_core_executed", coreExecuted)
-                .put("execution_performed", true)
-                .put("runtime_execution_performed", coreExecuted)
-                .put("desktop_execution_performed", false)
-                .put("platform_execution_performed", true)
-                .put("android_execution_performed", true)
-                .put("quest_execution_performed", quest)
-                .put("device_required", true)
-                .put("apk_build_performed", false)
-                .put("openxr_runtime_used", false)
-                .put("live_sensor_used", false)
-                .put("controller_input_used", false)
-                .put("synthetic_replay", true)
-                .put("app_private_evidence", true));
-        evidence.put("core_report_summary", pmbCoreReportSummary(coreReport));
-        evidence.put("commands", new JSONArray()
-                .put(new JSONObject()
-                        .put("command", "run_projected_motion_breath_core_validate_goldens_android")
-                        .put("status", "pass".equals(coreReport.optString("status")) ? "acknowledged" : "rejected")
-                        .put("runtime_path", PMBRuntime.RUNTIME_PATH)));
-        evidence.put("scorecard", pmbReplayScorecard(evidence, coreReport, errors, failureMessage));
-        return evidence;
-    }
-
-    private JSONObject pmbControllerPreflightEvidence(
-            String hostProfile,
-            Instant startedAt,
-            Instant endedAt,
-            String status,
-            JSONObject preflightReport,
-            List<String> errors,
-            String failureMessage) throws JSONException {
-        boolean quest = "headset".equals(hostProfile);
-        boolean coreExecuted = failureMessage == null && preflightReport.optBoolean("processor_core_executed", false);
-        boolean routeReady = "pass".equals(preflightReport.optString("status"))
-                && preflightReport.optBoolean("controller_provider_route_ready", false);
-        boolean controllerShapeUsed = preflightReport.optBoolean("headset_controller_shape_used", false);
-        boolean physicalControllerInputUsed = preflightReport.optBoolean("physical_controller_input_used", false);
-        boolean controllerInputUsed = preflightReport.optBoolean("controller_input_used", false);
-        boolean manualTrialRequired = preflightReport.optBoolean("manual_controller_trial_required", true);
-        JSONObject evidence = new JSONObject();
-        evidence.put("$schema", "rusty.hostess.projected_motion_breath.android_controller_preflight_evidence.v1");
-        evidence.put("status", errors.isEmpty() && "pass".equals(status) && routeReady ? "pass" : "fail");
-        evidence.put("target", quest ? "quest" : "phone");
-        evidence.put("host_profile", hostProfile);
-        evidence.put("started_at_utc", startedAt.toString());
-        evidence.put("ended_at_utc", endedAt.toString());
-        evidence.put("duration_ms", Math.max(0L, endedAt.toEpochMilli() - startedAt.toEpochMilli()));
-        evidence.put("software", new JSONObject()
-                .put("origin", SOFTWARE_ORIGIN)
-                .put("host_app", quest ? "app.rusty_hostess_t.quest" : "app.rusty_hostess_t.android")
-                .put("host_app_version", "0.1.0"));
-        evidence.put("package", pmbPackageSnapshot());
-        evidence.put("execution", new JSONObject()
-                .put("mode", "projected_motion_breath_android_controller_preflight")
-                .put("runtime_path", PMBRuntime.RUNTIME_PATH)
-                .put("controller_preflight_report_artifact", "latest.controller-preflight-report.json")
-                .put("pmb_controller_path_preflight_passed", routeReady)
-                .put("processor_core_executed", coreExecuted)
-                .put("controller_provider_route_ready", routeReady)
-                .put("provider_boundary_exercised", preflightReport.optBoolean("provider_boundary_exercised", false))
-                .put("controller_shape_used", controllerShapeUsed)
-                .put("quest_controller_shape_used", quest && controllerShapeUsed)
-                .put("execution_performed", true)
-                .put("runtime_execution_performed", preflightReport.optBoolean("runtime_execution_performed", false) && failureMessage == null)
-                .put("desktop_execution_performed", false)
-                .put("platform_execution_performed", true)
-                .put("android_execution_performed", true)
-                .put("quest_execution_performed", quest)
-                .put("device_required", true)
-                .put("apk_build_performed", false)
-                .put("openxr_runtime_used", false)
-                .put("live_sensor_used", false)
-                .put("physical_controller_input_used", physicalControllerInputUsed)
-                .put("controller_input_used", controllerInputUsed)
-                .put("human_controller_trial_performed", false)
-                .put("manual_controller_trial_required", manualTrialRequired)
-                .put("synthetic_replay", true)
-                .put("preflight_fixture_packaged", true)
-                .put("app_private_evidence", true));
-        evidence.put("controller_preflight_report_summary", pmbControllerPreflightReportSummary(preflightReport));
-        evidence.put("commands", new JSONArray()
-                .put(new JSONObject()
-                        .put("command", "run_projected_motion_breath_controller_preflight_android")
-                        .put("status", routeReady ? "acknowledged" : "rejected")
-                        .put("runtime_path", PMBRuntime.RUNTIME_PATH)));
-        evidence.put("scorecard", pmbControllerPreflightScorecard(evidence, preflightReport, errors, failureMessage));
-        return evidence;
-    }
-
-    private JSONObject pmbPackageSnapshot() throws JSONException {
-        return new JSONObject()
-                .put("package_id", PMB_PACKAGE_ID)
-                .put("package_manifest_sha256", assetSha256(PMB_ASSET_ROOT + "/manifests/package.manifold.json"))
-                .put("stream_manifest_sha256", pmbManifestHashes("streams"))
-                .put("module_manifest_sha256", pmbManifestHashes("modules"))
-                .put("command_manifest_sha256", pmbManifestHashes("commands"));
-    }
-
-    private JSONObject pmbManifestHashes(String manifestFolder) throws JSONException {
-        JSONObject hashes = new JSONObject();
-        String folder = PMB_ASSET_ROOT + "/manifests/" + manifestFolder;
-        try {
-            String prefix = "manifests/" + manifestFolder + "/";
-            for (String relative : pmbPackageAssetFiles()) {
-                if (relative.startsWith(prefix) && relative.endsWith(".json")) {
-                    String file = relative.substring(prefix.length());
-                    hashes.put(file.substring(0, file.length() - 5), assetSha256(PMB_ASSET_ROOT + "/" + relative));
-                }
-            }
-            if (hashes.length() > 0) {
-                return hashes;
-            }
-            String[] files = listAssets(folder);
-            if (files == null) {
-                return hashes;
-            }
-            Arrays.sort(files);
-            for (String file : files) {
-                if (file.endsWith(".json")) {
-                    hashes.put(file.substring(0, file.length() - 5), assetSha256(folder + "/" + file));
-                }
-            }
-        } catch (IOException ignored) {
-        }
-        return hashes;
-    }
-
-    private String[] listAssets(String path) throws IOException {
-        String[] children = getAssets().list(path);
-        if (children != null && children.length > 0) {
-            return children;
-        }
-        String fallback = path.replace('/', '\\');
-        if (!fallback.equals(path)) {
-            String[] fallbackChildren = getAssets().list(fallback);
-            if (fallbackChildren != null && fallbackChildren.length > 0) {
-                return fallbackChildren;
-            }
-        }
-        return children;
-    }
-
-    private JSONObject pmbReplayScorecard(
-            JSONObject evidence,
-            JSONObject coreReport,
-            List<String> errors,
-            String failureMessage) throws JSONException {
-        JSONObject execution = evidence.optJSONObject("execution");
-        JSONObject summary = evidence.optJSONObject("core_report_summary");
-        JSONArray checks = new JSONArray();
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_android_core_loaded",
-                PMBRuntime.isAvailable(),
-                PMBRuntime.isAvailable() ? "PMB JNI runtime loaded" : PMBRuntime.loadError()));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_android_core_report_status",
-                "pass".equals(coreReport.optString("status")),
-                "projected-motion-breath core report status was " + coreReport.optString("status", "missing")));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_android_core_goldens_executed",
-                summary.optInt("checked_cases", 0) >= 2 && summary.optInt("checked_damaged_cases", 0) >= 2,
-                "projected-motion breath pose/vector golden and damaged cases executed on Android"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_android_adapter_normalization_executed",
-                summary.optInt("checked_adapter_normalization_cases", 0) >= 3
-                        && summary.optInt("checked_damaged_adapter_normalization_cases", 0) >= 2,
-                "projected-motion breath adapter-normalization valid and damaged cases executed on Android"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_android_synthetic_only",
-                execution != null
-                        && execution.optBoolean("synthetic_replay")
-                        && !execution.optBoolean("openxr_runtime_used")
-                        && !execution.optBoolean("live_sensor_used")
-                        && !execution.optBoolean("controller_input_used"),
-                "PMB Android replay used synthetic packaged fixtures, not OpenXR, live sensors, or controller input"));
-        JSONArray issueObjects = new JSONArray();
-        for (String error : errors) {
-            issueObjects.put(new JSONObject()
-                    .put("code", "hostess.issue.pmb_android_replay_failed")
-                    .put("severity", "error")
-                    .put("message", error));
-        }
-        if (failureMessage != null) {
-            issueObjects.put(new JSONObject()
-                    .put("code", "hostess.issue.pmb_android_runtime_exception")
-                    .put("severity", "error")
-                    .put("message", failureMessage));
-        }
-        String scoreStatus = "pass";
-        for (int index = 0; index < checks.length(); index++) {
-            if (!"pass".equals(checks.getJSONObject(index).optString("status"))) {
-                scoreStatus = "fail";
-            }
-        }
-        return new JSONObject()
-                .put("$schema", "rusty.manifold.validation.scorecard.v1")
-                .put("scorecard_id", "scorecard.hostess.projected_motion_breath.android_replay")
-                .put("target_id", "hostess.projected_motion_breath.android_replay")
-                .put("target_revision", 1)
-                .put("status", scoreStatus)
-                .put("checks", checks)
-                .put("issues", issueObjects);
-    }
-
-    private JSONObject pmbControllerPreflightScorecard(
-            JSONObject evidence,
-            JSONObject preflightReport,
-            List<String> errors,
-            String failureMessage) throws JSONException {
-        JSONObject execution = evidence.optJSONObject("execution");
-        JSONObject summary = evidence.optJSONObject("controller_preflight_report_summary");
-        JSONArray checks = new JSONArray();
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_controller_preflight_core_loaded",
-                PMBRuntime.isAvailable(),
-                PMBRuntime.isAvailable() ? "PMB JNI runtime loaded" : PMBRuntime.loadError(),
-                "validation.pmb_controller_preflight_failed"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_controller_preflight_report_status",
-                "pass".equals(preflightReport.optString("status")),
-                "projected-motion-breath controller preflight report status was " + preflightReport.optString("status", "missing"),
-                "validation.pmb_controller_preflight_failed"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_controller_provider_boundary",
-                summary != null
-                        && summary.optBoolean("provider_boundary_exercised")
-                        && summary.optBoolean("controller_provider_route_ready")
-                        && "stream.motion.object_pose".equals(summary.optString("output_stream_id")),
-                "controller-shaped provider emitted stream.motion.object_pose into PMB",
-                "validation.pmb_controller_preflight_failed"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_controller_preflight_on_device_flags",
-                execution != null
-                        && execution.optBoolean("android_execution_performed")
-                        && execution.optBoolean("platform_execution_performed")
-                        && execution.optBoolean("processor_core_executed"),
-                "PMB controller preflight executed through the Android app and PMB core",
-                "validation.pmb_controller_preflight_failed"));
-        checks.put(pmbScorecardCheck(
-                "validation.check.pmb_controller_preflight_non_human_gate",
-                execution != null
-                        && execution.optBoolean("synthetic_replay")
-                        && execution.optBoolean("preflight_fixture_packaged")
-                        && !execution.optBoolean("openxr_runtime_used")
-                        && !execution.optBoolean("live_sensor_used")
-                        && !execution.optBoolean("physical_controller_input_used")
-                        && !execution.optBoolean("controller_input_used")
-                        && !execution.optBoolean("human_controller_trial_performed")
-                        && execution.optBoolean("manual_controller_trial_required"),
-                "PMB controller preflight used packaged samples and left the human controller trial pending",
-                "validation.pmb_controller_preflight_failed"));
-        JSONArray issueObjects = new JSONArray();
-        for (String error : errors) {
-            issueObjects.put(new JSONObject()
-                    .put("code", "hostess.issue.pmb_controller_preflight_failed")
-                    .put("severity", "error")
-                    .put("message", error));
-        }
-        if (failureMessage != null) {
-            issueObjects.put(new JSONObject()
-                    .put("code", "hostess.issue.pmb_controller_preflight_runtime_exception")
-                    .put("severity", "error")
-                    .put("message", failureMessage));
-        }
-        String scoreStatus = "pass";
-        for (int index = 0; index < checks.length(); index++) {
-            if (!"pass".equals(checks.getJSONObject(index).optString("status"))) {
-                scoreStatus = "fail";
-            }
-        }
-        return new JSONObject()
-                .put("$schema", "rusty.manifold.validation.scorecard.v1")
-                .put("scorecard_id", "scorecard.hostess.projected_motion_breath.controller_preflight")
-                .put("target_id", "hostess.projected_motion_breath.controller_preflight")
-                .put("target_revision", 1)
-                .put("status", scoreStatus)
-                .put("checks", checks)
-                .put("issues", issueObjects);
-    }
-
-    private static JSONObject pmbCoreReportSummary(JSONObject coreReport) throws JSONException {
-        JSONObject summary = new JSONObject();
-        summary.put("schema", coreReport.has("schema") ? coreReport.optString("schema") : JSONObject.NULL);
-        summary.put("status", coreReport.optString("status", "missing"));
-        for (String field : new String[] {
-                "checked_profiles",
-                "checked_command_payloads",
-                "checked_damaged_command_payloads",
-                "checked_source_bindings",
-                "checked_damaged_source_bindings",
-                "checked_adapter_normalization_cases",
-                "checked_damaged_adapter_normalization_cases",
-                "checked_cases",
-                "checked_damaged_cases" }) {
-            summary.put(field, coreReport.optInt(field, 0));
-        }
-        return summary;
-    }
-
-    private static JSONObject pmbControllerPreflightReportSummary(JSONObject report) throws JSONException {
-        JSONObject summary = new JSONObject();
-        summary.put("schema", report.has("schema") ? report.optString("schema") : JSONObject.NULL);
-        summary.put("status", report.optString("status", "missing"));
-        summary.put("preflight_id", report.optString("preflight_id", ""));
-        summary.put("provider_id", report.optString("provider_id", ""));
-        summary.put("provider_kind", report.optString("provider_kind", ""));
-        summary.put("binding_id", report.optString("binding_id", ""));
-        summary.put("selected_adapter_id", report.optString("selected_adapter_id", ""));
-        summary.put("selected_source_kind", report.optString("selected_source_kind", ""));
-        summary.put("source_payload_kind", report.optString("source_payload_kind", ""));
-        summary.put("input_stream_id", report.optString("input_stream_id", ""));
-        summary.put("output_stream_id", report.optString("output_stream_id", ""));
-        summary.put("source_id", report.optString("source_id", ""));
-        summary.put("frame_id", report.optString("frame_id", ""));
-        summary.put("sample_count", report.optInt("sample_count", 0));
-        summary.put("normalized_sample_count", report.optInt("normalized_sample_count", 0));
-        summary.put("estimate_count", report.optInt("estimate_count", 0));
-        summary.put("processor_core_executed", report.optBoolean("processor_core_executed", false));
-        summary.put("runtime_execution_performed", report.optBoolean("runtime_execution_performed", false));
-        summary.put("provider_boundary_exercised", report.optBoolean("provider_boundary_exercised", false));
-        summary.put("controller_provider_route_ready", report.optBoolean("controller_provider_route_ready", false));
-        summary.put("headset_controller_shape_used", report.optBoolean("headset_controller_shape_used", false));
-        summary.put("physical_controller_input_used", report.optBoolean("physical_controller_input_used", false));
-        summary.put("controller_input_used", report.optBoolean("controller_input_used", false));
-        summary.put("manual_controller_trial_required", report.optBoolean("manual_controller_trial_required", true));
-        summary.put("estimates", report.optJSONArray("estimates") == null ? new JSONArray() : report.optJSONArray("estimates"));
-        return summary;
-    }
-
-    private static List<String> pmbCoreErrors(JSONObject coreReport) {
-        List<String> errors = new ArrayList<>();
-        JSONArray issues = coreReport.optJSONArray("issues");
-        if (issues == null) {
-            return errors;
-        }
-        for (int index = 0; index < issues.length(); index++) {
-            Object item = issues.opt(index);
-            if (item instanceof JSONObject) {
-                JSONObject issue = (JSONObject) item;
-                errors.add(issue.optString("message", issue.toString()));
-            } else if (item != null) {
-                errors.add(item.toString());
-            }
-        }
-        return errors;
-    }
-
-    private static JSONObject pmbFailureCoreReport(String packageRoot, String message) throws JSONException {
-        return new JSONObject()
-                .put("schema", "rusty.manifold.projected_motion_breath.core_validation_report.v1")
-                .put("package_root", packageRoot)
-                .put("status", "fail")
-                .put("checked_profiles", 0)
-                .put("checked_command_payloads", 0)
-                .put("checked_damaged_command_payloads", 0)
-                .put("checked_source_bindings", 0)
-                .put("checked_damaged_source_bindings", 0)
-                .put("checked_adapter_normalization_cases", 0)
-                .put("checked_damaged_adapter_normalization_cases", 0)
-                .put("checked_cases", 0)
-                .put("checked_damaged_cases", 0)
-                .put("issues", new JSONArray().put(message == null ? "issue.android_replay_failed" : message));
-    }
-
-    private static JSONObject pmbFailureControllerPreflightReport(String packageRoot, String message) throws JSONException {
-        return new JSONObject()
-                .put("schema", "rusty.manifold.projected_motion_breath.controller_preflight_report.v1")
-                .put("package_root", packageRoot)
-                .put("status", "fail")
-                .put("preflight_id", "")
-                .put("provider_id", "")
-                .put("provider_kind", "")
-                .put("binding_id", "")
-                .put("selected_adapter_id", "")
-                .put("selected_source_kind", "")
-                .put("source_payload_kind", "")
-                .put("input_stream_id", "")
-                .put("output_stream_id", "")
-                .put("source_id", "")
-                .put("frame_id", "")
-                .put("sample_count", 0)
-                .put("normalized_sample_count", 0)
-                .put("estimate_count", 0)
-                .put("processor_core_executed", false)
-                .put("runtime_execution_performed", false)
-                .put("provider_boundary_exercised", false)
-                .put("controller_provider_route_ready", false)
-                .put("headset_controller_shape_used", false)
-                .put("physical_controller_input_used", false)
-                .put("controller_input_used", false)
-                .put("manual_controller_trial_required", true)
-                .put("estimates", new JSONArray())
-                .put("issues", new JSONArray().put(message == null ? "issue.android_controller_preflight_failed" : message));
-    }
-
-    private static JSONObject pmbFailureLiveRouteReport(String packageRoot, String message) throws JSONException {
-        return new JSONObject()
-                .put("schema", "rusty.manifold.projected_motion_breath.live_route_report.v1")
-                .put("package_root", packageRoot)
-                .put("status", "fail")
-                .put("route_id", "")
-                .put("input_stream_ids", new JSONArray())
-                .put("normalized_stream_ids", new JSONArray())
-                .put("output_stream_ids", new JSONArray())
-                .put("processor_core_executed", false)
-                .put("runtime_execution_performed", false)
-                .put("external_transport_used", false)
-                .put("live_sensor_used", false)
-                .put("headset_execution_performed", false)
-                .put("plan_only", true)
-                .put("source_routes", new JSONArray())
-                .put("breath_samples", new JSONArray())
-                .put("feedback_samples", new JSONArray())
-                .put("receiver_subscription", new JSONObject()
-                        .put("command", "")
-                        .put("stream", "")
-                        .put("receiver_id", ""))
-                .put("receiver_receipts", new JSONArray())
-                .put("issues", new JSONArray().put(message == null ? "issue.android_simulated_live_failed" : message));
-    }
-
-    private static JSONObject pmbFailureBrokerPublishReport(String brokerHost, int brokerPort, String message) throws JSONException {
-        return new JSONObject()
-                .put("schema", "rusty.hostess.projected_motion_breath.quest_broker_publish_report.v1")
-                .put("status", "fail")
-                .put("broker_host", brokerHost)
-                .put("broker_port", brokerPort)
-                .put("broker_connected", false)
-                .put("broker_transport_used", false)
-                .put("publish_limit", 0)
-                .put("receipt_listen_ms", 0)
-                .put("selected_source_preference", "auto")
-                .put("selected_source_effective", "unknown")
-                .put("breath_requested_count", 0)
-                .put("feedback_requested_count", 0)
-                .put("breath_published_count", 0)
-                .put("selected_breath_published_count", 0)
-                .put("selection_state_published_count", 0)
-                .put("feedback_published_count", 0)
-                .put("feedback_receipt_count", 0)
-                .put("receipt_stream_id", PmbBrokerBridge.STREAM_BREATH_FEEDBACK_RECEIPT)
-                .put("breath_results", new JSONArray())
-                .put("feedback_results", new JSONArray())
-                .put("command_replies", new JSONArray())
-                .put("receipt_events", new JSONArray())
-                .put("errors", new JSONArray().put(message == null ? "issue.android_broker_publish_failed" : message));
-    }
-
-    private static JSONObject pmbScorecardCheck(String checkId, boolean passed, String evidence) throws JSONException {
-        return pmbScorecardCheck(checkId, passed, evidence, "validation.pmb_android_replay_failed");
-    }
-
-    private static JSONObject pmbScorecardCheck(String checkId, boolean passed, String evidence, String issueCode) throws JSONException {
-        return new JSONObject()
-                .put("check_id", checkId)
-                .put("status", passed ? "pass" : "fail")
-                .put("evidence", evidence)
-                .put("issue_codes", passed ? new JSONArray() : new JSONArray().put(issueCode));
+    private PmbAndroidEvidence pmbEvidence() {
+        return new PmbAndroidEvidence(assetStore());
     }
 
     private String assetSha256(String path) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            try (InputStream stream = openAsset(path)) {
-                byte[] buffer = new byte[8192];
-                int read;
-                while ((read = stream.read(buffer)) >= 0) {
-                    digest.update(buffer, 0, read);
-                }
-            }
-            return hex(digest.digest());
-        } catch (IOException | NoSuchAlgorithmException ex) {
-            return "unavailable";
-        }
-    }
-
-    private InputStream openAsset(String path) throws IOException {
-        try {
-            return getAssets().open(path);
-        } catch (IOException first) {
-            return getAssets().open(path.replace('/', '\\'));
-        }
-    }
-
-    private static String hex(byte[] bytes) {
-        StringBuilder builder = new StringBuilder(bytes.length * 2);
-        for (byte value : bytes) {
-            builder.append(String.format(Locale.US, "%02x", value & 0xff));
-        }
-        return builder.toString();
+        return assetStore().sha256(path);
     }
 
     private static String normalizeMode(String mode) {
@@ -2539,7 +1523,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final class PmdFrameMetric {
+    static final class PmdFrameMetric {
         final long hostTimeNs;
         final long sensorTimestampNs;
         final int sampleCount;
@@ -2563,7 +1547,7 @@ public final class MainActivity extends Activity {
         }
     }
 
-    private static final class AccSample {
+    static final class AccSample {
         final int xMg;
         final int yMg;
         final int zMg;
@@ -4086,30 +3070,6 @@ public final class MainActivity extends Activity {
                     assetSha256("manifold/packages/polar-h10/manifests/modules/hrvb-resonance-amplitude.json"));
         }
 
-        private String assetSha256(String path) {
-            try {
-                MessageDigest digest = MessageDigest.getInstance("SHA-256");
-                try (InputStream stream = openAsset(path)) {
-                    byte[] buffer = new byte[8192];
-                    int read;
-                    while ((read = stream.read(buffer)) >= 0) {
-                        digest.update(buffer, 0, read);
-                    }
-                }
-                return hex(digest.digest());
-            } catch (IOException | NoSuchAlgorithmException ex) {
-                return "unavailable";
-            }
-        }
-
-        private InputStream openAsset(String path) throws IOException {
-            try {
-                return MainActivity.this.getAssets().open(path);
-            } catch (IOException first) {
-                return MainActivity.this.getAssets().open(path.replace('/', '\\'));
-            }
-        }
-
         private String streamId(String mode) {
             if ("ecg".equals(mode)) {
                 return STREAM_ECG;
@@ -4280,13 +3240,6 @@ public final class MainActivity extends Activity {
             return builder.append('"').toString();
         }
 
-        private String hex(byte[] bytes) {
-            StringBuilder builder = new StringBuilder(bytes.length * 2);
-            for (byte value : bytes) {
-                builder.append(String.format(Locale.US, "%02x", value & 0xff));
-            }
-            return builder.toString();
-        }
     }
 
     private static final class PackageHashes {
