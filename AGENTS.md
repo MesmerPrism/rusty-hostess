@@ -66,6 +66,12 @@ generic code or sanitized sample fixtures.
   visual projection state, temporal policy, and metrics, while
   `texture_lane.rs` owns camera texture-lane DTOs, validation, and
   current-or-legacy schema acceptance.
+- Keep `apps\hostess-t-makepad\src\source_metadata.rs` as the Makepad
+  source/import marker facade for runtime target-footprint, source-sampling,
+  and hardware-buffer import marker helpers. The `source_metadata\` child
+  modules own focused metadata families; `broker_projection.rs` owns broker-H264
+  stream-header projection metadata parsing, content-geometry marker records,
+  and broker projection plan decisions.
 
 ## Quest Makepad APK Route
 

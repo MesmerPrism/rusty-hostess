@@ -194,6 +194,13 @@ remote-camera runtime key parsing, texture-path selection, source-sampling
 selection, stream-port defaults, target-screen fallback rectangles, and
 `ExternalH264VideoSource` construction.
 
+`apps/hostess-t-makepad/src/source_metadata.rs` remains the Makepad
+source/import marker facade for runtime target-footprint, source-sampling, and
+hardware-buffer import marker helpers. Its `source_metadata/` child modules own
+focused metadata families; `broker_projection.rs` owns broker-H264 stream-header
+projection metadata parsing, content-geometry marker records, and broker
+projection plan decisions.
+
 `apps/hostess-t-makepad/src/camera_projection_flow.rs` owns the paired camera
 import/projection runtime flow: broker stream-header metadata handling, video
 texture update bookkeeping, pending stereo-frame adoption, cadence sample

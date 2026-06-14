@@ -335,7 +335,11 @@ compact joint-frame recordings; `makepad_diagnostics.rs` owns marker cadence,
 token formatting, raw camera event markers, target-footprint augmentation, and
 camera YUV texture handle structs; `broker_h264_runtime.rs` owns broker-H264
 and remote-camera runtime key parsing plus `ExternalH264VideoSource`
-construction; `camera_projection_flow.rs` owns paired camera import,
+construction; `source_metadata.rs` is the Makepad source/import marker facade
+for runtime target-footprint, source-sampling, and hardware-buffer import
+marker helpers, while `source_metadata/broker_projection.rs` owns broker-H264
+stream-header projection metadata parsing, content-geometry marker records, and
+broker projection plan decisions; `camera_projection_flow.rs` owns paired camera import,
 frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
 projection-panel binding, and projection-complete marker flow;
 `hostess_camera_model.rs` is the public facade for app-neutral camera helpers;
