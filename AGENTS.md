@@ -71,6 +71,10 @@ Keep these first-hop rules visible here:
 - Stage effective settings and sibling data-plane artifacts with
   `tools\Stage-HostessMakepadSettings.ps1`; do not use
   `/sdcard/Android/data/...` as the app/ADB handoff path for these payloads.
+- Treat settings writes as revision/scoped hashes transactions; the runbook
+  keeps the full layered invalidation details.
+- Use `tools\check_makepad_quest_gpu_evidence.py` for Quest Makepad GPU proof
+  evidence review when GPU/page-fault or compute-readiness claims are touched.
 - Keep high-rate hands, meshes, SDF/ADF fields, particles, and GPU buffers out
   of settings/control JSON.
 - Hostess remains the install/test/evidence shell. Matter, Optics,
