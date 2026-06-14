@@ -303,12 +303,15 @@ projection-panel binding, and projection-complete marker flow;
 `app_projection_target.rs` owns the app-shell projection-target control loop,
 including controller-driven target offset/scale updates and Manifold breath
 feedback target-scale adoption;
+`app_horizontal_alignment.rs` owns app-shell horizontal-alignment tuning:
+runtime-resolution fallback, legacy hotload values, change detection, hotload
+markers, and panel binding;
 `frame_orientation.rs` owns direct-camera and broker-H264
 source-raster orientation decisions plus shared broker pair pose-source
 combination; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
 state, panel live-design registration, draw shader defaults, shader uniform
-application, camera texture binding, and horizontal alignment tuning
-application for the stereo camera panel; `matter_world_particle_billboard.rs`
+application, camera texture binding, and the panel-side horizontal alignment
+uniform application; `matter_world_particle_billboard.rs`
 and `matter_world_adf_debug.rs` own the Hostess-local world renderer widgets
 and their Makepad widget defaults; `makepad_app_live_design.rs` owns the
 Hostess app layout registration. Keep `main.rs` as app-shell state,

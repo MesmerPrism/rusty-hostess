@@ -192,9 +192,10 @@ plans.
 `apps/hostess-t-makepad/src/makepad_stereo_camera_panel.rs` owns the Rust
 `DrawMakepadStereoCameraPanel` and `MakepadStereoCameraPanel` types, shader
 uniform application, texture slot binding, target-footprint push state, and
-horizontal alignment tuning application. It also owns the panel live-design
-`script_mod!` block, including draw shader defaults and widget defaults. The
-app root registers the panel module before the Hostess app layout script.
+panel-side horizontal alignment uniform application. It also owns the panel
+live-design `script_mod!` block, including draw shader defaults and widget
+defaults. The app root registers the panel module before the Hostess app layout
+script.
 
 `apps/hostess-t-makepad/src/matter_world_particle_billboard.rs` and
 `apps/hostess-t-makepad/src/matter_world_adf_debug.rs` own the
@@ -211,6 +212,9 @@ state, event handling, and data-plane adoption wiring in Rust.
 projection-target control loop: controller offset/scale updates, breath-source
 target-scale adoption, and related runtime markers. Pure projection-target
 math/settings helpers remain in `projection_target_controls.rs`.
+`apps/hostess-t-makepad/src/app_horizontal_alignment.rs` owns the app-shell
+horizontal-alignment tuning surface: runtime-resolution fallback, legacy
+hotload values, change detection, hotload markers, and panel binding.
 `apps/hostess-t-makepad/src/main_tests.rs` owns app-root regression tests that
 need private access to this shell wiring.
 
