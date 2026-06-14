@@ -95,6 +95,15 @@ Broker telemetry and Manifold value-recording evidence construction lives in
 `tools/hostessctl/recording_evidence.py`. Recording evidence schemas,
 validators, scorecards, and host-run wrappers are isolated from command
 orchestration.
+Quest Makepad GPU summary validation keeps
+`tools/check_makepad_quest_gpu_evidence.py` as the stable checker command and
+CLI/import facade. Shared proof-marker parsing lives in
+`tools/makepad_quest_gpu_evidence/proof_lines.py`, while GPU force
+candidate/gate/freshness/residency/runtime-authority validation lives in
+`tools/makepad_quest_gpu_evidence/force_authority.py`. The facade keeps schema
+loading, cadence/stale checks, mesh-SDF checks, and compact summary assembly;
+new independent evidence families should move into sibling modules when they
+start adding pressure.
 Studio platform-smoke staging helpers are split by workflow phase:
 `tools/studio_staging/platform_smoke.py` remains the import facade, while
 `platform_smoke_plan.py`, `platform_smoke_execution.py`,

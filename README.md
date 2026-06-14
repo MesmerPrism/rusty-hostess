@@ -110,6 +110,13 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/recording_evidence.py`: broker telemetry and Manifold
   value-recording evidence builders, validators, scorecards, and host-run
   evidence writers used by general recording routes.
+- `tools/check_makepad_quest_gpu_evidence.py`: Quest Makepad GPU proof checker
+  CLI and compatibility facade. Schema loading, cadence/stale checks,
+  mesh-SDF checks, and compact summary assembly stay here.
+- `tools/makepad_quest_gpu_evidence/`: focused implementation package for
+  Quest Makepad GPU proof validation. `proof_lines.py` owns proof-marker
+  parsing helpers, and `force_authority.py` owns the GPU force
+  candidate/gate/freshness/residency/runtime-authority evidence family.
 - `tools/studio_staging/platform_smoke.py`: compatibility facade for Studio
   platform-smoke planning, operator approval, execution, evidence attachment,
   and evidence review helpers. Phase implementations live in
@@ -162,7 +169,7 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
@@ -373,6 +380,10 @@ GPU-marker `kgslFaultsBeforeMarker` telemetry as non-fault evidence, writes the
 compact summary/check sidecars, and classifies off-face/asleep launches as XR
 readiness failures instead of GPU failures when startup markers appeared but
 proof markers did not.
+The checker command remains the stable entrypoint; the
+`tools/makepad_quest_gpu_evidence/` package owns shared proof-line parsing and
+the force-authority evidence family so new evidence families can be split
+without growing the CLI facade.
 
 The first camera-free Quest ADF proof is recorded at
 `S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
