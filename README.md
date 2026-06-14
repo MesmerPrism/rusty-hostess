@@ -300,6 +300,12 @@ and remote-camera runtime key parsing plus `ExternalH264VideoSource`
 construction; `camera_projection_flow.rs` owns paired camera import,
 frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
 projection-panel binding, and projection-complete marker flow;
+`app_mesh_replay_runtime.rs` owns selected effective-settings adoption, mesh
+replay stepping, Matter/particle/stimulus runtime resets, and panel/world
+cadence binding;
+`app_stimulus_runtime.rs` owns stimulus field panel binding, runtime XR
+projection rows, bounded volume preview probe polling, and image-preview
+texture adoption;
 `app_projection_target.rs` owns the app-shell projection-target control loop,
 including controller-driven target offset/scale updates and Manifold breath
 feedback target-scale adoption;
