@@ -182,6 +182,12 @@ projection-complete markers, stereo comparison parity markers, and direct
 Camera2 plan probing. The app root keeps top-level event ordering and calls
 this module through split `App` methods.
 
+`apps/hostess-t-makepad/src/hostess_camera_model.rs` remains the public
+compatibility facade for app-neutral camera helpers. Its
+`hostess_camera_model/` child modules own source selection, projection
+footprint/layout and border geometry, camera basis/projection math, homography
+and temporal smoothing, and timestamp matching.
+
 `apps/hostess-t-makepad/src/frame_orientation.rs` owns Hostess-local
 direct-camera and broker-H264 source-raster orientation decisions plus shared
 broker pair pose-source combination. `source_sampling.rs` consumes the

@@ -314,6 +314,10 @@ and remote-camera runtime key parsing plus `ExternalH264VideoSource`
 construction; `camera_projection_flow.rs` owns paired camera import,
 frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
 projection-panel binding, and projection-complete marker flow;
+`hostess_camera_model.rs` is the public facade for app-neutral camera helpers;
+its `hostess_camera_model/` child modules own source selection, projection
+footprint/layout, camera basis/projection math, homography smoothing, and
+timestamp matching;
 `app_mesh_replay_runtime.rs` owns selected effective-settings adoption, mesh
 replay stepping, Matter/particle/stimulus runtime resets, and panel/world
 cadence binding;
