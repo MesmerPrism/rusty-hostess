@@ -78,6 +78,7 @@ try {
     if (Test-Path "apps\hostess-t-makepad\Cargo.toml") {
         Invoke-Checked "Makepad app cargo check" "cargo" @("check", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml")
         Invoke-Checked "Makepad app Hostess contract serde tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "hostess_contracts")
+        Invoke-Checked "Makepad app shell regression tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "main_tests")
     }
     $AdapterLib = "apps\hostess-t-android\native\polar-runtime-jni\src\lib.rs"
     if ((Test-Path $AdapterLib) -and (Test-Path $PackagesRootCandidate)) {

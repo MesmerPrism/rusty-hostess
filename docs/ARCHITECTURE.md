@@ -207,6 +207,12 @@ these modules only draw bounded Makepad evidence rows.
 layout `script_mod!` block and `startup()` UI tree. The app root calls this
 module after all widget/default modules are registered, then keeps runtime
 state, event handling, and data-plane adoption wiring in Rust.
+`apps/hostess-t-makepad/src/app_projection_target.rs` owns the app-shell
+projection-target control loop: controller offset/scale updates, breath-source
+target-scale adoption, and related runtime markers. Pure projection-target
+math/settings helpers remain in `projection_target_controls.rs`.
+`apps/hostess-t-makepad/src/main_tests.rs` owns app-root regression tests that
+need private access to this shell wiring.
 
 Hostess settings hotload follows the repo-family settings invalidation policy:
 settings writes are active control-plane transactions that publish a compact

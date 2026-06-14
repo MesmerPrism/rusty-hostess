@@ -15,6 +15,7 @@ The check covers the available local surface:
 - `cargo check` for `apps\hostess-t-makepad`;
 - serde-gated Hostess contract tests for current schema defaults and frozen
   legacy schema compatibility;
+- app-root Makepad shell regression tests in `main_tests`;
 - Rust formatting and temporary cargo checks for Android JNI bridge crates when
   their inputs are present.
 
@@ -30,6 +31,7 @@ For Makepad app-shell edits, run:
 ```powershell
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
+cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 ```
 
 For projected-motion-breath desktop replay:

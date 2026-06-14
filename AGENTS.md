@@ -49,6 +49,7 @@ python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.p
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_makepad_morphospace_boundaries
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
+cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 ```
 
 For live captures, write raw run artifacts outside the repo and commit only

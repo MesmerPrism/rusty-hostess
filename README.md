@@ -152,6 +152,8 @@ python tools\hostessctl\hostessctl.py run-pmb-controller-preflight --target ques
 python tools\hostessctl\hostessctl.py record-values --target quest --value stream.polar_h10.acc --value stream.motion.object_pose --duration-seconds 120 --packages-root <packages-root> --out <recording.json> --adb <adb> --serial <quest-serial> --device-address <polar-address> --makepad-pose-controller right --makepad-pose-kind grip --makepad-pose-sample-hz 20
 python tools\hostessctl\hostessctl.py snapshot-telemetry --input <capture.json> --out <snapshot.json>
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
+cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
+cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 ```
 
 For Makepad running-telemetry validation from a replay checkpoint:
@@ -298,6 +300,9 @@ and remote-camera runtime key parsing plus `ExternalH264VideoSource`
 construction; `camera_projection_flow.rs` owns paired camera import,
 frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
 projection-panel binding, and projection-complete marker flow;
+`app_projection_target.rs` owns the app-shell projection-target control loop,
+including controller-driven target offset/scale updates and Manifold breath
+feedback target-scale adoption;
 `frame_orientation.rs` owns direct-camera and broker-H264
 source-raster orientation decisions plus shared broker pair pose-source
 combination; `makepad_stereo_camera_panel.rs` owns the Rust widget/draw
@@ -307,7 +312,8 @@ application for the stereo camera panel; `matter_world_particle_billboard.rs`
 and `matter_world_adf_debug.rs` own the Hostess-local world renderer widgets
 and their Makepad widget defaults; `makepad_app_live_design.rs` owns the
 Hostess app layout registration. Keep `main.rs` as app-shell state,
-top-level event ordering, and module registration.
+top-level event ordering, and module registration. `main_tests.rs` owns
+app-root regression tests that need private access to the shell wiring.
 
 For live-hand GPU proof performance evidence, validate the compact Quest run
 summary before accepting the run as a cadence baseline:
