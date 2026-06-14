@@ -201,6 +201,11 @@ focused metadata families; `broker_projection.rs` owns broker-H264 stream-header
 projection metadata parsing, content-geometry marker records, and broker
 projection plan decisions.
 
+`apps/hostess-t-makepad/src/projection_geometry.rs` remains the projection-plan
+and OpenXR geometry facade. Its `projection_geometry/` child modules own focused
+projection support families; `markers.rs` owns Makepad stereo projection
+marker/report field formatting and marker-shape tests.
+
 `apps/hostess-t-makepad/src/camera_projection_flow.rs` owns the paired camera
 import/projection runtime flow: broker stream-header metadata handling, video
 texture update bookkeeping, pending stereo-frame adoption, cadence sample

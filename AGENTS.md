@@ -72,6 +72,10 @@ generic code or sanitized sample fixtures.
   modules own focused metadata families; `broker_projection.rs` owns broker-H264
   stream-header projection metadata parsing, content-geometry marker records,
   and broker projection plan decisions.
+- Keep `apps\hostess-t-makepad\src\projection_geometry.rs` as the
+  projection-plan and OpenXR geometry facade. The `projection_geometry\` child
+  modules own focused projection support families; `markers.rs` owns Makepad
+  stereo projection marker/report field formatting and marker-shape tests.
 
 ## Quest Makepad APK Route
 

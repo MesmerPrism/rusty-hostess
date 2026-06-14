@@ -339,9 +339,12 @@ construction; `source_metadata.rs` is the Makepad source/import marker facade
 for runtime target-footprint, source-sampling, and hardware-buffer import
 marker helpers, while `source_metadata/broker_projection.rs` owns broker-H264
 stream-header projection metadata parsing, content-geometry marker records, and
-broker projection plan decisions; `camera_projection_flow.rs` owns paired camera import,
-frame-adoption, cadence, broker-H264 import, native video widget, YUV probe,
-projection-panel binding, and projection-complete marker flow;
+broker projection plan decisions; `projection_geometry.rs` is the
+projection-plan/OpenXR geometry facade, while `projection_geometry/markers.rs`
+owns Makepad stereo projection marker/report formatting and marker-shape tests;
+`camera_projection_flow.rs` owns paired camera import, frame-adoption, cadence,
+broker-H264 import, native video widget, YUV probe, projection-panel binding,
+and projection-complete marker flow;
 `hostess_camera_model.rs` is the public facade for app-neutral camera helpers;
 its `hostess_camera_model/` child modules own source selection, projection
 footprint/layout, camera basis/projection math, homography smoothing, and
