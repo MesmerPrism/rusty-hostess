@@ -344,6 +344,8 @@ footprint/layout, camera basis/projection math, homography smoothing, and
 timestamp matching;
 `hostess_contracts/camera.rs` is the camera-contract facade for shared
 primitives, diagnostics, frame metadata, projection state, and temporal policy;
+`hostess_contracts/camera/source_sampling.rs` owns source-sampling DTOs,
+texture transform helpers, and source-sampling schema acceptance;
 `hostess_contracts/camera/texture_lane.rs` owns camera texture-lane DTOs,
 validation, and current-or-legacy schema acceptance;
 `app_mesh_replay_runtime.rs` owns selected effective-settings adoption, mesh
