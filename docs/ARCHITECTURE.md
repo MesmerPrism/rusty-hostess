@@ -208,6 +208,11 @@ compatibility facade for app-neutral camera helpers. Its
 `hostess_camera_model/` child modules own source selection, projection
 footprint/layout and border geometry, camera basis/projection math, homography
 and temporal smoothing, and timestamp matching.
+`apps/hostess-t-makepad/src/hostess_contracts/camera.rs` remains the
+camera-contract facade for shared primitives, diagnostics, frame metadata,
+projection state, and temporal policy. Its `hostess_contracts/camera/` child
+modules own focused camera contract families; `texture_lane.rs` owns the
+camera texture-lane DTOs, validation, and current-or-legacy schema acceptance.
 
 `apps/hostess-t-makepad/src/frame_orientation.rs` owns Hostess-local
 direct-camera and broker-H264 source-raster orientation decisions plus shared

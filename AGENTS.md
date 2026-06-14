@@ -55,6 +55,14 @@ cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde ma
 For live captures, write raw run artifacts outside the repo and commit only
 generic code or sanitized sample fixtures.
 
+## File Organization
+
+- Keep `apps\hostess-t-makepad\src\hostess_contracts\camera.rs` as the
+  camera-contract facade plus shared primitives, diagnostics, frame metadata,
+  projection state, and temporal policy. The `hostess_contracts\camera\`
+  child modules own focused contract families; `texture_lane.rs` owns camera
+  texture-lane DTOs, validation, and current-or-legacy schema acceptance.
+
 ## Quest Makepad APK Route
 
 Open `docs\agent-instructions\quest-makepad-runbook.md` before Quest Makepad
