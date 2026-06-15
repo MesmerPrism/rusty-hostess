@@ -154,11 +154,16 @@ use manifold_pose_publisher::{
 use projection_target_controls::{
     makepad_projection_target_breath_controls_enabled_from_value,
     makepad_projection_target_breath_lerp, makepad_projection_target_breath_sample_is_new,
-    makepad_projection_target_breath_scale, makepad_projection_target_breath_smoothing_alpha,
+    makepad_projection_target_breath_scale, makepad_projection_target_breath_scale_mode_from_value,
+    makepad_projection_target_breath_smoothing_alpha,
+    makepad_projection_target_breath_state_scale_step,
     makepad_projection_target_joystick_controls_enabled_from_value,
     makepad_projection_target_offset_step, makepad_projection_target_offset_x_uv,
     makepad_projection_target_offset_y_uv, makepad_projection_target_scale,
-    makepad_projection_target_scale_step, PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
+    makepad_projection_target_scale_step, ProjectionTargetBreathScaleMode,
+    PROJECTION_TARGET_BREATH_DEFAULT_EXHALE_SECONDS_MAX_TO_MIN,
+    PROJECTION_TARGET_BREATH_DEFAULT_INHALE_SECONDS_MIN_TO_MAX,
+    PROJECTION_TARGET_BREATH_DEFAULT_SMOOTHING_ALPHA,
 };
 use rusty_quest_makepad_camera_shell::{
     MeshReplayRuntime, MeshReplayUniforms, ParticleRenderAnimationMode,
@@ -557,6 +562,8 @@ pub struct App {
     projection_target_breath_scale_ready: bool,
     #[rust]
     projection_target_breath_last_sequence_id: u64,
+    #[rust]
+    projection_target_breath_last_sample_time_ns: i64,
     #[rust]
     projection_target_breath_last_log_frame: u64,
     #[rust]

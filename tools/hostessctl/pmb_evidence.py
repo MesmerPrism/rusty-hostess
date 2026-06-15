@@ -42,6 +42,9 @@ PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
 PMB_BREATH_SCALE_VOLUME0 = "1.0"
 PMB_BREATH_SCALE_VOLUME1 = "0.1796"
 PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.30"
+PMB_BREATH_SCALE_MODE = "volume"
+PMB_BREATH_SCALE_INHALE_SECONDS_MIN_TO_MAX = "4.0"
+PMB_BREATH_SCALE_EXHALE_SECONDS_MAX_TO_MIN = "4.0"
 
 
 def graph_report_streams(graph_report: dict[str, Any]) -> list[dict[str, Any]]:

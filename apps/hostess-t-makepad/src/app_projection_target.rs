@@ -134,9 +134,16 @@ impl App {
         let mut changed = false;
         let mut reset = false;
         if update.clicked_a() {
+            let reset_scale = makepad_projection_target_scale();
             self.projection_target_joystick_offset_x_uv = 0.0;
             self.projection_target_joystick_offset_y_uv = 0.0;
-            self.projection_target_joystick_scale = 1.0;
+            self.projection_target_joystick_scale = reset_scale;
+            if breath_controls_scale {
+                self.projection_target_breath_scale_ready = false;
+                self.projection_target_breath_last_sequence_id = 0;
+                self.projection_target_breath_last_sample_time_ns = 0;
+                self.projection_target_scale = reset_scale;
+            }
             changed = true;
             reset = true;
         }
@@ -277,6 +284,7 @@ impl App {
         if !Self::projection_target_breath_controls_enabled() {
             self.projection_target_breath_scale_ready = false;
             self.projection_target_breath_last_sequence_id = 0;
+            self.projection_target_breath_last_sample_time_ns = 0;
             return;
         }
         let Some(sample) = self
@@ -313,6 +321,22 @@ impl App {
             0.0,
             1.0,
         );
+        let scale_mode = makepad_projection_target_breath_scale_mode_from_value(&hotload_text(
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_SCALE_MODE,
+            "volume",
+        ));
+        let inhale_seconds_min_to_max = hotload_f32(
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_INHALE_SECONDS_MIN_TO_MAX,
+            PROJECTION_TARGET_BREATH_DEFAULT_INHALE_SECONDS_MIN_TO_MAX,
+            0.1,
+            120.0,
+        );
+        let exhale_seconds_max_to_min = hotload_f32(
+            makepad_config::KEY_PROJECTION_TARGET_BREATH_EXHALE_SECONDS_MAX_TO_MIN,
+            PROJECTION_TARGET_BREATH_DEFAULT_EXHALE_SECONDS_MAX_TO_MIN,
+            0.1,
+            120.0,
+        );
         let invert = hotload_bool(makepad_config::KEY_PROJECTION_TARGET_BREATH_INVERT, false);
         self.apply_projection_target_breath_sample(
             cx,
@@ -320,6 +344,9 @@ impl App {
             min_scale,
             max_scale,
             smoothing_alpha,
+            scale_mode,
+            inhale_seconds_min_to_max,
+            exhale_seconds_max_to_min,
             invert,
         );
     }
@@ -331,35 +358,73 @@ impl App {
         min_scale: f32,
         max_scale: f32,
         smoothing_alpha: f32,
+        scale_mode: ProjectionTargetBreathScaleMode,
+        inhale_seconds_min_to_max: f32,
+        exhale_seconds_max_to_min: f32,
         invert: bool,
     ) {
         let was_ready = self.projection_target_breath_scale_ready;
         let previous_sequence_id = self.projection_target_breath_last_sequence_id;
+        let previous_sample_time_ns = self.projection_target_breath_last_sample_time_ns;
         let is_new_sample = makepad_projection_target_breath_sample_is_new(
             was_ready,
             previous_sequence_id,
             sample.sequence_id,
         );
-        let target_scale = makepad_projection_target_breath_scale(
-            sample.volume01 as f32,
-            min_scale,
-            max_scale,
-            invert,
-        );
-        let smoothing_alpha = makepad_projection_target_breath_smoothing_alpha(smoothing_alpha);
-        let next_scale = if self.projection_target_breath_scale_ready {
-            makepad_projection_target_breath_lerp(
-                self.projection_target_scale,
-                target_scale,
-                smoothing_alpha,
-            )
+        let sample_dt_seconds = if is_new_sample
+            && was_ready
+            && previous_sample_time_ns > 0
+            && sample.sample_time_unix_ns > previous_sample_time_ns
+        {
+            ((sample.sample_time_unix_ns - previous_sample_time_ns) as f32 / 1_000_000_000.0)
+                .clamp(0.0, 1.0)
         } else {
-            target_scale
-        }
-        .clamp(PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_MAX_SCALE);
+            0.0
+        };
+        let current_scale = if self.projection_target_breath_scale_ready {
+            self.projection_target_scale
+        } else {
+            min_scale.clamp(PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_MAX_SCALE)
+        };
+        let smoothing_alpha = makepad_projection_target_breath_smoothing_alpha(smoothing_alpha);
+        let (target_scale, next_scale, breath_state) = match scale_mode {
+            ProjectionTargetBreathScaleMode::Volume => {
+                let target_scale = makepad_projection_target_breath_scale(
+                    sample.volume01 as f32,
+                    min_scale,
+                    max_scale,
+                    invert,
+                );
+                let next_scale = if self.projection_target_breath_scale_ready {
+                    makepad_projection_target_breath_lerp(
+                        self.projection_target_scale,
+                        target_scale,
+                        smoothing_alpha,
+                    )
+                } else {
+                    target_scale
+                };
+                (target_scale, next_scale, "volume")
+            }
+            ProjectionTargetBreathScaleMode::StateRamp => {
+                let (next_scale, state) = makepad_projection_target_breath_state_scale_step(
+                    current_scale,
+                    &sample.phase,
+                    min_scale,
+                    max_scale,
+                    sample_dt_seconds,
+                    inhale_seconds_min_to_max,
+                    exhale_seconds_max_to_min,
+                    invert,
+                );
+                (next_scale, next_scale, state.as_str())
+            }
+        };
+        let next_scale = next_scale.clamp(PROJECTION_TARGET_MIN_SCALE, PROJECTION_TARGET_MAX_SCALE);
         let changed = !was_ready || (next_scale - self.projection_target_scale).abs() > 0.0001;
         self.projection_target_breath_scale_ready = true;
         self.projection_target_breath_last_sequence_id = sample.sequence_id;
+        self.projection_target_breath_last_sample_time_ns = sample.sample_time_unix_ns;
         self.projection_target_joystick_scale = next_scale;
 
         let mut tuning = self.current_horizontal_alignment_tuning();
@@ -376,24 +441,53 @@ impl App {
         let panel_bound = self.apply_horizontal_alignment_tuning_to_panel(cx, tuning);
 
         if is_new_sample {
-            Self::emit_stereo_projection_marker(&format!(
-                "phase=projection-target-tuning status=ok source=manifold-breath-volume-selected stream={} sequenceId={} previousSequenceId={} newSample=true scaleChanged={} sourceId={} inputStreamId={} volume01={:.4} quality01={:.4} minScale={:.4} maxScale={:.4} smoothingAlpha={:.4} invert={} targetScale={:.4} projectionTargetScale={:.4} panelBound={}",
-                marker_token(&sample.stream_id),
-                sample.sequence_id,
-                previous_sequence_id,
-                changed,
-                marker_token(&sample.source_id),
-                marker_token(&sample.input_stream_id),
-                sample.volume01,
-                sample.quality01,
-                min_scale,
-                max_scale,
-                smoothing_alpha,
-                invert,
-                target_scale,
-                tuning.projection_target_scale,
-                panel_bound,
-            ));
+            match scale_mode {
+                ProjectionTargetBreathScaleMode::Volume => {
+                    Self::emit_stereo_projection_marker(&format!(
+                        "phase=projection-target-tuning status=ok source=manifold-breath-volume-selected stream={} sequenceId={} previousSequenceId={} newSample=true scaleChanged={} sourceId={} inputStreamId={} scaleMode={} volume01={:.4} quality01={:.4} minScale={:.4} maxScale={:.4} smoothingAlpha={:.4} invert={} targetScale={:.4} projectionTargetScale={:.4} panelBound={}",
+                        marker_token(&sample.stream_id),
+                        sample.sequence_id,
+                        previous_sequence_id,
+                        changed,
+                        marker_token(&sample.source_id),
+                        marker_token(&sample.input_stream_id),
+                        marker_token(scale_mode.as_str()),
+                        sample.volume01,
+                        sample.quality01,
+                        min_scale,
+                        max_scale,
+                        smoothing_alpha,
+                        invert,
+                        target_scale,
+                        tuning.projection_target_scale,
+                        panel_bound,
+                    ));
+                }
+                ProjectionTargetBreathScaleMode::StateRamp => {
+                    Self::emit_stereo_projection_marker(&format!(
+                        "phase=projection-target-tuning status=ok source=manifold-breath-state-selected stream={} sequenceId={} previousSequenceId={} newSample=true scaleChanged={} sourceId={} inputStreamId={} scaleMode={} breathPhase={} breathState={} sampleDtSeconds={:.4} quality01={:.4} minScale={:.4} maxScale={:.4} inhaleSecondsMinToMax={:.4} exhaleSecondsMaxToMin={:.4} invert={} targetScale={:.4} projectionTargetScale={:.4} panelBound={}",
+                        marker_token(&sample.stream_id),
+                        sample.sequence_id,
+                        previous_sequence_id,
+                        changed,
+                        marker_token(&sample.source_id),
+                        marker_token(&sample.input_stream_id),
+                        marker_token(scale_mode.as_str()),
+                        marker_token(&sample.phase),
+                        marker_token(breath_state),
+                        sample_dt_seconds,
+                        sample.quality01,
+                        min_scale,
+                        max_scale,
+                        inhale_seconds_min_to_max,
+                        exhale_seconds_max_to_min,
+                        invert,
+                        target_scale,
+                        tuning.projection_target_scale,
+                        panel_bound,
+                    ));
+                }
+            }
             self.projection_target_breath_last_log_frame = self.cadence_xr_update_count;
         }
     }

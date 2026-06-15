@@ -5,6 +5,24 @@ from __future__ import annotations
 import argparse
 
 
+def add_makepad_breath_scale_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
+        "--makepad-breath-scale-mode",
+        choices=["volume", "state-ramp"],
+        default="volume",
+    )
+    parser.add_argument(
+        "--makepad-breath-inhale-seconds-min-to-max",
+        type=float,
+        default=4.0,
+    )
+    parser.add_argument(
+        "--makepad-breath-exhale-seconds-max-to-min",
+        type=float,
+        default=4.0,
+    )
+
+
 def build_hostessctl_parser(
     *,
     broker_package: str,
@@ -79,6 +97,7 @@ def build_hostessctl_parser(
     run_pmb_simulated_live_parser.add_argument("--makepad-activity", default=makepad_android_xr_activity)
     run_pmb_simulated_live_parser.add_argument("--makepad-settle-seconds", type=float, default=8.0)
     run_pmb_simulated_live_parser.add_argument("--feedback-publish-limit", type=int, default=12)
+    add_makepad_breath_scale_arguments(run_pmb_simulated_live_parser)
     run_pmb_simulated_live_parser.add_argument(
         "--breath-selected-source",
         choices=["auto", "polar", "controller"],
@@ -108,7 +127,13 @@ def build_hostessctl_parser(
     run_pmb_physical_live_parser.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     run_pmb_physical_live_parser.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
     run_pmb_physical_live_parser.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-mode",
+        choices=["projected-volume-delta", "fixed-controller-orientation"],
+        default="projected-volume-delta",
+    )
     run_pmb_physical_live_parser.add_argument("--feedback-publish-limit", type=int, default=24)
+    add_makepad_breath_scale_arguments(run_pmb_physical_live_parser)
     run_pmb_physical_live_parser.add_argument(
         "--breath-selected-source",
         choices=["auto", "polar", "controller"],
@@ -171,6 +196,7 @@ def build_hostessctl_parser(
     record_values.add_argument("--cargo", default="cargo")
     record_values.add_argument("--pmb-live-processor", action="store_true")
     record_values.add_argument("--pmb-feedback-publish-limit", type=int, default=24)
+    add_makepad_breath_scale_arguments(record_values)
     record_values.add_argument("--pmb-breath-selected-source", choices=["auto", "polar", "controller"], default="auto")
     record_values.add_argument("--pmb-receipt-listen-seconds", type=float, default=3.0)
     record_values.add_argument("--no-launch-broker", action="store_true")

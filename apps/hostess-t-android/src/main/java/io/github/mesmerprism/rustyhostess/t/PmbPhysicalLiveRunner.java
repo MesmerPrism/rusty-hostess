@@ -8,6 +8,7 @@ import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.ByteArrayOutputStream;
+import java.io.FileInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
@@ -40,6 +41,8 @@ final class PmbPhysicalLiveRunner {
         int controllerWaitMs = intExtra(intent, "controller_wait_ms", 15000);
         int feedbackLimit = intExtra(intent, "feedback_publish_limit", 24);
         String breathSelectedSource = stringExtra(intent, "breath_selected_source", "auto");
+        String controllerStateMode = normalizePmbControllerStateMode(
+                stringExtra(intent, "pmb_controller_state_mode", "projected-volume-delta"));
         int receiptListenMs = intExtra(intent, "receipt_listen_ms", 6000);
         int livePublishIntervalMs = intExtra(intent, "live_publish_interval_ms", 1000);
         File evidenceRoot = new File(context.getExternalFilesDir(null), "hostess-t/evidence/pmb-physical-live");
@@ -48,6 +51,7 @@ final class PmbPhysicalLiveRunner {
         try {
             resetDirectory(packageRoot);
             copyPmbPackageAssets(context, packageRoot);
+            applyPmbControllerStateMode(packageRoot, controllerStateMode);
             if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
                 throw new IOException("could not create PMB physical live evidence folder");
             }
@@ -180,6 +184,27 @@ final class PmbPhysicalLiveRunner {
         for (String relative : pmbPackageAssetFiles(context)) {
             copyAssetFile(context, PMB_ASSET_ROOT + "/" + relative, new File(targetRoot, relative.replace('/', File.separatorChar)));
         }
+    }
+
+    private static void applyPmbControllerStateMode(File packageRoot, String mode) throws IOException, JSONException {
+        if (!"fixed-controller-orientation".equals(mode)) {
+            return;
+        }
+        File bindingPath = new File(packageRoot, "fixtures/valid/source-binding-headset-controller-pose.json");
+        JSONObject binding = new JSONObject(readText(bindingPath));
+        binding.put("profile_id", "profile.projected_motion_breath.headset_controller_fixed_orientation_state");
+        binding.put("profile_path", "fixtures/valid/profile-headset-controller-fixed-orientation-state.json");
+        writeText(bindingPath, binding.toString(2));
+    }
+
+    private static String normalizePmbControllerStateMode(String value) {
+        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.US).replace('_', '-');
+        if ("fixed-controller-orientation".equals(normalized)
+                || "fixed-orientation".equals(normalized)
+                || "fixed-orientation-state".equals(normalized)) {
+            return "fixed-controller-orientation";
+        }
+        return "projected-volume-delta";
     }
 
     private static List<String> pmbPackageAssetFiles(Context context) throws IOException {
@@ -386,6 +411,18 @@ final class PmbPhysicalLiveRunner {
     private static void writeText(File path, String text) throws IOException {
         try (FileOutputStream stream = new FileOutputStream(path)) {
             stream.write(text.getBytes(StandardCharsets.UTF_8));
+        }
+    }
+
+    private static String readText(File path) throws IOException {
+        try (FileInputStream input = new FileInputStream(path)) {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            byte[] bytes = new byte[8192];
+            int read;
+            while ((read = input.read(bytes)) >= 0) {
+                buffer.write(bytes, 0, read);
+            }
+            return buffer.toString(StandardCharsets.UTF_8.name());
         }
     }
 

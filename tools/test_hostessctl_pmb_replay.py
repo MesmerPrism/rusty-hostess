@@ -805,7 +805,7 @@ def ready_pmb_core_report() -> dict[str, object]:
         "package_root": "packages/projected-motion-breath",
         "status": "pass",
         "checked_profiles": 1,
-        "checked_command_payloads": 5,
+        "checked_command_payloads": 6,
         "checked_damaged_command_payloads": 6,
         "checked_source_bindings": 4,
         "checked_damaged_source_bindings": 2,

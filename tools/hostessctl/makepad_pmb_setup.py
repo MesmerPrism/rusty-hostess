@@ -8,6 +8,9 @@ from typing import Any, Callable
 
 from tools.hostessctl.makepad_visual_profile import makepad_visual_profile_runtime_properties
 from tools.hostessctl.pmb_evidence import (
+    PMB_BREATH_SCALE_EXHALE_SECONDS_MAX_TO_MIN,
+    PMB_BREATH_SCALE_INHALE_SECONDS_MIN_TO_MAX,
+    PMB_BREATH_SCALE_MODE,
     PMB_BREATH_SCALE_SMOOTHING_ALPHA,
     PMB_BREATH_SCALE_VOLUME0,
     PMB_BREATH_SCALE_VOLUME1,
@@ -16,6 +19,39 @@ from tools.hostessctl.pmb_evidence import (
 
 
 RunFunc = Callable[..., Any]
+
+
+def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[str, str]:
+    mode = str(getattr(args, "makepad_breath_scale_mode", PMB_BREATH_SCALE_MODE) or PMB_BREATH_SCALE_MODE)
+    mode = mode.strip().lower().replace("_", "-")
+    if mode not in {"volume", "state-ramp"}:
+        mode = PMB_BREATH_SCALE_MODE
+    inhale_seconds = str(
+        getattr(
+            args,
+            "makepad_breath_inhale_seconds_min_to_max",
+            PMB_BREATH_SCALE_INHALE_SECONDS_MIN_TO_MAX,
+        )
+    )
+    exhale_seconds = str(
+        getattr(
+            args,
+            "makepad_breath_exhale_seconds_max_to_min",
+            PMB_BREATH_SCALE_EXHALE_SECONDS_MAX_TO_MIN,
+        )
+    )
+    return {
+        "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
+        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+        "debug.rustyquest.makepad.projection.target.breath.scale.mode": mode,
+        "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
+        "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
+        "debug.rustyquest.makepad.projection.target.breath.inhale.seconds.min.to.max": inhale_seconds,
+        "debug.rustyquest.makepad.projection.target.breath.exhale.seconds.max.to.min": exhale_seconds,
+        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+        "debug.rustyquest.makepad.projection.target.breath.invert": "false",
+        "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
+    }
 
 
 def configure_makepad_breath_feedback_receiver(
@@ -32,13 +68,7 @@ def configure_makepad_breath_feedback_receiver(
         "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
-        "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
-        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-        "debug.rustyquest.makepad.projection.target.breath.invert": "false",
-        "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
+        **makepad_breath_scale_runtime_properties(args),
         "debug.rustyquest.makepad.projection.target.joystick.controls": "offset-scale",
     }
     for key, value in setprops.items():
@@ -75,13 +105,7 @@ def configure_makepad_physical_pmb_provider(
         "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
-        "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
-        "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
-        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-        "debug.rustyquest.makepad.projection.target.breath.invert": "false",
-        "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
+        **makepad_breath_scale_runtime_properties(args),
         "debug.rustyquest.makepad.projection.target.joystick.controls": "offset-scale",
     }
     for key, value in setprops.items():

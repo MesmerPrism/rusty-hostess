@@ -116,12 +116,24 @@ pub const PROJECTION_RUNTIME_KEY_ALIASES: &[RuntimeKeyAlias] = &[
         KEY_PROJECTION_TARGET_BREATH_STREAM,
     ),
     launch_alias(
+        "makepad.projectionTargetBreathScaleMode",
+        KEY_PROJECTION_TARGET_BREATH_SCALE_MODE,
+    ),
+    launch_alias(
         "makepad.projectionTargetBreathMinScale",
         KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
     ),
     launch_alias(
         "makepad.projectionTargetBreathMaxScale",
         KEY_PROJECTION_TARGET_BREATH_MAX_SCALE,
+    ),
+    launch_alias(
+        "makepad.projectionTargetBreathInhaleSecondsMinToMax",
+        KEY_PROJECTION_TARGET_BREATH_INHALE_SECONDS_MIN_TO_MAX,
+    ),
+    launch_alias(
+        "makepad.projectionTargetBreathExhaleSecondsMaxToMin",
+        KEY_PROJECTION_TARGET_BREATH_EXHALE_SECONDS_MAX_TO_MIN,
     ),
     launch_alias(
         "makepad.projectionTargetBreathSmoothingAlpha",
@@ -315,12 +327,24 @@ pub const PROJECTION_RUNTIME_KEY_ALIASES: &[RuntimeKeyAlias] = &[
         KEY_PROJECTION_TARGET_BREATH_STREAM,
     ),
     property_alias(
+        "debug.rustyquest.makepad.projection.target.breath.scale.mode",
+        KEY_PROJECTION_TARGET_BREATH_SCALE_MODE,
+    ),
+    property_alias(
         "debug.rustyquest.makepad.projection.target.breath.min.scale",
         KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
     ),
     property_alias(
         "debug.rustyquest.makepad.projection.target.breath.max.scale",
         KEY_PROJECTION_TARGET_BREATH_MAX_SCALE,
+    ),
+    property_alias(
+        "debug.rustyquest.makepad.projection.target.breath.inhale.seconds.min.to.max",
+        KEY_PROJECTION_TARGET_BREATH_INHALE_SECONDS_MIN_TO_MAX,
+    ),
+    property_alias(
+        "debug.rustyquest.makepad.projection.target.breath.exhale.seconds.max.to.min",
+        KEY_PROJECTION_TARGET_BREATH_EXHALE_SECONDS_MAX_TO_MIN,
     ),
     property_alias(
         "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha",

@@ -35,8 +35,13 @@ pub const KEY_PROJECTION_TARGET_SCALE: &str = "projection_target_scale";
 pub const KEY_PROJECTION_TARGET_JOYSTICK_CONTROLS: &str = "projection_target_joystick_controls";
 pub const KEY_PROJECTION_TARGET_BREATH_CONTROLS: &str = "projection_target_breath_controls";
 pub const KEY_PROJECTION_TARGET_BREATH_STREAM: &str = "projection_target_breath_stream";
+pub const KEY_PROJECTION_TARGET_BREATH_SCALE_MODE: &str = "projection_target_breath_scale_mode";
 pub const KEY_PROJECTION_TARGET_BREATH_MIN_SCALE: &str = "projection_target_breath_min_scale";
 pub const KEY_PROJECTION_TARGET_BREATH_MAX_SCALE: &str = "projection_target_breath_max_scale";
+pub const KEY_PROJECTION_TARGET_BREATH_INHALE_SECONDS_MIN_TO_MAX: &str =
+    "projection_target_breath_inhale_seconds_min_to_max";
+pub const KEY_PROJECTION_TARGET_BREATH_EXHALE_SECONDS_MAX_TO_MIN: &str =
+    "projection_target_breath_exhale_seconds_max_to_min";
 pub const KEY_PROJECTION_TARGET_BREATH_SMOOTHING_ALPHA: &str =
     "projection_target_breath_smoothing_alpha";
 pub const KEY_PROJECTION_TARGET_BREATH_INVERT: &str = "projection_target_breath_invert";
@@ -253,6 +258,12 @@ pub const PROJECTION_RUNTIME_KEY_DEFINITIONS: &[RuntimeKeyDefinition] = &[
         "Broker stream id that provides normalized breath volume for target-footprint scale control.",
     ),
     projection_key(
+        KEY_PROJECTION_TARGET_BREATH_SCALE_MODE,
+        ProjectionRuntimeKeyOwner::TargetFootprint,
+        RuntimeValueKind::Text,
+        "Projection-target breath scale processing mode: volume or state-ramp.",
+    ),
+    projection_key(
         KEY_PROJECTION_TARGET_BREATH_MIN_SCALE,
         ProjectionRuntimeKeyOwner::TargetFootprint,
         RuntimeValueKind::Float,
@@ -263,6 +274,18 @@ pub const PROJECTION_RUNTIME_KEY_DEFINITIONS: &[RuntimeKeyDefinition] = &[
         ProjectionRuntimeKeyOwner::TargetFootprint,
         RuntimeValueKind::Float,
         "Projection-target scale mapped from breath volume 1.0 before optional inversion.",
+    ),
+    projection_key(
+        KEY_PROJECTION_TARGET_BREATH_INHALE_SECONDS_MIN_TO_MAX,
+        ProjectionRuntimeKeyOwner::TargetFootprint,
+        RuntimeValueKind::Float,
+        "Seconds a constant inhale state takes to ramp projection-target scale from min to max.",
+    ),
+    projection_key(
+        KEY_PROJECTION_TARGET_BREATH_EXHALE_SECONDS_MAX_TO_MIN,
+        ProjectionRuntimeKeyOwner::TargetFootprint,
+        RuntimeValueKind::Float,
+        "Seconds a constant exhale state takes to ramp projection-target scale from max to min.",
     ),
     projection_key(
         KEY_PROJECTION_TARGET_BREATH_SMOOTHING_ALPHA,

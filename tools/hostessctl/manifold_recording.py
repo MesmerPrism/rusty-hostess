@@ -22,6 +22,7 @@ from tools.hostessctl.broker_transport import (
 from tools.hostessctl.makepad_visual_profile import (
     makepad_visual_profile_runtime_properties,
 )
+from tools.hostessctl.makepad_pmb_setup import makepad_breath_scale_runtime_properties
 from tools.hostessctl.pmb_broker_bridge import (
     listen_for_pmb_receipts,
     publish_pmb_feedback_samples,
@@ -29,9 +30,6 @@ from tools.hostessctl.pmb_broker_bridge import (
 from tools.hostessctl.pmb_evidence import (
     PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
     PMB_BREATH_FEEDBACK_STATE_STREAM,
-    PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-    PMB_BREATH_SCALE_VOLUME0,
-    PMB_BREATH_SCALE_VOLUME1,
     PMB_BREATH_SELECTION_STATE_STREAM,
     PMB_BREATH_VOLUME_CONTROLLER_STREAM,
     PMB_BREATH_VOLUME_POLAR_STREAM,
@@ -831,13 +829,7 @@ def configure_makepad_controller_pose_provider(
             "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
             "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
             "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
-            "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-            "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-            "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
-            "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
-            "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
-            "debug.rustyquest.makepad.projection.target.breath.invert": "false",
-            "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
+            **makepad_breath_scale_runtime_properties(args),
         })
     else:
         setprops.update({
