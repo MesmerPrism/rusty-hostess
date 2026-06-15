@@ -118,6 +118,11 @@ Keep these first-hop rules visible here:
   `/sdcard/Android/data/...` as the app/ADB handoff path for these payloads.
 - Treat settings writes as revision/scoped hashes transactions; the runbook
   keeps the full layered invalidation details.
+- Hostess helper scripts must map Makepad, Quest, and PMB knobs through their
+  owning master layer: effective-settings receipts for Makepad behavior, Quest
+  runtime profiles for property transport, and Manifold/PMB commands for breath
+  source selection and calibration. Do not treat direct property readback or
+  launch arguments as accepted behavior without the app-side marker/receipt.
 - Use `tools\check_makepad_quest_gpu_evidence.py` for Quest Makepad GPU proof
   evidence review when GPU/page-fault or compute-readiness claims are touched.
 - Keep high-rate hands, meshes, SDF/ADF fields, particles, and GPU buffers out
