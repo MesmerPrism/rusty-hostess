@@ -111,6 +111,8 @@ final class PmbPhysicalLiveEvidence {
                 .put("first_selected_publish_elapsed_ms", brokerReport.optLong("first_selected_publish_elapsed_ms", -1L))
                 .put("last_selected_publish_elapsed_ms", brokerReport.optLong("last_selected_publish_elapsed_ms", -1L))
                 .put("selected_breath_published_to_broker", brokerReport.optInt("selected_breath_published_count", 0) > 0)
+                .put("breath_state_published_to_broker", brokerReport.optInt("state_published_count", 0) > 0)
+                .put("breath_state_value_published_to_broker", brokerReport.optInt("state_value_published_count", 0) > 0)
                 .put("breath_selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
                 .put("breath_selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_to_broker", brokerReport.optInt("feedback_published_count", 0) > 0)
@@ -136,6 +138,8 @@ final class PmbPhysicalLiveEvidence {
         JSONArray sourceRoutes = routeReport.optJSONArray("source_routes");
         JSONArray feedbackSamples = routeReport.optJSONArray("feedback_samples");
         JSONArray breathSamples = routeReport.optJSONArray("breath_samples");
+        JSONArray stateSamples = routeReport.optJSONArray("state_samples");
+        JSONArray stateValueSamples = routeReport.optJSONArray("state_value_samples");
         return new JSONObject()
                 .put("schema", routeReport.optString("schema", ""))
                 .put("status", routeReport.optString("status", "missing"))
@@ -145,6 +149,8 @@ final class PmbPhysicalLiveEvidence {
                 .put("output_stream_ids", routeReport.optJSONArray("output_stream_ids"))
                 .put("source_route_count", sourceRoutes == null ? 0 : sourceRoutes.length())
                 .put("breath_sample_count", breathSamples == null ? 0 : breathSamples.length())
+                .put("state_sample_count", stateSamples == null ? 0 : stateSamples.length())
+                .put("state_value_sample_count", stateValueSamples == null ? 0 : stateValueSamples.length())
                 .put("feedback_sample_count", feedbackSamples == null ? 0 : feedbackSamples.length())
                 .put("processor_core_executed", routeReport.optBoolean("processor_core_executed", false))
                 .put("runtime_execution_performed", routeReport.optBoolean("runtime_execution_performed", false))
@@ -172,6 +178,8 @@ final class PmbPhysicalLiveEvidence {
                 .put("breath_published_count", brokerReport.optInt("breath_published_count", 0))
                 .put("selected_breath_published_count", brokerReport.optInt("selected_breath_published_count", 0))
                 .put("selection_state_published_count", brokerReport.optInt("selection_state_published_count", 0))
+                .put("state_published_count", brokerReport.optInt("state_published_count", 0))
+                .put("state_value_published_count", brokerReport.optInt("state_value_published_count", 0))
                 .put("selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
                 .put("selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_count", brokerReport.optInt("feedback_published_count", 0))
@@ -212,9 +220,11 @@ final class PmbPhysicalLiveEvidence {
                         && !route.optBoolean("plan_only_fixture", true)
                         && route.optBoolean("external_transport_used")
                         && route.optBoolean("live_sensor_used")
+                        && route.optInt("state_sample_count", 0) > 0
+                        && route.optInt("state_value_sample_count", 0) > 0
                         && contains(route.optJSONArray("input_stream_ids"), "bio:polar_acc")
                         && contains(route.optJSONArray("input_stream_ids"), "stream.motion.object_pose"),
-                "PMB live route consumed broker transport events from Polar and controller streams"));
+                "PMB live route consumed broker transport events and produced raw plus processed state samples"));
         checks.put(check("validation.check.pmb_physical_live_makepad_receipts",
                 broker != null
                         && "event_driven_live_processor".equals(broker.optString("publish_mode"))
@@ -225,9 +235,11 @@ final class PmbPhysicalLiveEvidence {
                         && broker.optInt("live_processor_output_update_count", 0) > 0
                         && broker.optLong("first_selected_publish_elapsed_ms", -1L) >= 0L
                         && broker.optInt("selected_breath_published_count", 0) > 0
+                        && broker.optInt("state_published_count", 0) > 0
+                        && broker.optInt("state_value_published_count", 0) > 0
                         && broker.optInt("feedback_published_count", 0) > 0
                         && broker.optInt("feedback_receipt_count", 0) == broker.optInt("selected_breath_published_count", -1),
-                "Makepad acknowledged selected breath samples while PMB feedback was published"));
+                "Makepad acknowledged selected breath samples while raw state, processed state-value, and PMB feedback were published"));
 
         JSONArray issueObjects = new JSONArray();
         for (String error : errors) {

@@ -31,6 +31,8 @@ from tools.hostessctl.pmb_evidence import (
     PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
     PMB_BREATH_FEEDBACK_STATE_STREAM,
     PMB_BREATH_SELECTION_STATE_STREAM,
+    PMB_BREATH_STATE_STREAM,
+    PMB_BREATH_STATE_VALUE_STREAM,
     PMB_BREATH_VOLUME_CONTROLLER_STREAM,
     PMB_BREATH_VOLUME_POLAR_STREAM,
     PMB_BREATH_VOLUME_SELECTED_STREAM,
@@ -64,6 +66,8 @@ MANIFOLD_VALUE_ALIASES = {
     "breath.volume.selected": "stream.breath.volume.selected",
     "breath.volume.polar": "stream.breath.volume.polar",
     "breath.volume.controller": "stream.breath.volume.controller",
+    "breath.state": "stream.breath.state",
+    "breath.state.value": "stream.breath.state.value",
     "breath.dynamics": "stream.breath.dynamics",
     "breath.feedback_state": "stream.breath.feedback_state",
 }
@@ -194,6 +198,30 @@ MANIFOLD_VALUE_PROVIDERS = {
         "single_value_live_route_supported": False,
         "preflight_supported": True,
         "blocked_reason": "Controller breath output recording requires a bound XR controller pose route",
+    },
+    "stream.breath.state": {
+        "value_id": "value.breath.state",
+        "stream_id": "stream.breath.state",
+        "provider_id": "processor.projected_motion_breath.state_classifier",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_state",
+        "supported_targets": ["desktop", "phone", "quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "raw breath-state recording requires a bound PMB input provider",
+    },
+    "stream.breath.state.value": {
+        "value_id": "value.breath.state.value",
+        "stream_id": "stream.breath.state.value",
+        "provider_id": "processor.projected_motion_breath.state_value",
+        "provider_kind": "processor_output",
+        "package_id": "package.projected_motion_breath",
+        "sample_kind": "breath_state_value",
+        "supported_targets": ["desktop", "phone", "quest"],
+        "single_value_live_route_supported": False,
+        "preflight_supported": True,
+        "blocked_reason": "processed breath-state value recording requires a bound PMB input provider",
     },
     "stream.breath.dynamics": {
         "value_id": "value.breath.dynamics",
@@ -506,6 +534,8 @@ def record_broker_websocket_streams(
             (PMB_BREATH_VOLUME_POLAR_STREAM, "breath_volume_polar"),
             (PMB_BREATH_VOLUME_CONTROLLER_STREAM, "breath_volume_controller"),
             (PMB_BREATH_SELECTION_STATE_STREAM, "breath_selection_state"),
+            (PMB_BREATH_STATE_STREAM, "breath_state"),
+            (PMB_BREATH_STATE_VALUE_STREAM, "breath_state_value"),
             (PMB_BREATH_FEEDBACK_STATE_STREAM, "breath_feedback_state"),
             (PMB_BREATH_FEEDBACK_RECEIPT_STREAM, "breath_feedback_receipt"),
         ]:
@@ -614,6 +644,8 @@ def record_broker_websocket_streams(
                 PMB_BREATH_VOLUME_POLAR_STREAM,
                 PMB_BREATH_VOLUME_CONTROLLER_STREAM,
                 PMB_BREATH_SELECTION_STATE_STREAM,
+                PMB_BREATH_STATE_STREAM,
+                PMB_BREATH_STATE_VALUE_STREAM,
                 PMB_BREATH_FEEDBACK_STATE_STREAM,
                 PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
             ]:
@@ -737,6 +769,8 @@ def record_broker_websocket_streams(
     pmb_feedback_published = bool(pmb_publish.get("published"))
     pmb_breath_publish_count = int(pmb_publish.get("breath_published_count") or 0)
     pmb_selected_breath_publish_count = int(pmb_publish.get("selected_breath_published_count") or 0)
+    pmb_state_publish_count = int(pmb_publish.get("state_published_count") or 0)
+    pmb_state_value_publish_count = int(pmb_publish.get("state_value_published_count") or 0)
     pmb_feedback_publish_count = int(pmb_publish.get("feedback_published_count") or 0)
     pmb_receipt_count = int(
         stream_rows.get(PMB_BREATH_FEEDBACK_RECEIPT_STREAM, {}).get("event_count") or 0
@@ -777,6 +811,10 @@ def record_broker_websocket_streams(
         "pmb_breath_publish_count": pmb_breath_publish_count,
         "pmb_selected_breath_published": pmb_selected_breath_publish_count > 0,
         "pmb_selected_breath_publish_count": pmb_selected_breath_publish_count,
+        "pmb_breath_state_published": pmb_state_publish_count > 0,
+        "pmb_breath_state_publish_count": pmb_state_publish_count,
+        "pmb_breath_state_value_published": pmb_state_value_publish_count > 0,
+        "pmb_breath_state_value_publish_count": pmb_state_value_publish_count,
         "pmb_breath_selected_source_preference": pmb_publish.get("selected_source_preference"),
         "pmb_breath_selected_source_effective": pmb_publish.get("selected_source_effective"),
         "pmb_feedback_published": pmb_feedback_published and pmb_feedback_publish_count > 0,

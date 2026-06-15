@@ -37,6 +37,8 @@ PMB_BREATH_VOLUME_SELECTED_STREAM = "stream.breath.volume.selected"
 PMB_BREATH_VOLUME_POLAR_STREAM = "stream.breath.volume.polar"
 PMB_BREATH_VOLUME_CONTROLLER_STREAM = "stream.breath.volume.controller"
 PMB_BREATH_SELECTION_STATE_STREAM = "stream.breath.selection_state"
+PMB_BREATH_STATE_STREAM = "stream.breath.state"
+PMB_BREATH_STATE_VALUE_STREAM = "stream.breath.state.value"
 PMB_BREATH_FEEDBACK_STATE_STREAM = "stream.breath.feedback_state"
 PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
 PMB_BREATH_SCALE_VOLUME0 = "1.0"
@@ -348,6 +350,8 @@ def build_pmb_live_route_self_test_evidence(
     normalized_stream_ids = route_report.get("normalized_stream_ids", []) if route_report else []
     output_stream_ids = route_report.get("output_stream_ids", []) if route_report else []
     source_routes = route_report.get("source_routes", []) if route_report else []
+    state_samples = route_report.get("state_samples", []) if route_report else []
+    state_value_samples = route_report.get("state_value_samples", []) if route_report else []
     feedback_samples = route_report.get("feedback_samples", []) if route_report else []
     receipts = (
         route_report.get("receiver_receipts")
@@ -397,9 +401,17 @@ def build_pmb_live_route_self_test_evidence(
                 PMB_BREATH_VOLUME_POLAR_STREAM,
                 PMB_BREATH_VOLUME_CONTROLLER_STREAM,
                 PMB_BREATH_SELECTION_STATE_STREAM,
+                PMB_BREATH_STATE_STREAM,
+                PMB_BREATH_STATE_VALUE_STREAM,
                 PMB_BREATH_FEEDBACK_STATE_STREAM,
             }.issubset(set(output_stream_ids)),
-            "self-test route emits aggregate, selected, source-specific, selection-state, and feedback streams",
+            "self-test route emits aggregate, selected, source-specific, raw state, processed state-value, selection-state, and feedback streams",
+            "validation.pmb_live_route_self_test_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_state_samples",
+            bool(state_samples) and bool(state_value_samples) and len(state_samples) == len(state_value_samples),
+            "self-test route emits paired raw state and processed state-value samples",
             "validation.pmb_live_route_self_test_failed",
         ),
         pmb_scorecard_check(
@@ -488,6 +500,8 @@ def build_pmb_live_route_self_test_evidence(
             "output_stream_ids": output_stream_ids,
             "source_route_count": len(source_routes),
             "breath_sample_count": len(route_report.get("breath_samples", [])) if route_report else 0,
+            "state_sample_count": len(state_samples),
+            "state_value_sample_count": len(state_value_samples),
             "feedback_sample_count": len(feedback_samples),
             "receipt_count": len(receipts),
             "makepad_subscription": subscription,
@@ -560,6 +574,8 @@ def validate_pmb_live_route_self_test_evidence(evidence: dict[str, Any]) -> dict
             and {
                 PMB_BREATH_VOLUME_STREAM,
                 PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_STATE_STREAM,
+                PMB_BREATH_STATE_VALUE_STREAM,
                 PMB_BREATH_FEEDBACK_STATE_STREAM,
             }.issubset(
                 set(summary.get("output_stream_ids", []))
@@ -625,6 +641,14 @@ def build_pmb_shell_handoff_validation_evidence(
         ),
         {},
     )
+    state_value_module = next(
+        (
+            manifest
+            for manifest in module_manifests
+            if manifest.get("module_id") == "module.breath.state_value"
+        ),
+        {},
+    )
     stream_bindings = [
         binding
         for binding in handoff.get("stream_bindings", [])
@@ -673,6 +697,19 @@ def build_pmb_shell_handoff_validation_evidence(
             "validation.check.pmb_shell_handoff.feedback_receipt_export",
             "stream.breath.feedback_receipt" in exported_stream_ids,
             "PMB package exports stream.breath.feedback_receipt for downstream shell acknowledgements",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.state_stream_exports",
+            PMB_BREATH_STATE_STREAM in exported_stream_ids
+            and PMB_BREATH_STATE_VALUE_STREAM in exported_stream_ids,
+            "PMB package exports raw breath state and processed state-value streams",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "validation.check.pmb_shell_handoff.state_value_module",
+            PMB_BREATH_STATE_VALUE_STREAM in state_value_module.get("provides_streams", []),
+            "PMB state-value module provides stream.breath.state.value",
             "validation.pmb_shell_handoff_failed",
         ),
         pmb_scorecard_check(
@@ -785,6 +822,11 @@ def build_pmb_shell_handoff_validation_evidence(
                 for stream_id in feedback_sink.get("provides_streams", [])
                 if stream_id
             ),
+            "state_value_provides_streams": sorted(
+                str(stream_id)
+                for stream_id in state_value_module.get("provides_streams", [])
+                if stream_id
+            ),
         },
         "commands": [
             {
@@ -853,6 +895,19 @@ def validate_pmb_shell_handoff_validation_evidence(evidence: dict[str, Any]) -> 
             "hostess.check.pmb_shell_handoff.feedback_receipt_export",
             "stream.breath.feedback_receipt" in package_contract.get("exported_stream_ids", []),
             "PMB package exports stream.breath.feedback_receipt",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.state_stream_exports",
+            PMB_BREATH_STATE_STREAM in package_contract.get("exported_stream_ids", [])
+            and PMB_BREATH_STATE_VALUE_STREAM in package_contract.get("exported_stream_ids", []),
+            "PMB package exports raw breath state and processed state-value streams",
+            "validation.pmb_shell_handoff_failed",
+        ),
+        pmb_scorecard_check(
+            "hostess.check.pmb_shell_handoff.state_value_module",
+            PMB_BREATH_STATE_VALUE_STREAM in package_contract.get("state_value_provides_streams", []),
+            "PMB state-value module provides stream.breath.state.value",
             "validation.pmb_shell_handoff_failed",
         ),
         pmb_scorecard_check(
@@ -1170,10 +1225,14 @@ def validate_pmb_quest_simulated_live_evidence(
             and {
                 PMB_BREATH_VOLUME_STREAM,
                 PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_STATE_STREAM,
+                PMB_BREATH_STATE_VALUE_STREAM,
                 PMB_BREATH_FEEDBACK_STATE_STREAM,
             }.issubset(output_stream_ids)
             and int(route.get("source_route_count", 0)) >= 2
             and int(route.get("breath_sample_count", 0)) >= 6
+            and int(route.get("state_sample_count", 0)) >= 6
+            and int(route.get("state_value_sample_count", 0)) >= 6
             and int(route.get("feedback_sample_count", 0)) >= 6,
             "simulated Polar ACC and controller object-pose routes produced PMB outputs",
             "validation.pmb_quest_simulated_live_failed",
@@ -1194,10 +1253,14 @@ def validate_pmb_quest_simulated_live_evidence(
             "hostess.check.pmb_quest_simulated_live.broker_feedback",
             execution.get("broker_transport_used") is True
             and execution.get("feedback_published_to_broker") is True
+            and execution.get("breath_state_published_to_broker") is True
+            and execution.get("breath_state_value_published_to_broker") is True
             and broker.get("broker_transport_used") is True
             and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("state_published_count", 0)) > 0
+            and int(broker.get("state_value_published_count", 0)) > 0
             and int(broker.get("feedback_published_count", 0)) > 0,
-            "Quest app published selected breath and PMB feedback to the broker",
+            "Quest app published selected breath, raw state, processed state-value, and PMB feedback to the broker",
             "validation.pmb_quest_simulated_live_failed",
         ),
         pmb_scorecard_check(
@@ -1318,6 +1381,8 @@ def validate_pmb_quest_physical_live_evidence(
             and {
                 PMB_BREATH_VOLUME_STREAM,
                 PMB_BREATH_VOLUME_SELECTED_STREAM,
+                PMB_BREATH_STATE_STREAM,
+                PMB_BREATH_STATE_VALUE_STREAM,
                 PMB_BREATH_FEEDBACK_STATE_STREAM,
             }.issubset(output_stream_ids)
             and route.get("status") == "pass"
@@ -1325,6 +1390,8 @@ def validate_pmb_quest_physical_live_evidence(
             and route.get("live_sensor_used") is True
             and route.get("plan_only_fixture") is False
             and int(route.get("breath_sample_count", 0)) > 0
+            and int(route.get("state_sample_count", 0)) > 0
+            and int(route.get("state_value_sample_count", 0)) > 0
             and int(route.get("feedback_sample_count", 0)) > 0,
             "PMB live route consumed physical broker transport events and produced breath feedback",
             "validation.pmb_quest_physical_live_failed",
@@ -1338,12 +1405,14 @@ def validate_pmb_quest_physical_live_evidence(
             and int(broker.get("input_event_processed_count", 0)) > 0
             and int(broker.get("live_processor_output_update_count", 0)) > 0
             and int(broker.get("first_selected_publish_elapsed_ms", -1)) >= 0
+            and int(broker.get("state_published_count", 0)) > 0
+            and int(broker.get("state_value_published_count", 0)) > 0
             and int(broker.get("feedback_published_count", 0)) > 0
             and int(broker.get("selected_breath_published_count", 0)) > 0
             and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1))
             and int(execution.get("makepad_feedback_receipt_count", 0))
             == int(broker.get("selected_breath_published_count", -1)),
-            "Makepad acknowledged event-driven live PMB samples while selected breath volume was published during capture",
+            "Makepad acknowledged event-driven live PMB samples while selected breath, raw state, and processed state-value were published during capture",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(

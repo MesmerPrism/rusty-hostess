@@ -14,6 +14,8 @@ from tools.hostessctl.broker_transport import (
 from tools.hostessctl.pmb_evidence import (
     PMB_BREATH_FEEDBACK_STATE_STREAM,
     PMB_BREATH_SELECTION_STATE_STREAM,
+    PMB_BREATH_STATE_STREAM,
+    PMB_BREATH_STATE_VALUE_STREAM,
     PMB_BREATH_VOLUME_CONTROLLER_STREAM,
     PMB_BREATH_VOLUME_POLAR_STREAM,
     PMB_BREATH_VOLUME_SELECTED_STREAM,
@@ -34,6 +36,8 @@ def publish_pmb_feedback_samples(
         selected_source_preference,
         limit,
     )
+    state_samples = select_pmb_output_samples(route_report.get("state_samples", []), limit)
+    state_value_samples = select_pmb_output_samples(route_report.get("state_value_samples", []), limit)
     feedback_samples = select_pmb_output_samples(route_report.get("feedback_samples", []), limit)
     breath_results: list[dict[str, Any]] = []
     for index, sample in enumerate(breath_samples):
@@ -97,6 +101,30 @@ def publish_pmb_feedback_samples(
             )
         )
     breath_results.extend(selection_state_results)
+    state_results = [
+        publish_pmb_stream_sample(
+            send_broker_command,
+            stream_id=PMB_BREATH_STATE_STREAM,
+            sequence_id=int(sample.get("sequence_id") or index + 1),
+            payload=pmb_breath_state_payload(
+                sample,
+                int(sample.get("sequence_id") or index + 1),
+            ),
+        )
+        for index, sample in enumerate(state_samples)
+    ]
+    state_value_results = [
+        publish_pmb_stream_sample(
+            send_broker_command,
+            stream_id=PMB_BREATH_STATE_VALUE_STREAM,
+            sequence_id=int(sample.get("sequence_id") or index + 1),
+            payload=pmb_breath_state_value_payload(
+                sample,
+                int(sample.get("sequence_id") or index + 1),
+            ),
+        )
+        for index, sample in enumerate(state_value_samples)
+    ]
     feedback_results = [
         publish_pmb_stream_sample(
             send_broker_command,
@@ -123,6 +151,8 @@ def publish_pmb_feedback_samples(
         "selected_source_preference": selected_source_preference,
         "selected_source_effective": selected_source_effective,
         "breath_requested_count": len(route_report.get("breath_samples", [])),
+        "state_requested_count": len(route_report.get("state_samples", [])),
+        "state_value_requested_count": len(route_report.get("state_value_samples", [])),
         "feedback_requested_count": len(route_report.get("feedback_samples", [])),
         "breath_published_count": sum(
             1
@@ -139,11 +169,24 @@ def publish_pmb_feedback_samples(
             for result in selection_state_results
             if result.get("status") == "pass"
         ),
+        "state_published_count": sum(1 for result in state_results if result.get("status") == "pass"),
+        "state_value_published_count": sum(
+            1 for result in state_value_results if result.get("status") == "pass"
+        ),
         "feedback_published_count": sum(1 for result in feedback_results if result.get("status") == "pass"),
-        "published_count": sum(1 for result in breath_results + feedback_results if result.get("status") == "pass"),
-        "published": any(result.get("status") == "pass" for result in breath_results + feedback_results),
+        "published_count": sum(
+            1
+            for result in breath_results + state_results + state_value_results + feedback_results
+            if result.get("status") == "pass"
+        ),
+        "published": any(
+            result.get("status") == "pass"
+            for result in breath_results + state_results + state_value_results + feedback_results
+        ),
         "breath_results": breath_results,
         "selected_breath_results": selected_breath_results,
+        "state_results": state_results,
+        "state_value_results": state_value_results,
         "feedback_results": feedback_results,
     }
 
@@ -183,6 +226,51 @@ def pmb_breath_payload(
             }
         )
     return payload
+
+
+def pmb_breath_state_payload(sample: dict[str, Any], sequence_id: int) -> dict[str, Any]:
+    state = str(sample.get("state") or sample.get("phase") or "pause")
+    return {
+        "schema": "rusty.manifold.breath.state.v1",
+        "stream_id": PMB_BREATH_STATE_STREAM,
+        "sequence_id": sequence_id,
+        "source_breath_sequence_id": sample.get("source_breath_sequence_id"),
+        "source_id": sample.get("source_id"),
+        "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
+        "state": state,
+        "phase": state,
+        "state01": sample.get("state01"),
+        "tracking01": sample.get("tracking01"),
+        "quality": sample.get("quality"),
+        "processor_id": "processor.projected_motion_breath.live_bridge",
+        "publisher": "hostessctl.record_values",
+    }
+
+
+def pmb_breath_state_value_payload(sample: dict[str, Any], sequence_id: int) -> dict[str, Any]:
+    value01 = sample.get("value01")
+    state = str(sample.get("state") or sample.get("phase") or "pause")
+    return {
+        "schema": "rusty.manifold.breath.state_value.v1",
+        "stream_id": PMB_BREATH_STATE_VALUE_STREAM,
+        "sequence_id": sequence_id,
+        "source_breath_sequence_id": sample.get("source_breath_sequence_id"),
+        "source_state_sequence_id": sample.get("source_state_sequence_id"),
+        "source_id": sample.get("source_id"),
+        "sample_time_unix_ns": sample_time_unix_ns_from_sample(sample),
+        "state": state,
+        "phase": state,
+        "state01": sample.get("state01"),
+        "target01": sample.get("target01"),
+        "value01": value01,
+        "volume01": value01,
+        "delta_seconds": sample.get("delta_seconds"),
+        "stale_gap": sample.get("stale_gap"),
+        "tracking01": sample.get("tracking01"),
+        "quality": sample.get("quality"),
+        "processor_id": "processor.projected_motion_breath.state_value",
+        "publisher": "hostessctl.record_values",
+    }
 
 
 def pmb_breath_source_kind(sample: dict[str, Any]) -> str:

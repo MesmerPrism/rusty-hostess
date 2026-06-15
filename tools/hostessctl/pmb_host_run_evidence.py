@@ -48,6 +48,7 @@ def write_pmb_host_run_evidence(raw_evidence_path: Path, validation_report_path:
         "package_ids": ["package.projected_motion_breath"],
         "module_ids": [
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.dynamics",
         ],
         "status": status,
@@ -113,6 +114,13 @@ def write_pmb_live_route_host_run_evidence(
             "PMB route self-test included one Makepad receipt plan per feedback sample",
             "validation.pmb_live_route_self_test_failed",
         ),
+        pmb_scorecard_check(
+            "validation.check.pmb_live_route_state_values",
+            int(summary.get("state_sample_count", 0)) > 0
+            and int(summary.get("state_sample_count", 0)) == int(summary.get("state_value_sample_count", -1)),
+            "PMB route self-test produced paired raw state and processed state-value samples",
+            "validation.pmb_live_route_self_test_failed",
+        ),
     ]
     status = "pass" if all(check["status"] == "pass" for check in checks) else "fail"
     contract = {
@@ -125,6 +133,7 @@ def write_pmb_live_route_host_run_evidence(
         "package_ids": ["package.projected_motion_breath"],
         "module_ids": [
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.feedback_sink",
             "module.hostess.manifold_value_recorder",
         ],
@@ -211,6 +220,7 @@ def write_pmb_shell_handoff_host_run_evidence(
         "module_ids": [
             "module.motion.object_pose_provider",
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.feedback_sink",
         ],
         "status": status,
@@ -299,6 +309,7 @@ def write_pmb_android_host_run_evidence(
         "package_ids": ["package.projected_motion_breath"],
         "module_ids": [
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.dynamics",
         ],
         "status": status,
@@ -386,6 +397,7 @@ def write_pmb_controller_preflight_host_run_evidence(
         "module_ids": [
             "module.motion.object_pose_provider",
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.dynamics",
         ],
         "status": status,
@@ -460,8 +472,10 @@ def write_pmb_quest_simulated_live_host_run_evidence(
             "validation.check.makepad_feedback_receipts",
             int(broker.get("feedback_published_count", 0)) > 0
             and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("state_published_count", 0)) > 0
+            and int(broker.get("state_value_published_count", 0)) > 0
             and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1)),
-            "Makepad acknowledged every Quest-published selected breath sample",
+            "Makepad acknowledged every Quest-published selected breath sample while state/value streams were published",
             "validation.pmb_quest_simulated_live_failed",
         ),
     ]
@@ -477,6 +491,7 @@ def write_pmb_quest_simulated_live_host_run_evidence(
         "module_ids": [
             "module.motion.object_pose_provider",
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.feedback_sink",
             "app.makepad_camera_shell.breath_feedback",
         ],
@@ -505,6 +520,8 @@ def write_pmb_quest_simulated_live_host_run_evidence(
             "selected_source_effective": broker.get("selected_source_effective"),
             "feedback_published_count": broker.get("feedback_published_count"),
             "feedback_receipt_count": broker.get("feedback_receipt_count"),
+            "state_published_count": broker.get("state_published_count"),
+            "state_value_published_count": broker.get("state_value_published_count"),
         },
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",
@@ -576,8 +593,10 @@ def write_pmb_quest_physical_live_host_run_evidence(
             and int(broker.get("first_selected_publish_elapsed_ms", -1)) >= 0
             and int(broker.get("feedback_published_count", 0)) > 0
             and int(broker.get("selected_breath_published_count", 0)) > 0
+            and int(broker.get("state_published_count", 0)) > 0
+            and int(broker.get("state_value_published_count", 0)) > 0
             and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1)),
-            "Makepad acknowledged every Quest-published live selected breath sample",
+            "Makepad acknowledged every Quest-published live selected breath sample while state/value streams were published",
             "validation.pmb_quest_physical_live_failed",
         ),
     ]
@@ -594,6 +613,7 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "provider.polar_h10.ble",
             "module.motion.object_pose_provider",
             "module.breath.projected_motion",
+            "module.breath.state_value",
             "module.breath.feedback_sink",
             "app.makepad_camera_shell.breath_feedback",
         ],
@@ -631,6 +651,8 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "last_selected_publish_elapsed_ms": broker.get("last_selected_publish_elapsed_ms"),
             "feedback_published_count": broker.get("feedback_published_count"),
             "feedback_receipt_count": broker.get("feedback_receipt_count"),
+            "state_published_count": broker.get("state_published_count"),
+            "state_value_published_count": broker.get("state_value_published_count"),
         },
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",

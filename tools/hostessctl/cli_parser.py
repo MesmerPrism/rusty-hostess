@@ -8,7 +8,7 @@ import argparse
 def add_makepad_breath_scale_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
         "--makepad-breath-scale-mode",
-        choices=["volume", "state-ramp"],
+        choices=["volume", "state-ramp", "state-value"],
         default="volume",
     )
     parser.add_argument(

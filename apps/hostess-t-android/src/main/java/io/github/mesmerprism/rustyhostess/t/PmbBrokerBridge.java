@@ -31,6 +31,8 @@ final class PmbBrokerBridge {
     static final String STREAM_BREATH_VOLUME_POLAR = "stream.breath.volume.polar";
     static final String STREAM_BREATH_VOLUME_CONTROLLER = "stream.breath.volume.controller";
     static final String STREAM_BREATH_SELECTION_STATE = "stream.breath.selection_state";
+    static final String STREAM_BREATH_STATE = "stream.breath.state";
+    static final String STREAM_BREATH_STATE_VALUE = "stream.breath.state.value";
     static final String STREAM_BREATH_FEEDBACK_STATE = "stream.breath.feedback_state";
     static final String STREAM_BREATH_FEEDBACK_RECEIPT = "stream.breath.feedback_receipt";
 
@@ -254,6 +256,8 @@ final class PmbBrokerBridge {
         brokerResult.status = brokerResult.liveRoutePassCount > 0
                 && brokerResult.firstSelectedPublishElapsedMs >= 0
                 && brokerResult.selectedBreathPublishedCount > 0
+                && brokerResult.statePublishedCount > 0
+                && brokerResult.stateValuePublishedCount > 0
                 && brokerResult.feedbackPublishedCount > 0
                 && brokerResult.feedbackReceiptCount == brokerResult.selectedBreathPublishedCount
                 ? "pass"
@@ -263,6 +267,12 @@ final class PmbBrokerBridge {
         }
         if (brokerResult.firstSelectedPublishElapsedMs < 0 || brokerResult.selectedBreathPublishedCount <= 0) {
             brokerResult.errors.put("issue.selected_breath_volume_stream_missing_during_capture");
+        }
+        if (brokerResult.statePublishedCount <= 0) {
+            brokerResult.errors.put("issue.breath_state_stream_missing_during_capture");
+        }
+        if (brokerResult.stateValuePublishedCount <= 0) {
+            brokerResult.errors.put("issue.breath_state_value_stream_missing_during_capture");
         }
         if (!"pass".equals(brokerResult.status)
                 && brokerResult.feedbackReceiptCount < brokerResult.selectedBreathPublishedCount) {
@@ -289,10 +299,18 @@ final class PmbBrokerBridge {
                 result.selectedSourcePreference,
                 limit);
         result.selectedSourceEffective = effectiveSelectedSource(breathSamples, result.selectedSourcePreference);
+        List<JSONObject> stateSamples = selectSamples(routeReport.optJSONArray("state_samples"), limit);
+        List<JSONObject> stateValueSamples = selectSamples(routeReport.optJSONArray("state_value_samples"), limit);
         List<JSONObject> feedbackSamples = selectSamples(routeReport.optJSONArray("feedback_samples"), limit);
         result.breathRequestedCount = routeReport.optJSONArray("breath_samples") == null
                 ? 0
                 : routeReport.optJSONArray("breath_samples").length();
+        result.stateRequestedCount = routeReport.optJSONArray("state_samples") == null
+                ? 0
+                : routeReport.optJSONArray("state_samples").length();
+        result.stateValueRequestedCount = routeReport.optJSONArray("state_value_samples") == null
+                ? 0
+                : routeReport.optJSONArray("state_value_samples").length();
         result.feedbackRequestedCount = routeReport.optJSONArray("feedback_samples") == null
                 ? 0
                 : routeReport.optJSONArray("feedback_samples").length();
@@ -363,6 +381,34 @@ final class PmbBrokerBridge {
                     result.selectionStatePublishedCount += 1;
                 }
             }
+            for (int index = 0; index < stateSamples.size(); index++) {
+                JSONObject sample = stateSamples.get(index);
+                PublishResult publish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_STATE,
+                        sample.optLong("sequence_id", index + 1),
+                        statePayload(sample, index + 1, result),
+                        sequence++);
+                result.statePublishResults.put(publish.toJson());
+                if ("pass".equals(publish.status)) {
+                    result.statePublishedCount += 1;
+                }
+            }
+            for (int index = 0; index < stateValueSamples.size(); index++) {
+                JSONObject sample = stateValueSamples.get(index);
+                PublishResult publish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_STATE_VALUE,
+                        sample.optLong("sequence_id", index + 1),
+                        stateValuePayload(sample, index + 1, result),
+                        sequence++);
+                result.stateValuePublishResults.put(publish.toJson());
+                if ("pass".equals(publish.status)) {
+                    result.stateValuePublishedCount += 1;
+                }
+            }
             for (int index = 0; index < feedbackSamples.size(); index++) {
                 JSONObject sample = feedbackSamples.get(index);
                 PublishResult publish = publishStreamSample(
@@ -386,12 +432,20 @@ final class PmbBrokerBridge {
             }
         }
         result.status = result.selectedBreathPublishedCount > 0
+                && result.statePublishedCount > 0
+                && result.stateValuePublishedCount > 0
                 && result.feedbackPublishedCount > 0
                 && result.feedbackReceiptCount == result.selectedBreathPublishedCount
                 ? "pass"
                 : "fail";
         if (result.selectedBreathPublishedCount <= 0) {
             result.errors.put("issue.selected_breath_volume_stream_missing");
+        }
+        if (result.statePublishedCount <= 0) {
+            result.errors.put("issue.breath_state_stream_missing");
+        }
+        if (result.stateValuePublishedCount <= 0) {
+            result.errors.put("issue.breath_state_value_stream_missing");
         }
         if (!"pass".equals(result.status) && result.feedbackReceiptCount < result.selectedBreathPublishedCount) {
             result.errors.put("issue.makepad_selected_breath_receipts_missing");
@@ -424,6 +478,48 @@ final class PmbBrokerBridge {
         result.liveProcessorOutputUpdateCount += 1;
         result.liveRoutePassCount = result.liveProcessorOutputUpdateCount;
         maybePublishSelectionState(client, result, state);
+        JSONArray stateSamples = update.optJSONArray("state_samples");
+        if (stateSamples != null) {
+            for (int index = 0; index < stateSamples.length(); index++) {
+                JSONObject sample = stateSamples.optJSONObject(index);
+                if (sample == null) {
+                    continue;
+                }
+                result.stateRequestedCount += 1;
+                PublishResult statePublish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_STATE,
+                        sample.optLong("sequence_id", result.stateRequestedCount),
+                        statePayload(sample, result.stateRequestedCount, result),
+                        state.nextCommandSequence());
+                putLimited(result.statePublishResults, statePublish.toJson(), result.retainedResultLimit());
+                if ("pass".equals(statePublish.status)) {
+                    result.statePublishedCount += 1;
+                }
+            }
+        }
+        JSONArray stateValueSamples = update.optJSONArray("state_value_samples");
+        if (stateValueSamples != null) {
+            for (int index = 0; index < stateValueSamples.length(); index++) {
+                JSONObject sample = stateValueSamples.optJSONObject(index);
+                if (sample == null) {
+                    continue;
+                }
+                result.stateValueRequestedCount += 1;
+                PublishResult stateValuePublish = publishStreamSample(
+                        client,
+                        result,
+                        STREAM_BREATH_STATE_VALUE,
+                        sample.optLong("sequence_id", result.stateValueRequestedCount),
+                        stateValuePayload(sample, result.stateValueRequestedCount, result),
+                        state.nextCommandSequence());
+                putLimited(result.stateValuePublishResults, stateValuePublish.toJson(), result.retainedResultLimit());
+                if ("pass".equals(stateValuePublish.status)) {
+                    result.stateValuePublishedCount += 1;
+                }
+            }
+        }
 
         for (int index = 0; index < breathSamples.length(); index++) {
             JSONObject sample = breathSamples.optJSONObject(index);
@@ -814,6 +910,53 @@ final class PmbBrokerBridge {
                 .put("computation_authority", "quest_hostess_android_app");
     }
 
+    private static JSONObject statePayload(JSONObject sample, int fallbackSequence, Result result) throws JSONException {
+        int sequence = (int) sample.optLong("sequence_id", fallbackSequence);
+        String state = sample.optString("state", sample.optString("phase", "pause"));
+        return new JSONObject()
+                .put("schema", "rusty.manifold.breath.state.v1")
+                .put("stream_id", STREAM_BREATH_STATE)
+                .put("sequence_id", sequence)
+                .put("source_breath_sequence_id", sample.optLong("source_breath_sequence_id", sequence))
+                .put("source_id", sample.optString("source_id", "source.unknown"))
+                .put("sample_time_unix_ns", sample.optLong("sample_time_unix_ns", sampleTimeUnixNs(sample)))
+                .put("state", state)
+                .put("phase", state)
+                .put("state01", sample.optDouble("state01", 0.5))
+                .put("tracking01", sample.optDouble("tracking01", 0.0))
+                .put("quality", sample.optString("quality", "unknown"))
+                .put("processor_id", result.processorId)
+                .put("publisher", "app.rusty_hostess_t.quest")
+                .put("computation_authority", "quest_hostess_android_app");
+    }
+
+    private static JSONObject stateValuePayload(JSONObject sample, int fallbackSequence, Result result) throws JSONException {
+        int sequence = (int) sample.optLong("sequence_id", fallbackSequence);
+        String state = sample.optString("state", sample.optString("phase", "pause"));
+        Object value01 = sample.has("value01") ? sample.get("value01") : JSONObject.NULL;
+        return new JSONObject()
+                .put("schema", "rusty.manifold.breath.state_value.v1")
+                .put("stream_id", STREAM_BREATH_STATE_VALUE)
+                .put("sequence_id", sequence)
+                .put("source_breath_sequence_id", sample.optLong("source_breath_sequence_id", sequence))
+                .put("source_state_sequence_id", sample.optLong("source_state_sequence_id", sequence))
+                .put("source_id", sample.optString("source_id", "source.unknown"))
+                .put("sample_time_unix_ns", sample.optLong("sample_time_unix_ns", sampleTimeUnixNs(sample)))
+                .put("state", state)
+                .put("phase", state)
+                .put("state01", sample.optDouble("state01", 0.5))
+                .put("target01", sample.optDouble("target01", 0.5))
+                .put("value01", value01)
+                .put("volume01", value01)
+                .put("delta_seconds", sample.optDouble("delta_seconds", 0.0))
+                .put("stale_gap", sample.optBoolean("stale_gap", false))
+                .put("tracking01", sample.optDouble("tracking01", 0.0))
+                .put("quality", sample.optString("quality", "unknown"))
+                .put("processor_id", "processor.projected_motion_breath.state_value")
+                .put("publisher", "app.rusty_hostess_t.quest")
+                .put("computation_authority", "quest_hostess_android_app");
+    }
+
     private static long sampleTimeUnixNs(JSONObject sample) {
         if (sample.has("sample_time_unix_ns")) {
             return sample.optLong("sample_time_unix_ns", 0L);
@@ -1072,6 +1215,8 @@ final class PmbBrokerBridge {
         final int publishLimit;
         final int receiptListenMs;
         final JSONArray breathPublishResults = new JSONArray();
+        final JSONArray statePublishResults = new JSONArray();
+        final JSONArray stateValuePublishResults = new JSONArray();
         final JSONArray feedbackPublishResults = new JSONArray();
         final JSONArray commandReplies = new JSONArray();
         final JSONArray receiptEvents = new JSONArray();
@@ -1079,10 +1224,14 @@ final class PmbBrokerBridge {
         String status = "pending";
         boolean brokerConnected = false;
         int breathRequestedCount = 0;
+        int stateRequestedCount = 0;
+        int stateValueRequestedCount = 0;
         int feedbackRequestedCount = 0;
         int breathPublishedCount = 0;
         int selectedBreathPublishedCount = 0;
         int selectionStatePublishedCount = 0;
+        int statePublishedCount = 0;
+        int stateValuePublishedCount = 0;
         int feedbackPublishedCount = 0;
         int feedbackReceiptCount = 0;
         String selectedSourcePreference = "auto";
@@ -1143,14 +1292,20 @@ final class PmbBrokerBridge {
                     .put("last_route_status", lastRouteStatus)
                     .put("close_report", closeReport)
                     .put("breath_requested_count", breathRequestedCount)
+                    .put("state_requested_count", stateRequestedCount)
+                    .put("state_value_requested_count", stateValueRequestedCount)
                     .put("feedback_requested_count", feedbackRequestedCount)
                     .put("breath_published_count", breathPublishedCount)
                     .put("selected_breath_published_count", selectedBreathPublishedCount)
                     .put("selection_state_published_count", selectionStatePublishedCount)
+                    .put("state_published_count", statePublishedCount)
+                    .put("state_value_published_count", stateValuePublishedCount)
                     .put("feedback_published_count", feedbackPublishedCount)
                     .put("feedback_receipt_count", feedbackReceiptCount)
                     .put("receipt_stream_id", STREAM_BREATH_FEEDBACK_RECEIPT)
                     .put("breath_results", breathPublishResults)
+                    .put("state_results", statePublishResults)
+                    .put("state_value_results", stateValuePublishResults)
                     .put("feedback_results", feedbackPublishResults)
                     .put("command_replies", commandReplies)
                     .put("receipt_events", receiptEvents)

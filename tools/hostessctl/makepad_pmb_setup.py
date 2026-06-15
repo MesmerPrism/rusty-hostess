@@ -14,6 +14,7 @@ from tools.hostessctl.pmb_evidence import (
     PMB_BREATH_SCALE_SMOOTHING_ALPHA,
     PMB_BREATH_SCALE_VOLUME0,
     PMB_BREATH_SCALE_VOLUME1,
+    PMB_BREATH_STATE_VALUE_STREAM,
     PMB_BREATH_VOLUME_SELECTED_STREAM,
 )
 
@@ -22,10 +23,7 @@ RunFunc = Callable[..., Any]
 
 
 def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[str, str]:
-    mode = str(getattr(args, "makepad_breath_scale_mode", PMB_BREATH_SCALE_MODE) or PMB_BREATH_SCALE_MODE)
-    mode = mode.strip().lower().replace("_", "-")
-    if mode not in {"volume", "state-ramp"}:
-        mode = PMB_BREATH_SCALE_MODE
+    scale_mode, stream_id = makepad_breath_scale_mode_and_stream(args)
     inhale_seconds = str(
         getattr(
             args,
@@ -42,8 +40,8 @@ def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[st
     )
     return {
         "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
-        "debug.rustyquest.makepad.projection.target.breath.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
-        "debug.rustyquest.makepad.projection.target.breath.scale.mode": mode,
+        "debug.rustyquest.makepad.projection.target.breath.stream": stream_id,
+        "debug.rustyquest.makepad.projection.target.breath.scale.mode": scale_mode,
         "debug.rustyquest.makepad.projection.target.breath.min.scale": PMB_BREATH_SCALE_VOLUME0,
         "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
         "debug.rustyquest.makepad.projection.target.breath.inhale.seconds.min.to.max": inhale_seconds,
@@ -54,18 +52,29 @@ def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[st
     }
 
 
+def makepad_breath_scale_mode_and_stream(args: argparse.Namespace) -> tuple[str, str]:
+    mode = str(getattr(args, "makepad_breath_scale_mode", PMB_BREATH_SCALE_MODE) or PMB_BREATH_SCALE_MODE)
+    mode = mode.strip().lower().replace("_", "-")
+    if mode == "state-value":
+        return "volume", PMB_BREATH_STATE_VALUE_STREAM
+    if mode not in {"volume", "state-ramp"}:
+        mode = PMB_BREATH_SCALE_MODE
+    return mode, PMB_BREATH_VOLUME_SELECTED_STREAM
+
+
 def configure_makepad_breath_feedback_receiver(
     args: argparse.Namespace,
     *,
     run_func: RunFunc,
 ) -> None:
+    _scale_mode, stream_id = makepad_breath_scale_mode_and_stream(args)
     setprops = {
         **makepad_visual_profile_runtime_properties(),
         "debug.rusty.manifold.pose.publish.enabled": "false",
         "debug.rusty.manifold.broker.host": "127.0.0.1",
         "debug.rusty.manifold.broker.port": str(args.broker_port),
         "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+        "debug.rusty.manifold.breath.feedback.stream": stream_id,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
         **makepad_breath_scale_runtime_properties(args),
@@ -91,6 +100,7 @@ def configure_makepad_physical_pmb_provider(
     *,
     run_func: RunFunc,
 ) -> None:
+    _scale_mode, stream_id = makepad_breath_scale_mode_and_stream(args)
     setprops = {
         **makepad_visual_profile_runtime_properties(),
         "debug.rusty.manifold.pose.publish.enabled": "true",
@@ -102,7 +112,7 @@ def configure_makepad_physical_pmb_provider(
         "debug.rusty.manifold.broker.host": "127.0.0.1",
         "debug.rusty.manifold.broker.port": str(args.broker_port),
         "debug.rusty.manifold.breath.feedback.enabled": "true",
-        "debug.rusty.manifold.breath.feedback.stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
+        "debug.rusty.manifold.breath.feedback.stream": stream_id,
         "debug.rusty.manifold.breath.feedback.receiver": "app.makepad_camera_shell.breath_feedback",
         "debug.rusty.manifold.breath.feedback.connect.timeout.ms": "5000",
         **makepad_breath_scale_runtime_properties(args),

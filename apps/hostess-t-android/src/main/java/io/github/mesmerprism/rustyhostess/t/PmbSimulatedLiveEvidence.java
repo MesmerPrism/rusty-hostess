@@ -96,6 +96,8 @@ final class PmbSimulatedLiveEvidence {
                 .put("processor_authority", "quest_hostess_android_app")
                 .put("broker_transport_used", brokerReport.optBoolean("broker_transport_used", false))
                 .put("selected_breath_published_to_broker", brokerReport.optInt("selected_breath_published_count", 0) > 0)
+                .put("breath_state_published_to_broker", brokerReport.optInt("state_published_count", 0) > 0)
+                .put("breath_state_value_published_to_broker", brokerReport.optInt("state_value_published_count", 0) > 0)
                 .put("breath_selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
                 .put("breath_selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_to_broker", brokerReport.optInt("feedback_published_count", 0) > 0)
@@ -107,6 +109,8 @@ final class PmbSimulatedLiveEvidence {
         JSONArray sourceRoutes = routeReport.optJSONArray("source_routes");
         JSONArray feedbackSamples = routeReport.optJSONArray("feedback_samples");
         JSONArray breathSamples = routeReport.optJSONArray("breath_samples");
+        JSONArray stateSamples = routeReport.optJSONArray("state_samples");
+        JSONArray stateValueSamples = routeReport.optJSONArray("state_value_samples");
         return new JSONObject()
                 .put("schema", routeReport.optString("schema", ""))
                 .put("status", routeReport.optString("status", "missing"))
@@ -116,6 +120,8 @@ final class PmbSimulatedLiveEvidence {
                 .put("output_stream_ids", routeReport.optJSONArray("output_stream_ids"))
                 .put("source_route_count", sourceRoutes == null ? 0 : sourceRoutes.length())
                 .put("breath_sample_count", breathSamples == null ? 0 : breathSamples.length())
+                .put("state_sample_count", stateSamples == null ? 0 : stateSamples.length())
+                .put("state_value_sample_count", stateValueSamples == null ? 0 : stateValueSamples.length())
                 .put("feedback_sample_count", feedbackSamples == null ? 0 : feedbackSamples.length())
                 .put("processor_core_executed", routeReport.optBoolean("processor_core_executed", false))
                 .put("runtime_execution_performed", routeReport.optBoolean("runtime_execution_performed", false))
@@ -132,6 +138,8 @@ final class PmbSimulatedLiveEvidence {
                 .put("breath_published_count", brokerReport.optInt("breath_published_count", 0))
                 .put("selected_breath_published_count", brokerReport.optInt("selected_breath_published_count", 0))
                 .put("selection_state_published_count", brokerReport.optInt("selection_state_published_count", 0))
+                .put("state_published_count", brokerReport.optInt("state_published_count", 0))
+                .put("state_value_published_count", brokerReport.optInt("state_value_published_count", 0))
                 .put("selected_source_preference", brokerReport.optString("selected_source_preference", "auto"))
                 .put("selected_source_effective", brokerReport.optString("selected_source_effective", "unknown"))
                 .put("feedback_published_count", brokerReport.optInt("feedback_published_count", 0))
@@ -161,9 +169,11 @@ final class PmbSimulatedLiveEvidence {
                 "validation.check.pmb_simulated_live_sources",
                 route != null
                         && route.optInt("source_route_count", 0) >= 2
+                        && route.optInt("state_sample_count", 0) > 0
+                        && route.optInt("state_value_sample_count", 0) > 0
                         && contains(route.optJSONArray("input_stream_ids"), "bio:polar_acc")
                         && contains(route.optJSONArray("input_stream_ids"), "stream.motion.object_pose"),
-                "PMB simulated live route included Polar ACC and controller object-pose inputs"));
+                "PMB simulated live route included Polar ACC/controller inputs plus raw and processed state samples"));
         checks.put(check(
                 "validation.check.pmb_simulated_live_quest_authority",
                 execution != null
@@ -178,8 +188,10 @@ final class PmbSimulatedLiveEvidence {
                 broker != null
                         && broker.optBoolean("broker_transport_used")
                         && broker.optInt("selected_breath_published_count", 0) > 0
+                        && broker.optInt("state_published_count", 0) > 0
+                        && broker.optInt("state_value_published_count", 0) > 0
                         && broker.optInt("feedback_published_count", 0) > 0,
-                "Quest Android app published selected breath and PMB feedback samples to the broker"));
+                "Quest Android app published selected breath, raw state, processed state-value, and PMB feedback samples to the broker"));
         checks.put(check(
                 "validation.check.pmb_simulated_live_makepad_receipts",
                 broker != null
