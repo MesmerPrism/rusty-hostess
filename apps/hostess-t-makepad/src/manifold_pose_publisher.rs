@@ -244,7 +244,6 @@ fn open_broker_websocket(config: &ManifoldPosePublisherConfig) -> Result<TcpStre
     if !response_text.starts_with("HTTP/1.1 101") {
         return Err("websocket_handshake_rejected".to_string());
     }
-    let _ = read_websocket_frame(&mut stream);
     Ok(stream)
 }
 

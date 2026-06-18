@@ -486,7 +486,7 @@ impl BrokerH264ProjectionMetadata {
     #[cfg(target_os = "android")]
     pub(crate) fn android_projection_source(
         &self,
-    ) -> Option<super::android_camera_probe::BrokerProjectionSource> {
+    ) -> Option<crate::android_camera_probe::BrokerProjectionSource> {
         let intrinsics = self.intrinsics?;
         let domain = self
             .intrinsics_domain
@@ -497,7 +497,7 @@ impl BrokerH264ProjectionMetadata {
                 height: self.delivered_height,
             });
         let extrinsics = self.extrinsics?;
-        Some(super::android_camera_probe::BrokerProjectionSource {
+        Some(crate::android_camera_probe::BrokerProjectionSource {
             camera_id: self.camera_id.clone(),
             intrinsics_fx: intrinsics.fx,
             intrinsics_fy: intrinsics.fy,

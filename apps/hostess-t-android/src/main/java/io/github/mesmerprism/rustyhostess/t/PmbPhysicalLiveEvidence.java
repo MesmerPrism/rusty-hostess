@@ -72,6 +72,8 @@ final class PmbPhysicalLiveEvidence {
                 && routeReport.optBoolean("runtime_execution_performed", false);
         boolean physicalPolar = captureReport.optBoolean("physical_polar_ble_used", false);
         boolean physicalController = captureReport.optBoolean("physical_controller_input_used", false);
+        boolean polarRequired = captureReport.optBoolean("polar_required", true);
+        boolean controllerRequired = captureReport.optBoolean("controller_required", true);
         return new JSONObject()
                 .put("mode", "projected_motion_breath_android_quest_physical_live")
                 .put("runtime_path", PMBRuntime.RUNTIME_PATH)
@@ -97,8 +99,8 @@ final class PmbPhysicalLiveEvidence {
                 .put("controller_input_used", physicalController)
                 .put("simulated_controller_provider_used", false)
                 .put("controller_transport_authority", "quest_makepad_xr_controller_pose_provider")
-                .put("manual_polar_trial_required", !physicalPolar)
-                .put("manual_controller_trial_required", !physicalController)
+                .put("manual_polar_trial_required", polarRequired && !physicalPolar)
+                .put("manual_controller_trial_required", controllerRequired && !physicalController)
                 .put("synthetic_live_route", false)
                 .put("pmd_computed_on_quest", coreExecuted && quest)
                 .put("pmd_computed_on_pc", false)
@@ -125,6 +127,10 @@ final class PmbPhysicalLiveEvidence {
                 .put("schema", captureReport.optString("schema", ""))
                 .put("status", captureReport.optString("status", "missing"))
                 .put("broker_connected", captureReport.optBoolean("broker_connected", false))
+                .put("selected_source_preference", captureReport.optString("selected_source_preference", "auto"))
+                .put("polar_required", captureReport.optBoolean("polar_required", true))
+                .put("controller_required", captureReport.optBoolean("controller_required", true))
+                .put("polar_provider_requested", captureReport.optBoolean("polar_provider_requested", true))
                 .put("polar_start_status", captureReport.optString("polar_start_status", "missing"))
                 .put("polar_stop_status", captureReport.optString("polar_stop_status", "missing"))
                 .put("polar_event_count", captureReport.optInt("polar_event_count", 0))
@@ -195,17 +201,15 @@ final class PmbPhysicalLiveEvidence {
         JSONObject capture = evidence.optJSONObject("input_capture_summary");
         JSONObject route = evidence.optJSONObject("route_report_summary");
         JSONObject broker = evidence.optJSONObject("broker_publish_summary");
+        boolean polarRequired = capture != null && capture.optBoolean("polar_required", true);
+        boolean controllerRequired = capture != null && capture.optBoolean("controller_required", true);
         JSONArray checks = new JSONArray();
         checks.put(check("validation.check.pmb_physical_live_core_loaded",
                 PMBRuntime.isAvailable(),
                 PMBRuntime.isAvailable() ? "PMB JNI runtime loaded" : PMBRuntime.loadError()));
         checks.put(check("validation.check.pmb_physical_live_inputs",
-                capture != null
-                        && capture.optBoolean("physical_polar_ble_used")
-                        && capture.optBoolean("physical_controller_input_used")
-                        && capture.optInt("polar_event_count", 0) > 0
-                        && capture.optInt("active_tracked_connected_object_pose_count", 0) > 0,
-                "Quest broker provided physical Polar ACC and active/tracked/connected controller pose events"));
+                captureInputRequirementsPassed(capture),
+                "Quest broker provided the required physical PMB input streams for the selected source"));
         checks.put(check("validation.check.pmb_physical_live_quest_authority",
                 execution != null
                         && execution.optBoolean("android_execution_performed")
@@ -222,8 +226,8 @@ final class PmbPhysicalLiveEvidence {
                         && route.optBoolean("live_sensor_used")
                         && route.optInt("state_sample_count", 0) > 0
                         && route.optInt("state_value_sample_count", 0) > 0
-                        && contains(route.optJSONArray("input_stream_ids"), "bio:polar_acc")
-                        && contains(route.optJSONArray("input_stream_ids"), "stream.motion.object_pose"),
+                        && (!polarRequired || contains(route.optJSONArray("input_stream_ids"), "bio:polar_acc"))
+                        && (!controllerRequired || contains(route.optJSONArray("input_stream_ids"), "stream.motion.object_pose")),
                 "PMB live route consumed broker transport events and produced raw plus processed state samples"));
         checks.put(check("validation.check.pmb_physical_live_makepad_receipts",
                 broker != null
@@ -275,6 +279,28 @@ final class PmbPhysicalLiveEvidence {
                 .put("check_id", checkId)
                 .put("status", passed ? "pass" : "fail")
                 .put("evidence", evidence);
+    }
+
+    private static boolean captureInputRequirementsPassed(JSONObject capture) {
+        if (capture == null) {
+            return false;
+        }
+        boolean polarRequired = capture.optBoolean("polar_required", true);
+        boolean controllerRequired = capture.optBoolean("controller_required", true);
+        boolean polarUsed = capture.optBoolean("physical_polar_ble_used", false)
+                && capture.optInt("polar_event_count", 0) > 0;
+        boolean controllerUsed = capture.optBoolean("physical_controller_input_used", false)
+                && capture.optInt("active_tracked_connected_object_pose_count", 0) > 0;
+        if (polarRequired && !polarUsed) {
+            return false;
+        }
+        if (controllerRequired && !controllerUsed) {
+            return false;
+        }
+        if (!polarRequired && !controllerRequired) {
+            return polarUsed || controllerUsed;
+        }
+        return true;
     }
 
     private static boolean contains(JSONArray values, String expected) {

@@ -40,6 +40,14 @@ from tools.hostessctl.pmb_evidence import (
     write_pmb_quest_physical_live_host_run_evidence,
     write_pmb_quest_simulated_live_host_run_evidence,
 )
+from tools.hostessctl.pmb_support import (
+    PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
+    PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
+    PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
+    PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD,
+    PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES,
+    PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS,
+)
 
 
 RunFunc = Callable[..., Any]
@@ -417,6 +425,60 @@ def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str)
         "--es",
         "pmb_controller_state_mode",
         str(getattr(args, "pmb_controller_state_mode", "projected-volume-delta") or "projected-volume-delta"),
+        "--es",
+        "pmb_controller_state_short_window_s",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_short_window_seconds",
+                PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS,
+            )
+        ),
+        "--es",
+        "pmb_controller_state_long_window_s",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_long_window_seconds",
+                PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
+            )
+        ),
+        "--es",
+        "pmb_controller_state_inhale_threshold",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_inhale_threshold",
+                PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
+            )
+        ),
+        "--es",
+        "pmb_controller_state_exhale_threshold",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_exhale_threshold",
+                PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
+            )
+        ),
+        "--es",
+        "pmb_controller_state_rotation_guard_degrees",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_rotation_guard_degrees",
+                PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES,
+            )
+        ),
+        "--es",
+        "pmb_controller_state_moving_average_guard",
+        str(
+            getattr(
+                args,
+                "pmb_controller_state_moving_average_guard",
+                PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD,
+            )
+        ),
         "--es",
         "feedback_publish_limit",
         str(args.feedback_publish_limit),

@@ -42,6 +42,18 @@ script_mod! {
         fiducial_intensity: 0.0
         binocular_color_separation: 0.0
         binocular_phase_offset_radians: 0.0
+        volume_only: 0.0
+        volume_base_layer_mix: 1.0
+        volume_texture_mix: 0.55
+        volume_emission_gain: 1.0
+        volume_black_threshold: 0.0
+        volume_color_saturation: 0.0
+        volume_depth_color_enabled: 0.0
+        volume_depth_color_mix: 0.0
+        volume_depth_contrast: 1.0
+        volume_depth_color_near: vec4(1.0, 0.85, 0.05, 1.0)
+        volume_depth_color_mid: vec4(0.0, 1.0, 0.85, 1.0)
+        volume_depth_color_far: vec4(0.30, 0.15, 1.0, 1.0)
         display_eye_offset_meters: 0.032
         display_aspect: 1.0
         projection_depth_meters: 1.0
@@ -54,7 +66,7 @@ script_mod! {
         volume_texture_blend: 0.0
         volume_renderer_ready: 0.0
         volume_renderer_blend: 0.0
-        volume_raymarch_steps: 3.0
+        volume_raymarch_steps: 6.0
         volume_grid_frequency: 4.0
         volume_density_gain: 0.72
         volume_absorption: 1.25
@@ -241,6 +253,18 @@ script_mod! {
             return clamp(smoothstep(-0.18, 0.42, field) * envelope, 0.0, 1.0)
         }
 
+        volume_depth_ramp_rgb: fn(depth_value: float) -> vec3f {
+            let depth_t = smoothstep(
+                0.0,
+                1.0,
+                clamp((depth_value - 0.5) * max(self.volume_depth_contrast, 0.05) + 0.5, 0.0, 1.0)
+            )
+            let near_mid_t = smoothstep(0.0, 0.5, depth_t)
+            let mid_far_t = smoothstep(0.5, 1.0, depth_t)
+            let depth_near_mid = self.volume_depth_color_near.xyz.mix(self.volume_depth_color_mid.xyz, near_mid_t)
+            return depth_near_mid.mix(self.volume_depth_color_far.xyz, mid_far_t)
+        }
+
         volume_raymarch_sample: fn(surface_uv: vec2f, display_eye_selector: float, sample_t: float) -> vec4 {
             let centered = surface_uv * 2.0 - vec2(1.0, 1.0)
             let eccentricity = clamp(self.volume_eccentricity, 0.35, 2.75)
@@ -250,46 +274,63 @@ script_mod! {
             let ray_dir = vec3(shaped_uv.x * 0.22 + eye_shift * 0.20, shaped_uv.y * 0.18, 1.0)
             let p = ray_origin + ray_dir * mix(0.04, 1.82, sample_t)
             let density = self.volume_density(p)
+            let threshold_gate = step(0.001, self.volume_black_threshold)
+            let threshold = clamp(self.volume_black_threshold, 0.0, 0.95)
+            let thresholded_density = smoothstep(threshold, clamp(threshold + 0.36, 0.05, 1.0), density)
+            let emission_density = mix(density, thresholded_density, threshold_gate)
             let depth_fade = pow(1.0 - clamp(sample_t * 0.42, 0.0, 0.92), max(self.volume_absorption, 0.25))
-            let sample_alpha = clamp(density * depth_fade, 0.0, 1.0)
-            let base_light = 0.44 + 0.56 * (0.5 + 0.5 * sin((p.z + p.x * 0.45) * max(self.volume_grid_frequency, 1.0) + self.volume_phase))
-            let base_rgb = mix(self.color_low.xyz, self.color_high.xyz, clamp(density, 0.0, 1.0))
+            let sample_alpha = clamp(emission_density * depth_fade, 0.0, 1.0)
+            let base_light = 0.54 + 0.46 * (0.5 + 0.5 * sin((p.z + p.x * 0.45) * max(self.volume_grid_frequency, 1.0) + self.volume_phase))
+            let color_phase = (p.x * 1.61 + p.y * 2.27 + p.z * 1.13) * max(self.volume_grid_frequency, 1.0) + self.volume_phase * 1.37 + density * 2.0
+            let spectral_rgb = vec3(
+                0.56 + 0.44 * sin(color_phase),
+                0.56 + 0.44 * sin(color_phase + 2.0943952),
+                0.56 + 0.44 * sin(color_phase + 4.1887903)
+            )
+            let profile_rgb = mix(self.color_low.xyz, self.color_high.xyz, clamp(emission_density, 0.0, 1.0))
+            let saturated_rgb = self.color_high.xyz.mix(spectral_rgb, clamp(self.volume_color_saturation, 0.0, 1.0))
+            let base_rgb = profile_rgb.mix(saturated_rgb, clamp(self.volume_color_saturation, 0.0, 1.0))
             let eye_tint = mix(vec3(0.08, 0.78, 1.00), vec3(1.00, 0.24, 0.12), display_eye_selector)
-            let rgb = base_rgb.mix(eye_tint, clamp(self.binocular_color_separation, 0.0, 1.0)) * sample_alpha * base_light
+            let rgb = base_rgb.mix(eye_tint, clamp(self.binocular_color_separation, 0.0, 1.0)) * sample_alpha * base_light * max(self.volume_emission_gain, 0.0)
             return vec4(rgb.x, rgb.y, rgb.z, sample_alpha)
         }
 
-        volume_raymarch: fn(surface_uv: vec2f, display_eye_selector: float) -> vec4 {
-            let step_count = clamp(self.volume_raymarch_steps, 1.0, 4.0)
-            let s00 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.16667)
-            let s01 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.50000)
-            if step_count <= 2.5 {
-                let sum = s00 + s01
-                let alpha = clamp((sum.w / 2.0) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
-                let rgb = sum.xyz / max(sum.w, 0.001)
-                let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
-                let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
-                let out_rgb = ambient.mix(rgb, alpha)
-                return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
-            }
-            let s02 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.83333)
-            if step_count <= 3.5 {
-                let sum = s00 + s01 + s02
-                let alpha = clamp((sum.w / 3.0) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
-                let rgb = sum.xyz / max(sum.w, 0.001)
-                let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
-                let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
-                let out_rgb = ambient.mix(rgb, alpha)
-                return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
-            }
-            let s03 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.93750)
-            let sum = s00 + s01 + s02 + s03
-            let alpha = clamp((sum.w / max(step_count, 1.0)) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
-            let rgb = sum.xyz / max(sum.w, 0.001)
+        volume_raymarch_resolve: fn(sum: vec4, weighted_depth_sum: float, sample_count: float, display_eye_selector: float) -> vec4 {
+            let alpha = clamp((sum.w / max(sample_count, 1.0)) * self.volume_density_gain * max(self.volume_absorption, 0.25), 0.0, 1.0)
+            let base_rgb = sum.xyz / max(sum.w, 0.001)
+            let depth_value = clamp(weighted_depth_sum / max(sum.w, 0.001), 0.0, 1.0)
+            let depth_rgb = self.volume_depth_ramp_rgb(depth_value)
+            let base_luma = clamp((base_rgb.x + base_rgb.y + base_rgb.z) * 0.33333, 0.0, max(self.volume_emission_gain, 1.0))
+            let depth_luma = max(base_luma, 0.16 + alpha * 0.42)
+            let depth_mix = clamp(self.volume_depth_color_enabled * self.volume_depth_color_mix, 0.0, 1.0)
+            let rgb = base_rgb.mix(depth_rgb * depth_luma, depth_mix)
             let ambient_phase = self.volume_phase + display_eye_selector * self.binocular_phase_offset_radians
             let ambient = mix(self.color_low.xyz, self.color_high.xyz, 0.5 + 0.5 * sin(ambient_phase))
-            let out_rgb = ambient.mix(rgb, alpha)
+            let out_rgb = ambient.mix(rgb, alpha).mix(rgb, step(0.5, self.volume_only))
             return vec4(out_rgb.x, out_rgb.y, out_rgb.z, alpha)
+        }
+
+        volume_raymarch: fn(surface_uv: vec2f, display_eye_selector: float) -> vec4 {
+            let step_count = clamp(self.volume_raymarch_steps, 1.0, 6.0)
+            let s00 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.08333)
+            let s01 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.25000)
+            if step_count <= 2.5 {
+                let sum = s00 + s01
+                let weighted_depth_sum = s00.w * 0.08333 + s01.w * 0.25000
+                return self.volume_raymarch_resolve(sum, weighted_depth_sum, 2.0, display_eye_selector)
+            }
+            let s02 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.41667)
+            let s03 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.58333)
+            if step_count <= 4.5 {
+                let sum = s00 + s01 + s02 + s03
+                let weighted_depth_sum = s00.w * 0.08333 + s01.w * 0.25000 + s02.w * 0.41667 + s03.w * 0.58333
+                return self.volume_raymarch_resolve(sum, weighted_depth_sum, 4.0, display_eye_selector)
+            }
+            let s04 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.75000)
+            let s05 = self.volume_raymarch_sample(surface_uv, display_eye_selector, 0.91667)
+            let sum = s00 + s01 + s02 + s03 + s04 + s05
+            let weighted_depth_sum = s00.w * 0.08333 + s01.w * 0.25000 + s02.w * 0.41667 + s03.w * 0.58333 + s04.w * 0.75000 + s05.w * 0.91667
+            return self.volume_raymarch_resolve(sum, weighted_depth_sum, 6.0, display_eye_selector)
         }
 
         pixel: fn() {
@@ -331,18 +372,21 @@ script_mod! {
                 cos(phase * 0.91 + bounded_surface_uv.x * tau * 2.0)
             )
             let volume_sample = self.volume_preview_sample(clamp(bounded_surface_uv + texture_flow, vec2(0.0, 0.0), vec2(1.0, 1.0)), display_eye_selector)
-            let texture_runtime_mix = clamp(self.volume_texture_ready * self.volume_texture_blend * 0.55, 0.0, 0.55)
-            let procedural_rgb = volume_render.xyz * max(volume_render.w, 0.18)
+            let volume_only_gate = step(0.5, self.volume_only)
+            let texture_runtime_mix = clamp(self.volume_texture_ready * self.volume_texture_blend * self.volume_texture_mix, 0.0, clamp(self.volume_texture_mix, 0.0, 1.0))
+            let procedural_rgb = volume_render.xyz * mix(max(volume_render.w, 0.18), 1.0, volume_only_gate)
             let sampled_rgb = volume_sample.xyz * max(volume_sample.w, 0.18)
-            let grid_boost = mix(0.72, 1.45, clamp(grid_luma * self.background_grid_mix, 0.0, 1.0))
+            let grid_boost = mix(1.0, 1.45, clamp(grid_luma * self.background_grid_mix, 0.0, 1.0))
             let volume_rgb = procedural_rgb.mix(sampled_rgb, texture_runtime_mix) * strobe_gate * grid_boost
-            let volume_mix = clamp(self.volume_renderer_ready * self.volume_renderer_blend * 0.92, 0.0, 0.92)
+            let volume_mix_cap = mix(0.92, 1.0, volume_only_gate)
+            let volume_mix = clamp(self.volume_renderer_ready * self.volume_renderer_blend * volume_mix_cap, 0.0, volume_mix_cap)
             let fiducial = self.fiducial_mask(bounded_surface_uv) * max(self.volume_texture_ready, self.volume_renderer_ready) * clamp(self.fiducial_intensity, 0.0, 1.0)
             let fiducial_color = mix(vec3(0.08, 0.78, 1.00), vec3(1.00, 0.24, 0.12), display_eye_selector)
-            let blended_rgb = rgb.mix(volume_rgb, volume_mix).mix(fiducial_color, clamp(fiducial * 0.85, 0.0, 1.0))
+            let base_layer_rgb = rgb * clamp(self.volume_base_layer_mix, 0.0, 1.0)
+            let blended_rgb = base_layer_rgb.mix(volume_rgb, volume_mix).mix(fiducial_color, clamp(fiducial * 0.85, 0.0, 1.0))
             let contrasted_rgb = (blended_rgb - vec3(0.5, 0.5, 0.5)) * max(self.post_contrast, 0.0) + vec3(0.5, 0.5, 0.5) + vec3(self.post_brightness, self.post_brightness, self.post_brightness)
             let processed_rgb = clamp(contrasted_rgb * max(self.intensity_gain, 0.0), vec3(0.0, 0.0, 0.0), vec3(1.0, 1.0, 1.0))
-            let proof_floor = vec3(0.025, 0.0, 0.012) * step(0.5, self.enabled)
+            let proof_floor = vec3(0.025, 0.0, 0.012) * step(0.5, self.enabled) * (1.0 - volume_only_gate)
             return vec4(max(processed_rgb, proof_floor), 1.0)
         }
 
@@ -368,11 +412,23 @@ script_mod! {
             fiducial_intensity: 0.0
             binocular_color_separation: 0.0
             binocular_phase_offset_radians: 0.0
+            volume_only: 0.0
+            volume_base_layer_mix: 1.0
+            volume_texture_mix: 0.55
+            volume_emission_gain: 1.0
+            volume_black_threshold: 0.0
+            volume_color_saturation: 0.0
+            volume_depth_color_enabled: 0.0
+            volume_depth_color_mix: 0.0
+            volume_depth_contrast: 1.0
+            volume_depth_color_near: vec4(1.0, 0.85, 0.05, 1.0)
+            volume_depth_color_mid: vec4(0.0, 1.0, 0.85, 1.0)
+            volume_depth_color_far: vec4(0.30, 0.15, 1.0, 1.0)
             volume_texture_ready: 0.0
             volume_texture_blend: 0.0
             volume_renderer_ready: 0.0
             volume_renderer_blend: 0.0
-            volume_raymarch_steps: 3.0
+            volume_raymarch_steps: 6.0
             volume_grid_frequency: 4.0
             volume_density_gain: 0.72
             volume_absorption: 1.25

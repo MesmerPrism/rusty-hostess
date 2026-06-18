@@ -20,6 +20,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 pub(crate) const STIMULUS_STEREO_FIELD_MARKER_PREFIX: &str = "RUSTY_HOSTESS_MAKEPAD_STIMULUS_DRAW";
 pub(crate) const STIMULUS_STEREO_FIELD_MARKER_SCHEMA: &str =
     "rusty.hostess.makepad.stimulus_draw.v1";
+pub(crate) const STIMULUS_CONTROLLER_RANDOMIZE_MARKER_PREFIX: &str =
+    "RUSTY_HOSTESS_MAKEPAD_STIMULUS_RANDOMIZE";
+pub(crate) const STIMULUS_CONTROLLER_RANDOMIZE_MARKER_SCHEMA: &str =
+    "rusty.hostess.makepad.stimulus_randomize.v1";
 pub(crate) const STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA: &str =
     "rusty.hostess.makepad.stimulus_volume_adoption.v1";
 const STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT: usize = 8;
@@ -27,12 +31,38 @@ static STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED: AtomicUsize = AtomicUsize::ne
 pub(crate) const STIMULUS_VOLUME_TEXTURE_SLOT: usize = 0;
 pub(crate) const STIMULUS_VOLUME_FRAGMENT_RENDER_PATH: &str =
     "makepad-xr-fragment-volume-raymarch-v2";
-pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 3;
+pub(crate) const STIMULUS_VOLUME_FRAGMENT_RAYMARCH_SAMPLES: u64 = 6;
 pub(crate) const STIMULUS_VOLUME_NOISE_MODEL: &str = "value-fbm-mobile-2oct-v1";
 pub(crate) const STIMULUS_VOLUME_OSCILLATOR_MODEL: &str = "radial-axial-cross-v1";
 
 pub(crate) const STIMULUS_IDENTITY_SURFACE_HOMOGRAPHY: [[f32; 3]; 3] =
     [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]];
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum StimulusVolumeColorMode {
+    Spectral,
+    DepthRamp,
+}
+
+impl StimulusVolumeColorMode {
+    fn from_hint(value: &str) -> Self {
+        if value.eq_ignore_ascii_case("depth_ramp")
+            || value.eq_ignore_ascii_case("depthramp")
+            || value.eq_ignore_ascii_case("depth")
+        {
+            Self::DepthRamp
+        } else {
+            Self::Spectral
+        }
+    }
+
+    fn marker_token(self) -> &'static str {
+        match self {
+            Self::Spectral => "Spectral",
+            Self::DepthRamp => "DepthRamp",
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct StimulusSurfaceProjectionRows {
@@ -90,6 +120,20 @@ pub(crate) struct StimulusStereoFieldState {
     pub(crate) fiducial_intensity: f32,
     pub(crate) binocular_color_separation: f32,
     pub(crate) binocular_phase_offset_radians: f32,
+    pub(crate) volume_only: bool,
+    pub(crate) volume_base_layer_mix: f32,
+    pub(crate) volume_texture_mix: f32,
+    pub(crate) volume_emission_gain: f32,
+    pub(crate) volume_black_threshold: f32,
+    pub(crate) volume_color_saturation: f32,
+    pub(crate) volume_color_mode: StimulusVolumeColorMode,
+    pub(crate) volume_depth_color_mix: f32,
+    pub(crate) volume_depth_contrast: f32,
+    pub(crate) volume_depth_color_near: [f32; 4],
+    pub(crate) volume_depth_color_mid: [f32; 4],
+    pub(crate) volume_depth_color_far: [f32; 4],
+    pub(crate) randomize_min_hz: f32,
+    pub(crate) randomize_max_hz: f32,
     pub(crate) source_a: [f32; 2],
     pub(crate) source_b: [f32; 2],
     pub(crate) source_b_weight: f32,
@@ -136,6 +180,20 @@ impl Default for StimulusStereoFieldState {
             fiducial_intensity: 0.0,
             binocular_color_separation: 0.0,
             binocular_phase_offset_radians: 0.0,
+            volume_only: false,
+            volume_base_layer_mix: 1.0,
+            volume_texture_mix: 0.55,
+            volume_emission_gain: 1.0,
+            volume_black_threshold: 0.0,
+            volume_color_saturation: 0.0,
+            volume_color_mode: StimulusVolumeColorMode::Spectral,
+            volume_depth_color_mix: 0.0,
+            volume_depth_contrast: 1.0,
+            volume_depth_color_near: [1.0, 0.85, 0.05, 1.0],
+            volume_depth_color_mid: [0.0, 1.0, 0.85, 1.0],
+            volume_depth_color_far: [0.30, 0.15, 1.0, 1.0],
+            randomize_min_hz: 0.15,
+            randomize_max_hz: 2.85,
             source_a: [-0.24, 0.0],
             source_b: [0.24, 0.0],
             source_b_weight: 1.0,
@@ -220,6 +278,95 @@ impl StimulusStereoFieldState {
                 .or_else(|| json_f32(presentation, &["stereo_phase_offset_radians"]))
                 .unwrap_or(0.0)
                 .clamp(-std::f32::consts::PI, std::f32::consts::PI);
+        let adapter_hints = value.get("adapter_hints").unwrap_or(&Value::Null);
+        let makepad_volume_hints = adapter_hints
+            .get("makepad_fragment_volume")
+            .unwrap_or(&Value::Null);
+        let volume_render_mode =
+            json_string(makepad_volume_hints, &["render_mode"]).or_else(|| {
+                json_string(
+                    value.get("volume").unwrap_or(&Value::Null),
+                    &["render_mode"],
+                )
+            });
+        let volume_only_by_mode = volume_render_mode
+            .map(|mode| {
+                mode.eq_ignore_ascii_case("volume_only")
+                    || mode.eq_ignore_ascii_case("volumeonly")
+                    || mode.eq_ignore_ascii_case("pure_volume")
+                    || mode.eq_ignore_ascii_case("purevolume")
+            })
+            .unwrap_or(false);
+        let volume_only = json_bool(makepad_volume_hints, &["volume_only"])
+            .or_else(|| json_bool(presentation, &["volume_only"]))
+            .unwrap_or(volume_only_by_mode);
+        let volume_base_layer_mix = json_f32(makepad_volume_hints, &["base_layer_mix"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_base_layer_mix"]))
+            .or_else(|| json_f32(presentation, &["base_layer_mix"]))
+            .unwrap_or(if volume_only { 0.0 } else { 1.0 })
+            .clamp(0.0, 1.0);
+        let volume_texture_mix = json_f32(makepad_volume_hints, &["texture_mix"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_texture_mix"]))
+            .unwrap_or(if volume_only { 0.0 } else { 0.55 })
+            .clamp(0.0, 1.0);
+        let volume_emission_gain = json_f32(makepad_volume_hints, &["emission_gain"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_emission_gain"]))
+            .unwrap_or(if volume_only { 3.2 } else { 1.0 })
+            .clamp(0.0, 8.0);
+        let volume_black_threshold = json_f32(makepad_volume_hints, &["black_threshold"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_black_threshold"]))
+            .unwrap_or(if volume_only { 0.30 } else { 0.0 })
+            .clamp(0.0, 0.95);
+        let volume_color_saturation = json_f32(makepad_volume_hints, &["color_saturation"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_color_saturation"]))
+            .unwrap_or(if volume_only { 1.0 } else { 0.0 })
+            .clamp(0.0, 1.0);
+        let volume_color_mode = json_string(makepad_volume_hints, &["color_mode"])
+            .or_else(|| json_string(makepad_volume_hints, &["volume_color_mode"]))
+            .map(StimulusVolumeColorMode::from_hint)
+            .unwrap_or(StimulusVolumeColorMode::Spectral);
+        let volume_depth_color_mix_default =
+            if volume_color_mode == StimulusVolumeColorMode::DepthRamp {
+                0.85
+            } else {
+                0.0
+            };
+        let volume_depth_color_mix = json_f32(makepad_volume_hints, &["depth_color_mix"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_depth_color_mix"]))
+            .unwrap_or(volume_depth_color_mix_default)
+            .clamp(0.0, 1.0);
+        let volume_depth_contrast = json_f32(makepad_volume_hints, &["depth_contrast"])
+            .or_else(|| json_f32(makepad_volume_hints, &["volume_depth_contrast"]))
+            .unwrap_or(if volume_color_mode == StimulusVolumeColorMode::DepthRamp {
+                1.25
+            } else {
+                1.0
+            })
+            .clamp(0.10, 4.0);
+        let volume_depth_color_near =
+            json_color_rgba_path(makepad_volume_hints, &["depth_color_near"])
+                .or_else(|| json_color_rgba_path(makepad_volume_hints, &["depth_colors", "near"]))
+                .unwrap_or([1.0, 0.85, 0.05, 1.0]);
+        let volume_depth_color_mid =
+            json_color_rgba_path(makepad_volume_hints, &["depth_color_mid"])
+                .or_else(|| json_color_rgba_path(makepad_volume_hints, &["depth_colors", "mid"]))
+                .unwrap_or([0.0, 1.0, 0.85, 1.0]);
+        let volume_depth_color_far =
+            json_color_rgba_path(makepad_volume_hints, &["depth_color_far"])
+                .or_else(|| json_color_rgba_path(makepad_volume_hints, &["depth_colors", "far"]))
+                .unwrap_or([0.30, 0.15, 1.0, 1.0]);
+        let default_randomize_min_hz = if volume_only { 8.0 } else { 0.15 };
+        let default_randomize_max_hz = if volume_only { 15.0 } else { 2.85 };
+        let randomize_min_hz = json_f32(makepad_volume_hints, &["randomize_min_hz"])
+            .or_else(|| json_f32(makepad_volume_hints, &["randomize_hz_min"]))
+            .or_else(|| json_f32(makepad_volume_hints, &["randomize_frequency_min_hz"]))
+            .unwrap_or(default_randomize_min_hz)
+            .clamp(0.01, 120.0);
+        let randomize_max_hz = json_f32(makepad_volume_hints, &["randomize_max_hz"])
+            .or_else(|| json_f32(makepad_volume_hints, &["randomize_hz_max"]))
+            .or_else(|| json_f32(makepad_volume_hints, &["randomize_frequency_max_hz"]))
+            .unwrap_or(default_randomize_max_hz)
+            .clamp(randomize_min_hz, 120.0);
         let layer = selected_layer(layer_graph).unwrap_or(Value::Null);
         let interference = layer.get("interference").unwrap_or(&Value::Null);
         let source_a = json_vec2(interference, "source_a").unwrap_or([-0.24, 0.0]);
@@ -282,6 +429,20 @@ impl StimulusStereoFieldState {
             fiducial_intensity,
             binocular_color_separation,
             binocular_phase_offset_radians,
+            volume_only,
+            volume_base_layer_mix,
+            volume_texture_mix,
+            volume_emission_gain,
+            volume_black_threshold,
+            volume_color_saturation,
+            volume_color_mode,
+            volume_depth_color_mix,
+            volume_depth_contrast,
+            volume_depth_color_near,
+            volume_depth_color_mid,
+            volume_depth_color_far,
+            randomize_min_hz,
+            randomize_max_hz,
             source_a,
             source_b,
             source_b_weight,
@@ -322,6 +483,133 @@ impl StimulusStereoFieldState {
 
     pub(crate) fn disabled() -> Self {
         Self::default()
+    }
+
+    pub(crate) fn apply_controller_randomize(&mut self, seed: u64) {
+        let mut rng = StimulusControllerRandomizer::new(seed);
+        let tau = std::f32::consts::PI * 2.0;
+
+        self.temporal_frequency_hz = rng.range(self.randomize_min_hz, self.randomize_max_hz);
+        self.spatial_frequency = rng.range(3.0, 22.0);
+        self.rotation_radians = rng.range(-std::f32::consts::PI, std::f32::consts::PI);
+        self.phase_offset = rng.range(0.0, tau);
+        self.wave_modulation = rng.range(0.04, 0.95);
+        self.radial_decay = rng.range(0.05, 2.40);
+        self.geometry_mix = if rng.next_unit() > 0.25 {
+            rng.range(0.48, 1.0)
+        } else {
+            rng.range(0.12, 0.45)
+        };
+        self.edge_fade = rng.range(0.02, 0.42);
+        self.post_contrast = rng.range(0.90, 2.40);
+        self.post_brightness = rng.range(-0.12, 0.16);
+        self.intensity_gain = rng.range(0.70, 2.20);
+        self.background_grid_mix = rng.range(0.10, 0.82);
+        self.texture_flow_strength = rng.range(0.0, 0.10);
+        self.fiducial_intensity = if self.fiducial_intensity > 0.0 {
+            rng.range(0.20, 0.85)
+        } else {
+            0.0
+        };
+        self.binocular_color_separation = rng.range(0.0, 0.32);
+        self.binocular_phase_offset_radians = rng.range(-0.42, 0.42);
+        self.source_a = [rng.range(-0.42, -0.08), rng.range(-0.26, 0.26)];
+        self.source_b = [rng.range(0.08, 0.42), rng.range(-0.26, 0.26)];
+        self.source_b_weight = rng.range(0.50, 1.35);
+        self.color_low = rng.color(0.03, 0.24);
+        self.color_high = rng.color(0.62, 1.0);
+        if self.volume_present {
+            if self.volume_only {
+                self.geometry_mix = 1.0;
+                self.volume_base_layer_mix = 0.0;
+                self.volume_texture_mix = 0.0;
+                self.volume_emission_gain = rng.range(2.10, 3.15);
+                self.volume_black_threshold = rng.range(0.18, 0.32);
+                self.volume_color_saturation = rng.range(0.86, 1.0);
+                if self.volume_color_mode == StimulusVolumeColorMode::DepthRamp {
+                    self.volume_depth_color_mix = rng.range(0.92, 1.0);
+                    self.volume_depth_contrast = rng.range(0.65, 1.20);
+                }
+                self.volume_density_scale = rng.range(1.35, 3.40);
+                self.volume_opacity_scale = rng.range(1.15, 3.20);
+                self.post_contrast = rng.range(1.45, 2.20);
+                self.post_brightness = rng.range(-0.08, 0.05);
+                self.intensity_gain = rng.range(1.45, 2.40);
+                self.background_grid_mix = 0.0;
+                self.texture_flow_strength = 0.0;
+                self.color_low = rng.color(0.0, 0.035);
+                self.color_high = rng.bright_color();
+            } else {
+                self.volume_density_scale = rng.range(0.55, 1.85);
+                self.volume_opacity_scale = rng.range(0.24, 1.25);
+            }
+        }
+    }
+
+    pub(crate) fn controller_randomize_marker_line(
+        &self,
+        phase: &str,
+        randomize_count: u64,
+        xr_update_count: u64,
+        time_seconds: f32,
+        panel_bound: bool,
+        projection_rows_ready: bool,
+    ) -> String {
+        format!(
+            "{} schema={} phase={} status=applied source=makepad-xr-actions controller=right primaryButton=rightA action=randomizeStimulusVolume runtimeMutation=true settingsMutated=false profilePayloadMutated=false androidPropertiesMutated=false highRateJsonPayload=false randomizeCount={} xrUpdateCount={} panelBound={} projectionSurfaceRowsReady={} profileId={} profileSha256={} tuningSha256={} renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} volumePresent={} volumeId={} volumeOnly={} randomizeHzRange={:.3}-{:.3} targetCycleHz={:.3} spatialFrequency={:.3} rotationRadians={:.3} phaseOffset={:.3} waveModulation={:.3} radialDecay={:.3} geometryMix={:.3} edgeFade={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} sourceA={} sourceB={} sourceBWeight={:.3} colorLow={} colorHigh={} volumeBaseLayerMix={:.3} volumeTextureMix={:.3} volumeEmissionGain={:.3} volumeBlackThreshold={:.3} volumeColorSaturation={:.3} volumeColorMode={} volumeDepthColorMix={:.3} volumeDepthContrast={:.3} volumeDepthColorNear={} volumeDepthColorMid={} volumeDepthColorFar={} volumeDensityScale={:.3} volumeOpacityScale={:.3} timeSeconds={:.3}",
+            STIMULUS_CONTROLLER_RANDOMIZE_MARKER_PREFIX,
+            STIMULUS_CONTROLLER_RANDOMIZE_MARKER_SCHEMA,
+            marker_token(phase),
+            randomize_count,
+            xr_update_count,
+            panel_bound,
+            projection_rows_ready,
+            marker_token(&self.profile_id),
+            marker_token(&self.profile_sha256),
+            marker_token(&self.tuning_sha256),
+            self.volume_render_path(),
+            self.volume_fragment_renderer_ready(),
+            self.volume_fragment_renderer_ready(),
+            self.volume_present,
+            marker_token(&self.volume_id),
+            self.volume_only,
+            self.randomize_min_hz,
+            self.randomize_max_hz,
+            self.temporal_frequency_hz,
+            self.spatial_frequency,
+            self.rotation_radians,
+            self.phase_offset,
+            self.wave_modulation,
+            self.radial_decay,
+            self.geometry_mix,
+            self.edge_fade,
+            self.post_contrast,
+            self.post_brightness,
+            self.intensity_gain,
+            self.background_grid_mix,
+            self.texture_flow_strength,
+            self.binocular_color_separation,
+            self.binocular_phase_offset_radians,
+            marker_vec2(self.source_a),
+            marker_vec2(self.source_b),
+            self.source_b_weight,
+            marker_color(self.color_low),
+            marker_color(self.color_high),
+            self.volume_base_layer_mix,
+            self.volume_texture_mix,
+            self.volume_emission_gain,
+            self.volume_black_threshold,
+            self.volume_color_saturation,
+            self.volume_color_mode_marker(),
+            self.volume_depth_color_mix,
+            self.volume_depth_contrast,
+            marker_color(self.volume_depth_color_near),
+            marker_color(self.volume_depth_color_mid),
+            marker_color(self.volume_depth_color_far),
+            self.volume_density_scale,
+            self.volume_opacity_scale,
+            time_seconds,
+        )
     }
 
     pub(crate) fn volume_fragment_renderer_ready(&self) -> bool {
@@ -396,7 +684,7 @@ impl StimulusStereoFieldState {
         if !self.volume_fragment_renderer_ready() {
             return 0.0;
         }
-        (0.10 + self.temporal_frequency_hz * 0.04 + self.wave_modulation * 0.08).clamp(0.04, 1.25)
+        (0.10 + self.temporal_frequency_hz * 0.04 + self.wave_modulation * 0.08).clamp(0.04, 1.45)
     }
 
     pub(crate) fn volume_oscillator_mix(&self) -> f32 {
@@ -413,6 +701,16 @@ impl StimulusStereoFieldState {
         (0.12 + self.radial_decay * 0.05 + self.edge_fade * 0.18).clamp(0.0, 0.72)
     }
 
+    pub(crate) fn volume_color_mode_marker(&self) -> &'static str {
+        self.volume_color_mode.marker_token()
+    }
+
+    pub(crate) fn volume_depth_color_enabled(&self) -> bool {
+        self.volume_fragment_renderer_ready()
+            && self.volume_color_mode == StimulusVolumeColorMode::DepthRamp
+            && self.volume_depth_color_mix > 0.0
+    }
+
     pub(crate) fn marker_line(
         &self,
         phase: &str,
@@ -421,7 +719,7 @@ impl StimulusStereoFieldState {
         projection_rows_ready: bool,
     ) -> String {
         format!(
-            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} fiducialIntensity={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} volumeDensityScale={:.3} volumeOpacityScale={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
+            "{} schema={} phase={} status={} panelBound={} profileId={} profileSchema={} profileSha256={} tuningSha256={} presentationMode={} stereoBinding={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} volumeOnly={} volumeBaseLayerMix={:.3} volumeTextureMix={:.3} volumeEmissionGain={:.3} volumeBlackThreshold={:.3} volumeColorSaturation={:.3} volumeColorMode={} volumeDepthColorMix={:.3} volumeDepthContrast={:.3} volumeDepthColorNear={} volumeDepthColorMid={} volumeDepthColorFar={} randomizeHzRange={:.3}-{:.3} targetCycleHz={:.3} spatialFrequency={:.3} geometryMix={:.3} edgeFade={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} fiducialIntensity={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} volumeDensityScale={:.3} volumeOpacityScale={:.3} volumePresent={} volumeSchema={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} timeSeconds={:.3}",
             STIMULUS_STEREO_FIELD_MARKER_PREFIX,
             STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
             marker_token(phase),
@@ -448,6 +746,20 @@ impl StimulusStereoFieldState {
             self.volume_noise_motion(),
             self.volume_oscillator_mix(),
             self.volume_shell_mix(),
+            self.volume_only,
+            self.volume_base_layer_mix,
+            self.volume_texture_mix,
+            self.volume_emission_gain,
+            self.volume_black_threshold,
+            self.volume_color_saturation,
+            self.volume_color_mode_marker(),
+            self.volume_depth_color_mix,
+            self.volume_depth_contrast,
+            marker_color(self.volume_depth_color_near),
+            marker_color(self.volume_depth_color_mid),
+            marker_color(self.volume_depth_color_far),
+            self.randomize_min_hz,
+            self.randomize_max_hz,
             self.temporal_frequency_hz,
             self.spatial_frequency,
             self.geometry_mix,
@@ -490,7 +802,7 @@ impl StimulusStereoFieldState {
             return None;
         }
         Some(format!(
-            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath={} resourcePlane=staged-optics-json-profile fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
+            "{} schema={} phase={} status=profile-adopted panelBound={} profileId={} profileSha256={} volumeSchema={} volumeId={} volumeFieldKind={} volumeStorageHint={} volumeGridDimensions={} volumeStepCount={} shaderRaymarchSamples={} volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} volumeOnly={} volumeBaseLayerMix={:.3} volumeTextureMix={:.3} volumeEmissionGain={:.3} volumeBlackThreshold={:.3} volumeColorSaturation={:.3} volumeColorMode={} volumeDepthColorMix={:.3} volumeDepthContrast={:.3} volumeDepthColorNear={} volumeDepthColorMid={} volumeDepthColorFar={} randomizeHzRange={:.3}-{:.3} kernelAbiId={} computePassCount={} volumeReadbackProbeSamples={} stereoFieldOutputLayers={} renderPath={} resourcePlane=staged-optics-json-profile fragmentVolumeRenderer=true runtimeVolumeRenderer=true gpuRenderReady=true gpuComputeReady=false computeKernel=false highRateJsonPayload=false",
             STIMULUS_VOLUME_ADOPTION_MARKER,
             STIMULUS_VOLUME_ADOPTION_MARKER_SCHEMA,
             marker_token(phase),
@@ -511,12 +823,78 @@ impl StimulusStereoFieldState {
             self.volume_noise_motion(),
             self.volume_oscillator_mix(),
             self.volume_shell_mix(),
+            self.volume_only,
+            self.volume_base_layer_mix,
+            self.volume_texture_mix,
+            self.volume_emission_gain,
+            self.volume_black_threshold,
+            self.volume_color_saturation,
+            self.volume_color_mode_marker(),
+            self.volume_depth_color_mix,
+            self.volume_depth_contrast,
+            marker_color(self.volume_depth_color_near),
+            marker_color(self.volume_depth_color_mid),
+            marker_color(self.volume_depth_color_far),
+            self.randomize_min_hz,
+            self.randomize_max_hz,
             marker_token(&self.kernel_abi_id),
             self.compute_pass_count,
             self.volume_readback_probe_samples,
             self.stereo_field_output_layers,
             self.volume_render_path(),
         ))
+    }
+}
+
+struct StimulusControllerRandomizer {
+    state: u64,
+}
+
+impl StimulusControllerRandomizer {
+    fn new(seed: u64) -> Self {
+        Self {
+            state: seed.wrapping_add(0x9e37_79b9_7f4a_7c15).max(1),
+        }
+    }
+
+    fn next_unit(&mut self) -> f32 {
+        let mut x = self.state;
+        x ^= x >> 12;
+        x ^= x << 25;
+        x ^= x >> 27;
+        self.state = x;
+        let value = x.wrapping_mul(0x2545_f491_4f6c_dd1d) >> 40;
+        (value as f32) / ((1_u64 << 24) as f32)
+    }
+
+    fn range(&mut self, min: f32, max: f32) -> f32 {
+        min + (max - min) * self.next_unit().clamp(0.0, 1.0)
+    }
+
+    fn color(&mut self, min: f32, max: f32) -> [f32; 4] {
+        [
+            self.range(min, max).clamp(0.0, 1.0),
+            self.range(min, max).clamp(0.0, 1.0),
+            self.range(min, max).clamp(0.0, 1.0),
+            1.0,
+        ]
+    }
+
+    fn bright_color(&mut self) -> [f32; 4] {
+        let base = match (self.next_unit() * 6.0).floor() as u32 {
+            0 => [1.0, 0.08, 0.88],
+            1 => [0.00, 0.95, 1.00],
+            2 => [1.0, 0.86, 0.04],
+            3 => [0.16, 1.00, 0.14],
+            4 => [0.58, 0.12, 1.00],
+            _ => [1.0, 0.20, 0.03],
+        };
+        [
+            (base[0] + self.range(-0.04, 0.04)).clamp(0.0, 1.0),
+            (base[1] + self.range(-0.04, 0.04)).clamp(0.0, 1.0),
+            (base[2] + self.range(-0.04, 0.04)).clamp(0.0, 1.0),
+            1.0,
+        ]
     }
 }
 
@@ -569,6 +947,30 @@ pub struct DrawStimulusStereoField {
     pub binocular_color_separation: f32,
     #[live(0.0_f32)]
     pub binocular_phase_offset_radians: f32,
+    #[live(0.0_f32)]
+    pub volume_only: f32,
+    #[live(1.0_f32)]
+    pub volume_base_layer_mix: f32,
+    #[live(0.55_f32)]
+    pub volume_texture_mix: f32,
+    #[live(1.0_f32)]
+    pub volume_emission_gain: f32,
+    #[live(0.0_f32)]
+    pub volume_black_threshold: f32,
+    #[live(0.0_f32)]
+    pub volume_color_saturation: f32,
+    #[live(0.0_f32)]
+    pub volume_depth_color_enabled: f32,
+    #[live(0.0_f32)]
+    pub volume_depth_color_mix: f32,
+    #[live(1.0_f32)]
+    pub volume_depth_contrast: f32,
+    #[live(vec4(1.0, 0.85, 0.05, 1.0))]
+    pub volume_depth_color_near: Vec4f,
+    #[live(vec4(0.0, 1.0, 0.85, 1.0))]
+    pub volume_depth_color_mid: Vec4f,
+    #[live(vec4(0.30, 0.15, 1.0, 1.0))]
+    pub volume_depth_color_far: Vec4f,
     #[live(0.032_f32)]
     pub display_eye_offset_meters: f32,
     #[live(1.0_f32)]
@@ -671,6 +1073,37 @@ impl DrawStimulusStereoField {
         self.fiducial_intensity = state.fiducial_intensity;
         self.binocular_color_separation = state.binocular_color_separation;
         self.binocular_phase_offset_radians = state.binocular_phase_offset_radians;
+        self.volume_only = if state.volume_only { 1.0 } else { 0.0 };
+        self.volume_base_layer_mix = state.volume_base_layer_mix;
+        self.volume_texture_mix = state.volume_texture_mix;
+        self.volume_emission_gain = state.volume_emission_gain;
+        self.volume_black_threshold = state.volume_black_threshold;
+        self.volume_color_saturation = state.volume_color_saturation;
+        self.volume_depth_color_enabled = if state.volume_depth_color_enabled() {
+            1.0
+        } else {
+            0.0
+        };
+        self.volume_depth_color_mix = state.volume_depth_color_mix;
+        self.volume_depth_contrast = state.volume_depth_contrast;
+        self.volume_depth_color_near = vec4f(
+            state.volume_depth_color_near[0],
+            state.volume_depth_color_near[1],
+            state.volume_depth_color_near[2],
+            state.volume_depth_color_near[3],
+        );
+        self.volume_depth_color_mid = vec4f(
+            state.volume_depth_color_mid[0],
+            state.volume_depth_color_mid[1],
+            state.volume_depth_color_mid[2],
+            state.volume_depth_color_mid[3],
+        );
+        self.volume_depth_color_far = vec4f(
+            state.volume_depth_color_far[0],
+            state.volume_depth_color_far[1],
+            state.volume_depth_color_far[2],
+            state.volume_depth_color_far[3],
+        );
         self.source_a_b = vec4f(
             state.source_a[0],
             state.source_a[1],
@@ -699,14 +1132,21 @@ impl DrawStimulusStereoField {
         let volume_renderer_ready = state.volume_fragment_renderer_ready();
         self.volume_renderer_ready = if volume_renderer_ready { 1.0 } else { 0.0 };
         self.volume_renderer_blend = if volume_renderer_ready {
-            state.geometry_mix.clamp(0.0, 1.0)
+            if state.volume_only {
+                1.0
+            } else {
+                state.geometry_mix.clamp(0.0, 1.0)
+            }
         } else {
             0.0
         };
         self.volume_raymarch_steps = state.volume_shader_raymarch_steps();
         self.volume_grid_frequency = state.volume_grid_frequency();
+        let density_gain_base = if state.volume_only { 1.05 } else { 0.72 };
+        let density_gain_max = if state.volume_only { 5.0 } else { 2.40 };
         self.volume_density_gain =
-            (0.72 * state.volume_density_scale * state.volume_opacity_scale).clamp(0.10, 2.40);
+            (density_gain_base * state.volume_density_scale * state.volume_opacity_scale)
+                .clamp(0.10, density_gain_max);
         self.volume_absorption = (1.10 + state.volume_opacity_scale * 0.35).clamp(0.40, 2.20);
         self.volume_phase = 0.37
             + state.volume_step_count as f32 * 0.003
@@ -804,15 +1244,22 @@ impl StimulusStereoFieldPanel {
         volume_preview_texture: Option<Texture>,
     ) -> bool {
         let requested_volume_blend = if state.enabled && state.volume_present {
-            state.geometry_mix.clamp(0.0, 1.0)
+            if state.volume_texture_mix <= 0.0 {
+                0.0
+            } else if state.volume_only {
+                1.0
+            } else {
+                state.geometry_mix.clamp(0.0, 1.0)
+            }
         } else {
             0.0
         };
-        let effective_volume_texture = if state.enabled && state.volume_present {
-            volume_preview_texture
-        } else {
-            None
-        };
+        let effective_volume_texture =
+            if state.enabled && state.volume_present && state.volume_texture_mix > 0.0 {
+                volume_preview_texture
+            } else {
+                None
+            };
         let changed = self.state != state
             || self.volume_texture_bound != effective_volume_texture.is_some()
             || (self.volume_texture_blend - requested_volume_blend).abs() > 0.0001;
@@ -843,7 +1290,7 @@ impl Widget for StimulusStereoFieldPanel {
                 STIMULUS_STEREO_FIELD_DRAW_MARKERS_EMITTED.fetch_add(1, Ordering::AcqRel);
             if marker_index < STIMULUS_STEREO_FIELD_DRAW_MARKER_LIMIT {
                 crate::emit_marker_line(&format!(
-                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialsEnabled={} stereoFiducialIntensity={:.3} stereoFiducialAnchors={}",
+                    "{} schema={} phase=xr-draw status={} panelBound=true canInstance={} profileId={} profileSha256={} fullscreen=true renderPath={} fragmentVolumeRenderer={} runtimeVolumeRenderer={} gpuRenderReady={} gpuComputeReady=false computeKernel=false volumeNoiseModel={} volumeOscillatorModel={} volumeNoiseScale={:.3} volumeNoiseStrength={:.3} volumeNoiseMotion={:.3} volumeOscillatorMix={:.3} volumeShellMix={:.3} volumeOnly={} volumeBaseLayerMix={:.3} volumeTextureMix={:.3} volumeEmissionGain={:.3} volumeBlackThreshold={:.3} volumeColorSaturation={:.3} volumeColorMode={} volumeDepthColorMix={:.3} volumeDepthContrast={:.3} volumeDepthColorNear={} volumeDepthColorMid={} volumeDepthColorFar={} postContrast={:.3} postBrightness={:.3} intensityGain={:.3} backgroundGridMix={:.3} textureFlowStrength={:.3} binocularColorSeparation={:.3} binocularPhaseOffsetRadians={:.3} projectionSurfaceRowsReady={} stereoAlignment=per-eye-openxr-homography runtimeTextureBound={} volumeTextureBlend={:.3} volumeRendererBlend={:.3} shaderRaymarchSamples={:.0} stereoFiducialsEnabled={} stereoFiducialIntensity={:.3} stereoFiducialAnchors={}",
                     STIMULUS_STEREO_FIELD_MARKER_PREFIX,
                     STIMULUS_STEREO_FIELD_MARKER_SCHEMA,
                     if submitted {
@@ -865,6 +1312,18 @@ impl Widget for StimulusStereoFieldPanel {
                     self.draw_field.volume_noise_motion,
                     self.draw_field.volume_oscillator_mix,
                     self.draw_field.volume_shell_mix,
+                    self.state.volume_only,
+                    self.draw_field.volume_base_layer_mix,
+                    self.draw_field.volume_texture_mix,
+                    self.draw_field.volume_emission_gain,
+                    self.draw_field.volume_black_threshold,
+                    self.draw_field.volume_color_saturation,
+                    self.state.volume_color_mode_marker(),
+                    self.draw_field.volume_depth_color_mix,
+                    self.draw_field.volume_depth_contrast,
+                    marker_color(self.state.volume_depth_color_near),
+                    marker_color(self.state.volume_depth_color_mid),
+                    marker_color(self.state.volume_depth_color_far),
                     self.draw_field.post_contrast,
                     self.draw_field.post_brightness,
                     self.draw_field.intensity_gain,
@@ -950,6 +1409,14 @@ fn json_color_rgba(value: &Value) -> Option<[f32; 4]> {
     ])
 }
 
+fn json_color_rgba_path(value: &Value, keys: &[&str]) -> Option<[f32; 4]> {
+    let mut current = value;
+    for key in keys {
+        current = current.get(*key)?;
+    }
+    json_color_rgba(current)
+}
+
 fn marker_token(value: &str) -> String {
     let mut out = String::with_capacity(value.len().max(4));
     for ch in value.chars() {
@@ -968,6 +1435,17 @@ fn marker_token(value: &str) -> String {
 
 fn marker_grid_dimensions(dimensions: [u64; 3]) -> String {
     format!("{}x{}x{}", dimensions[0], dimensions[1], dimensions[2])
+}
+
+fn marker_vec2(value: [f32; 2]) -> String {
+    format!("{:.3},{:.3}", value[0], value[1])
+}
+
+fn marker_color(value: [f32; 4]) -> String {
+    format!(
+        "{:.3},{:.3},{:.3},{:.3}",
+        value[0], value[1], value[2], value[3]
+    )
 }
 
 #[cfg(test)]
@@ -1094,5 +1572,159 @@ mod tests {
         assert!(volume_marker.contains("gpuComputeReady=false"));
         assert!(volume_marker.contains("computeKernel=false"));
         assert!(volume_marker.contains("highRateJsonPayload=false"));
+    }
+
+    #[test]
+    fn controller_randomize_marker_keeps_profile_and_volume_authority_stable() {
+        let payload = StimulusProfilePayload {
+            config: StimulusEffectiveConfig {
+                enabled: true,
+                profile_path: "stimulus/volume-profile.json".to_string(),
+                profile_sha256:
+                    "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                        .to_string(),
+                profile_schema: "rusty.optics.stimulus.profile.v1".to_string(),
+                tuning_path: "none".to_string(),
+                tuning_sha256: "none".to_string(),
+                presentation_mode: StimulusPresentationMode::StereoEyeField,
+            },
+            profile_path: PathBuf::from("stimulus/volume-profile.json"),
+            profile_id: "stimulus.profile.volume.test".to_string(),
+            profile_schema: "rusty.optics.stimulus.profile.v1".to_string(),
+            profile_json: r#"{"profile_id":"stimulus.profile.volume.test","schema_id":"rusty.optics.stimulus.profile.v1","temporal":{"target_cycle_hz":2.0},"presentation":{"mode":"StereoEyeField","coverage":"FullViewport","eye_count":2},"layer_graph":{"layers":[{"spatial_frequency":12.0,"rotation_radians":0.38,"phase_offset":0.0,"interference":{"source_a":{"x":-0.24,"y":0.0},"source_b":{"x":0.24,"y":0.0},"source_b_weight":1.0,"radial_decay":0.0,"wave_modulation":0.0},"colors":[{"color":{"r":0.0,"g":0.0,"b":0.0,"a":1.0}},{"color":{"r":1.0,"g":1.0,"b":1.0,"a":1.0}}]}],"post":{"contrast":1.0,"brightness":0.0,"intensity_gain":1.0}},"volume":{"density_scale":1.0,"opacity_scale":0.35}}"#.to_string(),
+            profile_sha256:
+                "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+                    .to_string(),
+            volume_summary: StimulusVolumeProfileSummary {
+                volume_present: true,
+                volume_schema: Some("rusty.optics.stimulus.volume.v1".to_string()),
+                volume_id: Some("stimulus.volume.test".to_string()),
+                field_kind: Some("ProceduralLayerStack3d".to_string()),
+                storage_hint: Some("StorageBuffer".to_string()),
+                grid_dimensions: Some([32, 32, 32]),
+                step_count: Some(32),
+                kernel_abi_id: Some("stimulus.kernel.volume_compute_v1".to_string()),
+                compute_pass_count: 3,
+                volume_readback_probe_samples: Some(512),
+                stereo_field_output_layers: Some(2),
+            },
+        };
+
+        let mut state = StimulusStereoFieldState::from_profile_payload(&payload).unwrap();
+        let original = state.clone();
+        state.apply_controller_randomize(0xfeed_cafe_1234_5678);
+
+        assert_eq!(state.profile_id, original.profile_id);
+        assert_eq!(state.profile_sha256, original.profile_sha256);
+        assert_eq!(state.volume_id, original.volume_id);
+        assert_eq!(
+            state.volume_grid_dimensions,
+            original.volume_grid_dimensions
+        );
+        assert_ne!(state.spatial_frequency, original.spatial_frequency);
+        assert!((0.15..=2.85).contains(&state.temporal_frequency_hz));
+        assert!((0.55..=1.85).contains(&state.volume_density_scale));
+        assert!((0.24..=1.25).contains(&state.volume_opacity_scale));
+
+        let marker =
+            state.controller_randomize_marker_line("xr-controller", 3, 44, 8.5, true, true);
+        assert!(marker.starts_with(STIMULUS_CONTROLLER_RANDOMIZE_MARKER_PREFIX));
+        assert!(marker.contains("controller=right"));
+        assert!(marker.contains("primaryButton=rightA"));
+        assert!(marker.contains("action=randomizeStimulusVolume"));
+        assert!(marker.contains("runtimeMutation=true"));
+        assert!(marker.contains("settingsMutated=false"));
+        assert!(marker.contains("profilePayloadMutated=false"));
+        assert!(marker.contains("androidPropertiesMutated=false"));
+        assert!(marker.contains("highRateJsonPayload=false"));
+        assert!(marker.contains("volumePresent=true"));
+        assert!(marker.contains("randomizeCount=3"));
+    }
+
+    #[test]
+    fn bright_volume_profile_uses_pure_volume_randomize_contract() {
+        let payload = StimulusProfilePayload {
+            config: StimulusEffectiveConfig {
+                enabled: true,
+                profile_path: "stimulus/volume-bright-profile.json".to_string(),
+                profile_sha256:
+                    "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                        .to_string(),
+                profile_schema: "rusty.optics.stimulus.profile.v1".to_string(),
+                tuning_path: "none".to_string(),
+                tuning_sha256: "none".to_string(),
+                presentation_mode: StimulusPresentationMode::StereoEyeField,
+            },
+            profile_path: PathBuf::from("stimulus/volume-bright-profile.json"),
+            profile_id: "stimulus.profile.volume_bright.test".to_string(),
+            profile_schema: "rusty.optics.stimulus.profile.v1".to_string(),
+            profile_json: r#"{"profile_id":"stimulus.profile.volume_bright.test","schema_id":"rusty.optics.stimulus.profile.v1","temporal":{"target_cycle_hz":12.0},"safety":{"max_cycle_hz":15.0},"presentation":{"mode":"StereoEyeField","coverage":"FullViewport","eye_count":2},"adapter_hints":{"makepad_fragment_volume":{"render_mode":"VolumeOnly","volume_only":true,"base_layer_mix":0.0,"texture_mix":0.0,"emission_gain":2.65,"black_threshold":0.24,"color_saturation":1.0,"color_mode":"DepthRamp","depth_color_near":{"r":1.0,"g":0.82,"b":0.10,"a":1.0},"depth_color_mid":{"r":0.0,"g":1.0,"b":0.82,"a":1.0},"depth_color_far":{"r":0.46,"g":0.18,"b":1.0,"a":1.0},"depth_color_mix":1.0,"depth_contrast":0.9,"randomize_min_hz":8.0,"randomize_max_hz":15.0}},"layer_graph":{"layers":[{"pattern":"Interference","spatial_frequency":11.5,"rotation_radians":0.16,"phase_offset":0.0,"temporal":{"speed_hz":12.0},"interference":{"source_a":{"x":-0.30,"y":-0.06},"source_b":{"x":0.30,"y":0.06},"source_b_weight":0.96,"radial_decay":0.42,"wave_modulation":0.72},"colors":[{"color":{"r":0.0,"g":0.0,"b":0.0,"a":1.0}},{"color":{"r":0.0,"g":1.0,"b":0.92,"a":1.0}}]}],"post":{"contrast":1.85,"brightness":-0.03,"intensity_gain":1.9,"background_grid_mix":0.0,"texture_flow_strength":0.0}},"volume":{"density_scale":2.2,"opacity_scale":2.4}}"#.to_string(),
+            profile_sha256:
+                "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789"
+                    .to_string(),
+            volume_summary: StimulusVolumeProfileSummary {
+                volume_present: true,
+                volume_schema: Some("rusty.optics.stimulus.volume.v1".to_string()),
+                volume_id: Some("stimulus.volume.bright.test".to_string()),
+                field_kind: Some("ProceduralLayerStack3d".to_string()),
+                storage_hint: Some("StorageBuffer".to_string()),
+                grid_dimensions: Some([32, 32, 32]),
+                step_count: Some(32),
+                kernel_abi_id: Some("stimulus.kernel.volume_compute_v1".to_string()),
+                compute_pass_count: 3,
+                volume_readback_probe_samples: Some(512),
+                stereo_field_output_layers: Some(2),
+            },
+        };
+
+        let mut state = StimulusStereoFieldState::from_profile_payload(&payload).unwrap();
+        assert!(state.volume_only);
+        assert!((state.temporal_frequency_hz - 12.0).abs() < 0.0001);
+        assert!((state.volume_base_layer_mix - 0.0).abs() < 0.0001);
+        assert!((state.volume_texture_mix - 0.0).abs() < 0.0001);
+        assert!((state.volume_emission_gain - 2.65).abs() < 0.0001);
+        assert!((state.volume_black_threshold - 0.24).abs() < 0.0001);
+        assert!((state.volume_color_saturation - 1.0).abs() < 0.0001);
+        assert_eq!(state.volume_color_mode, StimulusVolumeColorMode::DepthRamp);
+        assert!((state.volume_depth_color_mix - 1.0).abs() < 0.0001);
+        assert!((state.volume_depth_contrast - 0.9).abs() < 0.0001);
+        assert_eq!(state.volume_depth_color_near, [1.0, 0.82, 0.10, 1.0]);
+        assert_eq!(state.volume_depth_color_mid, [0.0, 1.0, 0.82, 1.0]);
+        assert_eq!(state.volume_depth_color_far, [0.46, 0.18, 1.0, 1.0]);
+        assert!(state.volume_depth_color_enabled());
+        assert!((state.randomize_min_hz - 8.0).abs() < 0.0001);
+        assert!((state.randomize_max_hz - 15.0).abs() < 0.0001);
+
+        let marker = state.marker_line("test", 0.25, true, true);
+        assert!(marker.contains("volumeOnly=true"));
+        assert!(marker.contains("volumeBaseLayerMix=0.000"));
+        assert!(marker.contains("volumeTextureMix=0.000"));
+        assert!(marker.contains("volumeEmissionGain=2.650"));
+        assert!(marker.contains("volumeBlackThreshold=0.240"));
+        assert!(marker.contains("volumeColorSaturation=1.000"));
+        assert!(marker.contains("volumeColorMode=DepthRamp"));
+        assert!(marker.contains("volumeDepthColorMix=1.000"));
+        assert!(marker.contains("volumeDepthContrast=0.900"));
+        assert!(marker.contains("volumeDepthColorNear=1.000,0.820,0.100,1.000"));
+        assert!(marker.contains("volumeDepthColorMid=0.000,1.000,0.820,1.000"));
+        assert!(marker.contains("volumeDepthColorFar=0.460,0.180,1.000,1.000"));
+        assert!(marker.contains("randomizeHzRange=8.000-15.000"));
+
+        state.apply_controller_randomize(0x9f9e_7d7c_5b5a_3938);
+        assert!((8.0..=15.0).contains(&state.temporal_frequency_hz));
+        assert_eq!(state.volume_base_layer_mix, 0.0);
+        assert_eq!(state.volume_texture_mix, 0.0);
+        assert!((2.10..=3.15).contains(&state.volume_emission_gain));
+        assert!(state.volume_color_saturation >= 0.86);
+        assert_eq!(state.volume_color_mode, StimulusVolumeColorMode::DepthRamp);
+        assert!((0.92..=1.0).contains(&state.volume_depth_color_mix));
+        assert!((0.65..=1.20).contains(&state.volume_depth_contrast));
+
+        let randomize_marker =
+            state.controller_randomize_marker_line("xr-controller", 7, 88, 2.0, true, true);
+        assert!(randomize_marker.contains("primaryButton=rightA"));
+        assert!(randomize_marker.contains("volumeOnly=true"));
+        assert!(randomize_marker.contains("volumeColorMode=DepthRamp"));
+        assert!(randomize_marker.contains("randomizeHzRange=8.000-15.000"));
     }
 }

@@ -8,6 +8,22 @@ from typing import Any
 
 from tools.check_live_capture_evidence import sha256_file
 
+# PMB fixed-controller state mirrors the legacy Unity 24/180-sample spans
+# against the current 72 Hz headset profile, then transports them as seconds.
+PMB_CONTROLLER_STATE_SAMPLE_RATE_HZ = 72.0
+PMB_CONTROLLER_STATE_SHORT_WINDOW_SAMPLES = 24.0
+PMB_CONTROLLER_STATE_LONG_WINDOW_SAMPLES = 180.0
+PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS = (
+    PMB_CONTROLLER_STATE_SHORT_WINDOW_SAMPLES / PMB_CONTROLLER_STATE_SAMPLE_RATE_HZ
+)
+PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS = (
+    PMB_CONTROLLER_STATE_LONG_WINDOW_SAMPLES / PMB_CONTROLLER_STATE_SAMPLE_RATE_HZ
+)
+PMB_CONTROLLER_STATE_INHALE_THRESHOLD = 0.001
+PMB_CONTROLLER_STATE_EXHALE_THRESHOLD = -0.00057
+PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES = 0.5
+PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD = 0.025
+
 
 def projected_motion_package_snapshot(package_root: Path) -> dict[str, Any]:
     manifest = package_root / "manifests" / "package.manifold.json"

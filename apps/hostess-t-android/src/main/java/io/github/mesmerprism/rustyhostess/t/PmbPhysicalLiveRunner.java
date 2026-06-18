@@ -25,6 +25,19 @@ import java.util.Locale;
 final class PmbPhysicalLiveRunner {
     private static final String PMB_PACKAGE_ID = "package.projected_motion_breath";
     private static final String PMB_ASSET_ROOT = "manifold/packages/projected-motion-breath";
+    // PMB fixed-controller state mirrors the legacy Unity 24/180-sample spans
+    // against the current 72 Hz headset profile, then transports them as seconds.
+    private static final double CONTROLLER_STATE_SAMPLE_RATE_HZ = 72.0d;
+    private static final double CONTROLLER_STATE_SHORT_WINDOW_SAMPLES = 24.0d;
+    private static final double CONTROLLER_STATE_LONG_WINDOW_SAMPLES = 180.0d;
+    private static final double DEFAULT_CONTROLLER_STATE_SHORT_WINDOW_S =
+            CONTROLLER_STATE_SHORT_WINDOW_SAMPLES / CONTROLLER_STATE_SAMPLE_RATE_HZ;
+    private static final double DEFAULT_CONTROLLER_STATE_LONG_WINDOW_S =
+            CONTROLLER_STATE_LONG_WINDOW_SAMPLES / CONTROLLER_STATE_SAMPLE_RATE_HZ;
+    private static final double DEFAULT_CONTROLLER_STATE_INHALE_THRESHOLD = 0.001d;
+    private static final double DEFAULT_CONTROLLER_STATE_EXHALE_THRESHOLD = -0.00057d;
+    private static final double DEFAULT_CONTROLLER_STATE_ROTATION_GUARD_DEGREES = 0.5d;
+    private static final double DEFAULT_CONTROLLER_STATE_MOVING_AVERAGE_GUARD = 0.025d;
 
     private PmbPhysicalLiveRunner() {
     }
@@ -43,6 +56,30 @@ final class PmbPhysicalLiveRunner {
         String breathSelectedSource = stringExtra(intent, "breath_selected_source", "auto");
         String controllerStateMode = normalizePmbControllerStateMode(
                 stringExtra(intent, "pmb_controller_state_mode", "projected-volume-delta"));
+        double controllerStateShortWindowS = doubleExtra(
+                intent,
+                "pmb_controller_state_short_window_s",
+                DEFAULT_CONTROLLER_STATE_SHORT_WINDOW_S);
+        double controllerStateLongWindowS = doubleExtra(
+                intent,
+                "pmb_controller_state_long_window_s",
+                DEFAULT_CONTROLLER_STATE_LONG_WINDOW_S);
+        double controllerStateInhaleThreshold = doubleExtra(
+                intent,
+                "pmb_controller_state_inhale_threshold",
+                DEFAULT_CONTROLLER_STATE_INHALE_THRESHOLD);
+        double controllerStateExhaleThreshold = doubleExtra(
+                intent,
+                "pmb_controller_state_exhale_threshold",
+                DEFAULT_CONTROLLER_STATE_EXHALE_THRESHOLD);
+        double controllerStateRotationGuardDegrees = doubleExtra(
+                intent,
+                "pmb_controller_state_rotation_guard_degrees",
+                DEFAULT_CONTROLLER_STATE_ROTATION_GUARD_DEGREES);
+        double controllerStateMovingAverageGuard = doubleExtra(
+                intent,
+                "pmb_controller_state_moving_average_guard",
+                DEFAULT_CONTROLLER_STATE_MOVING_AVERAGE_GUARD);
         int receiptListenMs = intExtra(intent, "receipt_listen_ms", 6000);
         int livePublishIntervalMs = intExtra(intent, "live_publish_interval_ms", 1000);
         File evidenceRoot = new File(context.getExternalFilesDir(null), "hostess-t/evidence/pmb-physical-live");
@@ -52,6 +89,15 @@ final class PmbPhysicalLiveRunner {
             resetDirectory(packageRoot);
             copyPmbPackageAssets(context, packageRoot);
             applyPmbControllerStateMode(packageRoot, controllerStateMode);
+            applyPmbControllerStateTuning(
+                    packageRoot,
+                    controllerStateMode,
+                    controllerStateShortWindowS,
+                    controllerStateLongWindowS,
+                    controllerStateInhaleThreshold,
+                    controllerStateExhaleThreshold,
+                    controllerStateRotationGuardDegrees,
+                    controllerStateMovingAverageGuard);
             if (!evidenceRoot.exists() && !evidenceRoot.mkdirs()) {
                 throw new IOException("could not create PMB physical live evidence folder");
             }
@@ -74,7 +120,10 @@ final class PmbPhysicalLiveRunner {
             JSONObject brokerReport = liveResult.brokerResult.toJson();
             List<String> errors = jsonArrayStrings(captureReport.optJSONArray("errors"));
             JSONObject routeReport = "pass".equals(captureReport.optString("status"))
-                    ? PMBRuntime.runLiveRouteFromEvents(packageRoot.getAbsolutePath(), eventsJsonl.getAbsolutePath())
+                    ? PMBRuntime.runLiveRouteFromEvents(
+                            packageRoot.getAbsolutePath(),
+                            eventsJsonl.getAbsolutePath(),
+                            breathSelectedSource)
                     : pmbFailureLiveRouteReport(packageRoot.getAbsolutePath(), "physical input capture failed");
             errors.addAll(pmbCoreErrors(routeReport));
             if (!"pass".equals(brokerReport.optString("status"))) {
@@ -195,6 +244,50 @@ final class PmbPhysicalLiveRunner {
         binding.put("profile_id", "profile.projected_motion_breath.headset_controller_fixed_orientation_state");
         binding.put("profile_path", "fixtures/valid/profile-headset-controller-fixed-orientation-state.json");
         writeText(bindingPath, binding.toString(2));
+    }
+
+    private static void applyPmbControllerStateTuning(
+            File packageRoot,
+            String mode,
+            double shortWindowS,
+            double longWindowS,
+            double inhaleThreshold,
+            double exhaleThreshold,
+            double rotationGuardDegrees,
+            double movingAverageGuard) throws IOException, JSONException {
+        if (!"fixed-controller-orientation".equals(mode)) {
+            return;
+        }
+        File profilePath = new File(packageRoot, "fixtures/valid/profile-headset-controller-fixed-orientation-state.json");
+        JSONObject profile = new JSONObject(readText(profilePath));
+        JSONObject controllerState = profile.optJSONObject("controller_state");
+        if (controllerState == null) {
+            controllerState = new JSONObject();
+            profile.put("controller_state", controllerState);
+        }
+        controllerState.put(
+                "short_window_s",
+                positiveFiniteOr(shortWindowS, DEFAULT_CONTROLLER_STATE_SHORT_WINDOW_S));
+        controllerState.put(
+                "long_window_s",
+                positiveFiniteOr(longWindowS, DEFAULT_CONTROLLER_STATE_LONG_WINDOW_S));
+        controllerState.put(
+                "inhale_threshold",
+                finiteOr(inhaleThreshold, DEFAULT_CONTROLLER_STATE_INHALE_THRESHOLD));
+        controllerState.put(
+                "exhale_threshold",
+                finiteOr(exhaleThreshold, DEFAULT_CONTROLLER_STATE_EXHALE_THRESHOLD));
+        controllerState.put(
+                "rotation_guard_degrees",
+                positiveFiniteOr(
+                        rotationGuardDegrees,
+                        DEFAULT_CONTROLLER_STATE_ROTATION_GUARD_DEGREES));
+        controllerState.put(
+                "moving_average_guard",
+                positiveFiniteOr(
+                        movingAverageGuard,
+                        DEFAULT_CONTROLLER_STATE_MOVING_AVERAGE_GUARD));
+        writeText(profilePath, profile.toString(2));
     }
 
     private static String normalizePmbControllerStateMode(String value) {
@@ -378,6 +471,25 @@ final class PmbPhysicalLiveRunner {
         } catch (NumberFormatException ignored) {
             return fallback;
         }
+    }
+
+    private static double doubleExtra(Intent intent, String name, double fallback) {
+        if (!intent.hasExtra(name) || intent.getExtras() == null) {
+            return fallback;
+        }
+        try {
+            return Double.parseDouble(String.valueOf(intent.getExtras().get(name)).trim());
+        } catch (NumberFormatException ignored) {
+            return fallback;
+        }
+    }
+
+    private static double finiteOr(double value, double fallback) {
+        return Double.isFinite(value) ? value : fallback;
+    }
+
+    private static double positiveFiniteOr(double value, double fallback) {
+        return Double.isFinite(value) && value > 0.0d ? value : fallback;
     }
 
     private static void resetDirectory(File root) throws IOException {

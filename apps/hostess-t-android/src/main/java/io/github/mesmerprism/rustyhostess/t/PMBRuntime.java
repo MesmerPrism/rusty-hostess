@@ -56,10 +56,20 @@ final class PMBRuntime {
     }
 
     static JSONObject runLiveRouteFromEvents(String packageRoot, String eventsJsonl) throws JSONException, IOException {
+        return runLiveRouteFromEvents(packageRoot, eventsJsonl, "auto");
+    }
+
+    static JSONObject runLiveRouteFromEvents(
+            String packageRoot,
+            String eventsJsonl,
+            String selectedSourcePreference) throws JSONException, IOException {
         if (!isAvailable()) {
             throw new IOException("native runtime unavailable: " + loadError());
         }
-        return new JSONObject(nativeRunLiveRouteFromEvents(packageRoot, eventsJsonl));
+        return new JSONObject(nativeRunLiveRouteFromEvents(
+                packageRoot,
+                eventsJsonl,
+                selectedSourcePreference == null ? "auto" : selectedSourcePreference));
     }
 
     static long openLiveTransportProcessor(String packageRoot) throws JSONException, IOException {
@@ -99,7 +109,10 @@ final class PMBRuntime {
 
     private static native String nativeRunLiveRouteSelfTest(String packageRoot);
 
-    private static native String nativeRunLiveRouteFromEvents(String packageRoot, String eventsJsonl);
+    private static native String nativeRunLiveRouteFromEvents(
+            String packageRoot,
+            String eventsJsonl,
+            String selectedSourcePreference);
 
     private static native String nativeOpenLiveTransportProcessor(String packageRoot);
 

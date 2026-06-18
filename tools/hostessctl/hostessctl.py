@@ -18,6 +18,7 @@ from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
 from tools.hostessctl import pmb_android_routes  # noqa: E402
 from tools.hostessctl import pmb_desktop_routes  # noqa: E402
+from tools.hostessctl import questionnaire_bridge  # noqa: E402
 from tools.hostessctl import telemetry_routes  # noqa: E402
 from tools.hostessctl.broker_transport import (  # noqa: E402
     MANIFOLD_BROKER_EVENTS_PATH,
@@ -204,6 +205,14 @@ def dispatch_command(args: argparse.Namespace) -> int:
         return pull_makepad_render(args)
     if args.command == "launch-makepad-shell-contract":
         return launch_makepad_shell_contract(args)
+    if args.command == "questionnaire-status":
+        return questionnaire_status(args)
+    if args.command == "questionnaire-open-block":
+        return questionnaire_open_block(args)
+    if args.command == "questionnaire-dismiss":
+        return questionnaire_dismiss(args)
+    if args.command == "questionnaire-serve":
+        return questionnaire_serve(args)
     if args.command == "snapshot-telemetry":
         return snapshot_telemetry(args)
     return 2
@@ -424,6 +433,22 @@ def launch_makepad_shell_contract(args: argparse.Namespace) -> int:
         pull_android_run_as_file_func=pull_android_run_as_file,
         write_android_run_as_file_func=write_android_run_as_file,
     )
+
+
+def questionnaire_status(args: argparse.Namespace) -> int:
+    return questionnaire_bridge.questionnaire_status(args)
+
+
+def questionnaire_open_block(args: argparse.Namespace) -> int:
+    return questionnaire_bridge.questionnaire_open_block(args)
+
+
+def questionnaire_dismiss(args: argparse.Namespace) -> int:
+    return questionnaire_bridge.questionnaire_dismiss(args)
+
+
+def questionnaire_serve(args: argparse.Namespace) -> int:
+    return questionnaire_bridge.questionnaire_serve(args)
 
 
 def snapshot_telemetry(args: argparse.Namespace) -> int:

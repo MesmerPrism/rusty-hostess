@@ -22,6 +22,56 @@ impl App {
         }
     }
 
+    pub(super) fn handle_stimulus_controller_randomize(
+        &mut self,
+        cx: &mut Cx,
+        update: &XrUpdateEvent,
+        camera_streaming_enabled: bool,
+    ) {
+        if camera_streaming_enabled
+            || !self.stimulus_stereo_field_state.enabled
+            || !self.stimulus_stereo_field_state.volume_present
+            || !update.clicked_a()
+        {
+            return;
+        }
+
+        self.stimulus_controller_randomize_count =
+            self.stimulus_controller_randomize_count.saturating_add(1);
+        let now_seconds = update.state.time.max(0.0);
+        let seed = self
+            .stimulus_controller_randomize_count
+            .wrapping_mul(0x9e37_79b9_7f4a_7c15)
+            ^ self.cadence_xr_update_count.rotate_left(17)
+            ^ now_seconds.to_bits();
+        self.stimulus_stereo_field_state
+            .apply_controller_randomize(seed);
+        self.stimulus_stereo_field_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_markers_emitted = 0;
+        self.stimulus_volume_gpu_probe_pending = None;
+        self.stimulus_volume_raymarch_preview_markers_emitted = 0;
+        self.stimulus_volume_raymarch_preview_pending = None;
+        self.stimulus_volume_image_preview_markers_emitted = 0;
+        self.stimulus_volume_image_preview_pending = None;
+        self.stimulus_volume_image_preview_texture = None;
+        self.stimulus_volume_texture_adoption_markers_emitted = 0;
+
+        let panel_bound =
+            self.apply_stimulus_stereo_field_to_panel(cx, "xr-controller-randomize", now_seconds);
+        emit_marker_line(
+            &self
+                .stimulus_stereo_field_state
+                .controller_randomize_marker_line(
+                    "xr-controller-randomize",
+                    self.stimulus_controller_randomize_count,
+                    self.cadence_xr_update_count,
+                    now_seconds.max(0.0).min(f32::MAX as f64) as f32,
+                    panel_bound,
+                    self.stimulus_surface_projection_rows.ready,
+                ),
+        );
+    }
+
     pub(super) fn apply_stimulus_stereo_field_to_panel(
         &mut self,
         cx: &mut Cx,
@@ -157,6 +207,11 @@ impl App {
         if !self.stimulus_stereo_field_state.enabled
             || !self.stimulus_stereo_field_state.volume_present
         {
+            self.stimulus_volume_image_preview_pending = None;
+            self.stimulus_volume_image_preview_texture = None;
+            return;
+        }
+        if self.stimulus_stereo_field_state.volume_texture_mix <= 0.0 {
             self.stimulus_volume_image_preview_pending = None;
             self.stimulus_volume_image_preview_texture = None;
             return;

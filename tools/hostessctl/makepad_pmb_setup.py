@@ -12,8 +12,12 @@ from tools.hostessctl.pmb_evidence import (
     PMB_BREATH_SCALE_INHALE_SECONDS_MIN_TO_MAX,
     PMB_BREATH_SCALE_MODE,
     PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+    PMB_BREATH_SCALE_SMOOTHING_SECONDS,
+    PMB_BREATH_SCALE_STATE_EXHALE_THRESHOLD01,
+    PMB_BREATH_SCALE_STATE_INHALE_THRESHOLD01,
     PMB_BREATH_SCALE_VOLUME0,
     PMB_BREATH_SCALE_VOLUME1,
+    PMB_BREATH_STATE_STREAM,
     PMB_BREATH_STATE_VALUE_STREAM,
     PMB_BREATH_VOLUME_SELECTED_STREAM,
 )
@@ -38,6 +42,34 @@ def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[st
             PMB_BREATH_SCALE_EXHALE_SECONDS_MAX_TO_MIN,
         )
     )
+    smoothing_alpha = str(
+        getattr(
+            args,
+            "makepad_breath_smoothing_alpha",
+            PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+        )
+    )
+    smoothing_seconds = str(
+        getattr(
+            args,
+            "makepad_breath_smoothing_seconds",
+            PMB_BREATH_SCALE_SMOOTHING_SECONDS,
+        )
+    )
+    inhale_threshold01 = str(
+        getattr(
+            args,
+            "makepad_breath_state_inhale_threshold01",
+            PMB_BREATH_SCALE_STATE_INHALE_THRESHOLD01,
+        )
+    )
+    exhale_threshold01 = str(
+        getattr(
+            args,
+            "makepad_breath_state_exhale_threshold01",
+            PMB_BREATH_SCALE_STATE_EXHALE_THRESHOLD01,
+        )
+    )
     return {
         "debug.rustyquest.makepad.projection.target.breath.controls": "scale",
         "debug.rustyquest.makepad.projection.target.breath.stream": stream_id,
@@ -46,7 +78,10 @@ def makepad_breath_scale_runtime_properties(args: argparse.Namespace) -> dict[st
         "debug.rustyquest.makepad.projection.target.breath.max.scale": PMB_BREATH_SCALE_VOLUME1,
         "debug.rustyquest.makepad.projection.target.breath.inhale.seconds.min.to.max": inhale_seconds,
         "debug.rustyquest.makepad.projection.target.breath.exhale.seconds.max.to.min": exhale_seconds,
-        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": PMB_BREATH_SCALE_SMOOTHING_ALPHA,
+        "debug.rustyquest.makepad.projection.target.breath.smoothing.alpha": smoothing_alpha,
+        "debug.rustyquest.makepad.projection.target.breath.smoothing.seconds": smoothing_seconds,
+        "debug.rustyquest.makepad.projection.target.breath.state.inhale.threshold01": inhale_threshold01,
+        "debug.rustyquest.makepad.projection.target.breath.state.exhale.threshold01": exhale_threshold01,
         "debug.rustyquest.makepad.projection.target.breath.invert": "false",
         "debug.rustyquest.makepad.projection.target.breath.min.quality": "0.0",
     }
@@ -57,6 +92,8 @@ def makepad_breath_scale_mode_and_stream(args: argparse.Namespace) -> tuple[str,
     mode = mode.strip().lower().replace("_", "-")
     if mode == "state-value":
         return "volume", PMB_BREATH_STATE_VALUE_STREAM
+    if mode == "state-ramp":
+        return "state-ramp", PMB_BREATH_STATE_STREAM
     if mode not in {"volume", "state-ramp"}:
         mode = PMB_BREATH_SCALE_MODE
     return mode, PMB_BREATH_VOLUME_SELECTED_STREAM

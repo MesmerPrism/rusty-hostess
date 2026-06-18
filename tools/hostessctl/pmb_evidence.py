@@ -43,10 +43,13 @@ PMB_BREATH_FEEDBACK_STATE_STREAM = "stream.breath.feedback_state"
 PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
 PMB_BREATH_SCALE_VOLUME0 = "1.0"
 PMB_BREATH_SCALE_VOLUME1 = "0.1796"
-PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.30"
+PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.75"
+PMB_BREATH_SCALE_SMOOTHING_SECONDS = "0.03"
 PMB_BREATH_SCALE_MODE = "volume"
 PMB_BREATH_SCALE_INHALE_SECONDS_MIN_TO_MAX = "4.0"
 PMB_BREATH_SCALE_EXHALE_SECONDS_MAX_TO_MIN = "4.0"
+PMB_BREATH_SCALE_STATE_INHALE_THRESHOLD01 = "0.75"
+PMB_BREATH_SCALE_STATE_EXHALE_THRESHOLD01 = "0.25"
 
 
 def graph_report_streams(graph_report: dict[str, Any]) -> list[dict[str, Any]]:
@@ -1304,6 +1307,32 @@ def validate_pmb_quest_simulated_live_evidence(
     }
 
 
+def pmb_physical_input_requirements_pass(
+    capture: dict[str, Any],
+    execution: dict[str, Any],
+) -> bool:
+    polar_required = bool(capture.get("polar_required", True))
+    controller_required = bool(capture.get("controller_required", True))
+    polar_used = (
+        capture.get("physical_polar_ble_used") is True
+        and execution.get("physical_polar_ble_used") is True
+        and int(capture.get("polar_event_count", 0)) > 0
+    )
+    controller_used = (
+        capture.get("physical_controller_input_used") is True
+        and execution.get("physical_controller_input_used") is True
+        and execution.get("controller_input_used") is True
+        and int(capture.get("active_tracked_connected_object_pose_count", 0)) > 0
+    )
+    if polar_required and not polar_used:
+        return False
+    if controller_required and not controller_used:
+        return False
+    if not polar_required and not controller_required:
+        return polar_used or controller_used
+    return True
+
+
 def validate_pmb_quest_physical_live_evidence(
     evidence: dict[str, Any],
     *,
@@ -1321,6 +1350,8 @@ def validate_pmb_quest_physical_live_evidence(
     actual_manifest_hash = package.get("package_manifest_sha256")
     input_stream_ids = set(route.get("input_stream_ids", []))
     output_stream_ids = set(route.get("output_stream_ids", []))
+    polar_required = bool(capture.get("polar_required", True))
+    controller_required = bool(capture.get("controller_required", True))
     checks = [
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.schema",
@@ -1343,14 +1374,8 @@ def validate_pmb_quest_physical_live_evidence(
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.physical_inputs",
-            capture.get("physical_polar_ble_used") is True
-            and capture.get("physical_controller_input_used") is True
-            and int(capture.get("polar_event_count", 0)) > 0
-            and int(capture.get("active_tracked_connected_object_pose_count", 0)) > 0
-            and execution.get("physical_polar_ble_used") is True
-            and execution.get("physical_controller_input_used") is True
-            and execution.get("controller_input_used") is True,
-            "Quest broker captured physical Polar ACC and active/tracked/connected controller pose events",
+            pmb_physical_input_requirements_pass(capture, execution),
+            "Quest broker captured the required physical PMB input streams for the selected source",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
@@ -1370,14 +1395,14 @@ def validate_pmb_quest_physical_live_evidence(
             execution.get("simulated_polar_provider_used") is False
             and execution.get("simulated_controller_provider_used") is False
             and execution.get("synthetic_live_route") is False
-            and capture.get("physical_polar_ble_used") is True
-            and capture.get("physical_controller_input_used") is True,
+            and pmb_physical_input_requirements_pass(capture, execution),
             "physical PMB route did not claim simulated providers",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.route",
-            {"bio:polar_acc", "stream.motion.object_pose"}.issubset(input_stream_ids)
+            (not polar_required or "bio:polar_acc" in input_stream_ids)
+            and (not controller_required or "stream.motion.object_pose" in input_stream_ids)
             and {
                 PMB_BREATH_VOLUME_STREAM,
                 PMB_BREATH_VOLUME_SELECTED_STREAM,

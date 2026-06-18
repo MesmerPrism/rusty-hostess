@@ -355,6 +355,8 @@ pub struct App {
     #[rust]
     stimulus_stereo_field_markers_emitted: usize,
     #[rust]
+    stimulus_controller_randomize_count: u64,
+    #[rust]
     stimulus_volume_gpu_probe_markers_emitted: usize,
     #[rust]
     stimulus_volume_gpu_probe_pending: Option<PendingStimulusVolumeGpuProbe>,
@@ -1234,6 +1236,7 @@ impl App {
                 self.handle_manifold_pose_publish(_update);
                 #[cfg(target_os = "android")]
                 self.update_stimulus_runtime_xr_projection(_update);
+                self.handle_stimulus_controller_randomize(cx, _update, camera_streaming_enabled);
                 if camera_streaming_enabled {
                     self.handle_projection_target_joystick(cx, _update);
                     self.handle_projection_target_breath_feedback(cx);

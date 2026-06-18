@@ -35,6 +35,7 @@ try {
         "tools\hostessctl\pmb_evidence.py",
         "tools\hostessctl\pmb_host_run_evidence.py",
         "tools\hostessctl\pmb_support.py",
+        "tools\hostessctl\questionnaire_bridge.py",
         "tools\hostessctl\recording_evidence.py",
         "tools\hostessctl\runtime.py",
         "tools\hostessctl\telemetry_render.py",
@@ -60,6 +61,7 @@ try {
         "tools\test_check_makepad_quest_gpu_evidence.py",
         "tools\test_check_makepad_quest_live_recorded_ab.py",
         "tools\test_hostessctl_cli_parser.py",
+        "tools\test_hostessctl_questionnaire_bridge.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
     ) | Where-Object { Test-Path $_ }
@@ -126,6 +128,7 @@ try {
         $PackagesRoot = Resolve-Path (Join-Path $RepoRoot "..\rusty-manifold-packages")
         $PolarCorePath = Resolve-Path (Join-Path $PackagesRoot "packages\polar-h10\crates\polar-h10-core")
         $AdapterCheckRoot = Join-Path $env:TEMP "hostess-polar-runtime-jni-check"
+        Remove-Item -Recurse -Force $AdapterCheckRoot -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $AdapterCheckRoot | Out-Null
         $AdapterManifest = Join-Path $AdapterCheckRoot "Cargo.toml"
         $AdapterLibPathForCargo = (Resolve-Path $AdapterLib).Path -replace "\\", "/"
@@ -155,6 +158,7 @@ try {
         $PackagesRoot = Resolve-Path (Join-Path $RepoRoot "..\rusty-manifold-packages")
         $PmbCorePath = Resolve-Path (Join-Path $PackagesRoot "packages\projected-motion-breath\crates\projected-motion-breath-core")
         $PmbAdapterCheckRoot = Join-Path $env:TEMP "hostess-pmb-runtime-jni-check"
+        Remove-Item -Recurse -Force $PmbAdapterCheckRoot -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $PmbAdapterCheckRoot | Out-Null
         $PmbAdapterManifest = Join-Path $PmbAdapterCheckRoot "Cargo.toml"
         $PmbAdapterLibPathForCargo = (Resolve-Path $PmbAdapterLib).Path -replace "\\", "/"

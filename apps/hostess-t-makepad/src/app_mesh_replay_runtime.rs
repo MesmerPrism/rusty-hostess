@@ -113,6 +113,7 @@ impl App {
         };
         self.stimulus_surface_projection_rows = StimulusSurfaceProjectionRows::default();
         self.stimulus_stereo_field_markers_emitted = 0;
+        self.stimulus_controller_randomize_count = 0;
         self.stimulus_volume_gpu_probe_markers_emitted = 0;
         self.stimulus_volume_gpu_probe_pending = None;
         self.stimulus_volume_raymarch_preview_markers_emitted = 0;

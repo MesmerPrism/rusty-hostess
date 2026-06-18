@@ -1,6 +1,7 @@
 __pycache__/
 .venv/
 build/
+apps/hostess-t-android/build-*/
 target/
 out/
 tmp/

@@ -57,6 +57,20 @@ class HostessCtlMakepadContractTests(unittest.TestCase):
                 evidence["visual_profile_makepad_projection_border_policy"],
                 "passthrough-underlay",
             )
+            visual_profile = {
+                record["key"]: record["value"]
+                for record in evidence["visual_profile_properties"]
+            }
+            self.assertEqual(
+                visual_profile["debug.rustyquest.makepad.display.refresh.rate.hz"],
+                "72.0",
+            )
+            self.assertEqual(
+                visual_profile["debug.rustyquest.makepad.xr.render.scale"],
+                "0.90",
+            )
+            self.assertEqual(visual_profile["debug.oculus.cpuLevel"], "4")
+            self.assertEqual(visual_profile["debug.oculus.gpuLevel"], "4")
             self.assertFalse(evidence["runtime_observation_poll_performed"])
             self.assertEqual(evidence["runtime_observation_pull_count"], 0)
             self.assertFalse(evidence["makepad_runtime_capability_receipt_pulled"])

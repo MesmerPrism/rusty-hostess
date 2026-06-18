@@ -147,6 +147,7 @@ final class PmbBrokerBridge {
                 eventsJsonl.getAbsolutePath());
         Result brokerResult = new Result(host, port, feedbackLimit, receiptListenMs);
         brokerResult.selectedSourcePreference = normalizeSelectedSourcePreference(selectedSourcePreference);
+        captureResult.configureSourcePreference(brokerResult.selectedSourcePreference);
         brokerResult.publishMode = "event_driven_live_processor";
         brokerResult.livePublishDuringCapture = true;
         brokerResult.incrementalProcessorUsed = true;
@@ -193,12 +194,17 @@ final class PmbBrokerBridge {
                     .put("receiver", brokerResult.clientId), publishState.nextCommandSequence());
             long processorHandle = PMBRuntime.openLiveTransportProcessor(packageRoot);
 
-            captureResult.polarStartStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.start", new JSONObject()
-                    .put("device_address", deviceAddress == null ? "" : deviceAddress)
-                    .put("scan_timeout_ms", scanTimeoutMs)
-                    .put("pmd_stream", "acc")
-                    .put("acc_sample_rate_hz", accRateHz)
-                    .put("high_connection_priority", true), 6);
+            boolean polarRequested = captureResult.polarProviderRequested();
+            if (polarRequested) {
+                captureResult.polarStartStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.start", new JSONObject()
+                        .put("device_address", deviceAddress == null ? "" : deviceAddress)
+                        .put("scan_timeout_ms", scanTimeoutMs)
+                        .put("pmd_stream", "acc")
+                        .put("acc_sample_rate_hz", accRateHz)
+                        .put("high_connection_priority", true), 6);
+            } else {
+                captureResult.polarStartStatus = "not_requested";
+            }
 
             long startedMs = System.currentTimeMillis();
             boolean runUntilStopped = durationMs <= 0;
@@ -228,7 +234,11 @@ final class PmbBrokerBridge {
             writer.flush();
             JSONObject closeUpdate = PMBRuntime.closeLiveTransportProcessor(processorHandle);
             brokerResult.closeReport = closeUpdate;
-            captureResult.polarStopStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.stop", new JSONObject(), 7);
+            if (polarRequested) {
+                captureResult.polarStopStatus = physicalCommandAndWait(captureClient, captureResult, "polar_pmd.stop", new JSONObject(), 7);
+            } else {
+                captureResult.polarStopStatus = "not_requested";
+            }
 
             long receiptDeadline = System.currentTimeMillis() + Math.max(0, receiptListenMs);
             while (System.currentTimeMillis() < receiptDeadline
@@ -242,16 +252,21 @@ final class PmbBrokerBridge {
             throw ex;
         }
 
-        captureResult.status = captureResult.polarEventCount > 0
-                && captureResult.activeTrackedConnectedObjectPoseCount > 0
+        captureResult.status = captureResult.requiredInputsCaptured()
                 && captureResult.errors.length() == 0
                 ? "pass"
                 : "fail";
-        if (captureResult.polarEventCount <= 0) {
+        if (captureResult.polarRequired && captureResult.polarEventCount <= 0) {
             captureResult.errors.put("issue.polar_acc_events_missing");
         }
-        if (captureResult.activeTrackedConnectedObjectPoseCount <= 0) {
+        if (captureResult.controllerRequired && captureResult.activeTrackedConnectedObjectPoseCount <= 0) {
             captureResult.errors.put("issue.controller_pose_active_tracked_connected_missing");
+        }
+        if (!captureResult.polarRequired
+                && !captureResult.controllerRequired
+                && captureResult.polarEventCount <= 0
+                && captureResult.activeTrackedConnectedObjectPoseCount <= 0) {
+            captureResult.errors.put("issue.physical_pmb_input_events_missing");
         }
         brokerResult.status = brokerResult.liveRoutePassCount > 0
                 && brokerResult.firstSelectedPublishElapsedMs >= 0
@@ -1086,6 +1101,9 @@ final class PmbBrokerBridge {
         final JSONArray errors = new JSONArray();
         String status = "pending";
         boolean brokerConnected = false;
+        String selectedSourcePreference = "auto";
+        boolean polarRequired = true;
+        boolean controllerRequired = true;
         String polarStartStatus = "not_started";
         String polarStopStatus = "not_started";
         int polarEventCount = 0;
@@ -1114,6 +1132,26 @@ final class PmbBrokerBridge {
             this.eventsJsonl = eventsJsonl;
         }
 
+        void configureSourcePreference(String preference) {
+            selectedSourcePreference = normalizeSelectedSourcePreference(preference);
+            polarRequired = "polar".equals(selectedSourcePreference);
+            controllerRequired = "controller".equals(selectedSourcePreference);
+        }
+
+        boolean polarProviderRequested() {
+            return !"controller".equals(selectedSourcePreference);
+        }
+
+        boolean requiredInputsCaptured() {
+            if (polarRequired) {
+                return polarEventCount > 0;
+            }
+            if (controllerRequired) {
+                return activeTrackedConnectedObjectPoseCount > 0;
+            }
+            return polarEventCount > 0 || activeTrackedConnectedObjectPoseCount > 0;
+        }
+
         JSONObject toJson() throws JSONException {
             return new JSONObject()
                     .put("schema", "rusty.hostess.projected_motion_breath.quest_physical_input_capture_report.v1")
@@ -1123,6 +1161,10 @@ final class PmbBrokerBridge {
                     .put("broker_connected", brokerConnected)
                     .put("broker_transport_used", brokerConnected)
                     .put("events_jsonl", eventsJsonl)
+                    .put("selected_source_preference", selectedSourcePreference)
+                    .put("polar_required", polarRequired)
+                    .put("controller_required", controllerRequired)
+                    .put("polar_provider_requested", polarProviderRequested())
                     .put("device_address_supplied", !deviceAddress.isEmpty())
                     .put("acc_rate_hz", accRateHz)
                     .put("scan_timeout_ms", scanTimeoutMs)

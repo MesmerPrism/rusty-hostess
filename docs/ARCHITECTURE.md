@@ -68,6 +68,10 @@ snapshot command dispatch live in `tools/hostessctl/telemetry_routes.py`.
 Desktop PNG rendering, sidecar writing, and render-output validation live in
 `tools/hostessctl/telemetry_render.py` so render evidence remains a focused
 helper family instead of growing the CLI root.
+Quest questionnaire operator bridging lives in
+`tools/hostessctl/questionnaire_bridge.py`. It is a low-rate command/status
+route for foreground panel requests, not a data-plane path; answer data stays
+with the caller-owned `content://` result URI described by the panel contract.
 Android shell-file and app-private `run-as` file transport lives in
 `tools/hostessctl/android_files.py`, with route-level cleanup and compatibility
 facades in `tools/hostessctl/android_artifacts.py`.

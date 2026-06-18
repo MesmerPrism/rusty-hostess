@@ -4,6 +4,27 @@ from __future__ import annotations
 
 import argparse
 
+from tools.hostessctl.pmb_support import (
+    PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
+    PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
+    PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
+    PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD,
+    PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES,
+    PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS,
+)
+
+DEFAULT_MAKEPAD_POSE_SAMPLE_HZ = 72.0
+DEFAULT_MAKEPAD_BREATH_SMOOTHING_ALPHA = 0.75
+DEFAULT_MAKEPAD_BREATH_SMOOTHING_SECONDS = 0.03
+DEFAULT_MAKEPAD_BREATH_STATE_INHALE_THRESHOLD01 = 0.75
+DEFAULT_MAKEPAD_BREATH_STATE_EXHALE_THRESHOLD01 = 0.25
+DEFAULT_PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS = PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS
+DEFAULT_PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS = PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS
+DEFAULT_PMB_CONTROLLER_STATE_INHALE_THRESHOLD = PMB_CONTROLLER_STATE_INHALE_THRESHOLD
+DEFAULT_PMB_CONTROLLER_STATE_EXHALE_THRESHOLD = PMB_CONTROLLER_STATE_EXHALE_THRESHOLD
+DEFAULT_PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES = PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES
+DEFAULT_PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD = PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD
+
 
 def add_makepad_breath_scale_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument(
@@ -20,6 +41,26 @@ def add_makepad_breath_scale_arguments(parser: argparse.ArgumentParser) -> None:
         "--makepad-breath-exhale-seconds-max-to-min",
         type=float,
         default=4.0,
+    )
+    parser.add_argument(
+        "--makepad-breath-smoothing-alpha",
+        type=float,
+        default=DEFAULT_MAKEPAD_BREATH_SMOOTHING_ALPHA,
+    )
+    parser.add_argument(
+        "--makepad-breath-smoothing-seconds",
+        type=float,
+        default=DEFAULT_MAKEPAD_BREATH_SMOOTHING_SECONDS,
+    )
+    parser.add_argument(
+        "--makepad-breath-state-inhale-threshold01",
+        type=float,
+        default=DEFAULT_MAKEPAD_BREATH_STATE_INHALE_THRESHOLD01,
+    )
+    parser.add_argument(
+        "--makepad-breath-state-exhale-threshold01",
+        type=float,
+        default=DEFAULT_MAKEPAD_BREATH_STATE_EXHALE_THRESHOLD01,
     )
 
 
@@ -126,11 +167,45 @@ def build_hostessctl_parser(
     run_pmb_physical_live_parser.add_argument("--makepad-settle-seconds", type=float, default=10.0)
     run_pmb_physical_live_parser.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     run_pmb_physical_live_parser.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
-    run_pmb_physical_live_parser.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    run_pmb_physical_live_parser.add_argument(
+        "--makepad-pose-sample-hz",
+        type=float,
+        default=DEFAULT_MAKEPAD_POSE_SAMPLE_HZ,
+    )
     run_pmb_physical_live_parser.add_argument(
         "--pmb-controller-state-mode",
         choices=["projected-volume-delta", "fixed-controller-orientation"],
         default="projected-volume-delta",
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-short-window-seconds",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS,
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-long-window-seconds",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-inhale-threshold",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-exhale-threshold",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-rotation-guard-degrees",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES,
+    )
+    run_pmb_physical_live_parser.add_argument(
+        "--pmb-controller-state-moving-average-guard",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD,
     )
     run_pmb_physical_live_parser.add_argument("--feedback-publish-limit", type=int, default=24)
     add_makepad_breath_scale_arguments(run_pmb_physical_live_parser)
@@ -191,7 +266,11 @@ def build_hostessctl_parser(
     record_values.add_argument("--makepad-provider-activity", default=makepad_provider_activity)
     record_values.add_argument("--makepad-pose-controller", choices=["left", "right"], default="right")
     record_values.add_argument("--makepad-pose-kind", choices=["grip", "aim"], default="grip")
-    record_values.add_argument("--makepad-pose-sample-hz", type=float, default=20.0)
+    record_values.add_argument(
+        "--makepad-pose-sample-hz",
+        type=float,
+        default=DEFAULT_MAKEPAD_POSE_SAMPLE_HZ,
+    )
     record_values.add_argument("--makepad-pose-ready-timeout-seconds", type=float, default=20.0)
     record_values.add_argument("--cargo", default="cargo")
     record_values.add_argument("--pmb-live-processor", action="store_true")
@@ -239,6 +318,35 @@ def build_hostessctl_parser(
     makepad_shell_contract.add_argument("--runtime-observation-poll-ms", type=float, default=750.0)
     makepad_shell_contract.add_argument("--skip-pregrant-permissions", action="store_true")
     makepad_shell_contract.add_argument("--plan-only", action="store_true")
+
+    questionnaire_status = subcommands.add_parser("questionnaire-status")
+    questionnaire_status.add_argument("--endpoint", default="http://127.0.0.1:8787")
+
+    questionnaire_open_block = subcommands.add_parser("questionnaire-open-block")
+    questionnaire_open_block.add_argument("--endpoint", default="http://127.0.0.1:8787")
+    questionnaire_open_block.add_argument("--block", choices=["1", "2", "3"], required=True)
+    questionnaire_open_block.add_argument("--session-id", required=True)
+    questionnaire_open_block.add_argument("--participant-ref", required=True)
+    questionnaire_open_block.add_argument("--language-code", default="en")
+    questionnaire_open_block.add_argument("--command-id", default="hostessctl-open-block")
+
+    questionnaire_dismiss = subcommands.add_parser("questionnaire-dismiss")
+    questionnaire_dismiss.add_argument("--endpoint", default="http://127.0.0.1:8787")
+    questionnaire_dismiss.add_argument("--session-id", required=True)
+    questionnaire_dismiss.add_argument("--command-id", default="hostessctl-dismiss")
+
+    questionnaire_serve = subcommands.add_parser("questionnaire-serve")
+    questionnaire_serve.add_argument("--host", default="127.0.0.1")
+    questionnaire_serve.add_argument("--port", type=int, default=8787)
+    questionnaire_serve.add_argument("--max-requests", type=int)
+    questionnaire_serve.add_argument("--device-label", default="local-dev")
+    questionnaire_serve.add_argument("--xr-package", default="rusty-morphospace.xr")
+    questionnaire_serve.add_argument("--xr-activity", default=".MainActivity")
+    questionnaire_serve.add_argument(
+        "--panel-package",
+        default="io.github.mesmerprism.questquestionnaire",
+    )
+    questionnaire_serve.add_argument("--panel-activity", default=".QuestionnairePanelActivity")
 
     snapshot = subcommands.add_parser("snapshot-telemetry")
     snapshot.add_argument("--input", required=True)
