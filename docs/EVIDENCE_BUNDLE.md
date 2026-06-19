@@ -63,9 +63,8 @@ feedback path with packaged simulated providers.
 Projected-motion breath Quest physical live routing uses
 `rusty.hostess.projected_motion_breath.android_physical_live_execution_evidence.v1`.
 `hostessctl run-pmb-quest-physical-live --target quest` launches the Quest
-broker, configures the clean Makepad XR app to publish
-`stream.motion.object_pose` and receive `stream.breath.volume.selected`, then
-starts the Hostess foreground service action
+broker, configures the selected app receipt consumer, then starts the Hostess
+foreground service action
 `io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND`.
 The background-service route is the default so Hostess can run the physical PMB
 processor without foregrounding the Hostess activity or stealing focus from the
@@ -76,16 +75,28 @@ The Hostess Android app connects to the Quest broker from the Quest, starts
 Polar PMD ACC through broker command `polar_pmd.start`, records `bio:polar_acc`
 and usable active/tracked/connected `stream.motion.object_pose` broker events
 into app-private JSONL, executes `projected-motion-breath-core
-live-route-from-events` through the Hostess PMB JNI library on Quest, publishes
-breath volume and feedback samples to the Quest broker, and requires Makepad
-feedback receipts. The evidence must record `pmd_computed_on_quest=true`,
+live-route-from-events` through the Hostess PMB JNI library on Quest, and
+publishes breath volume, state, state-value, and feedback samples to the Quest
+broker. The default `--app-receipt-policy makepad-feedback-receipt` still
+requires Makepad `stream.breath.feedback_receipt` acknowledgements. The
+`--app-receipt-policy native-renderer-projection-target` route skips Makepad
+setup, captures filtered native renderer logcat, and requires
+`RUSTY_QUEST_NATIVE_RENDERER channel=projection-target status=effective`
+markers showing `projectionTargetRuntimeAuthority=native-renderer`,
+`projectionTargetScaleDriver=pmb`, `projectionTargetPmbAvailable=true`, and
+matching `breathReceivedSamples` / `breathLastSequenceId` for the published
+`stream.breath.state` and `stream.breath.state.value` samples. The evidence
+must record `pmd_computed_on_quest=true`,
 `pmd_computed_on_pc=false`,
 `processor_authority=quest_hostess_android_app`,
-`physical_polar_ble_used=true`, `physical_controller_input_used=true`,
+the selected physical input requirements, for example
+`physical_polar_ble_used=true` plus `physical_controller_input_used=true` for
+Polar/controller runs or `polar_required=false` plus
+`physical_controller_input_used=true` for controller-only native Breathing Room,
 `simulated_polar_provider_used=false`, `simulated_controller_provider_used=false`,
 `synthetic_live_route=false`, `plan_only_fixture=false`, physical input counts,
-broker publish counts, and Makepad feedback receipt counts. This route is the
-real Polar/controller PMB gate; the older host-side
+broker publish counts, and the selected app receipt policy evidence. This
+route is the real physical PMB gate; the older host-side
 `record-values --pmb-live-processor` bridge is not acceptable for this gate
 because it computes PMB on the PC.
 

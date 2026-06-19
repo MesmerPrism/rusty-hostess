@@ -72,8 +72,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   breath-feedback receiver properties, physical-provider properties, and broker
   runtime permission grants used by PMB routes.
 - `tools/hostessctl/native_breathing_room_setup.py`: native Rusty Quest
-  Breathing Room setup receipts using only `debug.rustyquest.native_renderer.*`
-  properties plus Hostess/Manifold PMB stream subscription intent.
+  Breathing Room setup receipts derived from the canonical Rusty Quest native
+  runtime profile, with only per-run projection/PMB overrides applied, plus
+  Hostess/Manifold PMB stream subscription intent. Receipts record the source
+  profile SHA-256 and the exact parameterized property list so Hostess cannot
+  silently become a partial parallel settings layer.
 - `tools/hostessctl/telemetry_routes.py`: Android-class app-rendered PNG export
   for phone and headset telemetry evidence, desktop PNG rendering dispatch,
   Makepad render pulls, shell-contract launch, and snapshot command dispatch.
@@ -109,11 +112,16 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/pmb_evidence.py`: projected-motion-breath contract
   constants, replay/self-test evidence builders, PMB validators, and facade
   re-exports for existing callers.
+- `tools/hostessctl/pmb_support.py`: shared projected-motion-breath stream IDs
+  and contract authority constants plus PMB package snapshots, scorecard
+  helpers, host-app mapping, and timestamp/segment helpers shared by builders,
+  validators, and host-run writers.
+- `tools/hostessctl/pmb_native_receipts.py`: native Rusty Quest renderer PMB
+  receipt policy helpers. It parses compact native projection-target markers
+  and validates canonical state/value stream consumption without turning
+  `stream.breath.feedback_receipt` into a second native-app contract.
 - `tools/hostessctl/pmb_host_run_evidence.py`: host-run evidence writers for
   PMB and live-capture validation routes.
-- `tools/hostessctl/pmb_support.py`: PMB package snapshots, scorecard helpers,
-  host-app mapping, and timestamp/segment helpers shared by builders,
-  validators, and host-run writers.
 - `tools/hostessctl/recording_evidence.py`: broker telemetry and Manifold
   value-recording evidence builders, validators, scorecards, and host-run
   evidence writers used by general recording routes.
@@ -188,7 +196,7 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>

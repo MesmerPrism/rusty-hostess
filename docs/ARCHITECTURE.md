@@ -86,15 +86,28 @@ Projected-motion-breath evidence construction and validation live in
 and Quest route orchestration, while PMB contract constants, replay/self-test
 evidence builders, and PMB validation reports remain separate from host-run
 evidence writing. Host-run evidence writers live in
-`tools/hostessctl/pmb_host_run_evidence.py`, and shared PMB package snapshot,
-scorecard, host-app, timestamp, and path helpers live in
-`tools/hostessctl/pmb_support.py`.
+`tools/hostessctl/pmb_host_run_evidence.py`. Native Rusty Quest renderer PMB
+receipt policy parsing lives in `tools/hostessctl/pmb_native_receipts.py`; it
+accepts native projection-target effective markers as app-side consumption
+evidence for the canonical `stream.breath.state` and
+`stream.breath.state.value` contract instead of requiring the Makepad-only
+`stream.breath.feedback_receipt` stream. Shared PMB stream IDs, contract
+authority constants, package snapshot, scorecard, host-app, timestamp, and path
+helpers live in `tools/hostessctl/pmb_support.py`.
 Manifold value recording planning and broker capture orchestration live in
 `tools/hostessctl/manifold_recording.py`: the provider registry,
 `record-values` route planner, Quest broker WebSocket capture, Makepad
 controller-pose provider setup, and PMB live processor bridge execution are
 kept out of the CLI root. `hostessctl.py` preserves thin wrappers for existing
 tests and scripts.
+Native Rusty Quest Breathing Room setup lives in
+`tools/hostessctl/native_breathing_room_setup.py`. It consumes the canonical
+Rusty Quest native runtime profile as the startup settings authority, records
+the profile SHA-256 in the Hostess setup receipt, and allows only the named
+projection-target, PMB bridge, and Manifold broker endpoint properties to vary
+per run. The setup receipt also records the PMB stream contract authority and
+rejects custom state/value stream IDs until the broker publisher and native
+receipt policy can be parameterized together.
 Broker telemetry and Manifold value-recording evidence construction lives in
 `tools/hostessctl/recording_evidence.py`. Recording evidence schemas,
 validators, scorecards, and host-run wrappers are isolated from command

@@ -35,6 +35,7 @@ try {
         "tools\hostessctl\pmb_desktop_routes.py",
         "tools\hostessctl\pmb_evidence.py",
         "tools\hostessctl\pmb_host_run_evidence.py",
+        "tools\hostessctl\pmb_native_receipts.py",
         "tools\hostessctl\pmb_support.py",
         "tools\hostessctl\questionnaire_bridge.py",
         "tools\hostessctl\recording_evidence.py",

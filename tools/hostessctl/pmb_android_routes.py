@@ -40,6 +40,14 @@ from tools.hostessctl.pmb_evidence import (
     write_pmb_quest_physical_live_host_run_evidence,
     write_pmb_quest_simulated_live_host_run_evidence,
 )
+from tools.hostessctl.pmb_native_receipts import (
+    NATIVE_RENDERER_LOGCAT_FILTER,
+    PMB_APP_RECEIPT_POLICY_MAKEPAD,
+    PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER,
+    native_renderer_receipt_summary_from_logcat,
+    pmb_app_receipt_policy_from_args,
+    pmb_effective_receipt_listen_seconds,
+)
 from tools.hostessctl.pmb_support import (
     PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
     PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
@@ -285,6 +293,7 @@ def run_pmb_quest_physical_live(
     args: argparse.Namespace,
     *,
     run_func: RunFunc,
+    run_captured_func: RunFunc,
     grant_broker_runtime_permissions_func: Callable[[argparse.Namespace], None],
     configure_makepad_physical_pmb_provider_func: Callable[[argparse.Namespace], None],
     clear_android_pmb_physical_live_artifacts_func: Callable[[argparse.Namespace], None],
@@ -304,10 +313,14 @@ def run_pmb_quest_physical_live(
     if getattr(args, "run_until_stopped", False) and getattr(args, "foreground_hostess", False):
         raise SystemExit("--run-until-stopped requires the background Hostess service")
     host_profile = "headset"
+    app_receipt_policy = pmb_app_receipt_policy_from_args(args)
     if not getattr(args, "no_launch_broker", False):
         grant_broker_runtime_permissions_func(args)
         run_func([args.adb, "-s", args.serial, "shell", "am", "start", "-n", selected_broker_activity_func(args)])
-    if not getattr(args, "no_launch_makepad", False):
+    if (
+        app_receipt_policy == PMB_APP_RECEIPT_POLICY_MAKEPAD
+        and not getattr(args, "no_launch_makepad", False)
+    ):
         configure_makepad_physical_pmb_provider_func(args)
     clear_android_pmb_physical_live_artifacts_func(args)
     run_func([args.adb, "-s", args.serial, "shell", "am", "force-stop", ANDROID_PACKAGE], allow_failure=True)
@@ -325,6 +338,7 @@ def run_pmb_quest_physical_live(
             "publish_mode": "event_driven_live_processor",
             "selected_breath_stream": PMB_BREATH_VOLUME_SELECTED_STREAM,
             "breath_selected_source": str(getattr(args, "breath_selected_source", "auto") or "auto"),
+            "app_receipt_policy": app_receipt_policy,
             "broker_identity": broker_identity_func(args),
             "command": command,
         }
@@ -333,7 +347,7 @@ def run_pmb_quest_physical_live(
     wait_seconds = (
         max(0.0, float(args.scan_timeout_seconds))
         + max(0.0, float(args.duration_seconds))
-        + max(0.0, float(args.receipt_listen_seconds))
+        + pmb_effective_receipt_listen_seconds(args)
         + 30.0
     )
     wait_for_android_file_func(args, ANDROID_REMOTE_PMB_PHYSICAL_LIVE_EVIDENCE, wait_seconds)
@@ -350,6 +364,14 @@ def run_pmb_quest_physical_live(
     ]:
         run_func([args.adb, "-s", args.serial, "pull", remote, str(local)])
     evidence = attach_broker_identity_func(json.loads(out.read_text(encoding="utf-8")), args)
+    evidence.setdefault("execution", {})["app_receipt_policy"] = app_receipt_policy
+    if app_receipt_policy == PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER:
+        attach_native_renderer_receipt_summary(
+            args,
+            out,
+            evidence,
+            run_captured_func=run_captured_func,
+        )
     out.write_text(json.dumps(evidence, indent=2, sort_keys=True), encoding="utf-8")
     validation_report = validate_pmb_quest_physical_live_evidence(
         evidence,
@@ -487,8 +509,44 @@ def pmb_physical_live_start_command(args: argparse.Namespace, host_profile: str)
         str(getattr(args, "breath_selected_source", "auto") or "auto"),
         "--es",
         "receipt_listen_ms",
-        str(int(max(0.0, args.receipt_listen_seconds) * 1000.0)),
+        str(int(pmb_effective_receipt_listen_seconds(args) * 1000.0)),
     ])
     if args.device_address:
         command.extend(["--es", "device_address", args.device_address])
     return command
+
+
+def attach_native_renderer_receipt_summary(
+    args: argparse.Namespace,
+    out: Path,
+    evidence: dict[str, Any],
+    *,
+    run_captured_func: RunFunc,
+) -> None:
+    logcat_path = out.with_name(f"{out.stem}.native-renderer-logcat.txt")
+    result = run_captured_func(
+        [
+            args.adb,
+            "-s",
+            args.serial,
+            "logcat",
+            "-d",
+            "-s",
+            "RQNativeRenderer:I",
+            "*:S",
+        ],
+        allow_failure=True,
+    )
+    logcat_text = result.stdout or ""
+    logcat_path.write_text(logcat_text, encoding="utf-8")
+    summary = native_renderer_receipt_summary_from_logcat(
+        logcat_text,
+        broker_summary=evidence.get("broker_publish_summary", {}),
+        route_summary=evidence.get("route_report_summary", {}),
+    )
+    summary["logcat_artifact"] = logcat_path.name
+    summary["logcat_filter"] = NATIVE_RENDERER_LOGCAT_FILTER
+    summary["logcat_returncode"] = result.returncode
+    if result.stderr:
+        summary["logcat_stderr_tail"] = result.stderr[-2048:]
+    evidence["native_app_receipt_summary"] = summary

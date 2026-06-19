@@ -334,6 +334,7 @@ def run_pmb_quest_physical_live(args: argparse.Namespace) -> int:
     return pmb_android_routes.run_pmb_quest_physical_live(
         args,
         run_func=run,
+        run_captured_func=run_captured,
         grant_broker_runtime_permissions_func=grant_broker_runtime_permissions,
         configure_makepad_physical_pmb_provider_func=configure_makepad_physical_pmb_provider,
         clear_android_pmb_physical_live_artifacts_func=clear_android_pmb_physical_live_artifacts,

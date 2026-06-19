@@ -6,6 +6,12 @@ import json
 from pathlib import Path
 from typing import Any
 
+from tools.hostessctl.pmb_native_receipts import (
+    PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER,
+    pmb_app_receipt_policy,
+    pmb_app_receipt_policy_pass,
+    pmb_evidence_status_accepts_receipt_policy,
+)
 from tools.hostessctl.pmb_support import (
     host_app_for,
     iso_to_epoch_ms,
@@ -14,6 +20,32 @@ from tools.hostessctl.pmb_support import (
     scorecard_check,
     stream_segment,
 )
+
+
+def pmb_physical_input_requirements_pass(
+    capture: dict[str, Any],
+    execution: dict[str, Any],
+) -> bool:
+    polar_required = bool(capture.get("polar_required", True))
+    controller_required = bool(capture.get("controller_required", True))
+    polar_used = (
+        capture.get("physical_polar_ble_used") is True
+        and execution.get("physical_polar_ble_used") is True
+        and int(capture.get("polar_event_count", 0)) > 0
+    )
+    controller_used = (
+        capture.get("physical_controller_input_used") is True
+        and execution.get("physical_controller_input_used") is True
+        and execution.get("controller_input_used") is True
+        and int(capture.get("active_tracked_connected_object_pose_count", 0)) > 0
+    )
+    if polar_required and not polar_used:
+        return False
+    if controller_required and not controller_used:
+        return False
+    if not polar_required and not controller_required:
+        return polar_used or controller_used
+    return True
 
 
 def write_pmb_host_run_evidence(raw_evidence_path: Path, validation_report_path: Path, raw: dict[str, Any]) -> None:
@@ -551,20 +583,25 @@ def write_pmb_quest_physical_live_host_run_evidence(
     capture = raw.get("input_capture_summary", {})
     route = raw.get("route_report_summary", {})
     broker = raw.get("broker_publish_summary", {})
+    app_receipt_policy = pmb_app_receipt_policy(raw)
+    native_receipt_summary = raw.get("native_app_receipt_summary", {})
+    receipt_consumer_module = (
+        "app.rusty_quest_native_renderer.projection_target"
+        if app_receipt_policy == PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER
+        else "app.makepad_camera_shell.breath_feedback"
+    )
     checks = [
         pmb_scorecard_check(
             "validation.check.pmb_quest_physical_live_status",
-            validation_report.get("status") == "pass" and raw.get("status") == "pass",
-            "PMB Quest physical live evidence and validation report passed",
+            validation_report.get("status") == "pass"
+            and pmb_evidence_status_accepts_receipt_policy(raw),
+            "PMB Quest physical live evidence and validation report passed under the selected app receipt policy",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
             "validation.check.physical_polar_controller_inputs",
-            execution.get("physical_polar_ble_used") is True
-            and execution.get("physical_controller_input_used") is True
-            and int(capture.get("polar_event_count", 0)) > 0
-            and int(capture.get("active_tracked_connected_object_pose_count", 0)) > 0,
-            "physical Polar ACC and active/tracked/connected controller pose events were captured on Quest",
+            pmb_physical_input_requirements_pass(capture, execution),
+            "required physical PMB input streams were captured on Quest for the selected source",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
@@ -585,7 +622,7 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
-            "validation.check.makepad_feedback_receipts",
+            "validation.check.app_receipt_policy",
             broker.get("publish_mode") == "event_driven_live_processor"
             and broker.get("live_publish_during_capture") is True
             and broker.get("incremental_processor_used") is True
@@ -595,8 +632,8 @@ def write_pmb_quest_physical_live_host_run_evidence(
             and int(broker.get("selected_breath_published_count", 0)) > 0
             and int(broker.get("state_published_count", 0)) > 0
             and int(broker.get("state_value_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1)),
-            "Makepad acknowledged every Quest-published live selected breath sample while state/value streams were published",
+            and pmb_app_receipt_policy_pass(raw),
+            f"PMB app receipt policy {app_receipt_policy} accepted Quest-published live samples while state/value streams were published",
             "validation.pmb_quest_physical_live_failed",
         ),
     ]
@@ -615,7 +652,7 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "module.breath.projected_motion",
             "module.breath.state_value",
             "module.breath.feedback_sink",
-            "app.makepad_camera_shell.breath_feedback",
+            receipt_consumer_module,
         ],
         "status": status,
         "started_at_ms": started_ms,
@@ -653,6 +690,19 @@ def write_pmb_quest_physical_live_host_run_evidence(
             "feedback_receipt_count": broker.get("feedback_receipt_count"),
             "state_published_count": broker.get("state_published_count"),
             "state_value_published_count": broker.get("state_value_published_count"),
+            "app_receipt_policy": app_receipt_policy,
+            "native_app_receipt_status": native_receipt_summary.get("status")
+            if isinstance(native_receipt_summary, dict)
+            else None,
+            "native_app_receipt_marker_count": native_receipt_summary.get("marker_count")
+            if isinstance(native_receipt_summary, dict)
+            else None,
+            "native_app_breath_received_samples": native_receipt_summary.get("breath_received_samples")
+            if isinstance(native_receipt_summary, dict)
+            else None,
+            "native_app_breath_last_sequence_id": native_receipt_summary.get("breath_last_sequence_id")
+            if isinstance(native_receipt_summary, dict)
+            else None,
         },
         "scorecard": {
             "$schema": "rusty.manifold.validation.scorecard.v1",

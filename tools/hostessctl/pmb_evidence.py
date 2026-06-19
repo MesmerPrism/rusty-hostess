@@ -18,7 +18,22 @@ from tools.hostessctl.pmb_host_run_evidence import (
     write_pmb_quest_simulated_live_host_run_evidence,
     write_pmb_shell_handoff_host_run_evidence,
 )
+from tools.hostessctl.pmb_native_receipts import (
+    pmb_app_receipt_policy,
+    pmb_app_receipt_policy_pass,
+    pmb_evidence_status_accepts_receipt_policy,
+    pmb_scorecard_status_accepts_receipt_policy,
+)
 from tools.hostessctl.pmb_support import (
+    PMB_BREATH_FEEDBACK_RECEIPT_STREAM,
+    PMB_BREATH_FEEDBACK_STATE_STREAM,
+    PMB_BREATH_SELECTION_STATE_STREAM,
+    PMB_BREATH_STATE_STREAM,
+    PMB_BREATH_STATE_VALUE_STREAM,
+    PMB_BREATH_VOLUME_CONTROLLER_STREAM,
+    PMB_BREATH_VOLUME_POLAR_STREAM,
+    PMB_BREATH_VOLUME_SELECTED_STREAM,
+    PMB_BREATH_VOLUME_STREAM,
     host_app_for,
     iso_to_epoch_ms,
     pmb_checked_counts,
@@ -32,15 +47,6 @@ PMB_SHELL_HANDOFF_REQUIRED_BINDINGS = {
     ("stream.breath.feedback_receipt", "publish"),
 }
 
-PMB_BREATH_VOLUME_STREAM = "stream.breath.volume"
-PMB_BREATH_VOLUME_SELECTED_STREAM = "stream.breath.volume.selected"
-PMB_BREATH_VOLUME_POLAR_STREAM = "stream.breath.volume.polar"
-PMB_BREATH_VOLUME_CONTROLLER_STREAM = "stream.breath.volume.controller"
-PMB_BREATH_SELECTION_STATE_STREAM = "stream.breath.selection_state"
-PMB_BREATH_STATE_STREAM = "stream.breath.state"
-PMB_BREATH_STATE_VALUE_STREAM = "stream.breath.state.value"
-PMB_BREATH_FEEDBACK_STATE_STREAM = "stream.breath.feedback_state"
-PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
 PMB_BREATH_SCALE_VOLUME0 = "1.0"
 PMB_BREATH_SCALE_VOLUME1 = "0.1796"
 PMB_BREATH_SCALE_SMOOTHING_ALPHA = "0.75"
@@ -1352,6 +1358,7 @@ def validate_pmb_quest_physical_live_evidence(
     output_stream_ids = set(route.get("output_stream_ids", []))
     polar_required = bool(capture.get("polar_required", True))
     controller_required = bool(capture.get("controller_required", True))
+    app_receipt_policy = pmb_app_receipt_policy(evidence)
     checks = [
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.schema",
@@ -1362,8 +1369,8 @@ def validate_pmb_quest_physical_live_evidence(
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.status",
-            evidence.get("status") == "pass",
-            "PMB Quest physical live evidence status passed",
+            pmb_evidence_status_accepts_receipt_policy(evidence),
+            "PMB Quest physical live evidence status passed or native renderer receipt policy accounted for app-side Makepad receipt failure",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
@@ -1434,10 +1441,8 @@ def validate_pmb_quest_physical_live_evidence(
             and int(broker.get("state_value_published_count", 0)) > 0
             and int(broker.get("feedback_published_count", 0)) > 0
             and int(broker.get("selected_breath_published_count", 0)) > 0
-            and int(broker.get("feedback_receipt_count", 0)) == int(broker.get("selected_breath_published_count", -1))
-            and int(execution.get("makepad_feedback_receipt_count", 0))
-            == int(broker.get("selected_breath_published_count", -1)),
-            "Makepad acknowledged event-driven live PMB samples while selected breath, raw state, and processed state-value were published during capture",
+            and pmb_app_receipt_policy_pass(evidence),
+            f"PMB application receipt policy {app_receipt_policy} accepted event-driven live samples while selected breath, raw state, and processed state-value were published during capture",
             "validation.pmb_quest_physical_live_failed",
         ),
         pmb_scorecard_check(
@@ -1450,8 +1455,8 @@ def validate_pmb_quest_physical_live_evidence(
         ),
         pmb_scorecard_check(
             "hostess.check.pmb_quest_physical_live.app_scorecard",
-            evidence.get("scorecard", {}).get("status") == "pass",
-            "PMB Quest physical live app-side scorecard passed",
+            pmb_scorecard_status_accepts_receipt_policy(evidence),
+            "PMB Quest physical live app-side scorecard passed or native renderer receipt policy accounted for its Makepad receipt-only failure",
             "validation.pmb_quest_physical_live_failed",
         ),
     ]
@@ -1466,6 +1471,7 @@ def validate_pmb_quest_physical_live_evidence(
         "target": target,
         "host_profile": host_profile,
         "evidence_status": evidence.get("status"),
+        "app_receipt_policy": app_receipt_policy,
         "checks": checks,
         "errors": errors,
     }

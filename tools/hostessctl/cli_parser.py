@@ -215,6 +215,11 @@ def build_hostessctl_parser(
         default="auto",
     )
     run_pmb_physical_live_parser.add_argument("--receipt-listen-seconds", type=float, default=6.0)
+    run_pmb_physical_live_parser.add_argument(
+        "--app-receipt-policy",
+        choices=["makepad-feedback-receipt", "native-renderer-projection-target"],
+        default="makepad-feedback-receipt",
+    )
     run_pmb_physical_live_parser.add_argument("--run-until-stopped", action="store_true")
     run_pmb_physical_live_parser.add_argument("--no-launch-broker", action="store_true")
     run_pmb_physical_live_parser.add_argument("--no-launch-makepad", action="store_true")
@@ -238,6 +243,7 @@ def build_hostessctl_parser(
         default="controller",
     )
     native_breathing_room_setup.add_argument("--base-scale", type=float, default=1.0)
+    native_breathing_room_setup.add_argument("--runtime-profile")
     native_breathing_room_setup.add_argument("--tuned-max-scale", type=float, default=1.25)
     native_breathing_room_setup.add_argument("--joystick-rate", type=float, default=0.45)
     native_breathing_room_setup.add_argument("--inhale-seconds", type=float, default=4.0)

@@ -8,6 +8,17 @@ from typing import Any
 
 from tools.check_live_capture_evidence import sha256_file
 
+PMB_STREAM_CONTRACT_AUTHORITY = "rusty-manifold-packages.projected-motion-breath"
+PMB_BREATH_VOLUME_STREAM = "stream.breath.volume"
+PMB_BREATH_VOLUME_SELECTED_STREAM = "stream.breath.volume.selected"
+PMB_BREATH_VOLUME_POLAR_STREAM = "stream.breath.volume.polar"
+PMB_BREATH_VOLUME_CONTROLLER_STREAM = "stream.breath.volume.controller"
+PMB_BREATH_SELECTION_STATE_STREAM = "stream.breath.selection_state"
+PMB_BREATH_STATE_STREAM = "stream.breath.state"
+PMB_BREATH_STATE_VALUE_STREAM = "stream.breath.state.value"
+PMB_BREATH_FEEDBACK_STATE_STREAM = "stream.breath.feedback_state"
+PMB_BREATH_FEEDBACK_RECEIPT_STREAM = "stream.breath.feedback_receipt"
+
 # PMB fixed-controller state mirrors the legacy Unity 24/180-sample spans
 # against the current 72 Hz headset profile, then transports them as seconds.
 PMB_CONTROLLER_STATE_SAMPLE_RATE_HZ = 72.0

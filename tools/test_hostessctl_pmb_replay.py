@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from tools.hostessctl import hostessctl
+from tools.hostessctl import pmb_native_receipts
 
 
 class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
@@ -540,6 +541,110 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
             self.assertFalse(host_run["result_fields"]["simulated_polar_provider_used"])
             self.assertFalse(host_run["result_fields"]["simulated_controller_provider_used"])
 
+    def test_validate_pmb_quest_physical_live_accepts_native_renderer_receipt_policy(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            package = hostessctl.projected_motion_package_snapshot(package_root)
+            evidence = ready_pmb_quest_physical_live_evidence(package)
+            mark_native_renderer_receipt_policy(evidence)
+            evidence["native_app_receipt_summary"] = (
+                pmb_native_receipts.native_renderer_receipt_summary_from_logcat(
+                    native_renderer_projection_target_logcat(sample_count=6),
+                    broker_summary=evidence["broker_publish_summary"],
+                    route_summary=evidence["route_report_summary"],
+                )
+            )
+            out = root / "evidence" / "pmb-quest-physical-live-native.json"
+            out.parent.mkdir(parents=True)
+            out.write_text(json.dumps(evidence), encoding="utf-8")
+            validation_path = out.with_name("pmb-quest-physical-live-native.validation-report.json")
+
+            validation = hostessctl.validate_pmb_quest_physical_live_evidence(
+                evidence,
+                package_root=package_root,
+                target="quest",
+                host_profile="headset",
+            )
+            validation_path.write_text(json.dumps(validation), encoding="utf-8")
+            hostessctl.write_pmb_quest_physical_live_host_run_evidence(
+                out,
+                validation_path,
+                evidence,
+                "quest",
+                "headset",
+            )
+
+            self.assertEqual(validation["status"], "pass")
+            self.assertEqual(
+                validation["app_receipt_policy"],
+                pmb_native_receipts.PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER,
+            )
+            self.assertEqual(
+                evidence["native_app_receipt_summary"]["stream_contract_authority"],
+                "rusty-manifold-packages.projected-motion-breath",
+            )
+            self.assertEqual(
+                evidence["native_app_receipt_summary"]["expected_breath_state_stream"],
+                "stream.breath.state",
+            )
+            self.assertEqual(
+                evidence["native_app_receipt_summary"]["expected_breath_value_stream"],
+                "stream.breath.state.value",
+            )
+            host_run = json.loads(
+                out.with_name("pmb-quest-physical-live-native.host-run-evidence.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertEqual(host_run["status"], "pass")
+            self.assertIn(
+                "app.rusty_quest_native_renderer.projection_target",
+                host_run["module_ids"],
+            )
+            self.assertEqual(
+                host_run["result_fields"]["app_receipt_policy"],
+                pmb_native_receipts.PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER,
+            )
+            self.assertEqual(host_run["result_fields"]["native_app_breath_received_samples"], 6)
+            self.assertFalse(host_run["result_fields"]["physical_polar_ble_used"])
+            self.assertTrue(host_run["result_fields"]["physical_controller_input_used"])
+
+    def test_validate_pmb_quest_physical_live_rejects_native_policy_without_marker(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            packages_root = root / "rusty-manifold-packages"
+            write_projected_motion_package_tree(packages_root)
+            package_root = packages_root / "packages" / "projected-motion-breath"
+            package = hostessctl.projected_motion_package_snapshot(package_root)
+            evidence = ready_pmb_quest_physical_live_evidence(package)
+            mark_native_renderer_receipt_policy(evidence)
+            evidence["native_app_receipt_summary"] = (
+                pmb_native_receipts.native_renderer_receipt_summary_from_logcat(
+                    "",
+                    broker_summary=evidence["broker_publish_summary"],
+                    route_summary=evidence["route_report_summary"],
+                )
+            )
+
+            validation = hostessctl.validate_pmb_quest_physical_live_evidence(
+                evidence,
+                package_root=package_root,
+                target="quest",
+                host_profile="headset",
+            )
+
+            self.assertEqual(validation["status"], "fail")
+            failed_checks = {
+                check["check_id"]
+                for check in validation["checks"]
+                if check["status"] == "fail"
+            }
+            self.assertIn("hostess.check.pmb_quest_physical_live.status", failed_checks)
+            self.assertIn("hostess.check.pmb_quest_physical_live.makepad_receipts", failed_checks)
+
     def test_pmb_quest_physical_live_defaults_to_background_service(self) -> None:
         args = argparse.Namespace(
             adb="adb",
@@ -562,6 +667,27 @@ class HostessCtlProjectedMotionReplayTests(unittest.TestCase):
         self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION, command)
         self.assertIn(hostessctl.ANDROID_PMB_PHYSICAL_LIVE_SERVICE, command)
         self.assertNotIn(f"{hostessctl.ANDROID_PACKAGE}/.MainActivity", command)
+
+    def test_pmb_quest_physical_live_native_receipt_policy_disables_makepad_receipt_listen(self) -> None:
+        args = argparse.Namespace(
+            adb="adb",
+            serial="quest-serial",
+            broker_port=8765,
+            duration_seconds=25.0,
+            acc_rate=200,
+            scan_timeout_seconds=30.0,
+            controller_wait_seconds=10.0,
+            feedback_publish_limit=12,
+            receipt_listen_seconds=6.0,
+            app_receipt_policy=pmb_native_receipts.PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER,
+            device_address="synthetic-device-address",
+            foreground_hostess=False,
+        )
+
+        command = hostessctl.pmb_physical_live_start_command(args, "headset")
+
+        receipt_index = command.index("receipt_listen_ms")
+        self.assertEqual(command[receipt_index + 1], "0")
 
     def test_pmb_quest_physical_live_foreground_override_uses_activity(self) -> None:
         args = argparse.Namespace(
@@ -1343,6 +1469,72 @@ def ready_pmb_quest_physical_live_evidence(package: dict[str, object]) -> dict[s
             "issues": [],
         },
     }
+
+
+def mark_native_renderer_receipt_policy(evidence: dict[str, object]) -> None:
+    evidence["status"] = "fail"
+    execution = evidence["execution"]
+    execution["app_receipt_policy"] = pmb_native_receipts.PMB_APP_RECEIPT_POLICY_NATIVE_RENDERER
+    execution["physical_polar_ble_used"] = False
+    execution["polar_transport_authority"] = "not_requested"
+    execution["breath_selected_source_preference"] = "controller"
+    execution["breath_selected_source_effective"] = "controller"
+    execution["makepad_feedback_receipt_count"] = 0
+    capture = evidence["input_capture_summary"]
+    capture["polar_required"] = False
+    capture["polar_provider_requested"] = False
+    capture["polar_start_status"] = "not_requested"
+    capture["polar_stop_status"] = "not_requested"
+    capture["polar_event_count"] = 0
+    capture["physical_polar_ble_used"] = False
+    capture["controller_required"] = True
+    capture["selected_source_preference"] = "controller"
+    route = evidence["route_report_summary"]
+    route["state_sample_count"] = 6
+    route["state_value_sample_count"] = 6
+    broker = evidence["broker_publish_summary"]
+    broker["status"] = "fail"
+    broker["selected_source_preference"] = "controller"
+    broker["selected_source_effective"] = "controller"
+    broker["feedback_receipt_count"] = 0
+    evidence["scorecard"] = {
+        "$schema": "rusty.manifold.validation.scorecard.v1",
+        "scorecard_id": "scorecard.hostess.projected_motion_breath.android_physical_live",
+        "target_id": "hostess.projected_motion_breath.android_physical_live",
+        "target_revision": 1,
+        "status": "fail",
+        "checks": [
+            {
+                "check_id": "validation.check.pmb_physical_live_makepad_receipts",
+                "evidence": "Makepad acknowledged selected breath samples",
+                "status": "fail",
+            }
+        ],
+        "issues": [
+            {
+                "code": "hostess.issue.pmb_physical_live_failed",
+                "message": "issue.makepad_selected_breath_receipts_missing",
+                "severity": "error",
+            }
+        ],
+    }
+
+
+def native_renderer_projection_target_logcat(*, sample_count: int) -> str:
+    return (
+        "06-19 17:00:48.207 I/RQNativeRenderer(13335): "
+        "RUSTY_QUEST_NATIVE_RENDERER channel=projection-target status=effective "
+        "frame=4080 projectionTargetControlsEnabled=true "
+        "breathBridgeMode=manifold-state breathStateStream=stream.breath.state "
+        "breathValueStream=stream.breath.state.value breathHighRateJsonPayload=false "
+        "projectionTargetLiveScale=1.2500 "
+        "projectionTargetScaleSource=hostess-manifold-breath-state-ramp "
+        "projectionTargetScaleDriver=pmb projectionTargetPmbAvailable=true "
+        "projectionTargetScaleDriverSwitch=profile-default breathState=inhale "
+        f"breathLastSequenceId={sample_count} breathLastValue01=none "
+        f"breathReceivedSamples={sample_count} stateRampDtSeconds=0.013597 "
+        "projectionTargetRuntimeAuthority=native-renderer\n"
+    )
 
 
 def write_projected_motion_package_tree(packages_root: Path) -> None:
