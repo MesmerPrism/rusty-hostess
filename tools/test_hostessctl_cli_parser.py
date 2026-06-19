@@ -2,6 +2,9 @@ import unittest
 
 from tools.hostessctl.cli_parser import build_hostessctl_parser
 from tools.hostessctl.makepad_pmb_setup import makepad_breath_scale_runtime_properties
+from tools.hostessctl.native_breathing_room_setup import (
+    build_native_breathing_room_setup_receipt,
+)
 from tools.hostessctl.pmb_android_routes import pmb_physical_live_start_command
 from tools.hostessctl.pmb_support import (
     PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
@@ -215,6 +218,57 @@ class HostessCtlCliParserTests(unittest.TestCase):
         )
         self.assertEqual(command[command.index("pmb_controller_state_short_window_s") + 1], "2.5")
         self.assertEqual(command[command.index("pmb_controller_state_long_window_s") + 1], "12.0")
+
+    def test_native_breathing_room_setup_defaults_to_controller_without_polar(self) -> None:
+        args = self.build_parser().parse_args(
+            [
+                "native-breathing-room",
+                "setup",
+                "--out",
+                "native-breathing-room.json",
+            ]
+        )
+
+        receipt = build_native_breathing_room_setup_receipt(args)
+        setprops = {item["name"]: item["value"] for item in receipt["set_properties"]}
+
+        self.assertEqual(args.command, "native-breathing-room")
+        self.assertEqual(args.native_breathing_room_command, "setup")
+        self.assertEqual(receipt["mode"], "pmb-controller-state")
+        self.assertFalse(receipt["polar_required"])
+        self.assertFalse(receipt["controller_pmb_mode_polar_required"])
+        self.assertEqual(receipt["pmb"]["breath_selected_source"], "controller")
+        self.assertEqual(
+            setprops["debug.rustyquest.native_renderer.projection.target.breath.bridge.mode"],
+            "manifold-state",
+        )
+        self.assertFalse(any(key.startswith("debug.rustyquest.makepad.") for key in setprops))
+
+    def test_native_breathing_room_state_value_setup_subscribes_processed_stream(self) -> None:
+        args = self.build_parser().parse_args(
+            [
+                "native-breathing-room",
+                "setup",
+                "--mode",
+                "pmb-state-value",
+                "--breath-selected-source",
+                "polar",
+                "--out",
+                "native-breathing-room.json",
+            ]
+        )
+
+        receipt = build_native_breathing_room_setup_receipt(args)
+        setprops = {item["name"]: item["value"] for item in receipt["set_properties"]}
+
+        self.assertEqual(
+            setprops["debug.rustyquest.native_renderer.projection.target.breath.bridge.mode"],
+            "manifold-state-value",
+        )
+        self.assertEqual(
+            receipt["pmb"]["subscriptions"][0]["params"]["stream"],
+            "stream.breath.state.value",
+        )
 
 
 if __name__ == "__main__":

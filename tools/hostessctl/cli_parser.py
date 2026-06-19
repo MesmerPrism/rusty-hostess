@@ -220,6 +220,73 @@ def build_hostessctl_parser(
     run_pmb_physical_live_parser.add_argument("--no-launch-makepad", action="store_true")
     run_pmb_physical_live_parser.add_argument("--foreground-hostess", action="store_true")
 
+    native_breathing_room = subcommands.add_parser("native-breathing-room")
+    native_breathing_room_subcommands = native_breathing_room.add_subparsers(
+        dest="native_breathing_room_command",
+        required=True,
+    )
+    native_breathing_room_setup = native_breathing_room_subcommands.add_parser("setup")
+    native_breathing_room_setup.add_argument("--out", required=True)
+    native_breathing_room_setup.add_argument(
+        "--mode",
+        choices=["pmb-controller-state", "pmb-state", "pmb-state-value", "synthetic"],
+        default="pmb-controller-state",
+    )
+    native_breathing_room_setup.add_argument(
+        "--breath-selected-source",
+        choices=["auto", "polar", "controller"],
+        default="controller",
+    )
+    native_breathing_room_setup.add_argument("--base-scale", type=float, default=1.0)
+    native_breathing_room_setup.add_argument("--tuned-max-scale", type=float, default=1.25)
+    native_breathing_room_setup.add_argument("--joystick-rate", type=float, default=0.45)
+    native_breathing_room_setup.add_argument("--inhale-seconds", type=float, default=4.0)
+    native_breathing_room_setup.add_argument("--exhale-seconds", type=float, default=4.0)
+    native_breathing_room_setup.add_argument("--synthetic-period-seconds", type=float, default=6.0)
+    native_breathing_room_setup.add_argument("--state-stream", default="stream.breath.state")
+    native_breathing_room_setup.add_argument("--value-stream", default="stream.breath.state.value")
+    native_breathing_room_setup.add_argument("--broker-host", default="127.0.0.1")
+    native_breathing_room_setup.add_argument("--broker-port", type=int, default=broker_port)
+    native_breathing_room_setup.add_argument("--broker-path", default="/manifold/v1/events")
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-mode",
+        choices=["projected-volume-delta", "fixed-controller-orientation"],
+        default="projected-volume-delta",
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-short-window-seconds",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_SHORT_WINDOW_SECONDS,
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-long-window-seconds",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_LONG_WINDOW_SECONDS,
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-inhale-threshold",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-exhale-threshold",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-rotation-guard-degrees",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES,
+    )
+    native_breathing_room_setup.add_argument(
+        "--pmb-controller-state-moving-average-guard",
+        type=float,
+        default=DEFAULT_PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD,
+    )
+    native_breathing_room_setup.add_argument("--execute", action="store_true")
+    native_breathing_room_setup.add_argument("--adb")
+    native_breathing_room_setup.add_argument("--serial")
+
     observe_broker_telemetry = subcommands.add_parser("observe-broker-telemetry")
     observe_broker_telemetry.add_argument("--target", choices=["quest"], default="quest")
     observe_broker_telemetry.add_argument("--out", required=True)

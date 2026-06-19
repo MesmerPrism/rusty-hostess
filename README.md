@@ -71,6 +71,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/makepad_pmb_setup.py`: Makepad PMB provider setup,
   breath-feedback receiver properties, physical-provider properties, and broker
   runtime permission grants used by PMB routes.
+- `tools/hostessctl/native_breathing_room_setup.py`: native Rusty Quest
+  Breathing Room setup receipts using only `debug.rustyquest.native_renderer.*`
+  properties plus Hostess/Manifold PMB stream subscription intent.
 - `tools/hostessctl/telemetry_routes.py`: Android-class app-rendered PNG export
   for phone and headset telemetry evidence, desktop PNG rendering dispatch,
   Makepad render pulls, shell-contract launch, and snapshot command dispatch.

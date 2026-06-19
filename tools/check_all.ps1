@@ -28,6 +28,7 @@ try {
         "tools\hostessctl\live_capture_routes.py",
         "tools\hostessctl\makepad_pmb_setup.py",
         "tools\hostessctl\manifold_recording.py",
+        "tools\hostessctl\native_breathing_room_setup.py",
         "tools\hostessctl\platform_defaults.py",
         "tools\hostessctl\pmb_android_routes.py",
         "tools\hostessctl\pmb_broker_bridge.py",

@@ -16,6 +16,7 @@ from tools.hostessctl import broker_telemetry_routes  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
+from tools.hostessctl import native_breathing_room_setup  # noqa: E402
 from tools.hostessctl import pmb_android_routes  # noqa: E402
 from tools.hostessctl import pmb_desktop_routes  # noqa: E402
 from tools.hostessctl import questionnaire_bridge  # noqa: E402
@@ -191,6 +192,13 @@ def dispatch_command(args: argparse.Namespace) -> int:
         return run_pmb_quest_simulated_live(args)
     if args.command == "run-pmb-quest-physical-live":
         return run_pmb_quest_physical_live(args)
+    if args.command == "native-breathing-room":
+        if args.native_breathing_room_command == "setup":
+            return native_breathing_room_setup.run_native_breathing_room_setup(
+                args,
+                run_func=run,
+            )
+        return 2
     if args.command == "observe-broker-telemetry":
         return observe_broker_telemetry_ui(args)
     if args.command == "run-pmb-live-route-self-test":
