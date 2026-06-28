@@ -169,6 +169,13 @@ shape so WPF, Makepad tooling, CLI, and later frontends can inspect device
 identity, ADB forward/tunnel state, broker readiness, runtime subscriber
 health, command-result stages, and stream capabilities without becoming the
 device-link authority.
+Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
+It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
+shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and
+evidence packaging; Rusty Quest/Manifold remain the future contract and
+command/stream authority. The live QCL-010 route uses serial-scoped ADB to
+observe headset Wi-Fi identity, then tests LAN reachability separately so ADB
+is not mistaken for the data path.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

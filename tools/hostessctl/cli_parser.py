@@ -559,6 +559,40 @@ def build_hostessctl_parser(
     companion_session_run.add_argument("--no-fallback", action="store_true")
     companion_session_run.add_argument("--fail-on-error", action="store_true")
 
+    connectivity_probe = subcommands.add_parser("connectivity-probe")
+    connectivity_probe_subcommands = connectivity_probe.add_subparsers(
+        dest="connectivity_probe_command",
+        required=True,
+    )
+    connectivity_probe_run = connectivity_probe_subcommands.add_parser("run")
+    connectivity_probe_run.add_argument("--out", required=True)
+    connectivity_probe_run.add_argument("--validation-out")
+    connectivity_probe_run.add_argument("--probe-id", choices=["QCL-000", "QCL-010"], default="QCL-010")
+    connectivity_probe_run.add_argument("--run-id")
+    connectivity_probe_run.add_argument("--mode", choices=["fixture", "live"], default="fixture")
+    connectivity_probe_run.add_argument(
+        "--fixture-profile",
+        choices=[
+            "qcl-000-usb-adb-pass",
+            "qcl-010-router-pass",
+            "qcl-010-router-firewall-blocked",
+        ],
+    )
+    connectivity_probe_run.add_argument("--adb")
+    connectivity_probe_run.add_argument("--serial")
+    connectivity_probe_run.add_argument("--wifi-interface", default="wlan0")
+    connectivity_probe_run.add_argument("--host-ip")
+    connectivity_probe_run.add_argument("--skip-host-ping", action="store_true")
+    connectivity_probe_run.add_argument("--skip-device-ping", action="store_true")
+    connectivity_probe_run.add_argument("--skip-tcp-echo", action="store_true")
+    connectivity_probe_run.add_argument("--tcp-echo-bind-host", default="0.0.0.0")
+    connectivity_probe_run.add_argument("--tcp-echo-port", type=int, default=0)
+    connectivity_probe_run.add_argument("--tcp-echo-marker", default="rusty-qcl-tcp-echo")
+    connectivity_probe_run.add_argument("--tcp-timeout-seconds", type=float, default=4.0)
+    connectivity_probe_run.add_argument("--ping-count", type=int, default=2)
+    connectivity_probe_run.add_argument("--ping-timeout-seconds", type=float, default=2.0)
+    connectivity_probe_run.add_argument("--fail-on-error", action="store_true")
+
     render = subcommands.add_parser("render-telemetry")
     render.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)
     render.add_argument("--adb")

@@ -20,6 +20,7 @@ from tools.hostessctl import broker_telemetry_routes  # noqa: E402
 from tools.hostessctl import companion_catalog  # noqa: E402
 from tools.hostessctl import companion_readiness  # noqa: E402
 from tools.hostessctl import companion_session  # noqa: E402
+from tools.hostessctl import connectivity_probe  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
@@ -229,6 +230,10 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "companion-session":
         if args.session_command == "run":
             return companion_session.run_companion_session(args, run_captured_func=run_captured)
+        return 2
+    if args.command == "connectivity-probe":
+        if args.connectivity_probe_command == "run":
+            return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
         return 2
     if args.command == "render-telemetry":
         return render_telemetry(args)

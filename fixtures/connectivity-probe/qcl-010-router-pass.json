@@ -1,0 +1,158 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "192.0.2.42/24",
+      "issue_codes": [],
+      "name": "device.wifi_ipv4",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "selected=192.0.2.10",
+      "issue_codes": [],
+      "name": "host.ipv4_candidate",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.10 is in 192.0.2.0/24",
+      "issue_codes": [],
+      "name": "topology.same_subnet",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "2 packets received",
+      "issue_codes": [],
+      "name": "host_to_device.icmp_ping",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "2 packets received",
+      "issue_codes": [],
+      "name": "device_to_host.icmp_ping",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "rusty-qcl-tcp-echo",
+      "issue_codes": [],
+      "name": "device_to_host.tcp_echo",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "not part of the fixture slice",
+      "issue_codes": [],
+      "name": "protocol.websocket_echo",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "covered by QCL-080",
+      "issue_codes": [],
+      "name": "protocol.udp_freshness",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "covered by QCL-081",
+      "issue_codes": [],
+      "name": "protocol.lsl_discovery",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    }
+  ],
+  "classification": "baseline_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "device",
+    "android_sdk": "35",
+    "foreground_package": "unknown",
+    "horizon_os": "fixture",
+    "model": "Quest fixture",
+    "ptc": "unknown",
+    "serial_redacted": true,
+    "wifi_interface": "wlan0",
+    "wifi_ipv4": "192.0.2.42",
+    "wifi_prefix_length": 24
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "firewall_profile": "not_checked",
+    "ipv4_candidates": [
+      {
+        "interface": "fixture-wifi",
+        "ip": "192.0.2.10",
+        "prefix_length": 24
+      }
+    ],
+    "os": "windows",
+    "selected_ipv4": "192.0.2.10",
+    "toolchain_profile": "hostessctl.connectivity_probe.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "reconnect_attempts": 1,
+    "tcp_connect_ms": 12,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T13:12:41.420085Z",
+  "probe_id": "QCL-010",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture-only topology proof",
+    "target": "quest.device_link topology descriptor"
+  },
+  "run_id": "fixture-qcl-010-router-pass",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "quest_to_host_lan",
+    "experimental": false,
+    "network_provider": "router_or_existing_wifi",
+    "owner": "external_wifi",
+    "requires_adb": true,
+    "requires_existing_wifi": true,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "family": "icmp_tcp",
+    "local_endpoint": "192.0.2.10",
+    "payload_class": "low_rate_diagnostic",
+    "protocol_role": "topology_probe",
+    "remote_endpoint": "192.0.2.42",
+    "route": "same_wifi_lan_probe"
+  }
+}

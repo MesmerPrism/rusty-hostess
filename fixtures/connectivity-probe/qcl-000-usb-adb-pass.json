@@ -1,0 +1,107 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "tcp:18765 -> tcp:8765",
+      "issue_codes": [],
+      "name": "adb.forward.manifold_broker",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "/manifold/v1/events reachable",
+      "issue_codes": [],
+      "name": "broker.events.websocket",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "delivered_count=1",
+      "issue_codes": [],
+      "name": "runtime.subscriber.delivery",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "sent, transport_ok, authority_accepted, runtime_accepted, applied",
+      "issue_codes": [],
+      "name": "command.applied",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    }
+  ],
+  "classification": "baseline",
+  "command_stages": {
+    "applied": "pass",
+    "authority_accepted": "pass",
+    "runtime_accepted": "pass",
+    "sent": "pass",
+    "transport_ok": "pass"
+  },
+  "device": {
+    "adb_state": "device",
+    "android_sdk": "unknown",
+    "foreground_package": "io.github.mesmerprism.rustyhostess.makepad/.MakepadAppXr",
+    "horizon_os": "unknown",
+    "model": "Quest 3S",
+    "ptc": "unknown",
+    "serial_redacted": true
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "firewall_profile": "not_applicable",
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "reconnect_attempts": null,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T13:12:41.420085Z",
+  "probe_id": "QCL-000",
+  "promotion": {
+    "allowed": true,
+    "reason": "fixture mirrors the live USB ADB command-feedback proof",
+    "target": "quest.device_link command feedback baseline"
+  },
+  "run_id": "fixture-qcl-000-usb-adb-pass",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "host_to_device_forward",
+    "experimental": false,
+    "network_provider": "usb",
+    "owner": "usb_adb_forward",
+    "requires_adb": true,
+    "requires_existing_wifi": false,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "family": "websocket",
+    "local_endpoint": "127.0.0.1:18765",
+    "payload_class": "low_rate_control",
+    "protocol_role": "command_feedback",
+    "remote_endpoint": "127.0.0.1:8765",
+    "route": "/manifold/v1/events"
+  }
+}
