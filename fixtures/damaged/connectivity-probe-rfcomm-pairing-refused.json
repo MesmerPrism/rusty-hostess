@@ -1,0 +1,194 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "Windows Bluetooth adapter present",
+      "issue_codes": [],
+      "name": "host.bluetooth_adapter",
+      "notes": "",
+      "observed": {
+        "adapter_name": "fixture Bluetooth Adapter",
+        "adapter_status": "OK",
+        "address_redacted": true,
+        "available": true
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "bthserv running; BluetoothUserService running",
+      "issue_codes": [],
+      "name": "host.bluetooth_service",
+      "notes": "",
+      "observed": {
+        "bthserv_status": "Running",
+        "user_service_running": true
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "Quest Bluetooth enabled and ON",
+      "issue_codes": [],
+      "name": "device.bluetooth_adapter",
+      "notes": "",
+      "observed": {
+        "address_present": true,
+        "address_redacted": true,
+        "available": true,
+        "bonded_device_count": 1,
+        "enabled": true,
+        "name": "Quest fixture",
+        "state": "ON"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "operator refused pairing prompt",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.bluetooth_pairing_refused"
+      ],
+      "name": "bluetooth.pairing_bond_state",
+      "notes": "",
+      "observed": {
+        "bonded": false,
+        "manual_prompt_required": true
+      },
+      "status": "blocked"
+    },
+    {
+      "evidence": "Bluetooth permission granted",
+      "issue_codes": [],
+      "name": "bluetooth.permission_state",
+      "notes": "",
+      "observed": {
+        "permission_granted": true
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "service unavailable because setup was blocked",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.bluetooth_service_not_reached"
+      ],
+      "name": "protocol.rfcomm_control",
+      "notes": "",
+      "observed": {
+        "service_uuid": "not_reached"
+      },
+      "status": "blocked"
+    },
+    {
+      "evidence": "payload exchange not reached",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.bluetooth_payload_not_tested"
+      ],
+      "name": "protocol.bluetooth_payload_exchange",
+      "notes": "",
+      "observed": {
+        "high_rate_payload": false
+      },
+      "status": "blocked"
+    },
+    {
+      "evidence": "cleanup/reconnect not reached",
+      "issue_codes": [],
+      "name": "bluetooth.reconnect_cleanup",
+      "notes": "",
+      "observed": {
+        "adapter_state_changed": false,
+        "socket_closed": false
+      },
+      "status": "skipped"
+    }
+  ],
+  "classification": "discovery_control_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_provider": "fixture",
+    "bluetooth": {
+      "address_present": true,
+      "address_redacted": true,
+      "available": true,
+      "enabled": true,
+      "state": "ON"
+    },
+    "model": "Quest fixture",
+    "serial_redacted": true
+  },
+  "host": {
+    "bluetooth": {
+      "adapter_name": "fixture Bluetooth Adapter",
+      "adapter_status": "OK",
+      "address_redacted": true,
+      "available": true,
+      "bthserv_status": "Running",
+      "user_service_running": true
+    },
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl-050.fixture"
+  },
+  "issues": [
+    {
+      "issue_code": "hostess.issue.connectivity_probe.bluetooth_pairing_refused",
+      "message": "fixture models a refused Bluetooth pairing prompt",
+      "severity": "error"
+    }
+  ],
+  "measurements": {
+    "bluetooth_bytes_exchanged": 0,
+    "bluetooth_rtt_ms_p95": null,
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "reconnect_attempts": 0,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T17:09:37.246608Z",
+  "probe_id": "QCL-050",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture models blocked Bluetooth setup before payload exchange",
+    "target": "quest.device_link bluetooth discovery/control descriptor"
+  },
+  "run_id": "20260628-170937-qcl-050",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "blocked",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "bidirectional_low_rate_control",
+    "experimental": true,
+    "network_provider": "bluetooth_classic_rfcomm",
+    "owner": "bluetooth",
+    "requires_adb": true,
+    "requires_existing_wifi": false,
+    "requires_pairing": true,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "fixture_rfcomm_helper",
+    "family": "bluetooth_rfcomm",
+    "local_endpoint": "windows-rfcomm-helper",
+    "payload_class": "bounded_low_rate_control",
+    "protocol_role": "fallback_control_probe",
+    "remote_endpoint": "quest-bluetooth-app",
+    "route": "qcl050_rfcomm_control"
+  }
+}

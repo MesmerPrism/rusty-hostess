@@ -43,6 +43,7 @@ mod projection_geometry;
 mod projection_runtime;
 mod projection_settings;
 mod projection_target_controls;
+mod qcl080_udp_sender;
 mod recorded_hand_surface;
 mod runtime_settings;
 mod shell_contract;
@@ -639,6 +640,7 @@ impl App {
 
         Self::emit_status_marker(phase);
         Self::emit_stereo_comparison_marker(phase);
+        qcl080_udp_sender::spawn_runtime_probe_once(phase);
         if !Self::startup_camera_streaming_enabled() {
             emit_marker_line(makepad_camera2_acquisition_streaming_disabled_marker_line());
         } else if Self::broker_h264_enabled() {

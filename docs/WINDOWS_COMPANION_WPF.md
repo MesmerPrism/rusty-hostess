@@ -11,6 +11,8 @@ Hostess/Manifold evidence routes.
 - Devices view derived from readiness device/runtime/network checks.
 - Transports view derived from Rusty GUI transport capability descriptors.
 - Commands view for the Quest broker-stream bridge probe.
+- Connectivity view for scoped Windows Firewall planning, QCL-010 TCP
+  verification, and QCL-080 UDP stream-capability verification.
 - Evidence view derived from companion module evidence bindings.
 - Hostess `companion-readiness` refresh command.
 - Hostess `companion-catalog` descriptor refresh command.
@@ -18,6 +20,8 @@ Hostess/Manifold evidence routes.
   orchestration path.
 - Hostess `run-bridge-command-live-android` safe probe command, with
   app-private Android staging as the recovery path.
+- Hostess `connectivity-probe` commands for firewall rule artifacts and
+  same-Wi-Fi connectivity reports.
 - Optional Quest profile and broker probe switches.
 - Serial input for serial-scoped ADB checks.
 - Page-specific tables with a shared selected-row detail inspector.
@@ -93,6 +97,64 @@ python tools\hostessctl\hostessctl.py run-bridge-command-android `
 
 That fallback is app-private runtime staging. It is useful for recovery and
 runtime receipt debugging, but it is not Manifold command authority.
+
+The Connectivity page calls the same Hostess-owned probe routes. For TCP, it
+keeps QCL-010 available:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-010 `
+  --adb <adb.exe> `
+  --serial <quest-serial> `
+  --tcp-echo-port <port> `
+  --out target\connectivity-probe\<run-id>.json
+```
+
+For UDP, the page uses QCL-080 with the WPF executable itself in listener
+helper mode:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-080 `
+  --adb <adb.exe> `
+  --serial <quest-serial> `
+  --udp-port 18767 `
+  --udp-sender-source makepad-runtime `
+  --udp-listener-helper apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --out target\connectivity-probe\<run-id>.json
+```
+
+It then derives the reusable stream descriptor:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe stream-capability `
+  --input target\connectivity-probe\<run-id>.json `
+  --out target\connectivity-probe\<run-id>.stream-capability.json `
+  --fail-on-error
+```
+
+The WPF app renders the report checks plus the
+`rusty.quest.device_link.stream_capability.v1` descriptor requirements and
+warnings. WPF does not decide that UDP is product-ready; it displays Hostess
+firewall evidence, Makepad runtime sender evidence, packet counters, promotion
+state, and remaining warnings.
+
+The page can also request the installer-style suite runner:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run-suite `
+  --mode fixture `
+  --suite-id wpf-connectivity-suite `
+  --out target\connectivity-probe\wpf-connectivity-suite.json
+```
+
+WPF renders the resulting
+`rusty.quest.device_link.install_environment_suite_run.v1` summary, grouped
+phase rows, per-QCL slot rows, metrics, and artifact paths. Fixture suite
+success proves the diagnostic harness is coherent; live protocol promotion
+still comes from the individual QCL reports and stream capability descriptors.
 
 ## Build
 

@@ -168,7 +168,27 @@ bridge execution sidecars into the Quest-owned `rusty.quest.device_link.v1`
 shape so WPF, Makepad tooling, CLI, and later frontends can inspect device
 identity, ADB forward/tunnel state, broker readiness, runtime subscriber
 health, command-result stages, and stream capabilities without becoming the
-device-link authority.
+device-link authority. The same module also derives measured
+`rusty.quest.device_link.stream_capability.v1` descriptors from connectivity
+probe artifacts; QCL-080 app-owned UDP evidence becomes a reusable capability
+row only when the runtime marker, UDP freshness counters, firewall listener,
+and promotion decision are all preserved.
+The same device-link adapter owns the planned downloadable
+`rusty.quest.device_link.install_environment_test_suite.v1` descriptor. That
+suite is the frontend-neutral map for host install checks, network adapter and
+firewall checks, Quest device checks, protocol capability checks, and RTT/clock
+alignment strategy. Hostess still owns execution through QCL reports; WPF,
+Makepad, CLI, and future installers should render and request the suite rather
+than embedding protocol-specific dependency logic.
+Suite execution lives in `tools/hostessctl/connectivity_suite.py`. It consumes
+the descriptor, runs selected QCL slots through the existing probe adapters,
+records a host snapshot for tools, network profiles, firewall listener state,
+hotspot state, and Bluetooth readiness, then emits
+`rusty.quest.device_link.install_environment_suite_run.v1`. Aggregate status is
+allowed to warn on host posture, such as Public firewall profile or missing
+listener allow rule, even when all fixture protocol slots pass. That makes the
+future installer and WPF page honest about the install environment without
+turning either frontend into a validator.
 Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
 It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
 shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and
@@ -176,6 +196,29 @@ evidence packaging; Rusty Quest/Manifold remain the future contract and
 command/stream authority. The live QCL-010 route uses serial-scoped ADB to
 observe headset Wi-Fi identity, then tests LAN reachability separately so ADB
 is not mistaken for the data path.
+The same lab module owns Bluetooth QCL-050/QCL-051 readiness and payload
+evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
+server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
+WinRT BLE/GATT client. QCL-050 uses the same app-owned pattern with an Android
+RFCOMM server and `tools/connectivity_probe/qcl050_rfcomm_client` as the
+Windows WinRT RFCOMM helper. Hostess joins both reports and records launch
+preconditions such as the Quest VR lockscreen separately from protocol
+failures. QCL-051 is promotable in the tested Windows-central/Quest-GATT-server
+direction after reconnect evidence; QCL-050 remains blocked until Classic
+Bluetooth pairing/service visibility is proven. This borrows Polar/PMD failure
+vocabulary for permissions, service discovery, control writes, handoff timeout,
+and cleanup, but PMD physical sensor ownership remains with Manifold/PMB
+routes rather than QCL-051.
+The same lab module owns protocol-fit reports for LSL, OSC, and ZeroMQ.
+QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
+endpoint/open-mode config, bounded receiver queues, message/drop/decode
+counters, and optional runtime feature gates belong to a reusable ZeroMQ
+adapter/module. Goofi Pipe is only an example source profile through a sidecar
+that converts Goofi PAIR/send_pyobj payloads into bounded JSON for the generic
+ZeroMQ route. The generic proof now lives in the Manifold-owned
+`rusty-manifold-zmq` adapter, while Hostess can still ingest the public
+Rusty-XR compatibility proof and the Goofi sidecar witness log. Neither WPF
+nor Hostess should make Goofi the protocol authority.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

@@ -678,10 +678,18 @@ fn runtime_env_key(key: &str) -> String {
 pub(crate) fn runtime_property_names(key: &'static str) -> Vec<String> {
     let runtime_key = RuntimeKey::new(key).expect("runtime config key should be valid");
     let mut names = Vec::new();
-    if matches!(
+    if key.starts_with("qcl080_udp_") {
+        names.push(
+            runtime_key.android_property(
+                &AndroidPropertyPrefix::new("debug.rustyquest.makepad")
+                    .expect("Quest Makepad Android property prefix should be valid"),
+            ),
+        );
+    } else if matches!(
         key,
         KEY_MAKEPAD_PROJECTION_RUNTIME_RESOLUTION_ENABLED | KEY_MAKEPAD_CAMERA_STREAMING_ENABLED
-    ) {
+    )
+    {
         names.push(
             runtime_key.android_property(
                 &AndroidPropertyPrefix::new("debug.rustyquest")

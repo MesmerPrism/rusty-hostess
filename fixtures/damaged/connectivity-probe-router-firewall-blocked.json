@@ -54,6 +54,97 @@
       "status": "fail"
     },
     {
+      "evidence": "Wi-Fi:Public; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.windows_network_profile_public"
+      ],
+      "name": "host.windows_network_firewall_profile",
+      "notes": "",
+      "observed": {
+        "connections": [
+          {
+            "IPv4Connectivity": "Internet",
+            "IPv6Connectivity": "Internet",
+            "InterfaceAlias": "Wi-Fi",
+            "InterfaceIndex": 16,
+            "Name": "fixture-wifi",
+            "NetworkCategory": "Public"
+          }
+        ],
+        "firewall": [
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Domain",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Private",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Public",
+            "NotifyOnListen": true
+          }
+        ],
+        "listener_firewall": {
+          "active_profiles": [
+            "Public"
+          ],
+          "allowed_on_active_profile": false,
+          "bind_host": "0.0.0.0",
+          "matching_rule_count": 0,
+          "matching_rules": [],
+          "port": 49152,
+          "probe": "windows_firewall_com_policy",
+          "program": "python.exe",
+          "protocol": "TCP"
+        }
+      },
+      "status": "warn"
+    },
+    {
+      "evidence": "python.exe TCP/49152 on Public: no active-profile allow rule (0 matching rule(s))",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.no_tcp_listener_firewall_allow_rule"
+      ],
+      "name": "host.windows_firewall_listener",
+      "notes": "",
+      "observed": {
+        "active_profiles": [
+          "Public"
+        ],
+        "allowed_on_active_profile": false,
+        "bind_host": "0.0.0.0",
+        "matching_rule_count": 0,
+        "matching_rules": [],
+        "port": 49152,
+        "probe": "windows_firewall_com_policy",
+        "program": "python.exe",
+        "protocol": "TCP"
+      },
+      "status": "fail"
+    },
+    {
       "evidence": "not part of the fixture slice",
       "issue_codes": [],
       "name": "protocol.websocket_echo",
@@ -100,7 +191,20 @@
   },
   "host": {
     "adb_provider": "fixture",
-    "firewall_profile": "blocked_fixture",
+    "firewall_listener": {
+      "active_profiles": [
+        "Public"
+      ],
+      "allowed_on_active_profile": false,
+      "bind_host": "0.0.0.0",
+      "matching_rule_count": 0,
+      "matching_rules": [],
+      "port": 49152,
+      "probe": "windows_firewall_com_policy",
+      "program": "python.exe",
+      "protocol": "TCP"
+    },
+    "firewall_profile": "Wi-Fi:Public; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
     "ipv4_candidates": [
       {
         "interface": "fixture-wifi",
@@ -117,6 +221,16 @@
       "issue_code": "hostess.issue.connectivity_probe.same_wifi_reachability_not_proven",
       "message": "fixture models firewall-blocked same-Wi-Fi reachability",
       "severity": "error"
+    },
+    {
+      "issue_code": "hostess.issue.connectivity_probe.windows_network_profile_public",
+      "message": "fixture models a Public Windows network profile",
+      "severity": "warning"
+    },
+    {
+      "issue_code": "hostess.issue.connectivity_probe.no_tcp_listener_firewall_allow_rule",
+      "message": "fixture models a Hostess listener without an active-profile firewall allow rule",
+      "severity": "error"
     }
   ],
   "measurements": {
@@ -130,7 +244,7 @@
     "udp_packets_sent": null,
     "websocket_echo_ms": null
   },
-  "observed_at_utc": "2026-06-28T13:12:41.418046Z",
+  "observed_at_utc": "2026-06-28T13:37:40.321002Z",
   "probe_id": "QCL-010",
   "promotion": {
     "allowed": false,

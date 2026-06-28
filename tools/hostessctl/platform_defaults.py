@@ -32,6 +32,9 @@ ANDROID_PMB_PHYSICAL_LIVE_BACKGROUND_ACTION = (
     "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE_BACKGROUND"
 )
 ANDROID_BROKER_TELEMETRY_ACTION = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY"
+ANDROID_QCL050_RFCOMM_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_QCL050_RFCOMM"
+ANDROID_QCL051_BLE_GATT_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_QCL051_BLE_GATT"
+ANDROID_QCL083_OSC_ACTION = "io.github.mesmerprism.rustyhostess.t.RUN_QCL083_OSC"
 ANDROID_PMB_PHYSICAL_LIVE_SERVICE = f"{ANDROID_PACKAGE}/.PmbPhysicalLiveService"
 ANDROID_RENDER_ACTION = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY"
 ANDROID_REMOTE_EVIDENCE = (
@@ -84,6 +87,15 @@ ANDROID_REMOTE_BROKER_TELEMETRY_EVIDENCE = (
 )
 ANDROID_REMOTE_BROKER_TELEMETRY_REPORT = (
     f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/broker-telemetry/latest.broker-telemetry-report.json"
+)
+ANDROID_REMOTE_QCL050_RFCOMM_EVIDENCE = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/qcl050-rfcomm/latest.json"
+)
+ANDROID_REMOTE_QCL051_BLE_GATT_EVIDENCE = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/qcl051-ble-gatt/latest.json"
+)
+ANDROID_REMOTE_QCL083_OSC_EVIDENCE = (
+    f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/qcl083-osc/latest.json"
 )
 ANDROID_REMOTE_RENDER_ROOT = f"/sdcard/Android/data/{ANDROID_PACKAGE}/files/hostess-t/evidence/render"
 MAKEPAD_RENDER_RELATIVE = "files/hostess-t/telemetry/makepad-telemetry-render.png"

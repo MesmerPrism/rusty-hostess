@@ -1,0 +1,281 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "device",
+      "issue_codes": [],
+      "name": "device.adb_state",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.42/24",
+      "issue_codes": [],
+      "name": "device.wifi_ipv4",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "selected=192.0.2.10",
+      "issue_codes": [],
+      "name": "host.ipv4_candidate",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.10 is in 192.0.2.0/24",
+      "issue_codes": [],
+      "name": "topology.same_subnet",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "12/12 packets, loss=0.0%, p95_gap=52ms",
+      "issue_codes": [],
+      "name": "protocol.udp_freshness",
+      "notes": "",
+      "observed": {
+        "duplicates": 0,
+        "elapsed_ms": 700,
+        "generator": "adb_shell_udp_generator",
+        "host_ip": "192.0.2.10",
+        "interarrival_ms_p95": 52,
+        "loss_percent": 0.0,
+        "marker": "rusty-qcl-udp",
+        "packets_received": 12,
+        "packets_requested": 12,
+        "port": 18767,
+        "unique_sequences": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ]
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "Wi-Fi:Private; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+      "issue_codes": [],
+      "name": "host.windows_network_firewall_profile",
+      "notes": "",
+      "observed": {
+        "connections": [
+          {
+            "IPv4Connectivity": "Internet",
+            "IPv6Connectivity": "Internet",
+            "InterfaceAlias": "Wi-Fi",
+            "InterfaceIndex": 16,
+            "Name": "fixture-wifi",
+            "NetworkCategory": "Private"
+          }
+        ],
+        "firewall": [
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Domain",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Private",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Public",
+            "NotifyOnListen": true
+          }
+        ],
+        "listener_firewall": {
+          "active_profiles": [
+            "Private"
+          ],
+          "allowed_on_active_profile": true,
+          "bind_host": "0.0.0.0",
+          "matching_rule_count": 1,
+          "matching_rules": [
+            {
+              "application_name": "python.exe",
+              "local_ports": "18767",
+              "name": "Rusty Hostess QCL-080 UDP Freshness 18767",
+              "profile_mask": 2,
+              "profiles": [
+                "Private"
+              ],
+              "profiles_apply_to_active": true,
+              "protocol": 17
+            }
+          ],
+          "port": 18767,
+          "probe": "windows_firewall_com_policy",
+          "program": "python.exe",
+          "protocol": "UDP"
+        }
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "python.exe UDP/18767 on Private: allowed (1 matching rule(s))",
+      "issue_codes": [],
+      "name": "host.windows_firewall_listener",
+      "notes": "",
+      "observed": {
+        "active_profiles": [
+          "Private"
+        ],
+        "allowed_on_active_profile": true,
+        "bind_host": "0.0.0.0",
+        "matching_rule_count": 1,
+        "matching_rules": [
+          {
+            "application_name": "python.exe",
+            "local_ports": "18767",
+            "name": "Rusty Hostess QCL-080 UDP Freshness 18767",
+            "profile_mask": 2,
+            "profiles": [
+              "Private"
+            ],
+            "profiles_apply_to_active": true,
+            "protocol": 17
+          }
+        ],
+        "port": 18767,
+        "probe": "windows_firewall_com_policy",
+        "program": "python.exe",
+        "protocol": "UDP"
+      },
+      "status": "pass"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "device",
+    "android_sdk": "unknown",
+    "foreground_package": "not_checked",
+    "horizon_os": "unknown",
+    "model": "Quest 3S",
+    "ptc": "unknown",
+    "serial_redacted": true,
+    "wifi_interface": "wlan0",
+    "wifi_ipv4": "192.0.2.42",
+    "wifi_prefix_length": 24
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "firewall_listener": {
+      "active_profiles": [
+        "Private"
+      ],
+      "allowed_on_active_profile": true,
+      "bind_host": "0.0.0.0",
+      "matching_rule_count": 1,
+      "matching_rules": [
+        {
+          "application_name": "python.exe",
+          "local_ports": "18767",
+          "name": "Rusty Hostess QCL-080 UDP Freshness 18767",
+          "profile_mask": 2,
+          "profiles": [
+            "Private"
+          ],
+          "profiles_apply_to_active": true,
+          "protocol": 17
+        }
+      ],
+      "port": 18767,
+      "probe": "windows_firewall_com_policy",
+      "program": "python.exe",
+      "protocol": "UDP"
+    },
+    "firewall_profile": "Wi-Fi:Private; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+    "os": "windows",
+    "selected_ipv4": "192.0.2.10",
+    "toolchain_profile": "hostessctl.connectivity_probe.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": 52,
+    "lsl_discovery_ms": null,
+    "reconnect_attempts": 1,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": 0.0,
+    "udp_packets_received": 12,
+    "udp_packets_sent": 12,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T14:28:25.299587Z",
+  "probe_id": "QCL-080",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture covers diagnostic UDP datagrams; app-owned runtime sender remains separate evidence",
+    "target": "quest.device_link UDP stream capability descriptor"
+  },
+  "run_id": "20260628-142825-qcl-080",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "quest_to_host_lan",
+    "experimental": false,
+    "network_provider": "router_or_existing_wifi",
+    "owner": "external_wifi",
+    "requires_adb": true,
+    "requires_existing_wifi": true,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "adb_shell_udp_generator",
+    "family": "udp",
+    "local_endpoint": "192.0.2.10:18767",
+    "payload_class": "low_rate_diagnostic_datagram",
+    "protocol_role": "freshness_probe",
+    "remote_endpoint": "192.0.2.42",
+    "route": "qcl080_udp_freshness"
+  }
+}

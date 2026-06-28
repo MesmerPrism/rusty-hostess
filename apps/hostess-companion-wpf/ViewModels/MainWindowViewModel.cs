@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows.Media;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
@@ -15,15 +16,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private readonly HostessctlCatalogService catalogService;
     private readonly HostessctlCommandService commandService;
     private readonly HostessctlSessionService sessionService;
+    private readonly HostessctlConnectivityService connectivityService;
     private bool isBusy;
     private string reportStatus = "not run";
     private string catalogStatus = "not loaded";
+    private string connectivityStatus = "not checked";
     private string summaryLabel = "No companion reports loaded.";
     private string serial = "";
+    private string connectivityProgram = HostessctlConnectivityService.DefaultProductProgramPath();
+    private string connectivityProtocol = "UDP";
+    private string connectivityPort = "18767";
+    private string connectivityProfile = "Public";
+    private string connectivityRemoteAddress = "LocalSubnet";
+    private string connectivityRuleName = "Rusty Hostess QCL-080 UDP Freshness 18767";
     private bool useQuestProfile = true;
     private bool checkBroker;
     private CheckViewModel? selectedCheck;
     private CheckViewModel? selectedDeviceCheck;
+    private ConnectivityCheckViewModel? selectedConnectivityCheck;
     private SessionHistoryEntryViewModel? selectedSessionHistoryEntry;
     private SessionPhaseViewModel? selectedSessionPhase;
     private SessionArtifactViewModel? selectedSessionArtifact;
@@ -32,20 +42,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private EvidenceArtifactViewModel? selectedEvidenceArtifact;
     private NavigationItemViewModel? selectedNavigationItem;
     private CompanionSessionReport? currentSession;
+    private ConnectivityFirewallRuleReport? currentFirewallRuleReport;
 
     public MainWindowViewModel(
         HostessctlReadinessService readinessService,
         HostessctlCatalogService catalogService,
         HostessctlCommandService commandService,
-        HostessctlSessionService sessionService)
+        HostessctlSessionService sessionService,
+        HostessctlConnectivityService connectivityService)
     {
         this.readinessService = readinessService;
         this.catalogService = catalogService;
         this.commandService = commandService;
         this.sessionService = sessionService;
+        this.connectivityService = connectivityService;
         NavigationItems.Add(new NavigationItemViewModel("readiness", "Readiness"));
         NavigationItems.Add(new NavigationItemViewModel("session", "Session"));
         NavigationItems.Add(new NavigationItemViewModel("devices", "Devices"));
+        NavigationItems.Add(new NavigationItemViewModel("connectivity", "Connectivity"));
         NavigationItems.Add(new NavigationItemViewModel("transports", "Transports"));
         NavigationItems.Add(new NavigationItemViewModel("commands", "Commands"));
         NavigationItems.Add(new NavigationItemViewModel("evidence", "Evidence"));
@@ -57,6 +71,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             LoadSelectedSessionAsync,
             () => !IsBusy && SelectedSessionHistoryEntry is not null);
         RunProbeCommand = new AsyncRelayCommand(RunProbeAsync, () => !IsBusy);
+        PlanFirewallRuleCommand = new AsyncRelayCommand(PlanFirewallRuleAsync, () => !IsBusy);
+        ApplyFirewallRuleCommand = new AsyncRelayCommand(ApplyFirewallRuleAsync, () => !IsBusy);
+        VerifyConnectivityCommand = new AsyncRelayCommand(VerifyConnectivityAsync, () => !IsBusy);
+        RunConnectivitySuiteCommand = new AsyncRelayCommand(RunConnectivitySuiteAsync, () => !IsBusy);
+        RemoveFirewallRuleCommand = new AsyncRelayCommand(RemoveFirewallRuleAsync, () => !IsBusy);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -66,6 +85,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public ObservableCollection<CheckViewModel> Checks { get; } = [];
 
     public ObservableCollection<CheckViewModel> DeviceChecks { get; } = [];
+
+    public ObservableCollection<ConnectivityCheckViewModel> ConnectivityChecks { get; } = [];
 
     public ObservableCollection<SessionHistoryEntryViewModel> SessionHistory { get; } = [];
 
@@ -89,6 +110,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand RunProbeCommand { get; }
 
+    public AsyncRelayCommand PlanFirewallRuleCommand { get; }
+
+    public AsyncRelayCommand ApplyFirewallRuleCommand { get; }
+
+    public AsyncRelayCommand VerifyConnectivityCommand { get; }
+
+    public AsyncRelayCommand RunConnectivitySuiteCommand { get; }
+
+    public AsyncRelayCommand RemoveFirewallRuleCommand { get; }
+
     public bool IsBusy
     {
         get => isBusy;
@@ -101,11 +132,21 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 LoadSessionHistoryCommand.RaiseCanExecuteChanged();
                 LoadSelectedSessionCommand.RaiseCanExecuteChanged();
                 RunProbeCommand.RaiseCanExecuteChanged();
+                PlanFirewallRuleCommand.RaiseCanExecuteChanged();
+                ApplyFirewallRuleCommand.RaiseCanExecuteChanged();
+                VerifyConnectivityCommand.RaiseCanExecuteChanged();
+                RunConnectivitySuiteCommand.RaiseCanExecuteChanged();
+                RemoveFirewallRuleCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(RefreshButtonLabel));
                 OnPropertyChanged(nameof(RunSessionButtonLabel));
                 OnPropertyChanged(nameof(LoadSessionHistoryButtonLabel));
                 OnPropertyChanged(nameof(LoadSelectedSessionButtonLabel));
                 OnPropertyChanged(nameof(RunProbeButtonLabel));
+                OnPropertyChanged(nameof(PlanFirewallRuleButtonLabel));
+                OnPropertyChanged(nameof(ApplyFirewallRuleButtonLabel));
+                OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
+                OnPropertyChanged(nameof(RunConnectivitySuiteButtonLabel));
+                OnPropertyChanged(nameof(RemoveFirewallRuleButtonLabel));
             }
         }
     }
@@ -119,6 +160,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string LoadSelectedSessionButtonLabel => IsBusy ? "Loading" : "Load";
 
     public string RunProbeButtonLabel => IsBusy ? "Running" : "Run safe probe";
+
+    public string PlanFirewallRuleButtonLabel => IsBusy ? "Planning" : "Plan rule";
+
+    public string ApplyFirewallRuleButtonLabel => IsBusy ? "Applying" : "Apply rule";
+
+    public string VerifyConnectivityButtonLabel =>
+        IsBusy ? "Verifying" : ConnectivityProtocol == "UDP" ? "Verify QCL-080" : "Verify QCL-010";
+
+    public string RunConnectivitySuiteButtonLabel => IsBusy ? "Running" : "Run suite";
+
+    public string RemoveFirewallRuleButtonLabel => IsBusy ? "Removing" : "Remove rule";
 
     public string Serial
     {
@@ -138,6 +190,64 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set => SetField(ref checkBroker, value);
     }
 
+    public string ConnectivityProgram
+    {
+        get => connectivityProgram;
+        set => SetField(ref connectivityProgram, value);
+    }
+
+    public string ConnectivityProtocol
+    {
+        get => connectivityProtocol;
+        set
+        {
+            var previousDefaultRuleName = DefaultConnectivityRuleName(connectivityPort, connectivityProtocol);
+            var nextProtocol = NormalizeConnectivityProtocol(value);
+            if (SetField(ref connectivityProtocol, nextProtocol))
+            {
+                if (string.IsNullOrWhiteSpace(ConnectivityRuleName)
+                    || string.Equals(ConnectivityRuleName, previousDefaultRuleName, StringComparison.Ordinal))
+                {
+                    ConnectivityRuleName = DefaultConnectivityRuleName(connectivityPort, nextProtocol);
+                }
+                OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
+            }
+        }
+    }
+
+    public string ConnectivityPort
+    {
+        get => connectivityPort;
+        set
+        {
+            var previousDefaultRuleName = DefaultConnectivityRuleName(connectivityPort, connectivityProtocol);
+            if (SetField(ref connectivityPort, value)
+                && (string.IsNullOrWhiteSpace(ConnectivityRuleName)
+                    || string.Equals(ConnectivityRuleName, previousDefaultRuleName, StringComparison.Ordinal)))
+            {
+                ConnectivityRuleName = DefaultConnectivityRuleName(value, connectivityProtocol);
+            }
+        }
+    }
+
+    public string ConnectivityProfile
+    {
+        get => connectivityProfile;
+        set => SetField(ref connectivityProfile, value);
+    }
+
+    public string ConnectivityRemoteAddress
+    {
+        get => connectivityRemoteAddress;
+        set => SetField(ref connectivityRemoteAddress, value);
+    }
+
+    public string ConnectivityRuleName
+    {
+        get => connectivityRuleName;
+        set => SetField(ref connectivityRuleName, value);
+    }
+
     public NavigationItemViewModel? SelectedNavigationItem
     {
         get => selectedNavigationItem;
@@ -149,6 +259,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(IsReadinessSelected));
                 OnPropertyChanged(nameof(IsSessionSelected));
                 OnPropertyChanged(nameof(IsDevicesSelected));
+                OnPropertyChanged(nameof(IsConnectivitySelected));
                 OnPropertyChanged(nameof(IsTransportsSelected));
                 OnPropertyChanged(nameof(IsCommandsSelected));
                 OnPropertyChanged(nameof(IsEvidenceSelected));
@@ -175,6 +286,18 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         set
         {
             if (SetField(ref selectedDeviceCheck, value))
+            {
+                OnDetailChanged();
+            }
+        }
+    }
+
+    public ConnectivityCheckViewModel? SelectedConnectivityCheck
+    {
+        get => selectedConnectivityCheck;
+        set
+        {
+            if (SetField(ref selectedConnectivityCheck, value))
             {
                 OnDetailChanged();
             }
@@ -258,6 +381,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "session" => "Session",
         "devices" => "Devices",
+        "connectivity" => "Connectivity",
         "transports" => "Transports",
         "commands" => "Commands",
         "evidence" => "Evidence",
@@ -269,6 +393,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public bool IsSessionSelected => SelectedNavigationKey == "session";
 
     public bool IsDevicesSelected => SelectedNavigationKey == "devices";
+
+    public bool IsConnectivitySelected => SelectedNavigationKey == "connectivity";
 
     public bool IsTransportsSelected => SelectedNavigationKey == "transports";
 
@@ -284,6 +410,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public Brush CatalogStatusBrush => BrushForStatus(catalogStatus);
 
+    public string ConnectivityStatusLabel => $"Connectivity: {connectivityStatus}";
+
+    public Brush ConnectivityStatusBrush => BrushForStatus(connectivityStatus);
+
     public string SummaryLabel
     {
         get => summaryLabel;
@@ -294,6 +424,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "session" => SelectedSessionArtifact?.Title ?? SelectedSessionPhase?.Title ?? "No session phase selected",
         "devices" => SelectedDeviceCheck?.Title ?? "No device check selected",
+        "connectivity" => SelectedConnectivityCheck?.Title ?? "No connectivity check selected",
         "transports" => SelectedTransport?.Title ?? "No transport selected",
         "commands" => SelectedCommandStage?.Title ?? "No command stage selected",
         "evidence" => SelectedEvidenceArtifact?.Title ?? "No evidence artifact selected",
@@ -304,6 +435,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "session" => SelectedSessionArtifact?.StatusLine ?? SelectedSessionPhase?.StatusLine ?? "",
         "devices" => SelectedDeviceCheck?.StatusLine ?? "",
+        "connectivity" => SelectedConnectivityCheck?.StatusLine ?? "",
         "transports" => SelectedTransport?.StatusLine ?? "",
         "commands" => SelectedCommandStage?.StatusLine ?? "",
         "evidence" => SelectedEvidenceArtifact?.StatusLine ?? "",
@@ -314,6 +446,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "session" => SelectedSessionArtifact?.StatusBrush ?? SelectedSessionPhase?.StatusBrush ?? Brushes.DimGray,
         "devices" => SelectedDeviceCheck?.StatusBrush ?? Brushes.DimGray,
+        "connectivity" => SelectedConnectivityCheck?.StatusBrush ?? Brushes.DimGray,
         "transports" => SelectedTransport?.StatusBrush ?? Brushes.DimGray,
         "commands" => SelectedCommandStage?.StatusBrush ?? Brushes.DimGray,
         "evidence" => SelectedEvidenceArtifact?.StatusBrush ?? Brushes.DimGray,
@@ -324,6 +457,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "session" => SelectedSessionArtifact?.DetailText ?? SelectedSessionPhase?.DetailText ?? "",
         "devices" => SelectedDeviceCheck?.DetailText ?? "",
+        "connectivity" => SelectedConnectivityCheck?.DetailText ?? "",
         "transports" => SelectedTransport?.DetailText ?? "",
         "commands" => SelectedCommandStage?.DetailText ?? "",
         "evidence" => SelectedEvidenceArtifact?.DetailText ?? "",
@@ -360,6 +494,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             currentSession = null;
             Checks.Clear();
             DeviceChecks.Clear();
+            ConnectivityChecks.Clear();
             SessionHistory.Clear();
             SessionPhases.Clear();
             SessionArtifacts.Clear();
@@ -379,6 +514,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             Checks.Add(failure);
             SelectedCheck = failure;
             SelectedDeviceCheck = null;
+            SelectedConnectivityCheck = null;
             SelectedSessionHistoryEntry = null;
             SelectedSessionPhase = null;
             SelectedSessionArtifact = null;
@@ -545,6 +681,160 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    private async Task PlanFirewallRuleAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var report = await connectivityService.PlanFirewallRuleAsync(
+                    ConnectivityProgram,
+                    ConnectivityProtocol,
+                    ConnectivityPort,
+                    ConnectivityProfile,
+                    ConnectivityRemoteAddress,
+                    ConnectivityRuleName,
+                    CancellationToken.None);
+            ApplyFirewallRuleReport(report);
+            SummaryLabel =
+                $"Firewall rule plan: {report.Status}. " +
+                $"{report.Rule.Name}, {report.Rule.Protocol} {report.Rule.LocalPort}, {report.Rule.RemoteAddress}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("host.windows_firewall_rule_plan", ex);
+            SummaryLabel = "Firewall rule plan failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task ApplyFirewallRuleAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var report = currentFirewallRuleReport
+                    ?? await connectivityService.PlanFirewallRuleAsync(
+                        ConnectivityProgram,
+                        ConnectivityProtocol,
+                        ConnectivityPort,
+                        ConnectivityProfile,
+                        ConnectivityRemoteAddress,
+                        ConnectivityRuleName,
+                        CancellationToken.None);
+            currentFirewallRuleReport = report;
+            UpdateFirewallInputsFromReport(report);
+            var rows = new List<ConnectivityCheck> { FirewallPlanCheck(report) };
+            rows.AddRange(await connectivityService.ApplyFirewallRuleAsync(report, CancellationToken.None));
+            ApplyConnectivityRows(rows, StatusFromRows(rows));
+            SummaryLabel =
+                $"Firewall rule apply: {connectivityStatus}. " +
+                $"{report.Rule.Name}, {report.Rule.Protocol} {report.Rule.LocalPort}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("host.windows_firewall_rule_apply", ex);
+            SummaryLabel = "Firewall rule apply failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task VerifyConnectivityAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            if (ConnectivityProtocol == "UDP")
+            {
+                var run = await connectivityService.RunQcl080StreamCapabilityAsync(
+                        Serial,
+                        ConnectivityPort,
+                        CancellationToken.None);
+                ApplyConnectivityCapabilityResult(run);
+                SummaryLabel =
+                    $"Stream capability {run.Report.RunId}: {run.Descriptor.Status}. " +
+                    $"{run.Report.Transport.LocalEndpoint} -> {run.Report.Transport.RemoteEndpoint}.";
+            }
+            else
+            {
+                var report = await connectivityService.RunFixedPortProbeAsync(
+                        Serial,
+                        ConnectivityPort,
+                        CancellationToken.None);
+                ApplyConnectivityProbeReport(report);
+                SummaryLabel =
+                    $"Connectivity {report.RunId}: {report.Status}. " +
+                    $"{report.Transport.LocalEndpoint} -> {report.Transport.RemoteEndpoint}.";
+            }
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("connectivity_probe.qcl010", ex);
+            SummaryLabel = "Connectivity verification failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RunConnectivitySuiteAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var report = await connectivityService.RunFixtureSuiteAsync(
+                    Serial,
+                    ConnectivityProgram,
+                    ConnectivityProtocol,
+                    ConnectivityPort,
+                    CancellationToken.None);
+            ApplyConnectivitySuiteReport(report);
+            SummaryLabel =
+                $"Connectivity suite {report.SuiteRunId}: {report.Status}. " +
+                $"{report.SlotResults.Count} slots, descriptor {report.SuiteDescriptorPath}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("connectivity_probe.run_suite", ex);
+            SummaryLabel = "Connectivity suite failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task RemoveFirewallRuleAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var rows = await connectivityService.RemoveFirewallRuleAsync(
+                    ConnectivityRuleName,
+                    ConnectivityProtocol,
+                    ConnectivityPort,
+                    CancellationToken.None);
+            currentFirewallRuleReport = null;
+            ApplyConnectivityRows(rows, StatusFromRows(rows));
+            SummaryLabel = $"Firewall rule remove: {connectivityStatus}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("host.windows_firewall_rule_remove", ex);
+            SummaryLabel = "Firewall rule remove failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private void ApplyReport(ReadinessReport report)
     {
         reportStatus = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status;
@@ -600,6 +890,249 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             PopulateSessionArtifactsForPhase(null);
         }
+    }
+
+    private void ApplyFirewallRuleReport(ConnectivityFirewallRuleReport report)
+    {
+        currentFirewallRuleReport = report;
+        UpdateFirewallInputsFromReport(report);
+        ApplyConnectivityRows([FirewallPlanCheck(report)], report.Status);
+    }
+
+    private void UpdateFirewallInputsFromReport(ConnectivityFirewallRuleReport report)
+    {
+        if (!string.IsNullOrWhiteSpace(report.Rule.Program))
+        {
+            ConnectivityProgram = report.Rule.Program;
+        }
+        if (!string.IsNullOrWhiteSpace(report.Rule.Protocol))
+        {
+            ConnectivityProtocol = report.Rule.Protocol;
+        }
+        if (report.Rule.LocalPort > 0)
+        {
+            ConnectivityPort = report.Rule.LocalPort.ToString();
+        }
+        if (!string.IsNullOrWhiteSpace(report.Rule.Name))
+        {
+            ConnectivityRuleName = report.Rule.Name;
+        }
+        if (report.Rule.Profiles.Count > 0)
+        {
+            ConnectivityProfile = string.Join(",", report.Rule.Profiles);
+        }
+        if (!string.IsNullOrWhiteSpace(report.Rule.RemoteAddress))
+        {
+            ConnectivityRemoteAddress = report.Rule.RemoteAddress;
+        }
+    }
+
+    private void ApplyConnectivityProbeReport(ConnectivityProbeReport report)
+    {
+        ApplyConnectivityRows(report.Checks, report.Status);
+    }
+
+    private void ApplyConnectivityCapabilityResult(ConnectivityStreamCapabilityRun run)
+    {
+        var rows = new List<ConnectivityCheck>(run.Report.Checks);
+        var descriptor = run.Descriptor;
+        var warningCodes = descriptor.Warnings
+            .Select(warning => warning.IssueCode)
+            .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+            .ToList();
+        rows.Add(new ConnectivityCheck
+        {
+            Name = "quest.device_link.stream_capability",
+            Status = string.IsNullOrWhiteSpace(descriptor.Status) ? "unknown" : descriptor.Status,
+            Evidence =
+                $"{descriptor.StreamId}: {descriptor.TransportKind} / {descriptor.Direction}. " +
+                $"Descriptor: {run.DescriptorPath}",
+            Notes = descriptor.CapabilityId,
+            IssueCodes = warningCodes,
+            Observed = JsonSerializer.SerializeToElement(descriptor),
+        });
+        foreach (var requirement in descriptor.Requirements)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = requirement.RequirementId,
+                Status = StatusForRequirement(requirement.Status),
+                Evidence = string.IsNullOrWhiteSpace(requirement.Evidence)
+                    ? requirement.Status
+                    : requirement.Evidence,
+                Notes = requirement.Notes,
+                IssueCodes = [],
+                Observed = JsonSerializer.SerializeToElement(requirement),
+            });
+        }
+        foreach (var warning in descriptor.Warnings)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = warning.IssueCode,
+                Status = "warn",
+                Evidence = warning.Message,
+                Notes = warning.Severity,
+                IssueCodes = string.IsNullOrWhiteSpace(warning.IssueCode) ? [] : [warning.IssueCode],
+                Observed = JsonSerializer.SerializeToElement(warning),
+            });
+        }
+
+        ApplyConnectivityRows(rows, descriptor.Status);
+    }
+
+    private void ApplyConnectivitySuiteReport(ConnectivitySuiteRunReport report)
+    {
+        var rows = new List<ConnectivityCheck>
+        {
+            new()
+            {
+                Name = "quest.device_link.install_environment_suite_run",
+                Status = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status,
+                Evidence =
+                    $"{report.SuiteId} / {report.Mode}: {report.SlotResults.Count} slots. " +
+                    $"Descriptor: {report.SuiteDescriptorPath}",
+                Notes = report.ReportPath,
+                IssueCodes = [],
+                Observed = JsonSerializer.SerializeToElement(report),
+            },
+            new()
+            {
+                Name = "suite.environment_snapshot",
+                Status = "pass",
+                Evidence = "host tools, network adapters, firewall profiles, hotspot, and Bluetooth snapshot captured",
+                Notes = "environment state is evidence; protocol validity remains in QCL slot reports",
+                IssueCodes = [],
+                Observed = report.EnvironmentSnapshot,
+            },
+        };
+
+        foreach (var group in report.GroupedResults)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = group.GroupId,
+                Status = group.Status,
+                Evidence =
+                    $"{group.Phase}: {group.PassCount} pass, {group.WarnCount} warn, " +
+                    $"{group.FailCount} fail across {group.SlotCount} slots",
+                Notes = string.Join(", ", group.SlotIds),
+                IssueCodes = [],
+                Observed = JsonSerializer.SerializeToElement(group),
+            });
+        }
+
+        foreach (var slot in report.SlotResults)
+        {
+            var issues = slot.Issues
+                .Select(issue => issue.IssueCode)
+                .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+                .ToList();
+            rows.Add(new ConnectivityCheck
+            {
+                Name = slot.SlotId,
+                Status = slot.Status,
+                Evidence =
+                    $"{slot.ProbeId} {slot.Phase}: report={slot.ReportStatus}, " +
+                    $"validation={slot.ValidationStatus}, metrics={MetricsSummary(slot.Metrics)}",
+                Notes = string.IsNullOrWhiteSpace(slot.DescriptorPath)
+                    ? slot.ReportPath
+                    : $"{slot.ReportPath}; descriptor={slot.DescriptorPath} ({slot.DescriptorStatus})",
+                IssueCodes = issues,
+                Observed = JsonSerializer.SerializeToElement(slot),
+            });
+        }
+
+        ApplyConnectivityRows(rows, report.Status);
+    }
+
+    private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)
+    {
+        ConnectivityChecks.Clear();
+        foreach (var row in rows)
+        {
+            ConnectivityChecks.Add(new ConnectivityCheckViewModel(row));
+        }
+        SelectedConnectivityCheck = ConnectivityChecks.FirstOrDefault();
+        SetConnectivityStatus(status);
+    }
+
+    private void ApplyConnectivityFailure(string checkName, Exception ex)
+    {
+        ApplyConnectivityRows(
+            [
+                new ConnectivityCheck
+                {
+                    Name = checkName,
+                    Status = "fail",
+                    Evidence = ex.Message,
+                    Notes = "",
+                    IssueCodes = ["hostess.issue.wpf.connectivity_failed"],
+                    Observed = JsonSerializer.SerializeToElement(new
+                    {
+                        Error = ex.Message,
+                        Type = ex.GetType().Name,
+                    }),
+                },
+            ],
+            "fail");
+    }
+
+    private static ConnectivityCheck FirewallPlanCheck(ConnectivityFirewallRuleReport report) =>
+        new()
+        {
+            Name = "host.windows_firewall_rule_plan",
+            Status = report.Status,
+            Evidence =
+                $"{report.Rule.Name}: {report.Rule.Program}, {report.Rule.Protocol} {report.Rule.LocalPort}, " +
+                $"{string.Join(",", report.Rule.Profiles)} / {report.Rule.RemoteAddress}",
+            Notes = report.Rule.ScopeNote,
+            IssueCodes = report.Issues.Select(issue => issue.IssueCode)
+                .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+                .ToList(),
+            Observed = JsonSerializer.SerializeToElement(report),
+        };
+
+    private static string StatusFromRows(IReadOnlyList<ConnectivityCheck> rows)
+    {
+        if (rows.Any(row => row.Status is "fail" or "blocked" or "rejected"))
+        {
+            return "fail";
+        }
+        if (rows.Any(row => row.Status is "warn" or "usable_with_warnings" or "missing" or "unknown"))
+        {
+            return "warn";
+        }
+        if (rows.Any(row => row.Status is "planned" or "candidate"))
+        {
+            return "planned";
+        }
+        return rows.Count == 0 ? "unknown" : "pass";
+    }
+
+    private static string MetricsSummary(JsonElement metrics)
+    {
+        if (metrics.ValueKind != JsonValueKind.Object)
+        {
+            return "none";
+        }
+        var parts = new List<string>();
+        foreach (var property in metrics.EnumerateObject())
+        {
+            if (parts.Count >= 4)
+            {
+                break;
+            }
+            parts.Add($"{property.Name}={property.Value}");
+        }
+        return parts.Count == 0 ? "none" : string.Join(", ", parts);
+    }
+
+    private void SetConnectivityStatus(string status)
+    {
+        connectivityStatus = string.IsNullOrWhiteSpace(status) ? "unknown" : status;
+        OnPropertyChanged(nameof(ConnectivityStatusLabel));
+        OnPropertyChanged(nameof(ConnectivityStatusBrush));
     }
 
     private async Task RefreshSessionHistoryListAsync(
@@ -688,9 +1221,41 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     {
         "fail" => Brushes.Firebrick,
         "warn" => Brushes.DarkGoldenrod,
+        "blocked" => Brushes.Firebrick,
+        "rejected" => Brushes.Firebrick,
+        "usable_with_warnings" => Brushes.DarkGoldenrod,
+        "missing" => Brushes.DarkGoldenrod,
+        "unknown" => Brushes.DimGray,
+        "planned" => Brushes.DimGray,
+        "candidate" => Brushes.DimGray,
         "pass" => Brushes.DarkGreen,
+        "usable" => Brushes.DarkGreen,
+        "satisfied" => Brushes.DarkGreen,
         _ => Brushes.DimGray,
     };
+
+    private static string StatusForRequirement(string status) => status switch
+    {
+        "satisfied" => "pass",
+        "present_unverified" => "warn",
+        "missing" => "warn",
+        "unknown" => "warn",
+        "blocked" => "blocked",
+        _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
+    };
+
+    private static string DefaultConnectivityRuleName(string portText, string protocol)
+    {
+        var port = int.TryParse(portText, out var parsed) && parsed > 0 && parsed <= 65535
+            ? parsed
+            : NormalizeConnectivityProtocol(protocol) == "UDP" ? 18767 : 18766;
+        return NormalizeConnectivityProtocol(protocol) == "UDP"
+            ? $"Rusty Hostess QCL-080 UDP Freshness {port}"
+            : $"Rusty Hostess QCL-010 TCP Echo {port}";
+    }
+
+    private static string NormalizeConnectivityProtocol(string protocol) =>
+        string.Equals(protocol?.Trim(), "TCP", StringComparison.OrdinalIgnoreCase) ? "TCP" : "UDP";
 
     private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = "")
     {

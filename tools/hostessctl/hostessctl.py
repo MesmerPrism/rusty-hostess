@@ -21,6 +21,8 @@ from tools.hostessctl import companion_catalog  # noqa: E402
 from tools.hostessctl import companion_readiness  # noqa: E402
 from tools.hostessctl import companion_session  # noqa: E402
 from tools.hostessctl import connectivity_probe  # noqa: E402
+from tools.hostessctl import connectivity_suite  # noqa: E402
+from tools.hostessctl import device_link_report  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
@@ -234,6 +236,14 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":
             return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
+        if args.connectivity_probe_command == "windows-firewall-rule":
+            return connectivity_probe.run_windows_firewall_rule(args, run_captured_func=run_captured)
+        if args.connectivity_probe_command == "stream-capability":
+            return device_link_report.run_stream_capability_descriptor(args)
+        if args.connectivity_probe_command == "test-suite":
+            return device_link_report.run_install_test_suite_descriptor(args)
+        if args.connectivity_probe_command == "run-suite":
+            return connectivity_suite.run_connectivity_suite(args, run_captured_func=run_captured)
         return 2
     if args.command == "render-telemetry":
         return render_telemetry(args)

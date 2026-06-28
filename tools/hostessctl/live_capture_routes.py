@@ -38,6 +38,7 @@ def install_android(args: argparse.Namespace, *, run_func: RunFunc) -> int:
     for permission in [
         "android.permission.BLUETOOTH_SCAN",
         "android.permission.BLUETOOTH_CONNECT",
+        "android.permission.BLUETOOTH_ADVERTISE",
         "android.permission.ACCESS_FINE_LOCATION",
     ]:
         run_func(

@@ -3,6 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.bridge_command_routes import DEFAULT_RUNTIME_RECEIPT_STREAM
@@ -14,8 +18,33 @@ from tools.hostessctl.platform_defaults import (
 
 QUEST_DEVICE_LINK_SCHEMA = "rusty.quest.device_link.v1"
 QUEST_DEVICE_LINK_VALIDATION_SCHEMA = "rusty.quest.device_link.validation.v1"
+QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA = "rusty.quest.device_link.stream_capability.v1"
+QUEST_DEVICE_LINK_STREAM_CAPABILITY_VALIDATION_SCHEMA = (
+    "rusty.quest.device_link.stream_capability.validation.v1"
+)
+QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_SCHEMA = (
+    "rusty.quest.device_link.install_environment_test_suite.v1"
+)
+QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_VALIDATION_SCHEMA = (
+    "rusty.quest.device_link.install_environment_test_suite.validation.v1"
+)
 REQUEST_STREAM_ID = "stream.hostess.makepad.bridge_command"
 VALID_STATUS = {"pass", "warn", "fail", "skipped"}
+VALID_STREAM_CAPABILITY_STATUS = {
+    "usable",
+    "usable_with_warnings",
+    "candidate",
+    "rejected",
+    "blocked",
+}
+VALID_CONDITION_STATUS = {
+    "satisfied",
+    "missing",
+    "blocked",
+    "unknown",
+    "candidate",
+    "not_applicable",
+}
 
 
 def build_device_link_report(
@@ -73,6 +102,438 @@ def validate_device_link_report(report: dict[str, Any]) -> dict[str, Any]:
         "command_result_count": len(list_value(report.get("command_results"))),
         "stream_capability_count": len(list_value(report.get("stream_capabilities"))),
         "errors": errors,
+    }
+
+
+def run_stream_capability_descriptor(args: argparse.Namespace) -> int:
+    """Promote a connectivity probe report into a Quest device-link capability row."""
+
+    source_path = Path(str(getattr(args, "input", "") or ""))
+    report = json.loads(source_path.read_text(encoding="utf-8"))
+    descriptor = build_stream_capability_descriptor_from_connectivity_probe(
+        report,
+        source_path=source_path,
+    )
+    validation = validate_stream_capability_descriptor(descriptor)
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(descriptor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    validation_out = (
+        Path(args.validation_out)
+        if getattr(args, "validation_out", None)
+        else out.with_name(f"{out.stem}.validation-report.json")
+    )
+    validation_out.parent.mkdir(parents=True, exist_ok=True)
+    validation_out.write_text(
+        json.dumps(validation, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    if getattr(args, "fail_on_error", False) and validation["status"] != "pass":
+        return 2
+    return 0
+
+
+def run_install_test_suite_descriptor(args: argparse.Namespace) -> int:
+    """Write the downloadable install/environment/protocol test-suite descriptor."""
+
+    descriptor = build_install_test_suite_descriptor(
+        suite_id=str(getattr(args, "suite_id", "") or ""),
+        observed_at_utc=utc_now(),
+    )
+    validation = validate_install_test_suite_descriptor(descriptor)
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(descriptor, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    validation_out = (
+        Path(args.validation_out)
+        if getattr(args, "validation_out", None)
+        else out.with_name(f"{out.stem}.validation-report.json")
+    )
+    validation_out.parent.mkdir(parents=True, exist_ok=True)
+    validation_out.write_text(
+        json.dumps(validation, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+    if getattr(args, "fail_on_error", False) and validation["status"] != "pass":
+        return 2
+    return 0
+
+
+def build_stream_capability_descriptor_from_connectivity_probe(
+    report: dict[str, Any],
+    *,
+    source_path: Path | None = None,
+) -> dict[str, Any]:
+    """Build a measured stream-capability descriptor from a QCL probe report."""
+
+    transport = object_value(report.get("transport"))
+    topology = object_value(report.get("topology"))
+    host = object_value(report.get("host"))
+    device = object_value(report.get("device"))
+    measurements = object_value(report.get("measurements"))
+    promotion = object_value(report.get("promotion"))
+    udp_check = report_check(report, "protocol.udp_freshness")
+    runtime_check = report_check(report, "runtime.qcl080_udp_sender")
+    runtime_evidence = qcl080_runtime_evidence(runtime_check, udp_check)
+    firewall_listener = object_value(host.get("firewall_listener"))
+    requirements = stream_capability_requirements(
+        report,
+        transport=transport,
+        runtime_evidence=runtime_evidence,
+        firewall_listener=firewall_listener,
+    )
+    status = stream_capability_status(
+        report,
+        transport=transport,
+        measurements=measurements,
+        runtime_evidence=runtime_evidence,
+        requirements=requirements,
+    )
+    interval_ms = float_or_none(runtime_evidence.get("interval_ms"))
+    observed_rate_hz = round(1000.0 / interval_ms, 3) if interval_ms and interval_ms > 0 else None
+
+    return {
+        "$schema": QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA,
+        "schema_version": 1,
+        "capability_id": f"capability.qcl080.app_owned_udp.{safe_id(report.get('run_id'))}",
+        "bridge_route_id": "bridge_route.quest_device_link.qcl080.app_owned_udp_freshness",
+        "stream_id": "stream.quest.device_link.qcl080.udp_freshness",
+        "semantic_family": "device_link_diagnostic",
+        "transport_kind": "udp",
+        "payload_plane": "udp_datagram",
+        "rate_class": "low_rate",
+        "reliability": "sequenced_best_effort_loss_measured",
+        "direction": str(topology.get("endpoint_direction") or "quest_to_host_lan"),
+        "clock_policy": "runtime_sequence_host_arrival_timestamps",
+        "queue_policy": "receiver_counts_unique_sequences_no_backpressure",
+        "max_rate_hz": observed_rate_hz,
+        "high_rate_json_payload": False,
+        "status": status,
+        "required_conditions": qcl080_required_conditions(
+            requirements,
+            report=report,
+            transport=transport,
+            runtime_evidence=runtime_evidence,
+            firewall_listener=firewall_listener,
+        ),
+        "timing": timing_profile(
+            rtt_strategy="host_arrival_sequence_only",
+            clock_alignment="runtime_sequence_with_host_arrival_timestamps",
+            metrics=[
+                "udp_packets_sent",
+                "udp_packets_received",
+                "udp_loss_percent",
+                "jitter_ms_p95",
+                "observed_rate_hz",
+            ],
+            rtt_supported=False,
+            fallback_timing_source="parallel_lsl_reference_or_protocol_ack_required_for_rtt",
+        ),
+        "test_slots": [
+            test_slot(
+                "QCL-080",
+                "qcl-080-app-owned-udp-freshness-pass",
+                "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-080 --udp-sender-source makepad-runtime --udp-port 18767 --out target\\connectivity-probe\\qcl-080-live.json",
+                "Quest app-owned UDP freshness and host listener firewall coverage",
+                metrics=[
+                    "udp_packets_sent",
+                    "udp_packets_received",
+                    "udp_loss_percent",
+                    "jitter_ms_p95",
+                ],
+            )
+        ],
+        "source_probe": {
+            "schema": report.get("schema"),
+            "probe_id": report.get("probe_id"),
+            "run_id": report.get("run_id"),
+            "observed_at_utc": report.get("observed_at_utc"),
+            "status": report.get("status"),
+            "classification": report.get("classification"),
+            "promotion_allowed": promotion.get("allowed"),
+            "promotion_target": promotion.get("target"),
+            "promotion_reason": promotion.get("reason"),
+            "artifact_path": str(source_path) if source_path else "",
+            "artifact_sha256": sha256_file(source_path) if source_path else "",
+        },
+        "topology_evidence": {
+            "owner": topology.get("owner"),
+            "network_provider": topology.get("network_provider"),
+            "requires_existing_wifi": topology.get("requires_existing_wifi"),
+            "requires_adb_for_setup_or_observation": topology.get("requires_adb"),
+            "requires_termux": topology.get("requires_termux"),
+            "experimental": topology.get("experimental"),
+        },
+        "transport_evidence": {
+            "route": transport.get("route"),
+            "protocol_role": transport.get("protocol_role"),
+            "endpoint_source": transport.get("endpoint_source"),
+            "payload_class": transport.get("payload_class"),
+            "local_endpoint": transport.get("local_endpoint"),
+            "remote_endpoint": transport.get("remote_endpoint"),
+        },
+        "runtime_evidence": runtime_evidence,
+        "host_listener": {
+            "program": firewall_listener.get("program"),
+            "protocol": firewall_listener.get("protocol"),
+            "bind_host": firewall_listener.get("bind_host"),
+            "port": firewall_listener.get("port"),
+            "active_profiles": string_list(firewall_listener.get("active_profiles")),
+            "allowed_on_active_profile": firewall_listener.get("allowed_on_active_profile"),
+            "matching_rule_count": firewall_listener.get("matching_rule_count"),
+        },
+        "device_identity": {
+            "model": device.get("model"),
+            "adb_state": device.get("adb_state"),
+            "wifi_ipv4": device.get("wifi_ipv4"),
+            "wifi_prefix_length": device.get("wifi_prefix_length"),
+            "serial_redacted": device.get("serial_redacted", True),
+        },
+        "measurements": {
+            "udp_packets_sent": int_or_none(measurements.get("udp_packets_sent")),
+            "udp_packets_received": int_or_none(measurements.get("udp_packets_received")),
+            "udp_loss_percent": float_or_none(measurements.get("udp_loss_percent")),
+            "jitter_ms_p95": float_or_none(measurements.get("jitter_ms_p95")),
+            "reconnect_attempts": int_or_none(measurements.get("reconnect_attempts")),
+            "observed_rate_hz": observed_rate_hz,
+        },
+        "requirements": requirements,
+        "warnings": stream_capability_warnings(report, requirements),
+        "recommended_for": [
+            "Quest app-owned low-rate UDP freshness checks",
+            "runtime-to-host telemetry paths where loss is acceptable",
+            "operator readiness diagnostics for same-Wi-Fi topology",
+        ],
+        "not_for": [
+            "applied command feedback",
+            "high-rate camera or media payloads",
+            "production host listener claims until the signed Hostess/WPF firewall rule is proven",
+        ],
+    }
+
+
+def validate_stream_capability_descriptor(descriptor: dict[str, Any]) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if descriptor.get("$schema") != QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA:
+        errors.append("unsupported stream capability descriptor schema")
+    validate_stream_capability(descriptor, errors)
+
+    status = str(descriptor.get("status") or "")
+    if status not in VALID_STREAM_CAPABILITY_STATUS:
+        errors.append("status must be usable, usable_with_warnings, candidate, rejected, or blocked")
+
+    measurements = object_value(descriptor.get("measurements"))
+    runtime = object_value(descriptor.get("runtime_evidence"))
+    transport = object_value(descriptor.get("transport_evidence"))
+    source_probe = object_value(descriptor.get("source_probe"))
+    if status in {"usable", "usable_with_warnings"}:
+        if source_probe.get("probe_id") != "QCL-080" or source_probe.get("promotion_allowed") is not True:
+            errors.append("usable QCL-080 capabilities require a promoted QCL-080 source probe")
+        if transport.get("endpoint_source") != "app_owned_runtime_udp_sender":
+            errors.append("usable QCL-080 capabilities require an app-owned runtime UDP sender")
+        if runtime.get("status") != "sent" or runtime.get("socket_owner") != "app-owned":
+            errors.append("usable QCL-080 capabilities require sent app-owned runtime evidence")
+        packets_sent = int_or_none(runtime.get("packets_sent"))
+        if packets_sent is None or packets_sent < 1:
+            errors.append("usable QCL-080 capabilities require runtime packets_sent evidence")
+        packets_received = int_or_none(measurements.get("udp_packets_received"))
+        if packets_received is None or packets_received < 1:
+            errors.append("usable QCL-080 capabilities require received UDP packets")
+
+    for requirement in list_value(descriptor.get("requirements")):
+        if not isinstance(requirement, dict):
+            continue
+        requirement_status = str(requirement.get("status") or "")
+        if requirement_status in {"missing", "blocked", "unknown"}:
+            warnings.append(
+                f"{requirement.get('requirement_id', 'requirement')} is {requirement_status}"
+            )
+
+    return {
+        "$schema": QUEST_DEVICE_LINK_STREAM_CAPABILITY_VALIDATION_SCHEMA,
+        "status": "pass" if not errors else "fail",
+        "descriptor_status": descriptor.get("status"),
+        "capability_id": descriptor.get("capability_id"),
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def build_install_test_suite_descriptor(
+    *,
+    suite_id: str = "",
+    observed_at_utc: str = "",
+) -> dict[str, Any]:
+    """Describe the full install/environment/protocol test suite."""
+
+    capabilities = default_stream_capabilities()
+    return {
+        "$schema": QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_SCHEMA,
+        "schema_version": 1,
+        "suite_id": safe_id(suite_id or "quest-device-link-install-environment"),
+        "observed_at_utc": observed_at_utc,
+        "scope": {
+            "host_os": "windows",
+            "device_family": "meta_quest",
+            "frontends": ["hostessctl", "wpf", "makepad", "future_frontends"],
+            "network_topologies": [
+                "usb_adb",
+                "router_or_existing_wifi",
+                "pc_hotspot",
+                "phone_hotspot",
+                "travel_router",
+                "bluetooth_classic_rfcomm",
+                "bluetooth_le_gatt",
+            ],
+        },
+        "authority": {
+            "descriptor_owner": "rusty.quest.device_link",
+            "execution_owner": "rusty.hostess.connectivity_probe",
+            "ui_role": "requester_and_inspector",
+            "command_authority": "rusty.manifold.command",
+            "note": (
+                "Frontends can request tests and render reports; they do not decide "
+                "dependency validity, protocol promotion, or command authority."
+            ),
+        },
+        "environment_checks": install_suite_environment_checks(),
+        "protocol_capabilities": capabilities,
+        "test_slots": install_suite_test_slots(),
+        "result_contracts": [
+            QUEST_DEVICE_LINK_SCHEMA,
+            QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA,
+            "rusty.quest.connectivity_topology_probe.v1",
+            "rusty.hostess.companion.readiness_report.v1",
+            "rusty.hostess.companion.session.v1",
+        ],
+        "operator_ui_groups": [
+            {
+                "group_id": "group.install_environment",
+                "label": "Install Environment",
+                "covers": ["host", "toolchain", "output_directory"],
+            },
+            {
+                "group_id": "group.device_link",
+                "label": "Device Link",
+                "covers": ["adb", "device_identity", "adb_forward", "broker"],
+            },
+            {
+                "group_id": "group.network_firewall",
+                "label": "Network And Firewall",
+                "covers": ["network_adapters", "windows_firewall", "listener_rules"],
+            },
+            {
+                "group_id": "group.protocol_latency",
+                "label": "Protocols And RTT",
+                "covers": ["udp", "lsl", "osc", "zeromq", "bluetooth_rfcomm", "bluetooth_gatt"],
+            },
+        ],
+        "promotion_policy": {
+            "requires_fixture_validation": True,
+            "requires_live_target_topology": True,
+            "requires_required_conditions": True,
+            "requires_timing_strategy": True,
+            "requires_rtt_when_supported": True,
+            "parallel_lsl_reference": (
+                "Use QCL-081 LSL timing in parallel for protocols that have no "
+                "native RTT/ACK or need an independent clock-alignment reference."
+            ),
+        },
+    }
+
+
+def validate_install_test_suite_descriptor(descriptor: dict[str, Any]) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if descriptor.get("$schema") != QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_SCHEMA:
+        errors.append("unsupported install test suite schema")
+    if str(descriptor.get("suite_id") or "").strip() == "":
+        errors.append("suite_id must not be empty")
+
+    environment_checks = list_value(descriptor.get("environment_checks"))
+    test_slots = list_value(descriptor.get("test_slots"))
+    capabilities = list_value(descriptor.get("protocol_capabilities"))
+    if not environment_checks:
+        errors.append("environment_checks must not be empty")
+    if not test_slots:
+        errors.append("test_slots must not be empty")
+    if not capabilities:
+        errors.append("protocol_capabilities must not be empty")
+
+    required_categories = {"host", "toolchain", "network", "firewall", "device", "protocol", "timing"}
+    observed_categories = {
+        str(check.get("category") or "")
+        for check in environment_checks
+        if isinstance(check, dict)
+    }
+    for category in sorted(required_categories - observed_categories):
+        errors.append(f"environment_checks missing category {category}")
+
+    for capability in capabilities:
+        validate_stream_capability(object_value(capability), errors)
+
+    required_transports = {
+        "manifold_websocket",
+        "udp",
+        "lsl",
+        "osc_udp",
+        "zeromq",
+        "bluetooth_rfcomm",
+        "bluetooth_gatt",
+        "tcp_binary",
+    }
+    observed_transports = {
+        str(capability.get("transport_kind") or "")
+        for capability in capabilities
+        if isinstance(capability, dict)
+    }
+    for transport in sorted(required_transports - observed_transports):
+        errors.append(f"protocol_capabilities missing transport {transport}")
+
+    required_probe_ids = {
+        "QCL-000",
+        "QCL-010",
+        "QCL-011",
+        "QCL-050",
+        "QCL-051",
+        "QCL-080",
+        "QCL-081",
+        "QCL-083",
+        "QCL-084",
+    }
+    observed_probe_ids = {
+        str(slot.get("probe_id") or "")
+        for slot in test_slots
+        if isinstance(slot, dict)
+    }
+    for probe_id in sorted(required_probe_ids - observed_probe_ids):
+        errors.append(f"test_slots missing {probe_id}")
+
+    for slot in test_slots:
+        row = object_value(slot)
+        if not str(row.get("slot_id") or "").strip():
+            errors.append("test slot requires slot_id")
+        if not str(row.get("live_command") or "").strip():
+            warnings.append(f"test slot {row.get('slot_id', '<unknown>')} has no live_command")
+        if not list_value(row.get("metrics")):
+            warnings.append(f"test slot {row.get('slot_id', '<unknown>')} has no metrics")
+
+    return {
+        "$schema": QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_VALIDATION_SCHEMA,
+        "status": "pass" if not errors else "fail",
+        "suite_id": descriptor.get("suite_id"),
+        "environment_check_count": len(environment_checks),
+        "test_slot_count": len(test_slots),
+        "protocol_capability_count": len(capabilities),
+        "errors": errors,
+        "warnings": warnings,
     }
 
 
@@ -225,71 +686,523 @@ def command_result(execution: dict[str, Any], transport_kind: str) -> dict[str, 
 
 def default_stream_capabilities() -> list[dict[str, Any]]:
     return [
-        {
-            "capability_id": "capability.command.hostess_makepad_bridge",
-            "stream_id": REQUEST_STREAM_ID,
-            "semantic_family": "command",
-            "transport_kind": "manifold_websocket",
-            "payload_plane": "json_event",
-            "rate_class": "control",
-            "reliability": "ordered_ack_required",
-            "direction": "host_to_quest_runtime",
-            "clock_policy": "host_request_runtime_receipt",
-            "queue_policy": "bounded_command_queue",
-            "max_rate_hz": 5,
-            "high_rate_json_payload": False,
-            "recommended_for": ["operator commands", "runtime receipt probes"],
-            "not_for": ["camera frames", "biosignal sample streams"],
-        },
-        {
-            "capability_id": "capability.biosignal.lsl_clocked_samples",
-            "stream_id": "stream.polar_h10.ecg",
-            "semantic_family": "biosignal",
-            "transport_kind": "lsl",
-            "payload_plane": "lsl_sample",
-            "rate_class": "sample_clocked",
-            "reliability": "sample_clocked_best_effort",
-            "direction": "sensor_to_host_or_runtime",
-            "clock_policy": "source_clock_lsl_time_correction",
-            "queue_policy": "bounded_recent_samples",
-            "max_rate_hz": 130,
-            "high_rate_json_payload": False,
-            "recommended_for": ["clocked biosignal samples"],
-            "not_for": ["command authority"],
-        },
-        {
-            "capability_id": "capability.telemetry.pose_udp",
-            "stream_id": "stream.motion.object_pose",
-            "semantic_family": "pose",
-            "transport_kind": "udp",
-            "payload_plane": "udp_datagram",
-            "rate_class": "low_rate",
-            "reliability": "latest_value_loss_tolerant",
-            "direction": "runtime_to_broker_or_host",
-            "clock_policy": "runtime_timestamp",
-            "queue_policy": "drop_oldest_latest_value",
-            "max_rate_hz": 90,
-            "high_rate_json_payload": False,
-            "recommended_for": ["low-latency pose telemetry"],
-            "not_for": ["applied command feedback"],
-        },
-        {
-            "capability_id": "capability.media.h264_tcp_binary",
-            "stream_id": "stream.remote_camera.h264.left",
-            "semantic_family": "media",
-            "transport_kind": "tcp_binary",
-            "payload_plane": "binary_media",
-            "rate_class": "high_rate",
-            "reliability": "ordered_bytes_backpressure_bounded",
-            "direction": "quest_to_peer_or_host",
-            "clock_policy": "media_frame_timestamp",
-            "queue_policy": "drop_or_close_slow_peer",
-            "max_rate_hz": 90,
-            "high_rate_json_payload": False,
-            "recommended_for": ["H.264 camera frames"],
-            "not_for": ["operator command acknowledgement"],
-        },
+        capability_row(
+            capability_id="capability.command.hostess_makepad_bridge",
+            bridge_route_id="bridge_route.hostess.makepad.manifold_websocket",
+            stream_id=REQUEST_STREAM_ID,
+            semantic_family="command",
+            transport_kind="manifold_websocket",
+            payload_plane="json_event",
+            rate_class="control",
+            reliability="ordered_ack_required",
+            direction="host_to_quest_runtime",
+            clock_policy="host_request_runtime_receipt",
+            queue_policy="bounded_command_queue",
+            max_rate_hz=5,
+            status="usable",
+            conditions=[
+                condition(
+                    "condition.command.manifold_broker_forward",
+                    "network",
+                    "unknown",
+                    remediation="Run companion-readiness with broker checks; prepare the ADB forward for /manifold/v1/events.",
+                    evidence_refs=["check.network.broker_adb_forward", "check.network.broker_forwarded_port"],
+                ),
+                condition(
+                    "condition.command.runtime_subscriber_receipts",
+                    "runtime",
+                    "unknown",
+                    remediation="Run companion-session run and require runtime_accepted/applied receipts.",
+                    evidence_refs=["runtime.hostess_makepad.bridge_command"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="command_stage_receipts",
+                clock_alignment="host_request_runtime_receipt_delta",
+                metrics=[
+                    "sent",
+                    "transport_ok",
+                    "authority_accepted",
+                    "runtime_accepted",
+                    "applied",
+                ],
+                rtt_supported=True,
+                fallback_timing_source="app_private_json_receipt",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-000",
+                    "qcl-000-usb-adb-pass",
+                    "python tools\\hostessctl\\hostessctl.py companion-session run --out target\\companion-session\\session.json",
+                    "Manifold broker command feedback with runtime receipt stages",
+                    metrics=["sent", "transport_ok", "authority_accepted", "runtime_accepted", "applied"],
+                )
+            ],
+            recommended_for=["operator commands", "runtime receipt probes"],
+            not_for=["camera frames", "biosignal sample streams"],
+        ),
+        capability_row(
+            capability_id="capability.biosignal.lsl_clocked_samples",
+            bridge_route_id="bridge_route.quest_device_link.qcl081.lsl_clocked_samples",
+            stream_id="stream.protocol_fit.lsl.clocked_samples",
+            semantic_family="biosignal_or_clocked_samples",
+            transport_kind="lsl",
+            payload_plane="lsl_sample",
+            rate_class="sample_clocked",
+            reliability="sample_clocked_best_effort",
+            direction="sensor_runtime_or_host_to_peer",
+            clock_policy="source_clock_lsl_time_correction",
+            queue_policy="bounded_recent_samples",
+            max_rate_hz=500,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.lsl.library_available",
+                    "dependency",
+                    "unknown",
+                    remediation="Install/provide pylsl or liblsl for the process that owns the stream.",
+                    evidence_refs=["protocol.lsl_discovery"],
+                ),
+                condition(
+                    "condition.lsl.multicast_or_known_endpoint_reachable",
+                    "network",
+                    "unknown",
+                    remediation="Run QCL-081 on the target topology; firewall and router multicast behavior must be measured.",
+                    evidence_refs=["protocol.lsl_discovery", "protocol.lsl_sample_continuity"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="lsl_time_correction",
+                clock_alignment="lsl_clock_offset_and_sample_timestamps",
+                metrics=[
+                    "lsl_discovery_ms",
+                    "lsl_samples_requested",
+                    "lsl_samples_received",
+                    "lsl_sample_loss_percent",
+                ],
+                rtt_supported=True,
+                fallback_timing_source="host_loopback_dependency_smoke_then_quest_runtime_probe",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-081",
+                    "qcl-081-lsl-loopback-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source host-loopback --out target\\connectivity-probe\\qcl081-live-host-loopback.json",
+                    "LSL discovery and sample continuity",
+                    metrics=["lsl_discovery_ms", "lsl_samples_received", "lsl_sample_loss_percent"],
+                )
+            ],
+            recommended_for=["clocked biosignal samples", "parallel timing reference for other streams"],
+            not_for=["command authority", "bulk media payloads"],
+        ),
+        capability_row(
+            capability_id="capability.telemetry.pose_udp",
+            bridge_route_id="bridge_route.quest_device_link.qcl080.udp_freshness",
+            stream_id="stream.motion.object_pose",
+            semantic_family="pose_or_low_rate_telemetry",
+            transport_kind="udp",
+            payload_plane="udp_datagram",
+            rate_class="low_rate",
+            reliability="latest_value_loss_tolerant",
+            direction="runtime_to_broker_or_host",
+            clock_policy="runtime_timestamp",
+            queue_policy="drop_oldest_latest_value",
+            max_rate_hz=90,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.udp.host_listener_firewall",
+                    "firewall",
+                    "unknown",
+                    remediation="Use a fixed product listener port and a scoped inbound rule for the signed Hostess/WPF executable.",
+                    evidence_refs=["host.windows_firewall_listener"],
+                ),
+                condition(
+                    "condition.udp.quest_and_host_same_topology",
+                    "network",
+                    "unknown",
+                    remediation="Run QCL-010/QCL-011 first, then QCL-080 on the same topology.",
+                    evidence_refs=["topology.same_subnet", "protocol.udp_freshness"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="host_arrival_sequence_only",
+                clock_alignment="runtime_timestamp_or_parallel_lsl_reference",
+                metrics=[
+                    "udp_packets_sent",
+                    "udp_packets_received",
+                    "udp_loss_percent",
+                    "jitter_ms_p95",
+                ],
+                rtt_supported=False,
+                fallback_timing_source="parallel_lsl_reference_or_protocol_ack_for_rtt",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-080",
+                    "qcl-080-app-owned-udp-freshness-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-080 --udp-sender-source makepad-runtime --udp-port 18767 --out target\\connectivity-probe\\qcl080-live.json",
+                    "Quest app-owned UDP freshness and loss/jitter counters",
+                    metrics=["udp_packets_sent", "udp_packets_received", "udp_loss_percent", "jitter_ms_p95"],
+                )
+            ],
+            recommended_for=["low-latency pose telemetry", "freshness checks"],
+            not_for=["applied command feedback", "lossless samples without sequence repair"],
+        ),
+        capability_row(
+            capability_id="capability.control.osc_round_trip",
+            bridge_route_id="bridge_route.quest_device_link.qcl083.osc_exchange",
+            stream_id="stream.protocol_fit.osc.round_trip",
+            semantic_family="control_or_low_rate_telemetry",
+            transport_kind="osc_udp",
+            payload_plane="osc_message",
+            rate_class="control",
+            reliability="udp_ack_measured",
+            direction="host_to_quest_runtime_with_ack",
+            clock_policy="host_send_quest_process_host_ack",
+            queue_policy="bounded_request_ack_window",
+            max_rate_hz=60,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.osc.message_shape",
+                    "protocol",
+                    "unknown",
+                    remediation="Run QCL-083 and reject malformed address/typetag/payload combinations.",
+                    evidence_refs=["protocol.osc_message_shape"],
+                ),
+                condition(
+                    "condition.osc.quest_runtime_endpoint",
+                    "runtime",
+                    "unknown",
+                    remediation="Use the Hostess Android QCL-083 action or the future Rusty Quest runtime endpoint.",
+                    evidence_refs=["protocol.osc_payload_exchange"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="native_round_trip_ack",
+                clock_alignment="host_send_quest_ack_timestamps_with_offset_estimate",
+                metrics=[
+                    "osc_rtt_ms_p95",
+                    "osc_quest_processing_ms_p95",
+                    "osc_estimated_one_way_ms_p95",
+                    "osc_clock_offset_estimate_ms_median",
+                    "osc_clock_offset_jitter_ms_p95",
+                ],
+                rtt_supported=True,
+                fallback_timing_source="parallel_lsl_reference",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-083",
+                    "qcl-083-osc-loopback-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source quest-runtime --out target\\connectivity-probe\\qcl083-live-quest-runtime.json",
+                    "OSC message shape, payload exchange, and RTT metrics",
+                    metrics=["osc_messages_received", "osc_loss_percent", "osc_rtt_ms_p95"],
+                )
+            ],
+            recommended_for=["simple control packets", "status messages with native ACK timing"],
+            not_for=["bulk media", "strict command authority without Manifold acceptance"],
+        ),
+        capability_row(
+            capability_id="capability.protocol.zeromq_native_rust",
+            bridge_route_id="bridge_route.quest_device_link.qcl084.zeromq_exchange",
+            stream_id="stream.protocol_fit.zeromq.native_rust",
+            semantic_family="generic_data_protocol",
+            transport_kind="zeromq",
+            payload_plane="binary_or_json_message",
+            rate_class="low_or_mid_rate",
+            reliability="pattern_defined_backpressure",
+            direction="peer_to_peer_socket_exchange",
+            clock_policy="protocol_ack_timestamps",
+            queue_policy="bounded_receiver_queue_with_drop_counters",
+            max_rate_hz=240,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.zeromq.adapter_available",
+                    "dependency",
+                    "unknown",
+                    remediation="Build and run the generic rusty-manifold-zmq adapter; Goofi remains only an example source profile.",
+                    evidence_refs=["protocol.zeromq_dependency"],
+                ),
+                condition(
+                    "condition.zeromq.pattern_declared",
+                    "protocol",
+                    "unknown",
+                    remediation="Declare REQ/REP, PUB/SUB, or another supported pattern in the route descriptor before running.",
+                    evidence_refs=["protocol.zeromq_payload_exchange"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="native_round_trip_ack_when_req_rep",
+                clock_alignment="host_server_ack_timestamps_with_offset_estimate",
+                metrics=[
+                    "zeromq_rtt_ms_p95",
+                    "zeromq_server_processing_ms_p95",
+                    "zeromq_estimated_one_way_ms_p95",
+                    "zeromq_clock_offset_estimate_ms_median",
+                    "zeromq_clock_offset_jitter_ms_p95",
+                ],
+                rtt_supported=True,
+                fallback_timing_source="parallel_lsl_reference_for_pub_sub",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-084",
+                    "qcl-084-zeromq-loopback-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source manifold-zmq-loopback --zeromq-pattern pub-sub --zeromq-manifold-root S:\\Work\\repos\\active\\rusty-manifold --out target\\connectivity-probe\\qcl084-live-manifold-zmq-loopback.json",
+                    "Generic ZeroMQ adapter dependency, message exchange, and timing metrics",
+                    metrics=["zeromq_messages_received", "zeromq_rtt_ms_p95"],
+                )
+            ],
+            recommended_for=["native Rust protocol modules", "sidecar adapters", "Goofi-compatible source profiles"],
+            not_for=["Goofi-specific object payloads as the generic protocol contract"],
+        ),
+        capability_row(
+            capability_id="capability.bluetooth.rfcomm_control",
+            bridge_route_id="bridge_route.quest_device_link.qcl050.bluetooth_rfcomm",
+            stream_id="stream.protocol_fit.bluetooth.rfcomm_control",
+            semantic_family="short_range_control",
+            transport_kind="bluetooth_rfcomm",
+            payload_plane="rfcomm_bytes",
+            rate_class="control",
+            reliability="stream_socket_ordered_bytes",
+            direction="windows_client_to_quest_server",
+            clock_policy="request_ack_round_trip",
+            queue_policy="bounded_socket_exchange",
+            max_rate_hz=20,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.rfcomm.host_adapter_and_service",
+                    "device",
+                    "unknown",
+                    remediation="Run QCL-050 with the Windows RFCOMM helper and verify adapter/service discovery.",
+                    evidence_refs=["host.bluetooth_adapter", "host.bluetooth_service"],
+                ),
+                condition(
+                    "condition.rfcomm.quest_pairing_and_permission",
+                    "device",
+                    "unknown",
+                    remediation="Confirm Quest Bluetooth pairing/bond state and runtime permission before payload exchange.",
+                    evidence_refs=["bluetooth.pairing_bond_state", "bluetooth.permission_state"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="native_round_trip_ack",
+                clock_alignment="host_request_quest_ack_delta",
+                metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+                rtt_supported=True,
+                fallback_timing_source="parallel_lsl_reference_if_available",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-050",
+                    "qcl-050-rfcomm-control-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-050 --bluetooth-payload-source android-rfcomm --out target\\connectivity-probe\\qcl050-live-rfcomm.json",
+                    "Bluetooth Classic RFCOMM pairing, socket exchange, cleanup, and RTT",
+                    metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+                )
+            ],
+            recommended_for=["short-range setup/control paths after pairing is proven"],
+            not_for=["high-rate telemetry", "unpaired field deployment until service visibility is stable"],
+        ),
+        capability_row(
+            capability_id="capability.bluetooth.ble_gatt_status",
+            bridge_route_id="bridge_route.quest_device_link.qcl051.ble_gatt",
+            stream_id="stream.protocol_fit.bluetooth.ble_gatt_status",
+            semantic_family="short_range_status_or_control",
+            transport_kind="bluetooth_gatt",
+            payload_plane="gatt_characteristic",
+            rate_class="control",
+            reliability="characteristic_write_ack_measured",
+            direction="windows_central_to_quest_gatt_server",
+            clock_policy="write_ack_round_trip",
+            queue_policy="bounded_characteristic_payloads",
+            max_rate_hz=20,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.ble.host_adapter_and_service",
+                    "device",
+                    "unknown",
+                    remediation="Run QCL-051 with the Windows BLE/GATT helper and verify adapter/service readiness.",
+                    evidence_refs=["host.bluetooth_adapter", "host.bluetooth_service"],
+                ),
+                condition(
+                    "condition.ble.quest_gatt_permission",
+                    "device",
+                    "unknown",
+                    remediation="Launch the app-owned Quest GATT server and verify permission plus status characteristic updates.",
+                    evidence_refs=["device.bluetooth_adapter", "bluetooth.permission_state"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="native_write_ack_round_trip",
+                clock_alignment="host_write_quest_status_ack_delta",
+                metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+                rtt_supported=True,
+                fallback_timing_source="parallel_lsl_reference_if_available",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-051",
+                    "qcl-051-ble-gatt-status-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-051 --bluetooth-payload-source android-ble-gatt --out target\\connectivity-probe\\qcl051-live-ble-gatt.json",
+                    "BLE/GATT control write, status read, cleanup, and RTT",
+                    metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+                )
+            ],
+            recommended_for=["short-range status/control after reconnect evidence"],
+            not_for=["high-rate telemetry", "large binary payloads"],
+        ),
+        capability_row(
+            capability_id="capability.media.h264_tcp_binary",
+            bridge_route_id="bridge_route.quest_device_link.media.tcp_binary",
+            stream_id="stream.remote_camera.h264.left",
+            semantic_family="media",
+            transport_kind="tcp_binary",
+            payload_plane="binary_media",
+            rate_class="high_rate",
+            reliability="ordered_bytes_backpressure_bounded",
+            direction="quest_to_peer_or_host",
+            clock_policy="media_frame_timestamp",
+            queue_policy="drop_or_close_slow_peer",
+            max_rate_hz=90,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.media.binary_socket_or_codec_path",
+                    "dependency",
+                    "unknown",
+                    remediation="Use a binary/media plane with codec-specific validation; never route frames through JSON command streams.",
+                    evidence_refs=["media.binary_transport"],
+                ),
+                condition(
+                    "condition.media.backpressure_policy",
+                    "protocol",
+                    "unknown",
+                    remediation="Declare queue, drop, close, and frame timestamp policy before promotion.",
+                    evidence_refs=["media.queue_policy"],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="media_frame_timestamp_and_receiver_arrival",
+                clock_alignment="codec_timestamp_with_optional_lsl_reference",
+                metrics=["frame_timestamp_delta_ms", "dropped_frames", "throughput_mbps"],
+                rtt_supported=False,
+                fallback_timing_source="parallel_lsl_reference_or_media_ack_channel",
+            ),
+            test_slots=[],
+            recommended_for=["H.264 camera frames", "binary media planes"],
+            not_for=["operator command acknowledgement", "JSON payload transport"],
+        ),
     ]
+
+
+def capability_row(
+    *,
+    capability_id: str,
+    bridge_route_id: str,
+    stream_id: str,
+    semantic_family: str,
+    transport_kind: str,
+    payload_plane: str,
+    rate_class: str,
+    reliability: str,
+    direction: str,
+    clock_policy: str,
+    queue_policy: str,
+    max_rate_hz: int | float,
+    status: str,
+    conditions: list[dict[str, Any]],
+    timing: dict[str, Any],
+    test_slots: list[dict[str, Any]],
+    recommended_for: list[str],
+    not_for: list[str],
+) -> dict[str, Any]:
+    return {
+        "capability_id": capability_id,
+        "bridge_route_id": bridge_route_id,
+        "stream_id": stream_id,
+        "semantic_family": semantic_family,
+        "transport_kind": transport_kind,
+        "payload_plane": payload_plane,
+        "rate_class": rate_class,
+        "reliability": reliability,
+        "direction": direction,
+        "clock_policy": clock_policy,
+        "queue_policy": queue_policy,
+        "max_rate_hz": max_rate_hz,
+        "status": status,
+        "required_conditions": conditions,
+        "timing": timing,
+        "test_slots": test_slots,
+        "high_rate_json_payload": False,
+        "recommended_for": recommended_for,
+        "not_for": not_for,
+    }
+
+
+def condition(
+    condition_id: str,
+    category: str,
+    status: str,
+    *,
+    required: bool = True,
+    remediation: str,
+    evidence_refs: list[str] | None = None,
+    notes: str = "",
+) -> dict[str, Any]:
+    return {
+        "condition_id": condition_id,
+        "category": category,
+        "required": required,
+        "status": status,
+        "evidence_refs": evidence_refs or [],
+        "remediation": remediation,
+        "notes": notes,
+    }
+
+
+def timing_profile(
+    *,
+    rtt_strategy: str,
+    clock_alignment: str,
+    metrics: list[str],
+    rtt_supported: bool,
+    fallback_timing_source: str,
+) -> dict[str, Any]:
+    return {
+        "rtt_supported": rtt_supported,
+        "rtt_strategy": rtt_strategy,
+        "clock_alignment": clock_alignment,
+        "metrics": metrics,
+        "fallback_timing_source": fallback_timing_source,
+    }
+
+
+def test_slot(
+    probe_id: str,
+    fixture_profile: str,
+    live_command: str,
+    purpose: str,
+    *,
+    metrics: list[str],
+) -> dict[str, Any]:
+    return {
+        "probe_id": probe_id,
+        "fixture_profile": fixture_profile,
+        "purpose": purpose,
+        "live_command": live_command,
+        "fixture_command": (
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
+            f"--mode fixture --probe-id {probe_id} --fixture-profile {fixture_profile} "
+            f"--out target\\connectivity-probe\\{fixture_profile}.json --fail-on-error"
+        ),
+        "metrics": metrics,
+    }
 
 
 def validate_command_result(command: dict[str, Any], errors: list[str]) -> None:
@@ -312,6 +1225,18 @@ def validate_command_result(command: dict[str, Any], errors: list[str]) -> None:
 
 
 def validate_stream_capability(capability: dict[str, Any], errors: list[str]) -> None:
+    if str(capability.get("capability_id") or "").strip() == "":
+        errors.append("stream capability capability_id must not be empty")
+    if str(capability.get("stream_id") or "").strip() == "":
+        errors.append(
+            f"stream capability {capability.get('capability_id')} stream_id must not be empty"
+        )
+    if str(capability.get("transport_kind") or "").strip() == "":
+        errors.append(
+            f"stream capability {capability.get('capability_id')} transport_kind must not be empty"
+        )
+    if "status" in capability and capability.get("status") not in VALID_STREAM_CAPABILITY_STATUS:
+        errors.append(f"stream capability {capability.get('capability_id')} has invalid status")
     if capability.get("rate_class") in {"sample_clocked", "high_rate"} and capability.get(
         "high_rate_json_payload"
     ):
@@ -321,6 +1246,28 @@ def validate_stream_capability(capability: dict[str, Any], errors: list[str]) ->
     if capability.get("rate_class") == "high_rate" and capability.get("payload_plane") == "json_event":
         errors.append(
             f"stream capability {capability.get('capability_id')} needs a non-JSON payload plane"
+        )
+    conditions = list_value(capability.get("required_conditions"))
+    if not conditions:
+        errors.append(
+            f"stream capability {capability.get('capability_id')} requires required_conditions"
+        )
+    for condition_row in conditions:
+        condition = object_value(condition_row)
+        if not str(condition.get("condition_id") or "").strip():
+            errors.append(
+                f"stream capability {capability.get('capability_id')} has a condition without condition_id"
+            )
+        if str(condition.get("status") or "") not in VALID_CONDITION_STATUS:
+            errors.append(
+                f"stream capability {capability.get('capability_id')} has invalid condition status"
+            )
+    timing = object_value(capability.get("timing"))
+    if not timing:
+        errors.append(f"stream capability {capability.get('capability_id')} requires timing")
+    elif not str(timing.get("rtt_strategy") or "").strip():
+        errors.append(
+            f"stream capability {capability.get('capability_id')} requires timing.rtt_strategy"
         )
 
 
@@ -355,6 +1302,492 @@ def execution_issues(executions: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 }
             )
     return issues
+
+
+def qcl080_runtime_evidence(
+    runtime_check: dict[str, Any] | None,
+    udp_check: dict[str, Any] | None,
+) -> dict[str, Any]:
+    observed = object_value((runtime_check or {}).get("observed"))
+    fields = object_value(observed.get("fields"))
+    if not fields:
+        udp_observed = object_value((udp_check or {}).get("observed"))
+        marker = object_value(udp_observed.get("runtime_marker"))
+        fields = object_value(marker.get("fields"))
+        observed = marker
+    return {
+        "schema": fields.get("schema"),
+        "status": fields.get("status"),
+        "phase": fields.get("phase"),
+        "enabled": fields.get("enabled"),
+        "host": fields.get("host"),
+        "port": int_or_none(fields.get("port")),
+        "marker": fields.get("marker"),
+        "run_id": fields.get("runId"),
+        "packets_requested": int_or_none(fields.get("packetsRequested")),
+        "packets_sent": int_or_none(fields.get("packetsSent")),
+        "interval_ms": float_or_none(fields.get("intervalMs")),
+        "elapsed_ms": float_or_none(fields.get("elapsedMs")),
+        "sender_source": fields.get("senderSource"),
+        "socket_owner": fields.get("socketOwner"),
+        "high_rate_json_payload": str(fields.get("highRateJsonPayload") or "").lower()
+        == "true",
+        "settings_control_payload": str(fields.get("settingsControlPayload") or "").lower()
+        == "true",
+        "issue": fields.get("issue"),
+        "marker_line": observed.get("line"),
+        "check_status": str((runtime_check or {}).get("status") or ""),
+    }
+
+
+def stream_capability_requirements(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    firewall_listener: dict[str, Any],
+) -> list[dict[str, Any]]:
+    packets_sent = int_or_none(runtime_evidence.get("packets_sent"))
+    packets_requested = int_or_none(runtime_evidence.get("packets_requested"))
+    runtime_ok = (
+        transport.get("endpoint_source") == "app_owned_runtime_udp_sender"
+        and runtime_evidence.get("status") == "sent"
+        and runtime_evidence.get("sender_source") == "makepad-runtime"
+        and runtime_evidence.get("socket_owner") == "app-owned"
+        and packets_sent is not None
+        and packets_requested is not None
+        and packets_sent >= packets_requested
+    )
+    listener_allowed = firewall_listener.get("allowed_on_active_profile") is True
+    product_rule_status = (
+        "missing" if diagnostic_python_program(firewall_listener.get("program")) else "present_unverified"
+    )
+    if not firewall_listener:
+        product_rule_status = "unknown"
+    return [
+        {
+            "requirement_id": "requirement.quest_device_link.qcl080.app_owned_runtime_sender",
+            "status": "satisfied" if runtime_ok else "missing",
+            "evidence": runtime_evidence.get("marker_line") or "",
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.host_udp_listener_firewall",
+            "status": "satisfied" if listener_allowed else "blocked",
+            "observed_program": firewall_listener.get("program"),
+            "observed_protocol": firewall_listener.get("protocol"),
+            "observed_port": firewall_listener.get("port"),
+            "observed_profiles": string_list(firewall_listener.get("active_profiles")),
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.product_host_firewall_rule",
+            "status": product_rule_status,
+            "observed_program": firewall_listener.get("program"),
+            "required_program_class": "signed_hostess_wpf_or_hostess_service",
+            "required": True,
+            "notes": (
+                "Development or diagnostic listeners can prove the data path, but product "
+                "readiness requires an inbound rule for the signed Hostess/WPF executable "
+                "or service."
+            ),
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl080_live_promotion",
+            "status": "satisfied"
+            if object_value(report.get("promotion")).get("allowed") is True
+            else "missing",
+            "source_status": report.get("status"),
+            "required": True,
+        },
+    ]
+
+
+def stream_capability_status(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    measurements: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> str:
+    if report.get("status") in {"fail", "blocked"}:
+        return "blocked"
+    if report.get("schema") != "rusty.quest.connectivity_topology_probe.v1":
+        return "rejected"
+    if report.get("probe_id") != "QCL-080" or transport.get("family") != "udp":
+        return "rejected"
+    if transport.get("endpoint_source") != "app_owned_runtime_udp_sender":
+        return "rejected"
+    if runtime_evidence.get("status") != "sent" or runtime_evidence.get("socket_owner") != "app-owned":
+        return "rejected"
+    packets_received = int_or_none(measurements.get("udp_packets_received"))
+    if packets_received is None or packets_received < 1:
+        return "blocked"
+    if object_value(report.get("promotion")).get("allowed") is not True:
+        return "candidate"
+    warning_statuses = {"missing", "blocked", "unknown"}
+    has_requirement_warning = any(
+        str(requirement.get("status") or "") in warning_statuses
+        for requirement in requirements
+        if isinstance(requirement, dict)
+    )
+    has_report_warning = report.get("status") == "warn" or any(
+        object_value(issue).get("severity") == "warning" for issue in list_value(report.get("issues"))
+    )
+    if has_requirement_warning or has_report_warning:
+        return "usable_with_warnings"
+    return "usable"
+
+
+def stream_capability_warnings(
+    report: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for issue in list_value(report.get("issues")):
+        if not isinstance(issue, dict):
+            continue
+        warnings.append(
+            {
+                "issue_code": str(issue.get("issue_code") or ""),
+                "severity": str(issue.get("severity") or "warning"),
+                "message": str(issue.get("message") or issue.get("issue_code") or ""),
+            }
+        )
+    product_rule = next(
+        (
+            requirement
+            for requirement in requirements
+            if isinstance(requirement, dict)
+            and requirement.get("requirement_id")
+            == "requirement.quest_device_link.product_host_firewall_rule"
+        ),
+        {},
+    )
+    if object_value(product_rule).get("status") in {"missing", "unknown"}:
+        warnings.append(
+            {
+                "issue_code": "hostess.issue.device_link.stream_capability.product_firewall_rule_missing",
+                "severity": "warning",
+                "message": (
+                    "QCL-080 used a diagnostic listener; product readiness still needs a "
+                    "scoped inbound firewall rule for the signed Hostess/WPF app."
+                ),
+            }
+        )
+    return warnings
+
+
+def qcl080_required_conditions(
+    requirements: list[dict[str, Any]],
+    *,
+    report: dict[str, Any],
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    firewall_listener: dict[str, Any],
+) -> list[dict[str, Any]]:
+    statuses = {
+        requirement_suffix(row): requirement_condition_status(str(row.get("status") or "unknown"))
+        for row in requirements
+        if isinstance(row, dict)
+    }
+    return [
+        condition(
+            "condition.qcl080.app_owned_runtime_sender",
+            "runtime",
+            statuses.get("app_owned_runtime_sender", "unknown"),
+            remediation="Use the Makepad/runtime-owned UDP sender rather than an adb-shell generator.",
+            evidence_refs=["runtime.qcl080_udp_sender"],
+            notes=str(runtime_evidence.get("marker_line") or ""),
+        ),
+        condition(
+            "condition.qcl080.host_udp_listener_firewall",
+            "firewall",
+            statuses.get("host_udp_listener_firewall", "unknown"),
+            remediation="Bind the fixed Hostess listener port and allow that executable/port on the active Windows profile.",
+            evidence_refs=["host.windows_firewall_listener"],
+            notes=(
+                f"{firewall_listener.get('program') or 'unknown'}:"
+                f"{firewall_listener.get('port') or 'unknown'}"
+            ),
+        ),
+        condition(
+            "condition.qcl080.product_host_firewall_rule",
+            "firewall",
+            statuses.get("product_host_firewall_rule", "unknown"),
+            remediation="Replace diagnostic Python listener evidence with the signed Hostess/WPF executable firewall rule.",
+            evidence_refs=["requirement.quest_device_link.product_host_firewall_rule"],
+        ),
+        condition(
+            "condition.qcl080.live_promotion",
+            "protocol",
+            statuses.get("qcl080_live_promotion", "unknown"),
+            remediation="Run QCL-080 live on the target topology and keep the promotion decision with the artifact.",
+            evidence_refs=["promotion.allowed"],
+            notes=str(object_value(report.get("promotion")).get("reason") or ""),
+        ),
+        condition(
+            "condition.qcl080.endpoint_source",
+            "runtime",
+            "satisfied"
+            if transport.get("endpoint_source") == "app_owned_runtime_udp_sender"
+            else "blocked",
+            remediation="Promote only app-owned runtime UDP senders into reusable stream capability descriptors.",
+            evidence_refs=["transport.endpoint_source"],
+        ),
+    ]
+
+
+def install_suite_environment_checks() -> list[dict[str, Any]]:
+    return [
+        environment_check(
+            "suite.host.os",
+            "host",
+            "Windows OS, architecture, and writable output directory",
+            "python tools\\hostessctl\\hostessctl.py companion-readiness --out target\\companion-readiness\\readiness.json",
+            ["check.host.os", "check.host.python", "check.host.output_directory"],
+        ),
+        environment_check(
+            "suite.toolchain.android",
+            "toolchain",
+            "ADB, Android SDK/JDK, Cargo, and cargo-makepad when Quest/Makepad routes are in scope",
+            "python tools\\hostessctl\\hostessctl.py companion-readiness --profile hostess-makepad-quest --out target\\companion-readiness\\quest-readiness.json",
+            ["check.tool.adb", "check.tool.android_sdk", "check.tool.jdk", "check.tool.cargo", "check.tool.cargo_makepad"],
+        ),
+        environment_check(
+            "suite.network.adapters",
+            "network",
+            "Host IPv4 candidates, Quest Wi-Fi IPv4, same-subnet state, and direct-ish hotspot topology",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-010 --out target\\connectivity-probe\\qcl010-live.json",
+            ["host.ipv4_candidate", "device.wifi_ipv4", "topology.same_subnet"],
+        ),
+        environment_check(
+            "suite.firewall.listener_rules",
+            "firewall",
+            "Windows active network/firewall profile and inbound listener rule coverage",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe windows-firewall-rule --program <HostessCompanion.Wpf.exe> --protocol UDP --port 18767 --out target\\connectivity-probe\\qcl080-firewall-plan.json",
+            ["host.windows_network_firewall_profile", "host.windows_firewall_listener"],
+        ),
+        environment_check(
+            "suite.device.identity",
+            "device",
+            "Quest ADB state, model, app package availability, runtime launchability, Wi-Fi, and Bluetooth adapters",
+            "python tools\\hostessctl\\hostessctl.py companion-readiness --require-device --require-makepad-package --out target\\companion-readiness\\device-readiness.json",
+            ["check.device.adb_state", "check.device.model", "device.wifi_ipv4", "device.bluetooth_adapter"],
+        ),
+        environment_check(
+            "suite.protocol.dependencies",
+            "protocol",
+            "Protocol libraries, helpers, and runtime endpoints for LSL, OSC, ZeroMQ, BLE/GATT, and RFCOMM",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe test-suite --out target\\connectivity-probe\\device-link-test-suite.json",
+            ["protocol.lsl_discovery", "protocol.osc_payload_exchange", "protocol.zeromq_dependency", "protocol.ble_gatt_status", "protocol.rfcomm_control"],
+        ),
+        environment_check(
+            "suite.timing.rtt",
+            "timing",
+            "RTT, one-way estimates, clock offset estimates, jitter, loss, reconnects, and parallel LSL timing references",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source quest-runtime --out target\\connectivity-probe\\qcl083-live-quest-runtime.json",
+            ["osc_rtt_ms_p95", "zeromq_rtt_ms_p95", "bluetooth_rtt_ms_p95", "lsl_discovery_ms"],
+        ),
+    ]
+
+
+def install_suite_test_slots() -> list[dict[str, Any]]:
+    return [
+        suite_slot(
+            "suite.qcl000.usb_adb_command_feedback",
+            "QCL-000",
+            "qcl-000-usb-adb-pass",
+            "device_link",
+            "USB ADB command-feedback baseline and app-private fallback path",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-000 --fixture-profile qcl-000-usb-adb-pass --out target\\connectivity-probe\\qcl000-fixture.json --fail-on-error",
+            metrics=["sent", "transport_ok", "authority_accepted", "runtime_accepted", "applied"],
+            rtt_policy="command_stage_receipts",
+        ),
+        suite_slot(
+            "suite.qcl010.same_wifi_tcp",
+            "QCL-010",
+            "qcl-010-router-pass",
+            "network",
+            "Router/existing-Wi-Fi host and Quest reachability plus TCP listener firewall posture",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-010 --out target\\connectivity-probe\\qcl010-live.json",
+            metrics=["tcp_connect_ms"],
+            rtt_policy="tcp_connect_only_not_full_rtt",
+        ),
+        suite_slot(
+            "suite.qcl011.pc_hotspot_tcp",
+            "QCL-011",
+            "qcl-011-pc-hotspot-pass",
+            "network",
+            "Windows Mobile Hotspot topology and LAN reachability",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-011 --topology-owner pc_hotspot --network-provider windows_mobile_hotspot --out target\\connectivity-probe\\qcl011-live.json",
+            metrics=["tcp_connect_ms"],
+            rtt_policy="tcp_connect_only_not_full_rtt",
+        ),
+        suite_slot(
+            "suite.qcl080.udp_freshness",
+            "QCL-080",
+            "qcl-080-app-owned-udp-freshness-pass",
+            "protocol",
+            "Quest app-owned UDP freshness, loss, jitter, and listener firewall coverage",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-080 --udp-sender-source makepad-runtime --udp-port 18767 --out target\\connectivity-probe\\qcl080-live.json",
+            metrics=["udp_packets_sent", "udp_packets_received", "udp_loss_percent", "jitter_ms_p95"],
+            rtt_policy="host_arrival_only_use_lsl_parallel_for_clock_alignment",
+        ),
+        suite_slot(
+            "suite.qcl081.lsl_clocked_samples",
+            "QCL-081",
+            "qcl-081-lsl-loopback-pass",
+            "protocol",
+            "LSL discovery, multicast behavior, sample continuity, and clock correction",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source host-loopback --out target\\connectivity-probe\\qcl081-live-host-loopback.json",
+            metrics=["lsl_discovery_ms", "lsl_samples_received", "lsl_sample_loss_percent"],
+            rtt_policy="lsl_time_correction_reference",
+        ),
+        suite_slot(
+            "suite.qcl083.osc_round_trip",
+            "QCL-083",
+            "qcl-083-osc-loopback-pass",
+            "protocol",
+            "OSC message shape, payload exchange, RTT, one-way estimate, and clock offset estimate",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source quest-runtime --out target\\connectivity-probe\\qcl083-live-quest-runtime.json",
+            metrics=["osc_messages_received", "osc_loss_percent", "osc_rtt_ms_p95", "osc_clock_offset_estimate_ms_median"],
+            rtt_policy="native_round_trip_ack",
+        ),
+        suite_slot(
+            "suite.qcl084.zeromq_native_rust",
+            "QCL-084",
+            "qcl-084-zeromq-loopback-pass",
+            "protocol",
+            "Generic ZeroMQ adapter dependency, socket exchange, RTT, and queue/decode counters",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source manifold-zmq-loopback --zeromq-pattern pub-sub --zeromq-manifold-root S:\\Work\\repos\\active\\rusty-manifold --out target\\connectivity-probe\\qcl084-live-manifold-zmq-loopback.json",
+            metrics=["zeromq_messages_received", "zeromq_rtt_ms_p95", "zeromq_clock_offset_estimate_ms_median"],
+            rtt_policy="req_rep_native_rtt_or_pub_sub_lsl_parallel_reference",
+        ),
+        suite_slot(
+            "suite.qcl050.bluetooth_rfcomm",
+            "QCL-050",
+            "qcl-050-rfcomm-control-pass",
+            "protocol",
+            "Bluetooth Classic RFCOMM pairing, service discovery, payload exchange, cleanup, and RTT",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-050 --bluetooth-payload-source android-rfcomm --out target\\connectivity-probe\\qcl050-live-rfcomm.json",
+            metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+            rtt_policy="native_round_trip_ack",
+        ),
+        suite_slot(
+            "suite.qcl051.bluetooth_gatt",
+            "QCL-051",
+            "qcl-051-ble-gatt-status-pass",
+            "protocol",
+            "BLE/GATT control write, status characteristic read, reconnect, cleanup, and RTT",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-051 --bluetooth-payload-source android-ble-gatt --out target\\connectivity-probe\\qcl051-live-ble-gatt.json",
+            metrics=["bluetooth_bytes_exchanged", "bluetooth_rtt_ms_p95"],
+            rtt_policy="native_write_ack_round_trip",
+        ),
+    ]
+
+
+def environment_check(
+    check_id: str,
+    category: str,
+    purpose: str,
+    command: str,
+    evidence_refs: list[str],
+) -> dict[str, Any]:
+    return {
+        "check_id": check_id,
+        "category": category,
+        "purpose": purpose,
+        "command": command,
+        "evidence_refs": evidence_refs,
+    }
+
+
+def suite_slot(
+    slot_id: str,
+    probe_id: str,
+    fixture_profile: str,
+    phase: str,
+    purpose: str,
+    live_command: str,
+    *,
+    metrics: list[str],
+    rtt_policy: str,
+) -> dict[str, Any]:
+    return {
+        "slot_id": slot_id,
+        "probe_id": probe_id,
+        "fixture_profile": fixture_profile,
+        "phase": phase,
+        "purpose": purpose,
+        "fixture_command": (
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
+            f"--mode fixture --probe-id {probe_id} --fixture-profile {fixture_profile} "
+            f"--out target\\connectivity-probe\\{fixture_profile}.json --fail-on-error"
+        ),
+        "live_command": live_command,
+        "metrics": metrics,
+        "rtt_policy": rtt_policy,
+        "artifacts": [
+            "rusty.quest.connectivity_topology_probe.v1",
+            "validation-report.json",
+        ],
+    }
+
+
+def requirement_suffix(requirement: dict[str, Any]) -> str:
+    return str(requirement.get("requirement_id") or "").split(".")[-1]
+
+
+def requirement_condition_status(status: str) -> str:
+    if status == "satisfied":
+        return "satisfied"
+    if status in {"missing", "blocked", "unknown"}:
+        return status
+    if status == "present_unverified":
+        return "candidate"
+    return "unknown"
+
+
+def report_check(report: dict[str, Any], name: str) -> dict[str, Any] | None:
+    for check in list_value(report.get("checks")):
+        if isinstance(check, dict) and check.get("name") == name:
+            return check
+    return None
+
+
+def diagnostic_python_program(program: Any) -> bool:
+    leaf = str(program or "").replace("\\", "/").rstrip("/").split("/")[-1].lower()
+    return leaf in {"python.exe", "python", "python3", "python3.exe"}
+
+
+def int_or_none(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def float_or_none(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def sha256_file(path: Path | None) -> str:
+    if path is None or not path.exists():
+        return ""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def readiness_check(report: dict[str, Any], check_id: str) -> dict[str, Any] | None:
@@ -453,9 +1886,23 @@ def safe_id(value: Any) -> str:
     return token or "session"
 
 
+def utc_now() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
+
+
 __all__ = [
     "QUEST_DEVICE_LINK_SCHEMA",
     "QUEST_DEVICE_LINK_VALIDATION_SCHEMA",
+    "QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_SCHEMA",
+    "QUEST_DEVICE_LINK_INSTALL_TEST_SUITE_VALIDATION_SCHEMA",
+    "QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA",
+    "QUEST_DEVICE_LINK_STREAM_CAPABILITY_VALIDATION_SCHEMA",
     "build_device_link_report",
+    "build_install_test_suite_descriptor",
+    "build_stream_capability_descriptor_from_connectivity_probe",
+    "run_install_test_suite_descriptor",
+    "run_stream_capability_descriptor",
     "validate_device_link_report",
+    "validate_install_test_suite_descriptor",
+    "validate_stream_capability_descriptor",
 ]

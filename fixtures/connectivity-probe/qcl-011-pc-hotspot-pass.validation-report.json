@@ -1,0 +1,13 @@
+{
+  "$schema": "rusty.hostess.connectivity_topology_probe.validation.v1",
+  "check_count": 12,
+  "errors": [],
+  "probe_id": "QCL-011",
+  "report_status": "pass",
+  "status": "pass",
+  "warnings": [
+    "QCL-011 report does not yet include WebSocket echo coverage",
+    "QCL-011 report does not yet include UDP freshness coverage",
+    "QCL-011 report does not yet include LSL discovery coverage"
+  ]
+}

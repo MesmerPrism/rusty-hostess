@@ -1,0 +1,254 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "device",
+      "issue_codes": [],
+      "name": "device.adb_state",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.42/24",
+      "issue_codes": [],
+      "name": "device.wifi_ipv4",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "selected=192.0.2.10",
+      "issue_codes": [],
+      "name": "host.ipv4_candidate",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.10 is in 192.0.2.0/24",
+      "issue_codes": [],
+      "name": "topology.same_subnet",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "0/12 packets, loss=100.0%",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.udp_freshness_failed"
+      ],
+      "name": "protocol.udp_freshness",
+      "notes": "",
+      "observed": {
+        "duplicates": 0,
+        "elapsed_ms": 5000,
+        "generator": "adb_shell_udp_generator",
+        "host_ip": "192.0.2.10",
+        "interarrival_ms_p95": null,
+        "loss_percent": 100.0,
+        "marker": "rusty-qcl-udp",
+        "packets_received": 0,
+        "packets_requested": 12,
+        "port": 18767,
+        "unique_sequences": []
+      },
+      "status": "fail"
+    },
+    {
+      "evidence": "Wi-Fi:Public; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.windows_network_profile_public"
+      ],
+      "name": "host.windows_network_firewall_profile",
+      "notes": "",
+      "observed": {
+        "connections": [
+          {
+            "IPv4Connectivity": "Internet",
+            "IPv6Connectivity": "Internet",
+            "InterfaceAlias": "Wi-Fi",
+            "InterfaceIndex": 16,
+            "Name": "fixture-wifi",
+            "NetworkCategory": "Public"
+          }
+        ],
+        "firewall": [
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Domain",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Private",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Public",
+            "NotifyOnListen": true
+          }
+        ],
+        "listener_firewall": {
+          "active_profiles": [
+            "Public"
+          ],
+          "allowed_on_active_profile": false,
+          "bind_host": "0.0.0.0",
+          "matching_rule_count": 0,
+          "matching_rules": [],
+          "port": 18767,
+          "probe": "windows_firewall_com_policy",
+          "program": "python.exe",
+          "protocol": "UDP"
+        }
+      },
+      "status": "warn"
+    },
+    {
+      "evidence": "python.exe UDP/18767 on Public: no active-profile allow rule (0 matching rule(s))",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.no_udp_listener_firewall_allow_rule"
+      ],
+      "name": "host.windows_firewall_listener",
+      "notes": "",
+      "observed": {
+        "active_profiles": [
+          "Public"
+        ],
+        "allowed_on_active_profile": false,
+        "bind_host": "0.0.0.0",
+        "matching_rule_count": 0,
+        "matching_rules": [],
+        "port": 18767,
+        "probe": "windows_firewall_com_policy",
+        "program": "python.exe",
+        "protocol": "UDP"
+      },
+      "status": "fail"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "device",
+    "android_sdk": "unknown",
+    "foreground_package": "not_checked",
+    "horizon_os": "unknown",
+    "model": "Quest 3S",
+    "ptc": "unknown",
+    "serial_redacted": true,
+    "wifi_interface": "wlan0",
+    "wifi_ipv4": "192.0.2.42",
+    "wifi_prefix_length": 24
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "firewall_listener": {
+      "active_profiles": [
+        "Public"
+      ],
+      "allowed_on_active_profile": false,
+      "bind_host": "0.0.0.0",
+      "matching_rule_count": 0,
+      "matching_rules": [],
+      "port": 18767,
+      "probe": "windows_firewall_com_policy",
+      "program": "python.exe",
+      "protocol": "UDP"
+    },
+    "firewall_profile": "Wi-Fi:Public; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+    "os": "windows",
+    "selected_ipv4": "192.0.2.10",
+    "toolchain_profile": "hostessctl.connectivity_probe.fixture"
+  },
+  "issues": [
+    {
+      "issue_code": "hostess.issue.connectivity_probe.udp_freshness_not_proven",
+      "message": "UDP freshness was not proven by the available checks",
+      "severity": "error"
+    },
+    {
+      "issue_code": "hostess.issue.connectivity_probe.windows_network_profile_public",
+      "message": "active Windows network/firewall profile can block Quest-to-PC LAN listeners",
+      "severity": "warning"
+    },
+    {
+      "issue_code": "hostess.issue.connectivity_probe.no_udp_listener_firewall_allow_rule",
+      "message": "no Windows Firewall allow rule covers the Hostess UDP freshness listener for the active profile",
+      "severity": "error"
+    }
+  ],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "reconnect_attempts": 1,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": 100.0,
+    "udp_packets_received": 0,
+    "udp_packets_sent": 12,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T14:28:25.423975Z",
+  "probe_id": "QCL-080",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture covers diagnostic UDP datagrams; app-owned runtime sender remains separate evidence",
+    "target": "quest.device_link UDP stream capability descriptor"
+  },
+  "run_id": "20260628-142825-qcl-080",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "fail",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "quest_to_host_lan",
+    "experimental": false,
+    "network_provider": "router_or_existing_wifi",
+    "owner": "external_wifi",
+    "requires_adb": true,
+    "requires_existing_wifi": true,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "adb_shell_udp_generator",
+    "family": "udp",
+    "local_endpoint": "192.0.2.10:18767",
+    "payload_class": "low_rate_diagnostic_datagram",
+    "protocol_role": "freshness_probe",
+    "remote_endpoint": "192.0.2.42",
+    "route": "qcl080_udp_freshness"
+  }
+}

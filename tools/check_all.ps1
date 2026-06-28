@@ -33,6 +33,8 @@ try {
         "tools\hostessctl\companion_readiness.py",
         "tools\hostessctl\companion_session.py",
         "tools\hostessctl\connectivity_probe.py",
+        "tools\hostessctl\connectivity_suite.py",
+        "tools\hostessctl\device_link_report.py",
         "tools\hostessctl\live_capture_routes.py",
         "tools\hostessctl\makepad_pmb_setup.py",
         "tools\hostessctl\manifold_recording.py",
@@ -79,6 +81,8 @@ try {
         "tools\test_hostessctl_companion_readiness.py",
         "tools\test_hostessctl_companion_session.py",
         "tools\test_hostessctl_connectivity_probe.py",
+        "tools\test_hostessctl_connectivity_suite.py",
+        "tools\test_hostessctl_device_link_report.py",
         "tools\test_hostessctl_questionnaire_bridge.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"

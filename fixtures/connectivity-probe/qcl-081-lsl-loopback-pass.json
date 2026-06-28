@@ -1,0 +1,125 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "fixture does not require a headset",
+      "issue_codes": [],
+      "name": "device.adb_state",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "selected=192.0.2.10",
+      "issue_codes": [],
+      "name": "host.ipv4_candidate",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "host-loopback fixture",
+      "issue_codes": [],
+      "name": "topology.same_subnet",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "stream RustyQCL081 discovered in 42ms",
+      "issue_codes": [],
+      "name": "protocol.lsl_discovery",
+      "notes": "",
+      "observed": {
+        "discovery_ms": 42,
+        "source": "host-loopback",
+        "stream_name": "RustyQCL081",
+        "stream_type": "Markers"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "16/16 samples received, loss=0.0%",
+      "issue_codes": [],
+      "name": "protocol.lsl_sample_continuity",
+      "notes": "",
+      "observed": {
+        "loss_percent": 0.0,
+        "monotonic_sequences": true,
+        "samples_received": 16,
+        "samples_requested": 16
+      },
+      "status": "pass"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "not_applicable",
+    "foreground_package": "not_checked",
+    "serial_redacted": true
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "os": "windows",
+    "selected_ipv4": "192.0.2.10",
+    "toolchain_profile": "hostessctl.connectivity_probe.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": 42,
+    "lsl_sample_loss_percent": 0.0,
+    "lsl_samples_received": 16,
+    "lsl_samples_requested": 16,
+    "reconnect_attempts": null,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T15:08:10.505273Z",
+  "probe_id": "QCL-081",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture covers LSL mechanics; Quest-owned LSL producer remains separate evidence",
+    "target": "quest.device_link LSL stream capability descriptor"
+  },
+  "run_id": "20260628-150810-qcl-081",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "lsl_multicast_discovery_plus_tcp_samples",
+    "experimental": false,
+    "network_provider": "loopback",
+    "owner": "host_local",
+    "requires_adb": false,
+    "requires_existing_wifi": false,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "host-loopback",
+    "family": "lsl",
+    "local_endpoint": "host-loopback",
+    "payload_class": "lsl_float32_samples",
+    "protocol_role": "study_stream_probe",
+    "remote_endpoint": "host-loopback",
+    "route": "qcl081_lsl_discovery_sample_continuity"
+  }
+}

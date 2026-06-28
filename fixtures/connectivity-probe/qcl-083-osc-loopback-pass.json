@@ -1,0 +1,106 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "OSC address and int/string payload shape parsed",
+      "issue_codes": [],
+      "name": "protocol.osc_message_shape",
+      "notes": "",
+      "observed": {
+        "address": "/rusty/qcl083",
+        "type_tags": ",is"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "16/16 OSC messages acknowledged, loss=0.0%",
+      "issue_codes": [],
+      "name": "protocol.osc_payload_exchange",
+      "notes": "",
+      "observed": {
+        "loss_percent": 0.0,
+        "messages_acknowledged": 16,
+        "messages_received": 16,
+        "messages_requested": 16,
+        "monotonic_sequences": true,
+        "round_trip_ms_p95": 8
+      },
+      "status": "pass"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "model": "fixture",
+    "serial_redacted": true,
+    "wifi_ipv4": ""
+  },
+  "host": {
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl083.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "osc_loss_percent": 0.0,
+    "osc_messages_received": 16,
+    "osc_messages_requested": 16,
+    "osc_rtt_ms_p95": 8,
+    "reconnect_attempts": null,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null,
+    "zeromq_messages_received": null,
+    "zeromq_messages_requested": null,
+    "zeromq_rtt_ms_p95": null
+  },
+  "observed_at_utc": "2026-06-28T19:09:33.207985Z",
+  "probe_id": "QCL-083",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture covers OSC mechanics; Quest-owned OSC sender/receiver remains separate evidence",
+    "target": "quest.device_link OSC control/telemetry capability descriptor"
+  },
+  "run_id": "20260628-190933-qcl-083",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "osc_udp_control_telemetry",
+    "experimental": false,
+    "network_provider": "loopback",
+    "owner": "host_local",
+    "requires_adb": false,
+    "requires_existing_wifi": false,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "host-loopback",
+    "family": "osc",
+    "local_endpoint": "host-loopback",
+    "payload_class": "osc_bounded_messages",
+    "protocol_role": "low_rate_control_telemetry_probe",
+    "remote_endpoint": "host-loopback",
+    "route": "qcl083_osc_udp_payload_exchange"
+  }
+}

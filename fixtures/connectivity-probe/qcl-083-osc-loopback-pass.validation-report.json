@@ -1,0 +1,9 @@
+{
+  "$schema": "rusty.hostess.connectivity_topology_probe.validation.v1",
+  "check_count": 2,
+  "errors": [],
+  "probe_id": "QCL-083",
+  "report_status": "pass",
+  "status": "pass",
+  "warnings": []
+}

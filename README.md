@@ -150,6 +150,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   fixture and same-Wi-Fi live topology checks, keeping topology ownership,
   low-rate diagnostic transport, and protocol-fit gaps inspectable before any
   route is promoted into WPF, Makepad, Rusty Quest, or Manifold modules.
+- `tools/hostessctl/connectivity_suite.py`: install/environment/protocol suite
+  runner. It executes selected QCL slots, records host network/firewall/tool
+  snapshots, aggregates grouped results, and emits
+  `rusty.quest.device_link.install_environment_suite_run.v1` for WPF, CLI,
+  installers, and future frontends.
 - `tools/hostessctl/pmb_broker_bridge.py`: Projected Motion Breath feedback
   publication, breath-source selection, and PMB receipt listening over the
   broker transport.
@@ -278,6 +283,17 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   QCL-010 same-Wi-Fi topology cases. Live QCL-010 mode uses serial-scoped ADB
   only to observe Quest Wi-Fi state and then probes the actual data path with
   host/Quest LAN reachability checks.
+- `tools/hostessctl/hostessctl.py connectivity-probe test-suite`: emits the
+  planned downloadable install/environment/protocol test set as
+  `rusty.quest.device_link.install_environment_test_suite.v1`. It groups host,
+  toolchain, network adapter, firewall, device, protocol, and RTT/clock
+  alignment checks, and links each QCL slot to the fixture/live commands and
+  reusable stream capability descriptors that WPF, Makepad, CLI, and future
+  frontends can render.
+- `tools/hostessctl/hostessctl.py connectivity-probe run-suite`: executes
+  selected QCL slots from the test-suite descriptor and emits
+  `rusty.quest.device_link.install_environment_suite_run.v1` with host
+  environment snapshots, grouped results, per-slot artifacts, and metrics.
 - `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
   replay/live evidence into `rusty.hostess.telemetry.snapshot.v1` checkpoints
   for Makepad and future Rusty GUI surfaces.

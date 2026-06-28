@@ -1,0 +1,107 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "pure Rust rusty-manifold-zmq adapter available for PUB/SUB",
+      "issue_codes": [],
+      "name": "protocol.zeromq_dependency",
+      "notes": "",
+      "observed": {
+        "bundles_libzmq": false,
+        "pattern": "pub-sub",
+        "source": "manifold-zmq-loopback"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "5/5 native Rust ZeroMQ PUB/SUB messages received",
+      "issue_codes": [],
+      "name": "protocol.zeromq_payload_exchange",
+      "notes": "",
+      "observed": {
+        "decode_error_count": 0,
+        "dropped_count": 0,
+        "messages_acknowledged": 5,
+        "messages_received": 5,
+        "messages_requested": 5,
+        "round_trip_ms_p95": 5
+      },
+      "status": "pass"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "model": "fixture",
+    "serial_redacted": true,
+    "wifi_ipv4": ""
+  },
+  "host": {
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl084.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "osc_loss_percent": null,
+    "osc_messages_received": null,
+    "osc_messages_requested": null,
+    "osc_rtt_ms_p95": null,
+    "reconnect_attempts": null,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null,
+    "zeromq_messages_received": 5,
+    "zeromq_messages_requested": 5,
+    "zeromq_rtt_ms_p95": 5
+  },
+  "observed_at_utc": "2026-06-28T19:15:50.200877Z",
+  "probe_id": "QCL-084",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture covers ZeroMQ mechanics; native Rust broker/runtime route remains separate evidence",
+    "target": "quest.device_link ZeroMQ/native Rust transport capability descriptor"
+  },
+  "run_id": "20260628-191550-qcl-084",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "zeromq_socket_exchange",
+    "experimental": false,
+    "network_provider": "loopback",
+    "owner": "host_local",
+    "requires_adb": false,
+    "requires_existing_wifi": false,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "manifold-zmq-loopback",
+    "family": "zeromq",
+    "local_endpoint": "host-loopback",
+    "payload_class": "bounded_zeromq_messages",
+    "protocol_role": "native_rust_transport_probe",
+    "remote_endpoint": "host-loopback",
+    "route": "qcl084_zeromq_socket_exchange"
+  }
+}

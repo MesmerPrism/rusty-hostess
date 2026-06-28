@@ -1,0 +1,324 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "192.0.2.42/24",
+      "issue_codes": [],
+      "name": "device.wifi_ipv4",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "selected=192.0.2.10",
+      "issue_codes": [],
+      "name": "host.ipv4_candidate",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "192.0.2.10 is in 192.0.2.0/24",
+      "issue_codes": [],
+      "name": "topology.same_subnet",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "Mobile Hotspot On; ssid=RustyHostess-QCL011; source=fixture-upstream; clients=1/8",
+      "issue_codes": [],
+      "name": "host.windows_mobile_hotspot",
+      "notes": "",
+      "observed": {
+        "available": true,
+        "band": "Auto",
+        "client_count": 1,
+        "max_client_count": 8,
+        "passphrase_set": true,
+        "source_profile": "fixture-upstream",
+        "ssid": "RustyHostess-QCL011",
+        "state": "On"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "2 packets received",
+      "issue_codes": [],
+      "name": "host_to_device.icmp_ping",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "2 packets received",
+      "issue_codes": [],
+      "name": "device_to_host.icmp_ping",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "rusty-qcl-tcp-echo",
+      "issue_codes": [],
+      "name": "device_to_host.tcp_echo",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "Wi-Fi:Private; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+      "issue_codes": [],
+      "name": "host.windows_network_firewall_profile",
+      "notes": "",
+      "observed": {
+        "connections": [
+          {
+            "IPv4Connectivity": "Internet",
+            "IPv6Connectivity": "Internet",
+            "InterfaceAlias": "Wi-Fi",
+            "InterfaceIndex": 16,
+            "Name": "fixture-wifi",
+            "NetworkCategory": "Private"
+          }
+        ],
+        "firewall": [
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Domain",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Private",
+            "NotifyOnListen": true
+          },
+          {
+            "AllowInboundRules": "NotConfigured",
+            "DefaultInboundAction": "NotConfigured",
+            "DefaultOutboundAction": "NotConfigured",
+            "Enabled": true,
+            "LogAllowed": false,
+            "LogBlocked": false,
+            "LogFileName": "%systemroot%\\system32\\LogFiles\\Firewall\\pfirewall.log",
+            "Name": "Public",
+            "NotifyOnListen": true
+          }
+        ],
+        "listener_firewall": {
+          "active_profiles": [
+            "Private"
+          ],
+          "allowed_on_active_profile": true,
+          "bind_host": "0.0.0.0",
+          "matching_rule_count": 1,
+          "matching_rules": [
+            {
+              "application_name": "python.exe",
+              "local_ports": "49152",
+              "name": "Rusty Hostess connectivity probe fixture",
+              "profile_mask": 2,
+              "profiles": [
+                "Private"
+              ],
+              "profiles_apply_to_active": true,
+              "protocol": 6
+            }
+          ],
+          "port": 49152,
+          "probe": "windows_firewall_com_policy",
+          "program": "python.exe",
+          "protocol": "TCP"
+        }
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "python.exe TCP/49152 on Private: allowed (1 matching rule(s))",
+      "issue_codes": [],
+      "name": "host.windows_firewall_listener",
+      "notes": "",
+      "observed": {
+        "active_profiles": [
+          "Private"
+        ],
+        "allowed_on_active_profile": true,
+        "bind_host": "0.0.0.0",
+        "matching_rule_count": 1,
+        "matching_rules": [
+          {
+            "application_name": "python.exe",
+            "local_ports": "49152",
+            "name": "Rusty Hostess connectivity probe fixture",
+            "profile_mask": 2,
+            "profiles": [
+              "Private"
+            ],
+            "profiles_apply_to_active": true,
+            "protocol": 6
+          }
+        ],
+        "port": 49152,
+        "probe": "windows_firewall_com_policy",
+        "program": "python.exe",
+        "protocol": "TCP"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "not part of the fixture slice",
+      "issue_codes": [],
+      "name": "protocol.websocket_echo",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "covered by QCL-080",
+      "issue_codes": [],
+      "name": "protocol.udp_freshness",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    },
+    {
+      "evidence": "covered by QCL-081",
+      "issue_codes": [],
+      "name": "protocol.lsl_discovery",
+      "notes": "",
+      "observed": {},
+      "status": "skipped"
+    }
+  ],
+  "classification": "baseline_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "device",
+    "android_sdk": "35",
+    "foreground_package": "unknown",
+    "horizon_os": "fixture",
+    "model": "Quest fixture",
+    "ptc": "unknown",
+    "serial_redacted": true,
+    "wifi_interface": "wlan0",
+    "wifi_ipv4": "192.0.2.42",
+    "wifi_prefix_length": 24
+  },
+  "host": {
+    "adb_provider": "fixture",
+    "firewall_listener": {
+      "active_profiles": [
+        "Private"
+      ],
+      "allowed_on_active_profile": true,
+      "bind_host": "0.0.0.0",
+      "matching_rule_count": 1,
+      "matching_rules": [
+        {
+          "application_name": "python.exe",
+          "local_ports": "49152",
+          "name": "Rusty Hostess connectivity probe fixture",
+          "profile_mask": 2,
+          "profiles": [
+            "Private"
+          ],
+          "profiles_apply_to_active": true,
+          "protocol": 6
+        }
+      ],
+      "port": 49152,
+      "probe": "windows_firewall_com_policy",
+      "program": "python.exe",
+      "protocol": "TCP"
+    },
+    "firewall_profile": "Wi-Fi:Private; Domain enabled=True inbound=NotConfigured, Private enabled=True inbound=NotConfigured, Public enabled=True inbound=NotConfigured",
+    "ipv4_candidates": [
+      {
+        "interface": "fixture-wifi",
+        "ip": "192.0.2.10",
+        "prefix_length": 24
+      }
+    ],
+    "mobile_hotspot": {
+      "available": true,
+      "band": "Auto",
+      "client_count": 1,
+      "max_client_count": 8,
+      "passphrase_set": true,
+      "source_profile": "fixture-upstream",
+      "ssid": "RustyHostess-QCL011",
+      "state": "On"
+    },
+    "os": "windows",
+    "selected_ipv4": "192.0.2.10",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl011.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "reconnect_attempts": 1,
+    "tcp_connect_ms": 12,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null
+  },
+  "observed_at_utc": "2026-06-28T16:27:39.601933Z",
+  "probe_id": "QCL-011",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture-only PC hotspot topology proof",
+    "target": "quest.device_link topology descriptor"
+  },
+  "run_id": "20260628-162739-qcl-011",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "quest_to_host_lan",
+    "experimental": false,
+    "network_provider": "windows_mobile_hotspot",
+    "owner": "pc_hotspot",
+    "requires_adb": true,
+    "requires_existing_wifi": false,
+    "requires_pairing": true,
+    "requires_termux": false
+  },
+  "transport": {
+    "family": "icmp_tcp",
+    "local_endpoint": "192.0.2.10",
+    "payload_class": "low_rate_diagnostic",
+    "protocol_role": "topology_probe",
+    "remote_endpoint": "192.0.2.42",
+    "route": "pc_hotspot_lan_probe"
+  }
+}

@@ -4,6 +4,7 @@
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -28,6 +29,9 @@
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL050_RFCOMM" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL051_BLE_GATT" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL083_OSC" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>

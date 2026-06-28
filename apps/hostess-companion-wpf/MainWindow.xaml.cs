@@ -12,6 +12,7 @@ public partial class MainWindow
             new HostessctlReadinessService(),
             new HostessctlCatalogService(),
             new HostessctlCommandService(),
-            new HostessctlSessionService());
+            new HostessctlSessionService(),
+            new HostessctlConnectivityService());
     }
 }

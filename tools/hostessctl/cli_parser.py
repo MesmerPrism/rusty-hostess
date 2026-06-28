@@ -567,7 +567,21 @@ def build_hostessctl_parser(
     connectivity_probe_run = connectivity_probe_subcommands.add_parser("run")
     connectivity_probe_run.add_argument("--out", required=True)
     connectivity_probe_run.add_argument("--validation-out")
-    connectivity_probe_run.add_argument("--probe-id", choices=["QCL-000", "QCL-010"], default="QCL-010")
+    connectivity_probe_run.add_argument(
+        "--probe-id",
+        choices=[
+            "QCL-000",
+            "QCL-010",
+            "QCL-011",
+            "QCL-050",
+            "QCL-051",
+            "QCL-080",
+            "QCL-081",
+            "QCL-083",
+            "QCL-084",
+        ],
+        default="QCL-010",
+    )
     connectivity_probe_run.add_argument("--run-id")
     connectivity_probe_run.add_argument("--mode", choices=["fixture", "live"], default="fixture")
     connectivity_probe_run.add_argument(
@@ -576,12 +590,40 @@ def build_hostessctl_parser(
             "qcl-000-usb-adb-pass",
             "qcl-010-router-pass",
             "qcl-010-router-firewall-blocked",
+            "qcl-011-pc-hotspot-pass",
+            "qcl-011-pc-hotspot-off",
+            "qcl-050-rfcomm-control-pass",
+            "qcl-050-rfcomm-pairing-refused",
+            "qcl-051-ble-gatt-status-pass",
+            "qcl-051-ble-permission-denied",
+            "qcl-080-udp-freshness-pass",
+            "qcl-080-app-owned-udp-freshness-pass",
+            "qcl-080-udp-firewall-blocked",
+            "qcl-081-lsl-loopback-pass",
+            "qcl-081-lsl-discovery-blocked",
+            "qcl-083-osc-loopback-pass",
+            "qcl-083-osc-malformed-packet",
+            "qcl-084-zeromq-loopback-pass",
+            "qcl-084-zeromq-dependency-missing",
         ],
     )
     connectivity_probe_run.add_argument("--adb")
     connectivity_probe_run.add_argument("--serial")
     connectivity_probe_run.add_argument("--wifi-interface", default="wlan0")
     connectivity_probe_run.add_argument("--host-ip")
+    connectivity_probe_run.add_argument(
+        "--topology-owner",
+        choices=[
+            "external_wifi",
+            "pc_hotspot",
+            "phone_hotspot",
+            "travel_router",
+            "local_only_hotspot",
+            "wifi_direct",
+        ],
+        default="",
+    )
+    connectivity_probe_run.add_argument("--network-provider", default="")
     connectivity_probe_run.add_argument("--skip-host-ping", action="store_true")
     connectivity_probe_run.add_argument("--skip-device-ping", action="store_true")
     connectivity_probe_run.add_argument("--skip-tcp-echo", action="store_true")
@@ -589,9 +631,227 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--tcp-echo-port", type=int, default=0)
     connectivity_probe_run.add_argument("--tcp-echo-marker", default="rusty-qcl-tcp-echo")
     connectivity_probe_run.add_argument("--tcp-timeout-seconds", type=float, default=4.0)
+    connectivity_probe_run.add_argument("--skip-udp-freshness", action="store_true")
+    connectivity_probe_run.add_argument("--udp-bind-host", default="0.0.0.0")
+    connectivity_probe_run.add_argument("--udp-port", type=int, default=0)
+    connectivity_probe_run.add_argument("--udp-marker", default="rusty-qcl-udp")
+    connectivity_probe_run.add_argument("--udp-packet-count", type=int, default=12)
+    connectivity_probe_run.add_argument("--udp-interval-ms", type=float, default=50.0)
+    connectivity_probe_run.add_argument("--udp-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument("--udp-max-loss-percent", type=float, default=10.0)
+    connectivity_probe_run.add_argument("--udp-max-jitter-ms", type=float, default=250.0)
+    connectivity_probe_run.add_argument("--udp-listener-helper", default="")
+    connectivity_probe_run.add_argument(
+        "--udp-sender-source",
+        choices=["auto", "adb-shell", "adb-pushed-native", "makepad-runtime"],
+        default="auto",
+    )
+    connectivity_probe_run.add_argument("--udp-sender-host-path")
+    connectivity_probe_run.add_argument("--udp-sender-device-path", default="/data/local/tmp/rusty-qcl080-udp-sender")
+    connectivity_probe_run.add_argument("--makepad-package", default="io.github.mesmerprism.rustyhostess.makepad")
+    connectivity_probe_run.add_argument(
+        "--makepad-activity",
+        default="io.github.mesmerprism.rustyhostess.makepad/.MakepadAppXr",
+    )
+    connectivity_probe_run.add_argument("--skip-makepad-force-stop", action="store_true")
+    connectivity_probe_run.add_argument("--makepad-launch-timeout-seconds", type=float, default=10.0)
+    connectivity_probe_run.add_argument(
+        "--lsl-source",
+        choices=["host-loopback", "quest-runtime", "external"],
+        default="host-loopback",
+    )
+    connectivity_probe_run.add_argument("--lsl-stream-name", default="RustyQCL081")
+    connectivity_probe_run.add_argument("--lsl-stream-type", default="Markers")
+    connectivity_probe_run.add_argument("--lsl-sample-count", type=int, default=16)
+    connectivity_probe_run.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument(
+        "--osc-source",
+        choices=["host-loopback", "quest-runtime", "external"],
+        default="host-loopback",
+    )
+    connectivity_probe_run.add_argument("--osc-address", default="/rusty/qcl083")
+    connectivity_probe_run.add_argument("--osc-port", type=int, default=0)
+    connectivity_probe_run.add_argument("--osc-message-count", type=int, default=16)
+    connectivity_probe_run.add_argument("--osc-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument("--osc-max-loss-percent", type=float, default=0.0)
+    connectivity_probe_run.add_argument(
+        "--zeromq-source",
+        choices=[
+            "manifold-zmq-loopback",
+            "rusty-xr-zmq-loopback",
+            "host-loopback",
+            "goofi-sidecar",
+            "native-rust-broker",
+            "quest-runtime",
+            "external",
+        ],
+        default="manifold-zmq-loopback",
+    )
+    connectivity_probe_run.add_argument(
+        "--zeromq-pattern",
+        choices=["req-rep", "pub-sub"],
+        default="pub-sub",
+    )
+    connectivity_probe_run.add_argument("--zeromq-message-count", type=int, default=16)
+    connectivity_probe_run.add_argument("--zeromq-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument("--zeromq-port", type=int, default=18784)
+    connectivity_probe_run.add_argument("--zeromq-android-binary-host-path", default="")
+    connectivity_probe_run.add_argument(
+        "--zeromq-android-binary-device-path",
+        default="/data/local/tmp/rusty-qcl084-req-rep-probe",
+    )
+    connectivity_probe_run.add_argument("--zeromq-manifold-root", default="")
+    connectivity_probe_run.add_argument("--zeromq-rusty-xr-root", default="")
+    connectivity_probe_run.add_argument("--zeromq-goofi-bridge-root", default="")
+    connectivity_probe_run.add_argument("--zeromq-cargo-timeout-seconds", type=float, default=120.0)
+    connectivity_probe_run.add_argument(
+        "--bluetooth-payload-source",
+        choices=["passive", "android-ble-gatt", "android-rfcomm"],
+        default="passive",
+    )
+    connectivity_probe_run.add_argument("--bluetooth-helper", default="")
+    connectivity_probe_run.add_argument("--bluetooth-message-count", type=int, default=3)
+    connectivity_probe_run.add_argument("--bluetooth-reconnect-count", type=int, default=0)
+    connectivity_probe_run.add_argument("--bluetooth-timeout-seconds", type=float, default=20.0)
+    connectivity_probe_run.add_argument("--hostess-android-package", default="io.github.mesmerprism.rustyhostess.t")
     connectivity_probe_run.add_argument("--ping-count", type=int, default=2)
     connectivity_probe_run.add_argument("--ping-timeout-seconds", type=float, default=2.0)
     connectivity_probe_run.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_firewall = connectivity_probe_subcommands.add_parser("windows-firewall-rule")
+    connectivity_probe_firewall.add_argument("--out")
+    connectivity_probe_firewall.add_argument("--program")
+    connectivity_probe_firewall.add_argument("--protocol", choices=["TCP", "UDP"], default="TCP")
+    connectivity_probe_firewall.add_argument("--port", type=int, default=18766)
+    connectivity_probe_firewall.add_argument("--profile", default="Public")
+    connectivity_probe_firewall.add_argument("--remote-address", default="LocalSubnet")
+    connectivity_probe_firewall.add_argument("--rule-name")
+    connectivity_probe_firewall.add_argument("--apply", action="store_true")
+    connectivity_probe_firewall.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_stream_capability = connectivity_probe_subcommands.add_parser("stream-capability")
+    connectivity_probe_stream_capability.add_argument("--input", required=True)
+    connectivity_probe_stream_capability.add_argument("--out", required=True)
+    connectivity_probe_stream_capability.add_argument("--validation-out")
+    connectivity_probe_stream_capability.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_test_suite = connectivity_probe_subcommands.add_parser("test-suite")
+    connectivity_probe_test_suite.add_argument("--out", required=True)
+    connectivity_probe_test_suite.add_argument("--validation-out")
+    connectivity_probe_test_suite.add_argument("--suite-id", default="")
+    connectivity_probe_test_suite.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_run_suite = connectivity_probe_subcommands.add_parser("run-suite")
+    connectivity_probe_run_suite.add_argument("--out", required=True)
+    connectivity_probe_run_suite.add_argument("--validation-out")
+    connectivity_probe_run_suite.add_argument("--suite-out")
+    connectivity_probe_run_suite.add_argument("--artifact-dir")
+    connectivity_probe_run_suite.add_argument("--suite-id", default="")
+    connectivity_probe_run_suite.add_argument("--run-id")
+    connectivity_probe_run_suite.add_argument("--mode", choices=["fixture", "live"], default="fixture")
+    connectivity_probe_run_suite.add_argument(
+        "--probe-id",
+        action="append",
+        choices=[
+            "QCL-000",
+            "QCL-010",
+            "QCL-011",
+            "QCL-050",
+            "QCL-051",
+            "QCL-080",
+            "QCL-081",
+            "QCL-083",
+            "QCL-084",
+        ],
+    )
+    connectivity_probe_run_suite.add_argument("--skip-host-snapshot", action="store_true")
+    connectivity_probe_run_suite.add_argument("--listener-program", default="")
+    connectivity_probe_run_suite.add_argument("--listener-protocol", choices=["TCP", "UDP"], default="UDP")
+    connectivity_probe_run_suite.add_argument("--listener-port", type=int, default=18767)
+    connectivity_probe_run_suite.add_argument("--listener-bind-host", default="0.0.0.0")
+    connectivity_probe_run_suite.add_argument("--adb")
+    connectivity_probe_run_suite.add_argument("--serial")
+    connectivity_probe_run_suite.add_argument("--wifi-interface", default="wlan0")
+    connectivity_probe_run_suite.add_argument("--host-ip")
+    connectivity_probe_run_suite.add_argument(
+        "--topology-owner",
+        choices=[
+            "external_wifi",
+            "pc_hotspot",
+            "phone_hotspot",
+            "travel_router",
+            "local_only_hotspot",
+            "wifi_direct",
+        ],
+        default="",
+    )
+    connectivity_probe_run_suite.add_argument("--network-provider", default="")
+    connectivity_probe_run_suite.add_argument("--tcp-echo-bind-host", default="0.0.0.0")
+    connectivity_probe_run_suite.add_argument("--tcp-echo-port", type=int, default=0)
+    connectivity_probe_run_suite.add_argument("--tcp-echo-marker", default="rusty-qcl-tcp-echo")
+    connectivity_probe_run_suite.add_argument("--tcp-timeout-seconds", type=float, default=4.0)
+    connectivity_probe_run_suite.add_argument("--udp-bind-host", default="0.0.0.0")
+    connectivity_probe_run_suite.add_argument("--udp-port", type=int, default=0)
+    connectivity_probe_run_suite.add_argument("--udp-marker", default="rusty-qcl-udp")
+    connectivity_probe_run_suite.add_argument("--udp-packet-count", type=int, default=12)
+    connectivity_probe_run_suite.add_argument("--udp-interval-ms", type=float, default=50.0)
+    connectivity_probe_run_suite.add_argument("--udp-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--udp-max-loss-percent", type=float, default=10.0)
+    connectivity_probe_run_suite.add_argument("--udp-max-jitter-ms", type=float, default=250.0)
+    connectivity_probe_run_suite.add_argument("--udp-listener-helper", default="")
+    connectivity_probe_run_suite.add_argument(
+        "--udp-sender-source",
+        choices=["auto", "adb-shell", "adb-pushed-native", "makepad-runtime"],
+        default="auto",
+    )
+    connectivity_probe_run_suite.add_argument("--udp-sender-host-path")
+    connectivity_probe_run_suite.add_argument("--udp-sender-device-path", default="/data/local/tmp/rusty-qcl080-udp-sender")
+    connectivity_probe_run_suite.add_argument("--makepad-package", default="io.github.mesmerprism.rustyhostess.makepad")
+    connectivity_probe_run_suite.add_argument(
+        "--makepad-activity",
+        default="io.github.mesmerprism.rustyhostess.makepad/.MakepadAppXr",
+    )
+    connectivity_probe_run_suite.add_argument("--skip-makepad-force-stop", action="store_true")
+    connectivity_probe_run_suite.add_argument("--makepad-launch-timeout-seconds", type=float, default=10.0)
+    connectivity_probe_run_suite.add_argument("--lsl-source", choices=["host-loopback", "quest-runtime", "external"], default="host-loopback")
+    connectivity_probe_run_suite.add_argument("--lsl-stream-name", default="RustyQCL081")
+    connectivity_probe_run_suite.add_argument("--lsl-stream-type", default="Markers")
+    connectivity_probe_run_suite.add_argument("--lsl-sample-count", type=int, default=16)
+    connectivity_probe_run_suite.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--osc-source", choices=["host-loopback", "quest-runtime", "external"], default="host-loopback")
+    connectivity_probe_run_suite.add_argument("--osc-address", default="/rusty/qcl083")
+    connectivity_probe_run_suite.add_argument("--osc-port", type=int, default=0)
+    connectivity_probe_run_suite.add_argument("--osc-message-count", type=int, default=16)
+    connectivity_probe_run_suite.add_argument("--osc-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--osc-max-loss-percent", type=float, default=0.0)
+    connectivity_probe_run_suite.add_argument(
+        "--zeromq-source",
+        choices=[
+            "manifold-zmq-loopback",
+            "rusty-xr-zmq-loopback",
+            "host-loopback",
+            "goofi-sidecar",
+            "native-rust-broker",
+            "quest-runtime",
+            "external",
+        ],
+        default="manifold-zmq-loopback",
+    )
+    connectivity_probe_run_suite.add_argument("--zeromq-pattern", choices=["req-rep", "pub-sub"], default="pub-sub")
+    connectivity_probe_run_suite.add_argument("--zeromq-message-count", type=int, default=16)
+    connectivity_probe_run_suite.add_argument("--zeromq-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--zeromq-port", type=int, default=18784)
+    connectivity_probe_run_suite.add_argument("--zeromq-android-binary-host-path", default="")
+    connectivity_probe_run_suite.add_argument("--zeromq-android-binary-device-path", default="/data/local/tmp/rusty-qcl084-req-rep-probe")
+    connectivity_probe_run_suite.add_argument("--zeromq-manifold-root", default="")
+    connectivity_probe_run_suite.add_argument("--zeromq-rusty-xr-root", default="")
+    connectivity_probe_run_suite.add_argument("--zeromq-goofi-bridge-root", default="")
+    connectivity_probe_run_suite.add_argument("--zeromq-cargo-timeout-seconds", type=float, default=120.0)
+    connectivity_probe_run_suite.add_argument("--bluetooth-payload-source", choices=["passive", "android-ble-gatt", "android-rfcomm"], default="passive")
+    connectivity_probe_run_suite.add_argument("--bluetooth-helper", default="")
+    connectivity_probe_run_suite.add_argument("--bluetooth-message-count", type=int, default=3)
+    connectivity_probe_run_suite.add_argument("--bluetooth-reconnect-count", type=int, default=0)
+    connectivity_probe_run_suite.add_argument("--bluetooth-timeout-seconds", type=float, default=20.0)
+    connectivity_probe_run_suite.add_argument("--hostess-android-package", default="io.github.mesmerprism.rustyhostess.t")
+    connectivity_probe_run_suite.add_argument("--ping-count", type=int, default=2)
+    connectivity_probe_run_suite.add_argument("--ping-timeout-seconds", type=float, default=2.0)
+    connectivity_probe_run_suite.add_argument("--fail-on-error", action="store_true")
 
     render = subcommands.add_parser("render-telemetry")
     render.add_argument("--target", choices=["desktop", "phone", "quest"], required=True)

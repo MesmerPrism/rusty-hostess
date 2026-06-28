@@ -34,6 +34,12 @@
           <TextBlock Text="{Binding CatalogStatusLabel}"
                      VerticalAlignment="Center"
                      Foreground="{Binding CatalogStatusBrush}"/>
+          <TextBlock Text="  /  "
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource Brush.Muted}"/>
+          <TextBlock Text="{Binding ConnectivityStatusLabel}"
+                     VerticalAlignment="Center"
+                     Foreground="{Binding ConnectivityStatusBrush}"/>
         </StackPanel>
       </Grid>
     </Border>
@@ -164,6 +170,132 @@
               <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*"/>
             </DataGrid.Columns>
           </DataGrid>
+
+          <Grid Visibility="{Binding IsConnectivitySelected, Converter={StaticResource BooleanToVisibility}}">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="8"/>
+              <RowDefinition Height="*"/>
+            </Grid.RowDefinitions>
+
+            <Border Background="{StaticResource Brush.Surface}"
+                    BorderBrush="{StaticResource Brush.Border}"
+                    BorderThickness="1"
+                    Padding="12">
+              <Grid>
+                <Grid.RowDefinitions>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="6"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="6"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="6"/>
+                  <RowDefinition Height="Auto"/>
+                  <RowDefinition Height="10"/>
+                  <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                  <ColumnDefinition Width="76"/>
+                  <ColumnDefinition Width="110"/>
+                  <ColumnDefinition Width="70"/>
+                  <ColumnDefinition Width="90"/>
+                  <ColumnDefinition Width="70"/>
+                  <ColumnDefinition Width="112"/>
+                </Grid.ColumnDefinitions>
+
+                <TextBlock Text="Program"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Column="1"
+                         Grid.ColumnSpan="5"
+                         Text="{Binding ConnectivityProgram, UpdateSourceTrigger=PropertyChanged}"
+                         ToolTip="Executable allowed by the scoped Windows Firewall rule"/>
+
+                <TextBlock Grid.Row="2"
+                           Text="Port"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Row="2"
+                         Grid.Column="1"
+                         Text="{Binding ConnectivityPort, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Grid.Row="2"
+                           Grid.Column="2"
+                           Text="Protocol"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Row="2"
+                         Grid.Column="3"
+                         Text="{Binding ConnectivityProtocol, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Grid.Row="2"
+                           Grid.Column="4"
+                           Text="Profile"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Row="2"
+                         Grid.Column="5"
+                         Text="{Binding ConnectivityProfile, UpdateSourceTrigger=PropertyChanged}"/>
+
+                <TextBlock Grid.Row="4"
+                           Text="Remote"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Row="4"
+                         Grid.Column="1"
+                         Grid.ColumnSpan="5"
+                         Text="{Binding ConnectivityRemoteAddress, UpdateSourceTrigger=PropertyChanged}"/>
+
+                <TextBlock Grid.Row="6"
+                           Text="Rule"
+                           VerticalAlignment="Center"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <TextBox Grid.Row="6"
+                         Grid.Column="1"
+                         Grid.ColumnSpan="5"
+                         Text="{Binding ConnectivityRuleName, UpdateSourceTrigger=PropertyChanged}"/>
+
+                <WrapPanel Grid.Row="8"
+                           Grid.ColumnSpan="6">
+                  <Button Content="{Binding PlanFirewallRuleButtonLabel}"
+                          Command="{Binding PlanFirewallRuleCommand}"
+                          ToolTip="Write a firewall rule plan artifact"/>
+                  <Button Content="{Binding ApplyFirewallRuleButtonLabel}"
+                          Command="{Binding ApplyFirewallRuleCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Apply the planned firewall rule with Windows administrator approval"/>
+                  <Button Content="{Binding VerifyConnectivityButtonLabel}"
+                          Command="{Binding VerifyConnectivityCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Run QCL-010 for TCP or QCL-080 for UDP against the headset"/>
+                  <Button Content="{Binding RunConnectivitySuiteButtonLabel}"
+                          Command="{Binding RunConnectivitySuiteCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Run the fixture install/environment/protocol suite and render grouped results"/>
+                  <Button Content="{Binding RemoveFirewallRuleButtonLabel}"
+                          Command="{Binding RemoveFirewallRuleCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Remove the selected firewall rule with Windows administrator approval"/>
+                  <TextBlock Text="{Binding ConnectivityStatusLabel}"
+                             Foreground="{Binding ConnectivityStatusBrush}"
+                             VerticalAlignment="Center"
+                             Margin="16,0,0,0"/>
+                </WrapPanel>
+              </Grid>
+            </Border>
+
+            <DataGrid Grid.Row="2"
+                      ItemsSource="{Binding ConnectivityChecks}"
+                      SelectedItem="{Binding SelectedConnectivityCheck}"
+                      AutoGenerateColumns="False">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Check" Binding="{Binding Name}" Width="230"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*"/>
+                <DataGridTextColumn Header="Issues" Binding="{Binding IssueCodes}" Width="190"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </Grid>
 
           <Grid Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}">
             <Grid.RowDefinitions>

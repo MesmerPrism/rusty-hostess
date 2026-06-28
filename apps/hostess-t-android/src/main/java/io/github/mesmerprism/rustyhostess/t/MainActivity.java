@@ -45,6 +45,9 @@ public final class MainActivity extends Activity {
     private static final String ACTION_PMB_SIMULATED_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_SIMULATED_LIVE";
     private static final String ACTION_PMB_PHYSICAL_LIVE = "io.github.mesmerprism.rustyhostess.t.RUN_PMB_PHYSICAL_LIVE";
     private static final String ACTION_BROKER_TELEMETRY = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY";
+    private static final String ACTION_QCL050_RFCOMM = "io.github.mesmerprism.rustyhostess.t.RUN_QCL050_RFCOMM";
+    private static final String ACTION_QCL051_BLE_GATT = "io.github.mesmerprism.rustyhostess.t.RUN_QCL051_BLE_GATT";
+    private static final String ACTION_QCL083_OSC = "io.github.mesmerprism.rustyhostess.t.RUN_QCL083_OSC";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
     private static final String SOFTWARE_ORIGIN = "rusty-hostess";
@@ -122,6 +125,18 @@ public final class MainActivity extends Activity {
             startBrokerTelemetryObserver(intent);
             return;
         }
+        if (ACTION_QCL050_RFCOMM.equals(intent.getAction())) {
+            startQcl050RfcommProbe(intent);
+            return;
+        }
+        if (ACTION_QCL051_BLE_GATT.equals(intent.getAction())) {
+            startQcl051BleGattProbe(intent);
+            return;
+        }
+        if (ACTION_QCL083_OSC.equals(intent.getAction())) {
+            startQcl083OscProbe(intent);
+            return;
+        }
         if (!ACTION_RUN.equals(intent.getAction())) {
             telemetryView.setRunState("ready", "idle", new ArrayList<>());
             return;
@@ -160,6 +175,54 @@ public final class MainActivity extends Activity {
         telemetryView.setPage(brokerTelemetryRun.telemetryPage);
         telemetryView.setRunState("running", "broker_acc", observerModules);
         brokerTelemetryRun.start();
+    }
+
+    private void startQcl051BleGattProbe(Intent intent) {
+        if (run != null) {
+            run.close();
+            run = null;
+        }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+            brokerTelemetryRun = null;
+        }
+        List<String> modules = new ArrayList<>();
+        modules.add("module.hostess.qcl051_ble_gatt_server");
+        telemetryView.resetForRun("qcl051_ble_gatt", modules);
+        telemetryView.setRunState("running", "qcl051_ble_gatt", modules);
+        Qcl051BleGattProbe.start(this, intent, handler, telemetryView);
+    }
+
+    private void startQcl050RfcommProbe(Intent intent) {
+        if (run != null) {
+            run.close();
+            run = null;
+        }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+            brokerTelemetryRun = null;
+        }
+        List<String> modules = new ArrayList<>();
+        modules.add("module.hostess.qcl050_rfcomm_server");
+        telemetryView.resetForRun("qcl050_rfcomm", modules);
+        telemetryView.setRunState("running", "qcl050_rfcomm", modules);
+        Qcl050RfcommProbe.start(this, intent, handler, telemetryView);
+    }
+
+    private void startQcl083OscProbe(Intent intent) {
+        if (run != null) {
+            run.close();
+            run = null;
+        }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+            brokerTelemetryRun = null;
+        }
+        List<String> modules = new ArrayList<>();
+        modules.add("module.hostess.qcl083_osc_server");
+        telemetryView.resetForRun("qcl083_osc", modules);
+        telemetryView.setRunState("running", "qcl083_osc", modules);
+        Qcl083OscProbe.start(this, intent, handler, telemetryView);
     }
 
     private void writeSyntheticReplay(Intent intent) {
