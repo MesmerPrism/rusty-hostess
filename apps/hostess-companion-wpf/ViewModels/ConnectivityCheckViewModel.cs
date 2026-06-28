@@ -4,7 +4,7 @@ using HostessCompanion.Wpf.Models;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class ConnectivityCheckViewModel
+public sealed class ConnectivityCheckViewModel : IOperatorDetailRow
 {
     private static readonly JsonSerializerOptions DetailJsonOptions = new() { WriteIndented = true };
 

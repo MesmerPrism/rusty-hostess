@@ -3,7 +3,7 @@ using HostessCompanion.Wpf.Models;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class CommandStageViewModel
+public sealed class CommandStageViewModel : IOperatorDetailRow
 {
     public CommandStageViewModel(CommandStageObservation observation)
     {

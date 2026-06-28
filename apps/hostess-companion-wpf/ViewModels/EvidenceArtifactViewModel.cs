@@ -3,7 +3,7 @@ using HostessCompanion.Wpf.Models;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class EvidenceArtifactViewModel
+public sealed class EvidenceArtifactViewModel : IOperatorDetailRow
 {
     public EvidenceArtifactViewModel(CompanionModuleDescriptor module, EvidenceArtifactBinding artifact)
     {

@@ -3,7 +3,7 @@ using HostessCompanion.Wpf.Models;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class SessionArtifactViewModel
+public sealed class SessionArtifactViewModel : IOperatorDetailRow
 {
     public SessionArtifactViewModel(SessionArtifactRef artifact, string previewText)
     {

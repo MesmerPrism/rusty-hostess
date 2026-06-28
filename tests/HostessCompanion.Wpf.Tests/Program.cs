@@ -1,3 +1,4 @@
+using System.Reflection;
 using System.Text.Json;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
@@ -10,6 +11,7 @@ var tests = new (string Name, Action Test)[]
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
+    ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
 };
 
 var failed = 0;
@@ -186,6 +188,77 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "LoadSessionHistoryCommand"
             && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
+}
+
+static void PageViewModelsOwnWpfRowsAndSelections()
+{
+    AssertPageProperty("ReadinessPage", typeof(OperatorPageViewModel<CheckViewModel>));
+    AssertPageProperty("DevicesPage", typeof(OperatorPageViewModel<CheckViewModel>));
+    AssertPageProperty("ConnectivityPage", typeof(OperatorPageViewModel<ConnectivityCheckViewModel>));
+    AssertPageProperty("SessionPage", typeof(SessionPageViewModel));
+    AssertPageProperty("TransportsPage", typeof(OperatorPageViewModel<TransportViewModel>));
+    AssertPageProperty("CommandsPage", typeof(OperatorPageViewModel<CommandStageViewModel>));
+    AssertPageProperty("EvidencePage", typeof(OperatorPageViewModel<EvidenceArtifactViewModel>));
+
+    var staleMainWindowFields = new HashSet<string>(StringComparer.Ordinal)
+    {
+        "selectedCheck",
+        "selectedDeviceCheck",
+        "selectedConnectivityCheck",
+        "selectedSessionHistoryEntry",
+        "selectedSessionPhase",
+        "selectedSessionArtifact",
+        "selectedTransport",
+        "selectedCommandStage",
+        "selectedEvidenceArtifact",
+    };
+    var mainWindowFields = typeof(MainWindowViewModel)
+        .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
+        .Select(field => field.Name);
+    Assert(!mainWindowFields.Any(staleMainWindowFields.Contains),
+        "page row selections must be owned by page viewmodels, not MainWindowViewModel fields");
+
+    var vm = new MainWindowViewModel(
+        new HostessctlReadinessService(),
+        new HostessctlCatalogService(),
+        new HostessctlCommandService(),
+        new HostessctlSessionService(),
+        new HostessctlConnectivityService());
+    Assert(ReferenceEquals(vm.Checks, vm.ReadinessPage.Rows), "readiness rows must be page-owned");
+    Assert(ReferenceEquals(vm.DeviceChecks, vm.DevicesPage.Rows), "device rows must be page-owned");
+    Assert(ReferenceEquals(vm.ConnectivityChecks, vm.ConnectivityPage.Rows), "connectivity rows must be page-owned");
+    Assert(ReferenceEquals(vm.SessionHistory, vm.SessionPage.History), "session history must be page-owned");
+    Assert(ReferenceEquals(vm.SessionPhases, vm.SessionPage.Phases), "session phases must be page-owned");
+    Assert(ReferenceEquals(vm.SessionArtifacts, vm.SessionPage.Artifacts), "session artifacts must be page-owned");
+    Assert(ReferenceEquals(vm.Transports, vm.TransportsPage.Rows), "transport rows must be page-owned");
+    Assert(ReferenceEquals(vm.CommandStages, vm.CommandsPage.Rows), "command rows must be page-owned");
+    Assert(ReferenceEquals(vm.EvidenceArtifacts, vm.EvidencePage.Rows), "evidence rows must be page-owned");
+
+    var connectivityRow = new ConnectivityCheckViewModel(new ConnectivityCheck
+    {
+        Name = "qcl080.product_rule_verified",
+        Status = "pass",
+        Evidence = "target/qcl080.json",
+        Notes = "product-owned firewall rule verified",
+        Observed = JsonSerializer.SerializeToElement(new { product_rule_verified = true }),
+    });
+    vm.ConnectivityChecks.Add(connectivityRow);
+    vm.SelectedNavigationItem = vm.NavigationItems.Single(item => item.Key == "connectivity");
+    vm.SelectedConnectivityCheck = connectivityRow;
+
+    Assert(ReferenceEquals(vm.ConnectivityPage.SelectedRow, connectivityRow),
+        "facade selection must write through to the connectivity page");
+    Assert(vm.SelectedDetailTitle == "qcl080.product_rule_verified",
+        "detail panel must project the selected page row title");
+    Assert(vm.SelectedDetailText.Contains("product-owned firewall rule verified", StringComparison.Ordinal),
+        "detail panel must project the selected page row detail text");
+}
+
+static void AssertPageProperty(string propertyName, Type expectedType)
+{
+    var property = typeof(MainWindowViewModel).GetProperty(propertyName);
+    Assert(property is not null, $"missing page property {propertyName}");
+    Assert(property!.PropertyType == expectedType, $"{propertyName} must be {expectedType.Name}");
 }
 
 static T ReadFixture<T>(string name)

@@ -3,7 +3,7 @@ using HostessCompanion.Wpf.Models;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class TransportViewModel
+public sealed class TransportViewModel : IOperatorDetailRow
 {
     public TransportViewModel(TransportCapabilityDescriptor descriptor)
     {

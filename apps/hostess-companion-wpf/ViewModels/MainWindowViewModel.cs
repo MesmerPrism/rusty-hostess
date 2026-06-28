@@ -1,13 +1,11 @@
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
 using System.Windows.Media;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed partial class MainWindowViewModel : INotifyPropertyChanged
+public sealed partial class MainWindowViewModel : ObservableViewModel
 {
     private static readonly HashSet<string> DeviceCheckGroups = ["device", "runtime", "network"];
 
@@ -30,15 +28,6 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private string connectivityRuleName = "Rusty Hostess WPF QCL-080 UDP Freshness 18767";
     private bool useQuestProfile = true;
     private bool checkBroker;
-    private CheckViewModel? selectedCheck;
-    private CheckViewModel? selectedDeviceCheck;
-    private ConnectivityCheckViewModel? selectedConnectivityCheck;
-    private SessionHistoryEntryViewModel? selectedSessionHistoryEntry;
-    private SessionPhaseViewModel? selectedSessionPhase;
-    private SessionArtifactViewModel? selectedSessionArtifact;
-    private TransportViewModel? selectedTransport;
-    private CommandStageViewModel? selectedCommandStage;
-    private EvidenceArtifactViewModel? selectedEvidenceArtifact;
     private NavigationItemViewModel? selectedNavigationItem;
     private CompanionSessionReport? currentSession;
     private ConnectivityFirewallRuleReport? currentFirewallRuleReport;
@@ -63,6 +52,13 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         NavigationItems.Add(new NavigationItemViewModel("commands", "Commands"));
         NavigationItems.Add(new NavigationItemViewModel("evidence", "Evidence"));
         selectedNavigationItem = NavigationItems[0];
+        ConnectDetailNotifications(ReadinessPage, nameof(SelectedCheck));
+        ConnectDetailNotifications(DevicesPage, nameof(SelectedDeviceCheck));
+        ConnectDetailNotifications(ConnectivityPage, nameof(SelectedConnectivityCheck));
+        ConnectDetailNotifications(TransportsPage, nameof(SelectedTransport));
+        ConnectDetailNotifications(CommandsPage, nameof(SelectedCommandStage));
+        ConnectDetailNotifications(EvidencePage, nameof(SelectedEvidenceArtifact));
+        ConnectSessionNotifications();
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsBusy);
         RunSessionCommand = new AsyncRelayCommand(RunSessionAsync, () => !IsBusy);
         LoadSessionHistoryCommand = new AsyncRelayCommand(LoadSessionHistoryAsync, () => !IsBusy);
@@ -78,27 +74,41 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         RemoveFirewallRuleCommand = new AsyncRelayCommand(RemoveFirewallRuleAsync, () => !IsBusy);
     }
 
-    public event PropertyChangedEventHandler? PropertyChanged;
-
     public ObservableCollection<NavigationItemViewModel> NavigationItems { get; } = [];
 
-    public ObservableCollection<CheckViewModel> Checks { get; } = [];
+    public OperatorPageViewModel<CheckViewModel> ReadinessPage { get; } = new("No readiness check selected");
 
-    public ObservableCollection<CheckViewModel> DeviceChecks { get; } = [];
+    public OperatorPageViewModel<CheckViewModel> DevicesPage { get; } = new("No device check selected");
 
-    public ObservableCollection<ConnectivityCheckViewModel> ConnectivityChecks { get; } = [];
+    public OperatorPageViewModel<ConnectivityCheckViewModel> ConnectivityPage { get; } =
+        new("No connectivity check selected");
 
-    public ObservableCollection<SessionHistoryEntryViewModel> SessionHistory { get; } = [];
+    public SessionPageViewModel SessionPage { get; } = new();
 
-    public ObservableCollection<SessionPhaseViewModel> SessionPhases { get; } = [];
+    public OperatorPageViewModel<TransportViewModel> TransportsPage { get; } = new("No transport selected");
 
-    public ObservableCollection<SessionArtifactViewModel> SessionArtifacts { get; } = [];
+    public OperatorPageViewModel<CommandStageViewModel> CommandsPage { get; } = new("No command stage selected");
 
-    public ObservableCollection<TransportViewModel> Transports { get; } = [];
+    public OperatorPageViewModel<EvidenceArtifactViewModel> EvidencePage { get; } =
+        new("No evidence artifact selected");
 
-    public ObservableCollection<CommandStageViewModel> CommandStages { get; } = [];
+    public ObservableCollection<CheckViewModel> Checks => ReadinessPage.Rows;
 
-    public ObservableCollection<EvidenceArtifactViewModel> EvidenceArtifacts { get; } = [];
+    public ObservableCollection<CheckViewModel> DeviceChecks => DevicesPage.Rows;
+
+    public ObservableCollection<ConnectivityCheckViewModel> ConnectivityChecks => ConnectivityPage.Rows;
+
+    public ObservableCollection<SessionHistoryEntryViewModel> SessionHistory => SessionPage.History;
+
+    public ObservableCollection<SessionPhaseViewModel> SessionPhases => SessionPage.Phases;
+
+    public ObservableCollection<SessionArtifactViewModel> SessionArtifacts => SessionPage.Artifacts;
+
+    public ObservableCollection<TransportViewModel> Transports => TransportsPage.Rows;
+
+    public ObservableCollection<CommandStageViewModel> CommandStages => CommandsPage.Rows;
+
+    public ObservableCollection<EvidenceArtifactViewModel> EvidenceArtifacts => EvidencePage.Rows;
 
     public IReadOnlyList<OperatorActionDescriptor> OperatorActions => OperatorActionCatalog.All;
 
@@ -278,111 +288,64 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     public CheckViewModel? SelectedCheck
     {
-        get => selectedCheck;
-        set
-        {
-            if (SetField(ref selectedCheck, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => ReadinessPage.SelectedRow;
+        set => ReadinessPage.SelectedRow = value;
     }
 
     public CheckViewModel? SelectedDeviceCheck
     {
-        get => selectedDeviceCheck;
-        set
-        {
-            if (SetField(ref selectedDeviceCheck, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => DevicesPage.SelectedRow;
+        set => DevicesPage.SelectedRow = value;
     }
 
     public ConnectivityCheckViewModel? SelectedConnectivityCheck
     {
-        get => selectedConnectivityCheck;
-        set
-        {
-            if (SetField(ref selectedConnectivityCheck, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => ConnectivityPage.SelectedRow;
+        set => ConnectivityPage.SelectedRow = value;
     }
 
     public SessionHistoryEntryViewModel? SelectedSessionHistoryEntry
     {
-        get => selectedSessionHistoryEntry;
-        set
-        {
-            if (SetField(ref selectedSessionHistoryEntry, value))
-            {
-                LoadSelectedSessionCommand.RaiseCanExecuteChanged();
-            }
-        }
+        get => SessionPage.SelectedHistoryEntry;
+        set => SessionPage.SelectedHistoryEntry = value;
     }
 
     public SessionPhaseViewModel? SelectedSessionPhase
     {
-        get => selectedSessionPhase;
+        get => SessionPage.SelectedPhase;
         set
         {
-            if (SetField(ref selectedSessionPhase, value))
+            var previous = SessionPage.SelectedPhase;
+            SessionPage.SelectedPhase = value;
+            if (!ReferenceEquals(previous, SessionPage.SelectedPhase))
             {
                 PopulateSessionArtifactsForPhase(value);
-                OnDetailChanged();
             }
         }
     }
 
     public SessionArtifactViewModel? SelectedSessionArtifact
     {
-        get => selectedSessionArtifact;
-        set
-        {
-            if (SetField(ref selectedSessionArtifact, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => SessionPage.SelectedArtifact;
+        set => SessionPage.SelectedArtifact = value;
     }
 
     public TransportViewModel? SelectedTransport
     {
-        get => selectedTransport;
-        set
-        {
-            if (SetField(ref selectedTransport, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => TransportsPage.SelectedRow;
+        set => TransportsPage.SelectedRow = value;
     }
 
     public CommandStageViewModel? SelectedCommandStage
     {
-        get => selectedCommandStage;
-        set
-        {
-            if (SetField(ref selectedCommandStage, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => CommandsPage.SelectedRow;
+        set => CommandsPage.SelectedRow = value;
     }
 
     public EvidenceArtifactViewModel? SelectedEvidenceArtifact
     {
-        get => selectedEvidenceArtifact;
-        set
-        {
-            if (SetField(ref selectedEvidenceArtifact, value))
-            {
-                OnDetailChanged();
-            }
-        }
+        get => EvidencePage.SelectedRow;
+        set => EvidencePage.SelectedRow = value;
     }
 
     public string PageTitle => SelectedNavigationKey switch
@@ -430,46 +393,46 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     public string SelectedDetailTitle => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionArtifact?.Title ?? SelectedSessionPhase?.Title ?? "No session phase selected",
-        "devices" => SelectedDeviceCheck?.Title ?? "No device check selected",
-        "connectivity" => SelectedConnectivityCheck?.Title ?? "No connectivity check selected",
-        "transports" => SelectedTransport?.Title ?? "No transport selected",
-        "commands" => SelectedCommandStage?.Title ?? "No command stage selected",
-        "evidence" => SelectedEvidenceArtifact?.Title ?? "No evidence artifact selected",
-        _ => SelectedCheck?.Title ?? "No readiness check selected",
+        "session" => SessionPage.SelectedDetailTitle,
+        "devices" => DevicesPage.SelectedDetailTitle,
+        "connectivity" => ConnectivityPage.SelectedDetailTitle,
+        "transports" => TransportsPage.SelectedDetailTitle,
+        "commands" => CommandsPage.SelectedDetailTitle,
+        "evidence" => EvidencePage.SelectedDetailTitle,
+        _ => ReadinessPage.SelectedDetailTitle,
     };
 
     public string SelectedDetailStatusLine => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionArtifact?.StatusLine ?? SelectedSessionPhase?.StatusLine ?? "",
-        "devices" => SelectedDeviceCheck?.StatusLine ?? "",
-        "connectivity" => SelectedConnectivityCheck?.StatusLine ?? "",
-        "transports" => SelectedTransport?.StatusLine ?? "",
-        "commands" => SelectedCommandStage?.StatusLine ?? "",
-        "evidence" => SelectedEvidenceArtifact?.StatusLine ?? "",
-        _ => SelectedCheck?.StatusLine ?? "",
+        "session" => SessionPage.SelectedDetailStatusLine,
+        "devices" => DevicesPage.SelectedDetailStatusLine,
+        "connectivity" => ConnectivityPage.SelectedDetailStatusLine,
+        "transports" => TransportsPage.SelectedDetailStatusLine,
+        "commands" => CommandsPage.SelectedDetailStatusLine,
+        "evidence" => EvidencePage.SelectedDetailStatusLine,
+        _ => ReadinessPage.SelectedDetailStatusLine,
     };
 
     public Brush SelectedDetailBrush => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionArtifact?.StatusBrush ?? SelectedSessionPhase?.StatusBrush ?? Brushes.DimGray,
-        "devices" => SelectedDeviceCheck?.StatusBrush ?? Brushes.DimGray,
-        "connectivity" => SelectedConnectivityCheck?.StatusBrush ?? Brushes.DimGray,
-        "transports" => SelectedTransport?.StatusBrush ?? Brushes.DimGray,
-        "commands" => SelectedCommandStage?.StatusBrush ?? Brushes.DimGray,
-        "evidence" => SelectedEvidenceArtifact?.StatusBrush ?? Brushes.DimGray,
-        _ => SelectedCheck?.StatusBrush ?? Brushes.DimGray,
+        "session" => SessionPage.SelectedDetailBrush,
+        "devices" => DevicesPage.SelectedDetailBrush,
+        "connectivity" => ConnectivityPage.SelectedDetailBrush,
+        "transports" => TransportsPage.SelectedDetailBrush,
+        "commands" => CommandsPage.SelectedDetailBrush,
+        "evidence" => EvidencePage.SelectedDetailBrush,
+        _ => ReadinessPage.SelectedDetailBrush,
     };
 
     public string SelectedDetailText => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionArtifact?.DetailText ?? SelectedSessionPhase?.DetailText ?? "",
-        "devices" => SelectedDeviceCheck?.DetailText ?? "",
-        "connectivity" => SelectedConnectivityCheck?.DetailText ?? "",
-        "transports" => SelectedTransport?.DetailText ?? "",
-        "commands" => SelectedCommandStage?.DetailText ?? "",
-        "evidence" => SelectedEvidenceArtifact?.DetailText ?? "",
-        _ => SelectedCheck?.DetailText ?? "",
+        "session" => SessionPage.SelectedDetailText,
+        "devices" => DevicesPage.SelectedDetailText,
+        "connectivity" => ConnectivityPage.SelectedDetailText,
+        "transports" => TransportsPage.SelectedDetailText,
+        "commands" => CommandsPage.SelectedDetailText,
+        "evidence" => EvidencePage.SelectedDetailText,
+        _ => ReadinessPage.SelectedDetailText,
     };
 
     private string SelectedNavigationKey => SelectedNavigationItem?.Key ?? "readiness";
@@ -1100,6 +1063,48 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         SelectedCommandStage = CommandStages.FirstOrDefault();
     }
 
+    private void ConnectDetailNotifications<TRow>(
+        OperatorPageViewModel<TRow> page,
+        string selectedPropertyName)
+        where TRow : class, IOperatorDetailRow
+    {
+        page.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(OperatorPageViewModel<TRow>.SelectedRow))
+            {
+                OnPropertyChanged(selectedPropertyName);
+            }
+            if (OperatorPageViewModel<TRow>.IsSelectedDetailProperty(args.PropertyName))
+            {
+                OnDetailChanged();
+            }
+        };
+    }
+
+    private void ConnectSessionNotifications()
+    {
+        SessionPage.PropertyChanged += (_, args) =>
+        {
+            if (args.PropertyName == nameof(SessionPageViewModel.SelectedHistoryEntry))
+            {
+                OnPropertyChanged(nameof(SelectedSessionHistoryEntry));
+                LoadSelectedSessionCommand.RaiseCanExecuteChanged();
+            }
+            if (args.PropertyName == nameof(SessionPageViewModel.SelectedPhase))
+            {
+                OnPropertyChanged(nameof(SelectedSessionPhase));
+            }
+            if (args.PropertyName == nameof(SessionPageViewModel.SelectedArtifact))
+            {
+                OnPropertyChanged(nameof(SelectedSessionArtifact));
+            }
+            if (SessionPageViewModel.IsSelectedDetailProperty(args.PropertyName))
+            {
+                OnDetailChanged();
+            }
+        };
+    }
+
     private void OnDetailChanged()
     {
         OnPropertyChanged(nameof(SelectedDetailTitle));
@@ -1137,18 +1142,4 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     private static string NormalizeConnectivityProtocol(string protocol) =>
         string.Equals(protocol?.Trim(), "TCP", StringComparison.OrdinalIgnoreCase) ? "TCP" : "UDP";
-
-    private bool SetField<T>(ref T field, T value, [CallerMemberName] string propertyName = "")
-    {
-        if (EqualityComparer<T>.Default.Equals(field, value))
-        {
-            return false;
-        }
-        field = value;
-        OnPropertyChanged(propertyName);
-        return true;
-    }
-
-    private void OnPropertyChanged([CallerMemberName] string propertyName = "") =>
-        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
