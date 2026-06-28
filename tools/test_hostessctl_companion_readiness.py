@@ -113,6 +113,9 @@ class HostessCtlCompanionReadinessTests(unittest.TestCase):
                 for check in report["checks"]
             )
         )
+        raw_broker_port = check_with_id(report, "check.network.broker_port")
+        self.assertEqual(raw_broker_port["status"], "skipped")
+        self.assertEqual(raw_broker_port["observed"]["transport"], "adb-forward")
 
     def test_required_broker_reports_blocking_runtime_and_forward_failures(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -291,6 +294,12 @@ def touch(path: Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("", encoding="utf-8")
     return path
+
+
+def check_with_id(report: dict[str, object], check_id: str) -> dict[str, object]:
+    checks = report["checks"]
+    assert isinstance(checks, list)
+    return next(row for row in checks if row["check_id"] == check_id)
 
 
 def build_parser():

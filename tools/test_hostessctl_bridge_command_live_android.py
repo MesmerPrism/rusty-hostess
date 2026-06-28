@@ -90,6 +90,74 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertEqual(fake_broker.sent[0]["params"]["stream"], DEFAULT_RUNTIME_RECEIPT_STREAM)
         self.assertEqual(fake_broker.sent[1]["command"], "hostess.makepad.bridge_probe.set_marker")
 
+    def test_live_android_retries_when_broker_has_no_runtime_subscriber(self) -> None:
+        request = read_json(BRIDGE_COMMAND_FIXTURES / "hostess-broker-stream-command-request.json")
+        fake_android = FakeLiveAndroidRoute()
+        brokers = [
+            FakeBrokerClient(
+                [
+                    command_ack(
+                        request["request_id"],
+                        request["command"],
+                        status="accepted_no_runtime_subscriber",
+                        delivered_count=0,
+                    ),
+                ]
+            ),
+            FakeBrokerClient(
+                [
+                    command_ack(
+                        request["request_id"],
+                        request["command"],
+                        status="dispatched",
+                        delivered_count=1,
+                    ),
+                    runtime_receipt_stream_event(
+                        request["request_id"],
+                        "runtime_accepted",
+                        "evidence.quest.runtime_receipt",
+                    ),
+                    runtime_receipt_stream_event(
+                        request["request_id"],
+                        "applied",
+                        "evidence.quest.effective_state_marker",
+                    ),
+                ]
+            ),
+        ]
+        sleeps: list[float] = []
+
+        execution = execute_bridge_command_live_android_request(
+            request,
+            args=live_android_args("request.json", "evidence.json"),
+            run_captured_func=fake_android.run_captured,
+            broker_client_factory=lambda *args, **kwargs: brokers.pop(0),
+            clock_ms_func=FakeClock(
+                [
+                    1765020000000,
+                    1765020000005,
+                    1765020000010,
+                    1765020000020,
+                    1765020000030,
+                    1765020000040,
+                    1765020000050,
+                    1765020000060,
+                    1765020000070,
+                ]
+            ),
+            socket_probe_func=lambda host, port, timeout: True,
+            sleep_func=lambda seconds: sleeps.append(seconds),
+        )
+
+        self.assertEqual(execution["status"], "pass")
+        self.assertEqual(execution["command_execution"]["status"], "pass")
+        self.assertEqual(sleeps, [5.0])
+        actions = [row["action"] for row in execution["setup_actions"]]
+        self.assertIn("wait-runtime-subscriber-retry", actions)
+        self.assertIn("retry-bridge-command-after-missing-runtime-subscriber", actions)
+        stages = {row["stage"] for row in execution["stage_observations"]}
+        self.assertTrue({"runtime_accepted", "applied"} <= stages)
+
     def test_live_android_socket_failure_still_writes_execution_and_validation(self) -> None:
         source_path = BRIDGE_COMMAND_FIXTURES / "hostess-broker-stream-command-request.json"
         fake_android = FakeLiveAndroidRoute()
@@ -152,6 +220,8 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertEqual(args.broker_local_port, 28765)
         self.assertEqual(args.wait_seconds, 0.5)
         self.assertEqual(args.launch_settle_seconds, 0)
+        self.assertEqual(args.runtime_subscriber_retry_count, 1)
+        self.assertEqual(args.runtime_subscriber_retry_wait_seconds, 5.0)
         self.assertFalse(args.no_adb_forward_broker)
 
 
@@ -185,6 +255,8 @@ def live_android_args(
         makepad_process_wait_seconds=0.5,
         socket_wait_seconds=socket_wait_seconds,
         launch_settle_seconds=0.0,
+        runtime_subscriber_retry_count=1,
+        runtime_subscriber_retry_wait_seconds=5.0,
         no_launch_broker=False,
         no_launch_makepad=False,
         no_wait_broker_process=False,
@@ -193,14 +265,25 @@ def live_android_args(
     )
 
 
-def command_ack(request_id: str, command: str) -> dict[str, object]:
-    return {
+def command_ack(
+    request_id: str,
+    command: str,
+    *,
+    status: str = "accepted",
+    delivered_count: int | None = None,
+) -> dict[str, object]:
+    message: dict[str, object] = {
         "type": "command_ack",
         "request_id": request_id,
         "command": command,
         "accepted": True,
         "authority": "rusty.manifold",
+        "status": status,
     }
+    if delivered_count is not None:
+        message["runtime_dispatch_delivered_count"] = delivered_count
+        message["runtime_receipt_required"] = True
+    return message
 
 
 def runtime_receipt(request_id: str, stage: str, evidence_ref: str) -> dict[str, object]:

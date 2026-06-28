@@ -108,6 +108,7 @@ def build_companion_session_report(
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     started_at_ms = int(clock_ms_func())
+    request_token = session_request_token(args, out, started_at_ms)
     artifact_refs: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
 
@@ -152,6 +153,7 @@ def build_companion_session_report(
                 sleep_func=sleep_func,
                 live_execution_func=live_execution_func,
                 artifact_refs=artifact_refs,
+                request_token=request_token,
             )
         except Exception as exc:
             live_execution = exception_execution(
@@ -181,6 +183,7 @@ def build_companion_session_report(
                 clock_ms_func=clock_ms_func,
                 fallback_execution_func=fallback_execution_func,
                 artifact_refs=artifact_refs,
+                request_token=request_token,
             )
         except Exception as exc:
             fallback_execution = exception_execution(
@@ -398,14 +401,23 @@ def run_live_probe_slice(
     sleep_func: Callable[[float], None],
     live_execution_func: Callable[..., dict[str, Any]] | None,
     artifact_refs: list[dict[str, Any]],
+    request_token: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     evidence_out = out.with_name(f"{out.stem}.live-broker-stream-evidence.json")
     execution_out = evidence_out.with_name(f"{evidence_out.stem}.live-android-execution.json")
     validation_out = evidence_out.with_name(f"{evidence_out.stem}.validation-report.json")
+    request_out = out.with_name(f"{out.stem}.live-broker-stream-request.json")
+    request_path = materialize_session_request(
+        Path(str(getattr(args, "probe_input", None) or default_probe_input())),
+        request_out,
+        request_token=request_token,
+        role="broker_stream_probe",
+    )
     request = bridge_command_live_android_routes.load_bridge_command_request(
-        Path(str(getattr(args, "probe_input", None) or default_probe_input()))
+        request_path,
     )
     live_args = live_android_args(args, evidence_out, execution_out, validation_out)
+    live_args.input = str(request_path)
     if live_execution_func is not None:
         execution = live_execution_func(request, args=live_args)
     else:
@@ -430,6 +442,13 @@ def run_live_probe_slice(
     write_json(validation_out, validation)
     artifact_refs.extend(
         [
+            artifact_ref(
+                "artifact.hostess.companion_session.live_broker_stream_request",
+                request_path,
+                request.get("$schema"),
+                role="live_broker_stream_request",
+                validation_status="generated",
+            ),
             artifact_ref(
                 "artifact.hostess.companion_session.live_broker_stream_evidence",
                 evidence_out,
@@ -463,15 +482,24 @@ def run_fallback_probe_slice(
     clock_ms_func: Callable[[], int],
     fallback_execution_func: Callable[..., dict[str, Any]] | None,
     artifact_refs: list[dict[str, Any]],
+    request_token: str,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     evidence_out = out.with_name(f"{out.stem}.app-private-fallback-evidence.json")
     execution_out = evidence_out.with_name(f"{evidence_out.stem}.android-execution.json")
     validation_out = evidence_out.with_name(f"{evidence_out.stem}.validation-report.json")
     logcat_out = evidence_out.with_name(f"{evidence_out.stem}.logcat.txt")
+    request_out = out.with_name(f"{out.stem}.app-private-fallback-request.json")
+    request_path = materialize_session_request(
+        Path(str(getattr(args, "fallback_input", None) or default_fallback_input())),
+        request_out,
+        request_token=request_token,
+        role="app_private_fallback",
+    )
     request = bridge_command_android_routes.load_bridge_command_request(
-        Path(str(getattr(args, "fallback_input", None) or default_fallback_input()))
+        request_path,
     )
     fallback_args = android_fallback_args(args, evidence_out, execution_out, validation_out, logcat_out)
+    fallback_args.input = str(request_path)
     if fallback_execution_func is not None:
         execution = fallback_execution_func(request, args=fallback_args)
     else:
@@ -499,6 +527,13 @@ def run_fallback_probe_slice(
     write_json(validation_out, validation)
     artifact_refs.extend(
         [
+            artifact_ref(
+                "artifact.hostess.companion_session.app_private_fallback_request",
+                request_path,
+                request.get("$schema"),
+                role="app_private_fallback_request",
+                validation_status="generated",
+            ),
             artifact_ref(
                 "artifact.hostess.companion_session.app_private_fallback_evidence",
                 evidence_out,
@@ -889,6 +924,62 @@ def artifact_ref(
     }
 
 
+def materialize_session_request(
+    template_path: Path,
+    out: Path,
+    *,
+    request_token: str,
+    role: str,
+) -> Path:
+    request = json.loads(template_path.read_text(encoding="utf-8"))
+    request["request_id"] = append_identity_token(
+        str(request.get("request_id") or f"request.hostess.companion_session.{role}"),
+        request_token,
+    )
+    request["evidence_id"] = append_identity_token(
+        str(request.get("evidence_id") or f"evidence.hostess.companion_session.{role}"),
+        request_token,
+    )
+    params = request.get("params")
+    if not isinstance(params, dict):
+        params = {}
+    params = dict(params)
+    params["probe_token"] = append_identity_token(
+        str(params.get("probe_token") or f"probe.{role}"),
+        request_token,
+    )
+    params["session_request_token"] = request_token
+    request["params"] = params
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(request, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return out
+
+
+def session_request_token(args: argparse.Namespace, out: Path, started_at_ms: int) -> str:
+    explicit_session_id = str(getattr(args, "session_id", None) or "").strip()
+    source = explicit_session_id or f"{out.stem}.{started_at_ms}"
+    return safe_identity_token(source)
+
+
+def append_identity_token(identity: str, token: str) -> str:
+    base = safe_identity_token(identity)
+    suffix = safe_identity_token(token)
+    if base.endswith(f".{suffix}"):
+        return base
+    return f"{base}.{suffix}"
+
+
+def safe_identity_token(value: str) -> str:
+    chars = [
+        char if char.isalnum() or char in {".", "_", "-"} else "-"
+        for char in str(value).strip()
+    ]
+    token = "".join(chars).strip("._-")
+    while ".." in token:
+        token = token.replace("..", ".")
+    return (token or "session")[:120]
+
+
 def session_scope(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "adb": str(getattr(args, "adb", None) or ""),
@@ -943,6 +1034,12 @@ def live_android_args(
         makepad_process_wait_seconds=float(getattr(args, "makepad_process_wait_seconds", 8.0)),
         socket_wait_seconds=float(getattr(args, "socket_wait_seconds", 8.0)),
         launch_settle_seconds=float(getattr(args, "launch_settle_seconds", 8.0)),
+        runtime_subscriber_retry_count=int(
+            getattr(args, "runtime_subscriber_retry_count", 1)
+        ),
+        runtime_subscriber_retry_wait_seconds=float(
+            getattr(args, "runtime_subscriber_retry_wait_seconds", 5.0)
+        ),
         no_launch_broker=bool(getattr(args, "no_launch_broker", False)),
         no_launch_makepad=bool(getattr(args, "no_launch_makepad", False)),
         no_wait_broker_process=bool(getattr(args, "no_wait_broker_process", False)),

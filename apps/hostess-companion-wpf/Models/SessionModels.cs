@@ -14,6 +14,12 @@ public sealed class CompanionSessionReport
     [JsonPropertyName("session_id")]
     public string SessionId { get; set; } = "";
 
+    [JsonPropertyName("started_at_ms")]
+    public long StartedAtMs { get; set; }
+
+    [JsonPropertyName("ended_at_ms")]
+    public long EndedAtMs { get; set; }
+
     [JsonPropertyName("frontend")]
     public string Frontend { get; set; } = "";
 
@@ -31,6 +37,12 @@ public sealed class CompanionSessionReport
 
     [JsonPropertyName("issues")]
     public List<CommandIssue> Issues { get; set; } = [];
+
+    [JsonIgnore]
+    public string ReportPath { get; set; } = "";
+
+    [JsonIgnore]
+    public DateTime ReportLastWriteTimeLocal { get; set; }
 }
 
 public sealed class SessionSummary

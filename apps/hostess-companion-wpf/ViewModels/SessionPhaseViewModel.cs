@@ -15,6 +15,7 @@ public sealed class SessionPhaseViewModel
         Status = phase.Status;
         Required = phase.Required;
         ActionCount = phase.Summary.ActionCount;
+        ArtifactIds = phase.ArtifactRefs.ToList();
         ArtifactCount = phase.ArtifactRefs.Count;
         IssueCount = phase.Issues.Count;
         Actions = string.Join(
@@ -45,6 +46,8 @@ public sealed class SessionPhaseViewModel
     public int ArtifactCount { get; }
 
     public int IssueCount { get; }
+
+    public IReadOnlyList<string> ArtifactIds { get; }
 
     public string Actions { get; }
 

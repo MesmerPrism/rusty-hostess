@@ -206,6 +206,7 @@ def build_companion_readiness_report(
             getattr(args, "broker_local_port", None) or BROKER_LOCAL_FORWARD_PORT
         )
         require_broker = bool(getattr(args, "require_broker", False))
+        broker_uses_adb_forward = False
         if serial and adb_path:
             checks.extend(
                 android_broker_checks(
@@ -217,6 +218,7 @@ def build_companion_readiness_report(
                 )
             )
             if broker_local_port != broker_port:
+                broker_uses_adb_forward = True
                 checks.append(
                     check_broker_forwarded_port(
                         broker_host,
@@ -226,14 +228,23 @@ def build_companion_readiness_report(
                         broker_probe_func,
                     )
                 )
-        checks.append(
-            check_broker_port(
-                broker_host,
-                broker_port,
-                require_broker,
-                broker_probe_func,
+        if broker_uses_adb_forward:
+            checks.append(
+                skipped_device_side_broker_port_check(
+                    broker_host,
+                    broker_port,
+                    broker_local_port,
+                )
             )
-        )
+        else:
+            checks.append(
+                check_broker_port(
+                    broker_host,
+                    broker_port,
+                    require_broker,
+                    broker_probe_func,
+                )
+            )
     else:
         checks.append(
             readiness_check(
@@ -688,6 +699,27 @@ def check_broker_forwarded_port(
         issue_codes=[]
         if open_port
         else ["hostess.issue.companion.broker_forwarded_port_closed"],
+    )
+
+
+def skipped_device_side_broker_port_check(
+    host: str,
+    remote_port: int,
+    local_port: int,
+) -> dict[str, Any]:
+    return readiness_check(
+        "check.network.broker_port",
+        "network",
+        "Broker port",
+        "skipped",
+        False,
+        f"{host}:{remote_port} is device-side; use forwarded {host}:{local_port}",
+        observed={
+            "host": host,
+            "port": remote_port,
+            "local_port": local_port,
+            "transport": "adb-forward",
+        },
     )
 
 

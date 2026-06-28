@@ -221,21 +221,53 @@ def execute_bridge_command_live_android_request(
         )
 
     if socket_ready:
-        command_execution = execute_bridge_command_request(
-            request,
-            broker_host=broker_host,
-            broker_port=connect_port,
-            broker_path=broker_path,
-            connect_timeout_seconds=float(getattr(args, "connect_timeout_seconds", 5.0)),
-            wait_seconds=float(getattr(args, "wait_seconds", 15.0)),
-            runtime_receipt_stream=(
-                None
-                if getattr(args, "no_runtime_receipt_subscribe", False)
-                else str(getattr(args, "runtime_receipt_stream", None) or DEFAULT_RUNTIME_RECEIPT_STREAM)
-            ),
-            broker_client_factory=broker_client_factory,
-            clock_ms_func=clock,
+        retry_count = max(0, int(getattr(args, "runtime_subscriber_retry_count", 1)))
+        retry_wait_seconds = max(
+            0.0,
+            float(getattr(args, "runtime_subscriber_retry_wait_seconds", 5.0)),
         )
+        command_execution = None
+        for attempt_index in range(retry_count + 1):
+            if attempt_index > 0:
+                setup_actions.append(
+                    {
+                        "action": "retry-bridge-command-after-missing-runtime-subscriber",
+                        "status": "pass",
+                        "attempt": attempt_index + 1,
+                    }
+                )
+            command_execution = execute_bridge_command_request(
+                request,
+                broker_host=broker_host,
+                broker_port=connect_port,
+                broker_path=broker_path,
+                connect_timeout_seconds=float(getattr(args, "connect_timeout_seconds", 5.0)),
+                wait_seconds=float(getattr(args, "wait_seconds", 15.0)),
+                runtime_receipt_stream=(
+                    None
+                    if getattr(args, "no_runtime_receipt_subscribe", False)
+                    else str(
+                        getattr(args, "runtime_receipt_stream", None)
+                        or DEFAULT_RUNTIME_RECEIPT_STREAM
+                    )
+                ),
+                broker_client_factory=broker_client_factory,
+                clock_ms_func=clock,
+            )
+            if not missing_runtime_subscriber(command_execution) or attempt_index >= retry_count:
+                break
+            if retry_wait_seconds:
+                sleep(retry_wait_seconds)
+            setup_actions.append(
+                {
+                    "action": "wait-runtime-subscriber-retry",
+                    "status": "pass",
+                    "duration_seconds": retry_wait_seconds,
+                    "attempt": attempt_index + 1,
+                    "reason": "accepted_no_runtime_subscriber",
+                }
+            )
+        assert command_execution is not None
         bridge_evidence = command_execution["bridge_route_evidence"]
         stage_observations = command_execution["stage_observations"]
         command_issues = command_execution["issues"]
@@ -316,6 +348,24 @@ def execution_status(
     if setup_issues or command_status == "warn":
         return "warn"
     return "pass"
+
+
+def missing_runtime_subscriber(command_execution: dict[str, Any] | None) -> bool:
+    if not command_execution:
+        return False
+    for message in command_execution.get("broker_messages", []):
+        if not isinstance(message, dict):
+            continue
+        if str(message.get("status") or "") == "accepted_no_runtime_subscriber":
+            return True
+        if message.get("accepted") is True and "runtime_dispatch_delivered_count" in message:
+            try:
+                delivered_count = int(message.get("runtime_dispatch_delivered_count") or 0)
+            except (TypeError, ValueError):
+                delivered_count = 0
+            if delivered_count == 0 and message.get("runtime_receipt_required") is True:
+                return True
+    return False
 
 
 def run_adb_action(

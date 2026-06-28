@@ -92,6 +92,8 @@
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
               <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <TextBlock Text="Serial"
                        VerticalAlignment="Center"
@@ -112,11 +114,23 @@
                     Content="{Binding RefreshButtonLabel}"
                     Command="{Binding RefreshCommand}"/>
             <Button Grid.Column="6"
+                    Content="{Binding LoadSessionHistoryButtonLabel}"
+                    Command="{Binding LoadSessionHistoryCommand}"
+                    Margin="8,0,0,0"
+                    ToolTip="Load saved companion session reports"
+                    Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}"/>
+            <Button Grid.Column="7"
+                    Content="{Binding LoadSelectedSessionButtonLabel}"
+                    Command="{Binding LoadSelectedSessionCommand}"
+                    Margin="8,0,0,0"
+                    ToolTip="Load the selected saved session"
+                    Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}"/>
+            <Button Grid.Column="8"
                     Content="{Binding RunSessionButtonLabel}"
                     Command="{Binding RunSessionCommand}"
                     Margin="8,0,0,0"
                     Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}"/>
-            <Button Grid.Column="7"
+            <Button Grid.Column="9"
                     Content="{Binding RunProbeButtonLabel}"
                     Command="{Binding RunProbeCommand}"
                     Margin="8,0,0,0"
@@ -151,20 +165,59 @@
             </DataGrid.Columns>
           </DataGrid>
 
-          <DataGrid ItemsSource="{Binding SessionPhases}"
-                    SelectedItem="{Binding SelectedSessionPhase}"
-                    AutoGenerateColumns="False"
-                    Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}">
-            <DataGrid.Columns>
-              <DataGridTextColumn Header="Phase" Binding="{Binding Title}" Width="190"/>
-              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
-              <DataGridCheckBoxColumn Header="Required" Binding="{Binding Required}" Width="80"/>
-              <DataGridTextColumn Header="Actions" Binding="{Binding ActionCount}" Width="80"/>
-              <DataGridTextColumn Header="Artifacts" Binding="{Binding ArtifactCount}" Width="80"/>
-              <DataGridTextColumn Header="Issues" Binding="{Binding IssueCount}" Width="80"/>
-              <DataGridTextColumn Header="Detail" Binding="{Binding StatusLine}" Width="*"/>
-            </DataGrid.Columns>
-          </DataGrid>
+          <Grid Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}">
+            <Grid.RowDefinitions>
+              <RowDefinition Height="150"/>
+              <RowDefinition Height="8"/>
+              <RowDefinition Height="*"/>
+              <RowDefinition Height="8"/>
+              <RowDefinition Height="160"/>
+            </Grid.RowDefinitions>
+            <DataGrid ItemsSource="{Binding SessionHistory}"
+                      SelectedItem="{Binding SelectedSessionHistoryEntry}"
+                      AutoGenerateColumns="False">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Started" Binding="{Binding StartedAtLabel}" Width="140"/>
+                <DataGridTextColumn Header="Session" Binding="{Binding SessionId}" Width="220"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="80"/>
+                <DataGridTextColumn Header="Profile" Binding="{Binding Profile}" Width="150"/>
+                <DataGridTextColumn Header="Summary" Binding="{Binding SummaryLine}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <GridSplitter Grid.Row="1"
+                          Height="4"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"/>
+            <DataGrid Grid.Row="2"
+                      ItemsSource="{Binding SessionPhases}"
+                      SelectedItem="{Binding SelectedSessionPhase}"
+                      AutoGenerateColumns="False">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Phase" Binding="{Binding Title}" Width="190"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+                <DataGridCheckBoxColumn Header="Required" Binding="{Binding Required}" Width="80"/>
+                <DataGridTextColumn Header="Actions" Binding="{Binding ActionCount}" Width="80"/>
+                <DataGridTextColumn Header="Artifacts" Binding="{Binding ArtifactCount}" Width="80"/>
+                <DataGridTextColumn Header="Issues" Binding="{Binding IssueCount}" Width="80"/>
+                <DataGridTextColumn Header="Detail" Binding="{Binding StatusLine}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+            <GridSplitter Grid.Row="3"
+                          Height="4"
+                          HorizontalAlignment="Stretch"
+                          VerticalAlignment="Center"/>
+            <DataGrid Grid.Row="4"
+                      ItemsSource="{Binding SessionArtifacts}"
+                      SelectedItem="{Binding SelectedSessionArtifact}"
+                      AutoGenerateColumns="False">
+              <DataGrid.Columns>
+                <DataGridTextColumn Header="Role" Binding="{Binding Role}" Width="180"/>
+                <DataGridTextColumn Header="Artifact" Binding="{Binding ArtifactId}" Width="220"/>
+                <DataGridTextColumn Header="Validation" Binding="{Binding ValidationStatus}" Width="90"/>
+                <DataGridTextColumn Header="Schema" Binding="{Binding Schema}" Width="*"/>
+              </DataGrid.Columns>
+            </DataGrid>
+          </Grid>
 
           <DataGrid ItemsSource="{Binding Transports}"
                     SelectedItem="{Binding SelectedTransport}"

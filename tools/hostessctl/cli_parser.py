@@ -409,6 +409,12 @@ def build_hostessctl_parser(
     bridge_command_live_android.add_argument("--makepad-process-wait-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--socket-wait-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--launch-settle-seconds", type=float, default=8.0)
+    bridge_command_live_android.add_argument("--runtime-subscriber-retry-count", type=int, default=1)
+    bridge_command_live_android.add_argument(
+        "--runtime-subscriber-retry-wait-seconds",
+        type=float,
+        default=5.0,
+    )
     bridge_command_live_android.add_argument("--no-launch-broker", action="store_true")
     bridge_command_live_android.add_argument("--no-launch-makepad", action="store_true")
     bridge_command_live_android.add_argument("--no-wait-broker-process", action="store_true")
@@ -538,6 +544,12 @@ def build_hostessctl_parser(
     companion_session_run.add_argument("--makepad-process-wait-seconds", type=float, default=8.0)
     companion_session_run.add_argument("--socket-wait-seconds", type=float, default=8.0)
     companion_session_run.add_argument("--launch-settle-seconds", type=float, default=8.0)
+    companion_session_run.add_argument("--runtime-subscriber-retry-count", type=int, default=1)
+    companion_session_run.add_argument(
+        "--runtime-subscriber-retry-wait-seconds",
+        type=float,
+        default=5.0,
+    )
     companion_session_run.add_argument("--no-launch-broker", action="store_true")
     companion_session_run.add_argument("--no-launch-makepad", action="store_true")
     companion_session_run.add_argument("--no-wait-broker-process", action="store_true")

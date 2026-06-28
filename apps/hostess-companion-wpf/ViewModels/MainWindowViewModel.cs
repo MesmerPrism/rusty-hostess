@@ -24,11 +24,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     private bool checkBroker;
     private CheckViewModel? selectedCheck;
     private CheckViewModel? selectedDeviceCheck;
+    private SessionHistoryEntryViewModel? selectedSessionHistoryEntry;
     private SessionPhaseViewModel? selectedSessionPhase;
+    private SessionArtifactViewModel? selectedSessionArtifact;
     private TransportViewModel? selectedTransport;
     private CommandStageViewModel? selectedCommandStage;
     private EvidenceArtifactViewModel? selectedEvidenceArtifact;
     private NavigationItemViewModel? selectedNavigationItem;
+    private CompanionSessionReport? currentSession;
 
     public MainWindowViewModel(
         HostessctlReadinessService readinessService,
@@ -49,6 +52,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         selectedNavigationItem = NavigationItems[0];
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsBusy);
         RunSessionCommand = new AsyncRelayCommand(RunSessionAsync, () => !IsBusy);
+        LoadSessionHistoryCommand = new AsyncRelayCommand(LoadSessionHistoryAsync, () => !IsBusy);
+        LoadSelectedSessionCommand = new AsyncRelayCommand(
+            LoadSelectedSessionAsync,
+            () => !IsBusy && SelectedSessionHistoryEntry is not null);
         RunProbeCommand = new AsyncRelayCommand(RunProbeAsync, () => !IsBusy);
     }
 
@@ -60,7 +67,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public ObservableCollection<CheckViewModel> DeviceChecks { get; } = [];
 
+    public ObservableCollection<SessionHistoryEntryViewModel> SessionHistory { get; } = [];
+
     public ObservableCollection<SessionPhaseViewModel> SessionPhases { get; } = [];
+
+    public ObservableCollection<SessionArtifactViewModel> SessionArtifacts { get; } = [];
 
     public ObservableCollection<TransportViewModel> Transports { get; } = [];
 
@@ -71,6 +82,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public AsyncRelayCommand RefreshCommand { get; }
 
     public AsyncRelayCommand RunSessionCommand { get; }
+
+    public AsyncRelayCommand LoadSessionHistoryCommand { get; }
+
+    public AsyncRelayCommand LoadSelectedSessionCommand { get; }
 
     public AsyncRelayCommand RunProbeCommand { get; }
 
@@ -83,9 +98,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             {
                 RefreshCommand.RaiseCanExecuteChanged();
                 RunSessionCommand.RaiseCanExecuteChanged();
+                LoadSessionHistoryCommand.RaiseCanExecuteChanged();
+                LoadSelectedSessionCommand.RaiseCanExecuteChanged();
                 RunProbeCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(RefreshButtonLabel));
                 OnPropertyChanged(nameof(RunSessionButtonLabel));
+                OnPropertyChanged(nameof(LoadSessionHistoryButtonLabel));
+                OnPropertyChanged(nameof(LoadSelectedSessionButtonLabel));
                 OnPropertyChanged(nameof(RunProbeButtonLabel));
             }
         }
@@ -94,6 +113,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
     public string RefreshButtonLabel => IsBusy ? "Refreshing" : "Refresh";
 
     public string RunSessionButtonLabel => IsBusy ? "Running" : "Run session";
+
+    public string LoadSessionHistoryButtonLabel => IsBusy ? "Loading" : "History";
+
+    public string LoadSelectedSessionButtonLabel => IsBusy ? "Loading" : "Load";
 
     public string RunProbeButtonLabel => IsBusy ? "Running" : "Run safe probe";
 
@@ -158,12 +181,37 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
     }
 
+    public SessionHistoryEntryViewModel? SelectedSessionHistoryEntry
+    {
+        get => selectedSessionHistoryEntry;
+        set
+        {
+            if (SetField(ref selectedSessionHistoryEntry, value))
+            {
+                LoadSelectedSessionCommand.RaiseCanExecuteChanged();
+            }
+        }
+    }
+
     public SessionPhaseViewModel? SelectedSessionPhase
     {
         get => selectedSessionPhase;
         set
         {
             if (SetField(ref selectedSessionPhase, value))
+            {
+                PopulateSessionArtifactsForPhase(value);
+                OnDetailChanged();
+            }
+        }
+    }
+
+    public SessionArtifactViewModel? SelectedSessionArtifact
+    {
+        get => selectedSessionArtifact;
+        set
+        {
+            if (SetField(ref selectedSessionArtifact, value))
             {
                 OnDetailChanged();
             }
@@ -244,7 +292,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string SelectedDetailTitle => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionPhase?.Title ?? "No session phase selected",
+        "session" => SelectedSessionArtifact?.Title ?? SelectedSessionPhase?.Title ?? "No session phase selected",
         "devices" => SelectedDeviceCheck?.Title ?? "No device check selected",
         "transports" => SelectedTransport?.Title ?? "No transport selected",
         "commands" => SelectedCommandStage?.Title ?? "No command stage selected",
@@ -254,7 +302,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string SelectedDetailStatusLine => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionPhase?.StatusLine ?? "",
+        "session" => SelectedSessionArtifact?.StatusLine ?? SelectedSessionPhase?.StatusLine ?? "",
         "devices" => SelectedDeviceCheck?.StatusLine ?? "",
         "transports" => SelectedTransport?.StatusLine ?? "",
         "commands" => SelectedCommandStage?.StatusLine ?? "",
@@ -264,7 +312,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public Brush SelectedDetailBrush => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionPhase?.StatusBrush ?? Brushes.DimGray,
+        "session" => SelectedSessionArtifact?.StatusBrush ?? SelectedSessionPhase?.StatusBrush ?? Brushes.DimGray,
         "devices" => SelectedDeviceCheck?.StatusBrush ?? Brushes.DimGray,
         "transports" => SelectedTransport?.StatusBrush ?? Brushes.DimGray,
         "commands" => SelectedCommandStage?.StatusBrush ?? Brushes.DimGray,
@@ -274,7 +322,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     public string SelectedDetailText => SelectedNavigationKey switch
     {
-        "session" => SelectedSessionPhase?.DetailText ?? "",
+        "session" => SelectedSessionArtifact?.DetailText ?? SelectedSessionPhase?.DetailText ?? "",
         "devices" => SelectedDeviceCheck?.DetailText ?? "",
         "transports" => SelectedTransport?.DetailText ?? "",
         "commands" => SelectedCommandStage?.DetailText ?? "",
@@ -297,6 +345,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             var catalog = await catalogService.RefreshAsync(CancellationToken.None);
             ApplyReport(report);
             ApplyCatalog(catalog);
+            await RefreshSessionHistoryListAsync(null, CancellationToken.None);
             SummaryLabel =
                 $"{report.Profile}: {report.Summary.Pass} pass, {report.Summary.Warn} warn, " +
                 $"{report.Summary.Fail} fail, {report.Summary.Skipped} skipped, " +
@@ -308,9 +357,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             reportStatus = "fail";
             catalogStatus = "unknown";
+            currentSession = null;
             Checks.Clear();
             DeviceChecks.Clear();
+            SessionHistory.Clear();
             SessionPhases.Clear();
+            SessionArtifacts.Clear();
             Transports.Clear();
             CommandStages.Clear();
             EvidenceArtifacts.Clear();
@@ -327,7 +379,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             Checks.Add(failure);
             SelectedCheck = failure;
             SelectedDeviceCheck = null;
+            SelectedSessionHistoryEntry = null;
             SelectedSessionPhase = null;
+            SelectedSessionArtifact = null;
             SelectedTransport = null;
             SelectedCommandStage = null;
             SelectedEvidenceArtifact = null;
@@ -353,6 +407,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                 CheckBroker,
                 CancellationToken.None);
             ApplySession(session);
+            await RefreshSessionHistoryListAsync(session.ReportPath, CancellationToken.None);
             SummaryLabel =
                 $"Session {session.SessionId}: {session.Status}. " +
                 $"{session.Summary.PhaseCount} phases, {session.Summary.ArtifactCount} artifacts, " +
@@ -360,7 +415,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         }
         catch (Exception ex)
         {
+            currentSession = null;
             SessionPhases.Clear();
+            SessionArtifacts.Clear();
             var failure = new SessionPhaseViewModel(new SessionPhase
             {
                 PhaseId = "wpf_session",
@@ -398,7 +455,55 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
             });
             SessionPhases.Add(failure);
             SelectedSessionPhase = failure;
+            SelectedSessionArtifact = null;
             SummaryLabel = "Companion session failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadSessionHistoryAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            await RefreshSessionHistoryListAsync(null, CancellationToken.None);
+            SummaryLabel = $"{SessionHistory.Count} saved sessions loaded.";
+        }
+        catch (Exception ex)
+        {
+            SummaryLabel = $"Session history failed: {ex.Message}";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task LoadSelectedSessionAsync()
+    {
+        if (SelectedSessionHistoryEntry is null)
+        {
+            return;
+        }
+
+        IsBusy = true;
+        try
+        {
+            var session = await sessionService.LoadSessionAsync(
+                    SelectedSessionHistoryEntry.ReportPath,
+                    CancellationToken.None);
+            ApplySession(session);
+            SummaryLabel =
+                $"Loaded {session.SessionId}: {session.Status}. " +
+                $"{session.Summary.PhaseCount} phases, {session.Summary.ArtifactCount} artifacts, " +
+                $"{session.Summary.IssueCount} issues.";
+        }
+        catch (Exception ex)
+        {
+            SummaryLabel = $"Load session failed: {ex.Message}";
         }
         finally
         {
@@ -484,12 +589,70 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void ApplySession(CompanionSessionReport session)
     {
+        currentSession = session;
         SessionPhases.Clear();
         foreach (var phase in session.Phases)
         {
             SessionPhases.Add(new SessionPhaseViewModel(phase));
         }
         SelectedSessionPhase = SessionPhases.FirstOrDefault();
+        if (SelectedSessionPhase is null)
+        {
+            PopulateSessionArtifactsForPhase(null);
+        }
+    }
+
+    private async Task RefreshSessionHistoryListAsync(
+        string? selectedReportPath,
+        CancellationToken cancellationToken)
+    {
+        var reports = await sessionService.LoadHistoryAsync(cancellationToken);
+        SessionHistory.Clear();
+        foreach (var report in reports)
+        {
+            SessionHistory.Add(new SessionHistoryEntryViewModel(report));
+        }
+
+        if (!string.IsNullOrWhiteSpace(selectedReportPath))
+        {
+            SelectedSessionHistoryEntry = SessionHistory.FirstOrDefault(
+                entry => string.Equals(
+                    entry.ReportPath,
+                    selectedReportPath,
+                    StringComparison.OrdinalIgnoreCase));
+        }
+        else
+        {
+            var currentPath = SelectedSessionHistoryEntry?.ReportPath;
+            SelectedSessionHistoryEntry = SessionHistory.FirstOrDefault(
+                    entry => string.Equals(
+                        entry.ReportPath,
+                        currentPath,
+                        StringComparison.OrdinalIgnoreCase))
+                ?? SessionHistory.FirstOrDefault();
+        }
+    }
+
+    private void PopulateSessionArtifactsForPhase(SessionPhaseViewModel? phase)
+    {
+        SessionArtifacts.Clear();
+        SelectedSessionArtifact = null;
+        if (currentSession is null)
+        {
+            return;
+        }
+
+        var artifactIds = phase?.ArtifactIds.Count > 0
+            ? phase.ArtifactIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : currentSession.ArtifactRefs.Select(artifact => artifact.ArtifactId)
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var artifact in currentSession.ArtifactRefs.Where(
+                     artifact => artifactIds.Contains(artifact.ArtifactId)))
+        {
+            SessionArtifacts.Add(new SessionArtifactViewModel(
+                artifact,
+                sessionService.ReadArtifactPreview(artifact)));
+        }
     }
 
     private void ApplyCommandExecution(BridgeCommandExecution execution)

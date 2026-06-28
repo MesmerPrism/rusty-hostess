@@ -45,6 +45,8 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
             )
             report = read_json(out)
             validation = read_json(out.with_name("session.validation-report.json"))
+            request_artifact = artifact_with_role(report, "live_broker_stream_request")
+            request = read_json(Path(request_artifact["path"]))
 
         self.assertEqual(status, 0)
         self.assertEqual(report["$schema"], HOSTESS_COMPANION_SESSION_SCHEMA)
@@ -58,6 +60,16 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
                 for artifact in report["artifact_refs"]
             )
         )
+        self.assertNotEqual(
+            request["request_id"],
+            "request.hostess.bridge_command.broker_stream_probe",
+        )
+        self.assertTrue(
+            request["request_id"].startswith(
+                "request.hostess.bridge_command.broker_stream_probe."
+            )
+        )
+        self.assertIn("session_request_token", request["params"])
 
     def test_fallback_recovery_reports_warn_session_without_ui_logic(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -83,6 +95,8 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
                 fallback_execution_func=fake_fallback_pass,
             )
             validation = validate_companion_session_report(report)
+            request_artifact = artifact_with_role(report, "app_private_fallback_request")
+            request = read_json(Path(request_artifact["path"]))
 
         self.assertEqual(report["status"], "warn")
         self.assertEqual(validation["status"], "pass")
@@ -93,6 +107,15 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
                 issue["issue_code"]
                 == "hostess.issue.companion_session.recovered_by_app_private_fallback"
                 for issue in report["issues"]
+            )
+        )
+        self.assertNotEqual(
+            request["request_id"],
+            "request.hostess.bridge_command.android_probe",
+        )
+        self.assertTrue(
+            request["request_id"].startswith(
+                "request.hostess.bridge_command.android_probe."
             )
         )
 
@@ -128,6 +151,8 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
         self.assertEqual(args.serial, "serial-1")
         self.assertEqual(args.broker_local_port, 28765)
         self.assertEqual(args.wait_seconds, 0.5)
+        self.assertEqual(args.runtime_subscriber_retry_count, 1)
+        self.assertEqual(args.runtime_subscriber_retry_wait_seconds, 5.0)
         self.assertTrue(args.check_broker)
         self.assertTrue(args.no_fallback)
 
@@ -303,6 +328,8 @@ def session_args(**overrides: object) -> argparse.Namespace:
         "makepad_process_wait_seconds": 0.5,
         "socket_wait_seconds": 0.5,
         "launch_settle_seconds": 0.0,
+        "runtime_subscriber_retry_count": 1,
+        "runtime_subscriber_retry_wait_seconds": 5.0,
         "no_launch_broker": False,
         "no_launch_makepad": False,
         "no_wait_broker_process": False,
@@ -373,6 +400,10 @@ def touch(path: Path) -> Path:
 
 def phase(report: dict[str, Any], phase_id: str) -> dict[str, Any]:
     return next(row for row in report["phases"] if row["phase_id"] == phase_id)
+
+
+def artifact_with_role(report: dict[str, Any], role: str) -> dict[str, Any]:
+    return next(row for row in report["artifact_refs"] if row["role"] == role)
 
 
 def build_parser():
