@@ -155,6 +155,37 @@ public sealed class HostessctlSessionService
             $"{Environment.NewLine}{Environment.NewLine}[truncated at {ArtifactPreviewMaxChars} characters]";
     }
 
+    public DeviceLinkReport? TryReadDeviceLinkReport(CompanionSessionReport session)
+    {
+        var artifact = session.ArtifactRefs.FirstOrDefault(
+            row => string.Equals(row.Role, "device_link_report", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(row.Schema, "rusty.quest.device_link.v1", StringComparison.OrdinalIgnoreCase));
+        if (artifact is null || string.IsNullOrWhiteSpace(artifact.Path))
+        {
+            return null;
+        }
+
+        var file = ResolveReportPath(artifact.Path);
+        if (!file.Exists)
+        {
+            return null;
+        }
+
+        try
+        {
+            using var stream = File.OpenRead(file.FullName);
+            return JsonSerializer.Deserialize<DeviceLinkReport>(stream, JsonOptions);
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+    }
+
     private static DirectoryInfo SessionDirectory()
     {
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();

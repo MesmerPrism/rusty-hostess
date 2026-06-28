@@ -54,7 +54,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   Commands, and Evidence pages through WPF while calling `hostessctl
   companion-readiness`, `hostessctl companion-catalog`,
   `hostessctl companion-session run`, and bridge-command routes as backend
-  authority paths.
+  authority paths. Session-linked `rusty.quest.device_link.v1` artifacts are
+  projected into Devices and Transports rows so operator UI stays reusable
+  without becoming device-link authority.
 - `tools/hostessctl/hostessctl.py`: compatibility facade for command dispatch,
   platform defaults, and existing imports. Route bodies live in focused helper
   modules so new command behavior does not accumulate in the CLI root.

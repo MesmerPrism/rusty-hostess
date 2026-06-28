@@ -20,7 +20,7 @@ The check covers the available local surface:
   their inputs are present.
 - Companion catalog descriptor smoke when the sibling Rusty GUI descriptor
   folder is present.
-- WPF companion build when `apps\hostess-companion-wpf` exists.
+- WPF companion build and projection tests when the WPF projects exist.
 
 For fast CLI/evidence edits, run the Python path first:
 
@@ -55,7 +55,12 @@ python -m unittest tools.test_hostessctl_companion_catalog tools.test_hostessctl
 python tools\hostessctl\hostessctl.py companion-catalog --out target\companion-catalog\catalog.json --fail-on-error
 python tools\hostessctl\hostessctl.py companion-readiness --out target\companion-readiness\readiness.json
 python tools\hostessctl\hostessctl.py companion-session run --out target\companion-session\session.json --profile basic --skip-probe
+dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
+
+The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
+from a session report, Devices/Transports projection rows, command-stage
+evidence promotion, and connectivity suite row grouping.
 
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host

@@ -110,6 +110,9 @@ try {
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
         Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
     }
+    if (Test-Path "tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj") {
+        Invoke-Checked "WPF companion projection tests" "dotnet" @("run", "--project", "tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj")
+    }
     $PackagesRootCandidate = Join-Path $RepoRoot "..\rusty-manifold-packages"
     $PmbPackageRootCandidate = Join-Path $PackagesRootCandidate "packages\projected-motion-breath"
     if (Test-Path $PmbPackageRootCandidate) {

@@ -68,6 +68,7 @@ cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
+dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
 
 For live captures, write raw run artifacts outside the repo and commit only

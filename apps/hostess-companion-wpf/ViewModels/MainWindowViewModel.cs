@@ -1,14 +1,13 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
 using System.Windows.Media;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class MainWindowViewModel : INotifyPropertyChanged
+public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 {
     private static readonly HashSet<string> DeviceCheckGroups = ["device", "runtime", "network"];
 
@@ -726,9 +725,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                         CancellationToken.None);
             currentFirewallRuleReport = report;
             UpdateFirewallInputsFromReport(report);
-            var rows = new List<ConnectivityCheck> { FirewallPlanCheck(report) };
+            var rows = new List<ConnectivityCheck> { ConnectivityRows.FirewallPlanCheck(report) };
             rows.AddRange(await connectivityService.ApplyFirewallRuleAsync(report, CancellationToken.None));
-            ApplyConnectivityRows(rows, StatusFromRows(rows));
+            ApplyConnectivityRows(rows, ConnectivityRows.StatusFromRows(rows));
             SummaryLabel =
                 $"Firewall rule apply: {connectivityStatus}. " +
                 $"{report.Rule.Name}, {report.Rule.Protocol} {report.Rule.LocalPort}.";
@@ -821,7 +820,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
                     ConnectivityPort,
                     CancellationToken.None);
             currentFirewallRuleReport = null;
-            ApplyConnectivityRows(rows, StatusFromRows(rows));
+            ApplyConnectivityRows(rows, ConnectivityRows.StatusFromRows(rows));
             SummaryLabel = $"Firewall rule remove: {connectivityStatus}.";
         }
         catch (Exception ex)
@@ -890,13 +889,36 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         {
             PopulateSessionArtifactsForPhase(null);
         }
+        ApplyDeviceLink(sessionService.TryReadDeviceLinkReport(session));
+    }
+
+    private void ApplyDeviceLink(DeviceLinkReport? report)
+    {
+        if (report is null)
+        {
+            return;
+        }
+
+        DeviceChecks.Clear();
+        foreach (var check in DeviceLinkOperatorProjection.BuildDeviceChecks(report))
+        {
+            DeviceChecks.Add(new CheckViewModel(check));
+        }
+        SelectedDeviceCheck = DeviceChecks.FirstOrDefault();
+
+        Transports.Clear();
+        foreach (var transport in DeviceLinkOperatorProjection.BuildTransportDescriptors(report))
+        {
+            Transports.Add(new TransportViewModel(transport));
+        }
+        SelectedTransport = Transports.FirstOrDefault();
     }
 
     private void ApplyFirewallRuleReport(ConnectivityFirewallRuleReport report)
     {
         currentFirewallRuleReport = report;
         UpdateFirewallInputsFromReport(report);
-        ApplyConnectivityRows([FirewallPlanCheck(report)], report.Status);
+        ApplyConnectivityRows(ConnectivityRows.ForFirewallPlan(report), report.Status);
     }
 
     private void UpdateFirewallInputsFromReport(ConnectivityFirewallRuleReport report)
@@ -929,121 +951,17 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void ApplyConnectivityProbeReport(ConnectivityProbeReport report)
     {
-        ApplyConnectivityRows(report.Checks, report.Status);
+        ApplyConnectivityRows(ConnectivityRows.ForProbeReport(report), report.Status);
     }
 
     private void ApplyConnectivityCapabilityResult(ConnectivityStreamCapabilityRun run)
     {
-        var rows = new List<ConnectivityCheck>(run.Report.Checks);
-        var descriptor = run.Descriptor;
-        var warningCodes = descriptor.Warnings
-            .Select(warning => warning.IssueCode)
-            .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
-            .ToList();
-        rows.Add(new ConnectivityCheck
-        {
-            Name = "quest.device_link.stream_capability",
-            Status = string.IsNullOrWhiteSpace(descriptor.Status) ? "unknown" : descriptor.Status,
-            Evidence =
-                $"{descriptor.StreamId}: {descriptor.TransportKind} / {descriptor.Direction}. " +
-                $"Descriptor: {run.DescriptorPath}",
-            Notes = descriptor.CapabilityId,
-            IssueCodes = warningCodes,
-            Observed = JsonSerializer.SerializeToElement(descriptor),
-        });
-        foreach (var requirement in descriptor.Requirements)
-        {
-            rows.Add(new ConnectivityCheck
-            {
-                Name = requirement.RequirementId,
-                Status = StatusForRequirement(requirement.Status),
-                Evidence = string.IsNullOrWhiteSpace(requirement.Evidence)
-                    ? requirement.Status
-                    : requirement.Evidence,
-                Notes = requirement.Notes,
-                IssueCodes = [],
-                Observed = JsonSerializer.SerializeToElement(requirement),
-            });
-        }
-        foreach (var warning in descriptor.Warnings)
-        {
-            rows.Add(new ConnectivityCheck
-            {
-                Name = warning.IssueCode,
-                Status = "warn",
-                Evidence = warning.Message,
-                Notes = warning.Severity,
-                IssueCodes = string.IsNullOrWhiteSpace(warning.IssueCode) ? [] : [warning.IssueCode],
-                Observed = JsonSerializer.SerializeToElement(warning),
-            });
-        }
-
-        ApplyConnectivityRows(rows, descriptor.Status);
+        ApplyConnectivityRows(ConnectivityRows.ForCapabilityRun(run), run.Descriptor.Status);
     }
 
     private void ApplyConnectivitySuiteReport(ConnectivitySuiteRunReport report)
     {
-        var rows = new List<ConnectivityCheck>
-        {
-            new()
-            {
-                Name = "quest.device_link.install_environment_suite_run",
-                Status = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status,
-                Evidence =
-                    $"{report.SuiteId} / {report.Mode}: {report.SlotResults.Count} slots. " +
-                    $"Descriptor: {report.SuiteDescriptorPath}",
-                Notes = report.ReportPath,
-                IssueCodes = [],
-                Observed = JsonSerializer.SerializeToElement(report),
-            },
-            new()
-            {
-                Name = "suite.environment_snapshot",
-                Status = "pass",
-                Evidence = "host tools, network adapters, firewall profiles, hotspot, and Bluetooth snapshot captured",
-                Notes = "environment state is evidence; protocol validity remains in QCL slot reports",
-                IssueCodes = [],
-                Observed = report.EnvironmentSnapshot,
-            },
-        };
-
-        foreach (var group in report.GroupedResults)
-        {
-            rows.Add(new ConnectivityCheck
-            {
-                Name = group.GroupId,
-                Status = group.Status,
-                Evidence =
-                    $"{group.Phase}: {group.PassCount} pass, {group.WarnCount} warn, " +
-                    $"{group.FailCount} fail across {group.SlotCount} slots",
-                Notes = string.Join(", ", group.SlotIds),
-                IssueCodes = [],
-                Observed = JsonSerializer.SerializeToElement(group),
-            });
-        }
-
-        foreach (var slot in report.SlotResults)
-        {
-            var issues = slot.Issues
-                .Select(issue => issue.IssueCode)
-                .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
-                .ToList();
-            rows.Add(new ConnectivityCheck
-            {
-                Name = slot.SlotId,
-                Status = slot.Status,
-                Evidence =
-                    $"{slot.ProbeId} {slot.Phase}: report={slot.ReportStatus}, " +
-                    $"validation={slot.ValidationStatus}, metrics={MetricsSummary(slot.Metrics)}",
-                Notes = string.IsNullOrWhiteSpace(slot.DescriptorPath)
-                    ? slot.ReportPath
-                    : $"{slot.ReportPath}; descriptor={slot.DescriptorPath} ({slot.DescriptorStatus})",
-                IssueCodes = issues,
-                Observed = JsonSerializer.SerializeToElement(slot),
-            });
-        }
-
-        ApplyConnectivityRows(rows, report.Status);
+        ApplyConnectivityRows(ConnectivityRows.ForSuiteReport(report), report.Status);
     }
 
     private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)
@@ -1059,73 +977,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
 
     private void ApplyConnectivityFailure(string checkName, Exception ex)
     {
-        ApplyConnectivityRows(
-            [
-                new ConnectivityCheck
-                {
-                    Name = checkName,
-                    Status = "fail",
-                    Evidence = ex.Message,
-                    Notes = "",
-                    IssueCodes = ["hostess.issue.wpf.connectivity_failed"],
-                    Observed = JsonSerializer.SerializeToElement(new
-                    {
-                        Error = ex.Message,
-                        Type = ex.GetType().Name,
-                    }),
-                },
-            ],
-            "fail");
-    }
-
-    private static ConnectivityCheck FirewallPlanCheck(ConnectivityFirewallRuleReport report) =>
-        new()
-        {
-            Name = "host.windows_firewall_rule_plan",
-            Status = report.Status,
-            Evidence =
-                $"{report.Rule.Name}: {report.Rule.Program}, {report.Rule.Protocol} {report.Rule.LocalPort}, " +
-                $"{string.Join(",", report.Rule.Profiles)} / {report.Rule.RemoteAddress}",
-            Notes = report.Rule.ScopeNote,
-            IssueCodes = report.Issues.Select(issue => issue.IssueCode)
-                .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
-                .ToList(),
-            Observed = JsonSerializer.SerializeToElement(report),
-        };
-
-    private static string StatusFromRows(IReadOnlyList<ConnectivityCheck> rows)
-    {
-        if (rows.Any(row => row.Status is "fail" or "blocked" or "rejected"))
-        {
-            return "fail";
-        }
-        if (rows.Any(row => row.Status is "warn" or "usable_with_warnings" or "missing" or "unknown"))
-        {
-            return "warn";
-        }
-        if (rows.Any(row => row.Status is "planned" or "candidate"))
-        {
-            return "planned";
-        }
-        return rows.Count == 0 ? "unknown" : "pass";
-    }
-
-    private static string MetricsSummary(JsonElement metrics)
-    {
-        if (metrics.ValueKind != JsonValueKind.Object)
-        {
-            return "none";
-        }
-        var parts = new List<string>();
-        foreach (var property in metrics.EnumerateObject())
-        {
-            if (parts.Count >= 4)
-            {
-                break;
-            }
-            parts.Add($"{property.Name}={property.Value}");
-        }
-        return parts.Count == 0 ? "none" : string.Join(", ", parts);
+        ApplyConnectivityRows(ConnectivityRows.Failure(checkName, ex), "fail");
     }
 
     private void SetConnectivityStatus(string status)
@@ -1232,16 +1084,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged
         "usable" => Brushes.DarkGreen,
         "satisfied" => Brushes.DarkGreen,
         _ => Brushes.DimGray,
-    };
-
-    private static string StatusForRequirement(string status) => status switch
-    {
-        "satisfied" => "pass",
-        "present_unverified" => "warn",
-        "missing" => "warn",
-        "unknown" => "warn",
-        "blocked" => "blocked",
-        _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
     };
 
     private static string DefaultConnectivityRuleName(string portText, string protocol)

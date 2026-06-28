@@ -40,6 +40,12 @@ Readiness, Session, Devices, Transports, Commands, and Evidence tables plus
 selected-row details, and does not implement dependency, device, broker,
 descriptor, command authority, session orchestration, or runtime acceptance
 logic inside WPF handlers.
+WPF projection helpers under `apps/hostess-companion-wpf/ViewModels` translate
+Hostess connectivity reports and Quest `rusty.quest.device_link.v1` artifacts
+into operator rows for Devices, Transports, and Connectivity. Those helpers
+keep UI composition reusable while preserving the authority boundary: Hostess
+and Quest reports own readiness, stream capabilities, subscriber delivery, and
+command-stage truth; WPF only renders and drills into the evidence.
 
 The Android-class app shell includes a compact native Canvas telemetry view for
 phone and headset profiles, but that view is fallback/debug-only platform

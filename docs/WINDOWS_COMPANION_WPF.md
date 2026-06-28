@@ -8,8 +8,10 @@ Hostess/Manifold evidence routes.
 
 - Readiness view.
 - Session view derived from `rusty.hostess.companion.session.v1` phases.
-- Devices view derived from readiness device/runtime/network checks.
-- Transports view derived from Rusty GUI transport capability descriptors.
+- Devices view derived from readiness device/runtime/network checks and
+  Quest device-link artifacts.
+- Transports view derived from Rusty GUI transport capability descriptors and
+  Quest device-link stream capability rows.
 - Commands view for the Quest broker-stream bridge probe.
 - Connectivity view for scoped Windows Firewall planning, QCL-010 TCP
   verification, and QCL-080 UDP stream-capability verification.
@@ -66,6 +68,20 @@ includes the Quest-owned `rusty.quest.device_link.v1` report, which is the
 operator-facing summary for device identity, ADB forward state, broker
 readiness, runtime subscriber health, command results, and stream capability
 costs.
+
+When a session report references a `rusty.quest.device_link.v1` artifact, WPF
+loads it through `HostessctlSessionService` and projects it into the operator
+tables:
+
+- Devices: device identity, host tools, ADB tunnels, broker endpoints, runtime
+  subscriber delivery, command-stage evidence, and issues.
+- Transports: tunnel routes, broker endpoints, stream capabilities, measured
+  costs, preconditions, limitations, and required command evidence stages.
+
+These rows are view projections only. The Quest/Hostess report remains the
+source of truth for whether ADB forwarding, `/manifold/v1/events`, runtime
+subscriber delivery, or `sent -> transport_ok -> authority_accepted ->
+runtime_accepted -> applied` command stages actually passed.
 
 The Commands page safe probe calls:
 
@@ -160,6 +176,8 @@ still comes from the individual QCL reports and stream capability descriptors.
 
 ```powershell
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
+dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
 
-The repo-local `tools\check_all.ps1` runs this build when the project exists.
+The repo-local `tools\check_all.ps1` runs the WPF build and projection tests
+when the projects exist.

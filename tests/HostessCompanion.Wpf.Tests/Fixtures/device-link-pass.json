@@ -1,0 +1,114 @@
+{
+  "schema": "rusty.quest.device_link.v1",
+  "status": "pass",
+  "link_id": "device_link.hostess.fixture",
+  "device_identity": {
+    "serial": "redacted",
+    "model": "Quest 3S",
+    "adb_state": "device",
+    "transport_kind": "adb_usb"
+  },
+  "host_tools": [
+    {
+      "tool_id": "tool.host.adb",
+      "kind": "adb",
+      "status": "pass",
+      "required": true,
+      "path": "S:/Work/tools/Android/windows-sdk/platform-tools/adb.exe"
+    }
+  ],
+  "tunnels": [
+    {
+      "tunnel_id": "tunnel.adb_forward.manifold_broker",
+      "transport_kind": "adb_forward",
+      "status": "pass",
+      "required": true,
+      "host": "127.0.0.1",
+      "local_port": 18765,
+      "device_host": "127.0.0.1",
+      "device_port": 8765,
+      "path": "/manifold/v1/events"
+    }
+  ],
+  "broker_endpoints": [
+    {
+      "endpoint_id": "broker.manifold.quest_forwarded",
+      "status": "pass",
+      "protocol": "websocket",
+      "host": "127.0.0.1",
+      "port": 18765,
+      "path": "/manifold/v1/events",
+      "authority": "rusty.manifold.command",
+      "routed_through_tunnel_id": "tunnel.adb_forward.manifold_broker"
+    }
+  ],
+  "runtime_subscribers": [
+    {
+      "subscriber_id": "runtime.hostess_makepad.bridge_command",
+      "status": "connected",
+      "runtime_app_id": "io.github.mesmerprism.rustyhostess.makepad",
+      "request_stream_id": "stream.hostess.makepad.bridge_command",
+      "receipt_stream_id": "stream.hostess.makepad.bridge_command.receipt",
+      "last_dispatch_delivered_count": 1,
+      "receipt_required": true
+    }
+  ],
+  "command_results": [
+    {
+      "result_id": "command_result.fixture",
+      "request_id": "request.fixture",
+      "command": "hostess.makepad.bridge_probe.set_marker",
+      "route_id": "bridge_route.command.websocket.applied",
+      "transport_kind": "manifold_websocket",
+      "status": "pass",
+      "applied": true,
+      "runtime_dispatch_delivered_count": 1,
+      "required_stages": [
+        "sent",
+        "transport_ok",
+        "authority_accepted",
+        "runtime_accepted",
+        "applied"
+      ]
+    }
+  ],
+  "stream_capabilities": [
+    {
+      "capability_id": "capability.command.hostess_makepad_bridge",
+      "stream_id": "stream.hostess.makepad.bridge_command",
+      "transport_kind": "manifold_websocket",
+      "semantic_family": "command",
+      "direction": "host_to_quest_runtime",
+      "payload_plane": "json_event",
+      "rate_class": "control",
+      "reliability": "ordered_ack_required",
+      "clock_policy": "host_request_runtime_receipt",
+      "max_rate_hz": 5,
+      "recommended_for": [
+        "operator commands"
+      ],
+      "not_for": [
+        "camera frames"
+      ]
+    },
+    {
+      "capability_id": "capability.biosignal.lsl_clocked_samples",
+      "stream_id": "stream.polar_h10.ecg",
+      "transport_kind": "lsl",
+      "semantic_family": "biosignal",
+      "direction": "sensor_to_host_or_runtime",
+      "payload_plane": "lsl_sample",
+      "rate_class": "sample_clocked",
+      "reliability": "sample_clocked_best_effort",
+      "clock_policy": "source_clock_lsl_time_correction",
+      "max_rate_hz": 130,
+      "recommended_for": [
+        "clocked biosignal samples"
+      ],
+      "not_for": [
+        "command authority"
+      ]
+    }
+  ],
+  "issues": []
+}
