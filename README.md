@@ -151,7 +151,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   adapter. It emits `rusty.quest.connectivity_topology_probe.v1` reports for
   fixture and same-Wi-Fi live topology checks, keeping topology ownership,
   low-rate diagnostic transport, and protocol-fit gaps inspectable before any
-  route is promoted into WPF, Makepad, Rusty Quest, or Manifold modules.
+  route is promoted into WPF, Makepad, Rusty Quest, or Manifold modules. It
+  also owns the Windows firewall listener rule lifecycle through
+  `windows-firewall-rule --action plan|apply|verify|remove`, including WPF
+  product-rule verification separate from diagnostic Python listener evidence.
 - `tools/hostessctl/connectivity_suite.py`: install/environment/protocol suite
   runner. It executes selected QCL slots, records host network/firewall/tool
   snapshots, aggregates grouped results, and emits

@@ -990,6 +990,8 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
                 "Public",
                 "--remote-address",
                 "LocalSubnet",
+                "--action",
+                "verify",
                 "--out",
                 "target/firewall.json",
             ]
@@ -1000,6 +1002,7 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertEqual(args.protocol, "UDP")
         self.assertEqual(args.port, 18767)
         self.assertEqual(args.remote_address, "LocalSubnet")
+        self.assertEqual(args.action, "verify")
 
     def test_windows_firewall_rule_plan_scopes_program_port_profile_and_subnet(self) -> None:
         report = windows_firewall_rule_report(
@@ -1010,7 +1013,8 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
                 port=18767,
                 profile="Public",
                 remote_address="LocalSubnet",
-                rule_name="Rusty Hostess QCL-080 UDP Freshness 18767",
+                rule_name="Rusty Hostess WPF QCL-080 UDP Freshness 18767",
+                action="plan",
                 apply=False,
             ),
             observed_at=fixed_datetime(),
@@ -1028,6 +1032,27 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertIn("--udp-port", report["probe_usage"]["connectivity_probe_args"])
         self.assertIn("New-NetFirewallRule", report["powershell"]["script"])
         self.assertIn("-Protocol $protocol", report["powershell"]["script"])
+
+    def test_windows_firewall_rule_defaults_to_wpf_product_listener(self) -> None:
+        report = windows_firewall_rule_report(
+            probe_args(
+                connectivity_probe_command="windows-firewall-rule",
+                protocol="UDP",
+                port=18767,
+                profile="Public",
+                remote_address="LocalSubnet",
+                rule_name="",
+                action="verify",
+                apply=False,
+            ),
+            observed_at=fixed_datetime(),
+        )
+
+        self.assertEqual(report["action"], "verify")
+        self.assertEqual(report["rule"]["name"], "Rusty Hostess WPF QCL-080 UDP Freshness 18767")
+        self.assertTrue(report["rule"]["program"].endswith("HostessCompanion.Wpf.exe"))
+        self.assertIn("Get-NetFirewallRule", report["powershell"]["script"])
+        self.assertNotIn("New-NetFirewallRule", report["powershell"]["script"])
 
 
 def fake_tcp_echo_pass(args: argparse.Namespace, host_ip: str, run_timeout_func: Any) -> dict[str, Any]:
@@ -1710,8 +1735,16 @@ def firewall_profile_json(
                 "protocol": protocol,
                 "port": listener_port,
                 "bind_host": "0.0.0.0",
+                "expected_rule_name": (
+                    f"Rusty Hostess WPF QCL-080 UDP Freshness {listener_port}"
+                    if protocol == "UDP"
+                    else f"Rusty Hostess WPF QCL-010 TCP Echo {listener_port}"
+                ),
+                "expected_remote_address": "LocalSubnet",
                 "active_profiles": [active_category],
                 "matching_rule_count": 1 if allowed else 0,
+                "product_matching_rule_count": 0,
+                "product_rule_verified": False,
                 "matching_rules": [
                     {
                         "name": "Rusty Hostess connectivity probe fixture",
@@ -1719,8 +1752,13 @@ def firewall_profile_json(
                         "profile_mask": 2 if active_category == "Private" else 4,
                         "protocol": protocol_number,
                         "local_ports": str(listener_port),
+                        "remote_addresses": "LocalSubnet",
                         "application_name": "python.exe",
                         "profiles_apply_to_active": True,
+                        "program_matches": True,
+                        "name_matches": False,
+                        "remote_address_matches": True,
+                        "product_scope_matches": False,
                     }
                 ]
                 if allowed

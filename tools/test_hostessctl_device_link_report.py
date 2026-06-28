@@ -78,6 +78,40 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertEqual(requirement(descriptor, "qcl080_live_promotion")["status"], "missing")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl080_product_wpf_firewall_rule_satisfies_requirement(self) -> None:
+        report = qcl080_app_owned_fixture()
+        report["promotion"]["allowed"] = True
+        listener = report["host"]["firewall_listener"]
+        listener["program"] = "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe"
+        listener["expected_rule_name"] = "Rusty Hostess WPF QCL-080 UDP Freshness 18767"
+        listener["expected_remote_address"] = "LocalSubnet"
+        listener["product_matching_rule_count"] = 1
+        listener["product_rule_verified"] = True
+        listener["matching_rules"][0].update(
+            {
+                "name": "Rusty Hostess WPF QCL-080 UDP Freshness 18767",
+                "application_name": "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+                "remote_addresses": "LocalSubnet",
+                "program_matches": True,
+                "name_matches": True,
+                "remote_address_matches": True,
+                "product_scope_matches": True,
+            }
+        )
+
+        descriptor = build_stream_capability_descriptor_from_connectivity_probe(report)
+        validation = validate_stream_capability_descriptor(descriptor)
+
+        self.assertEqual(requirement(descriptor, "product_host_firewall_rule")["status"], "satisfied")
+        self.assertFalse(
+            any(
+                warning["issue_code"]
+                == "hostess.issue.device_link.stream_capability.product_firewall_rule_missing"
+                for warning in descriptor["warnings"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_qcl080_adb_shell_udp_generator_is_not_app_owned_capability(self) -> None:
         report = read_json(
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-080-udp-freshness-pass.json"

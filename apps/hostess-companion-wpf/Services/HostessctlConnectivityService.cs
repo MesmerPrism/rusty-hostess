@@ -11,8 +11,8 @@ public sealed class HostessctlConnectivityService
 {
     private const int DefaultTcpPort = 18766;
     private const int DefaultUdpPort = 18767;
-    private const string DefaultTcpRuleNamePrefix = "Rusty Hostess QCL-010 TCP Echo";
-    private const string DefaultUdpRuleNamePrefix = "Rusty Hostess QCL-080 UDP Freshness";
+    private const string DefaultTcpRuleNamePrefix = "Rusty Hostess WPF QCL-010 TCP Echo";
+    private const string DefaultUdpRuleNamePrefix = "Rusty Hostess WPF QCL-080 UDP Freshness";
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -38,28 +38,15 @@ public sealed class HostessctlConnectivityService
             "wpf-firewall-rule-plan.json"));
         Directory.CreateDirectory(reportPath.Directory!.FullName);
 
-        var arguments = new List<string>
-        {
-            "connectivity-probe",
-            "windows-firewall-rule",
-            "--out",
-            reportPath.FullName,
-            "--port",
-            port.ToString(CultureInfo.InvariantCulture),
-            "--protocol",
+        var arguments = FirewallRuleArguments(
+            "plan",
+            reportPath,
+            string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
             selectedProtocol,
-            "--profile",
-            string.IsNullOrWhiteSpace(profile) ? "Public" : profile.Trim(),
-            "--remote-address",
-            string.IsNullOrWhiteSpace(remoteAddress) ? "LocalSubnet" : remoteAddress.Trim(),
-            "--rule-name",
-            string.IsNullOrWhiteSpace(ruleName) ? DefaultRuleName(port, selectedProtocol) : ruleName.Trim(),
-        };
-        if (!string.IsNullOrWhiteSpace(program))
-        {
-            arguments.Add("--program");
-            arguments.Add(program.Trim());
-        }
+            port,
+            profile,
+            remoteAddress,
+            ruleName);
 
         await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
@@ -69,73 +56,79 @@ public sealed class HostessctlConnectivityService
         return report;
     }
 
-    public async Task<IReadOnlyList<ConnectivityCheck>> ApplyFirewallRuleAsync(
+    public async Task<ConnectivityFirewallRuleReport> ApplyFirewallRuleAsync(
         ConnectivityFirewallRuleReport report,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(report.PowerShell.Script))
-        {
-            return
-            [
-                SyntheticCheck(
-                    "host.windows_firewall_rule_apply",
-                    "blocked",
-                    "firewall rule plan did not include an apply script",
-                    new { report.Rule.Name, report.Rule.LocalPort },
-                    ["hostess.issue.connectivity_probe.firewall_rule_script_missing"]),
-            ];
-        }
-
-        return
-        [
-            await RunElevatedPowerShellAsync(
-                    "host.windows_firewall_rule_apply",
-                    report.PowerShell.Script,
-                    $"applied {report.Rule.Name} on {report.Rule.Protocol} {report.Rule.LocalPort}",
-                    $"apply {report.Rule.Name}",
-                    new
-                    {
-                        report.Rule.Name,
-                        report.Rule.Program,
-                        report.Rule.LocalPort,
-                        Profiles = report.Rule.Profiles,
-                        report.Rule.RemoteAddress,
-                        report.PowerShell.RequiresAdmin,
-                    },
-                    cancellationToken)
-                .ConfigureAwait(false),
-        ];
+        var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var reportPath = FirewallActionReportPath(repoRoot, "apply");
+        var arguments = FirewallRuleArguments(
+            "apply",
+            reportPath,
+            report.Rule.Program,
+            report.Rule.Protocol,
+            report.Rule.LocalPort,
+            string.Join(",", report.Rule.Profiles),
+            report.Rule.RemoteAddress,
+            report.Rule.Name);
+        return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+            .ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<ConnectivityCheck>> RemoveFirewallRuleAsync(
-        string ruleName,
+    public async Task<ConnectivityFirewallRuleReport> VerifyFirewallRuleAsync(
+        string program,
         string protocol,
         string portText,
+        string profile,
+        string remoteAddress,
+        string ruleName,
         CancellationToken cancellationToken)
     {
         var selectedProtocol = NormalizeProtocol(protocol);
-        var selectedRuleName = string.IsNullOrWhiteSpace(ruleName)
-            ? DefaultRuleName(ParsePort(portText, DefaultPortForProtocol(selectedProtocol)), selectedProtocol)
-            : ruleName.Trim();
-        var script = string.Join(
-            " ",
-            [
-                "$ErrorActionPreference = 'Stop';",
-                $"$ruleName = {PowerShellString(selectedRuleName)};",
-                "$rules = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue;",
-                "if ($rules) { $rules | Remove-NetFirewallRule; }",
-            ]);
-        return
-        [
-            await RunElevatedPowerShellAsync(
-                    "host.windows_firewall_rule_remove",
-                    script,
-                    $"removed {selectedRuleName} when present",
-                    $"remove {selectedRuleName}",
-                    new { Name = selectedRuleName, RequiresAdmin = true },
-                    cancellationToken)
-                .ConfigureAwait(false),
-        ];
+        var port = ParsePort(portText, DefaultPortForProtocol(selectedProtocol));
+        var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var reportPath = FirewallActionReportPath(repoRoot, "verify");
+        var arguments = FirewallRuleArguments(
+            "verify",
+            reportPath,
+            string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+            selectedProtocol,
+            port,
+            profile,
+            remoteAddress,
+            ruleName);
+        await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+            .ConfigureAwait(false);
+        var report = await ReadReportAsync<ConnectivityFirewallRuleReport>(reportPath, cancellationToken)
+            .ConfigureAwait(false);
+        report.ReportPath = reportPath.FullName;
+        return report;
+    }
+
+    public async Task<ConnectivityFirewallRuleReport> RemoveFirewallRuleAsync(
+        string program,
+        string ruleName,
+        string protocol,
+        string portText,
+        string profile,
+        string remoteAddress,
+        CancellationToken cancellationToken)
+    {
+        var selectedProtocol = NormalizeProtocol(protocol);
+        var port = ParsePort(portText, DefaultPortForProtocol(selectedProtocol));
+        var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var reportPath = FirewallActionReportPath(repoRoot, "remove");
+        var arguments = FirewallRuleArguments(
+            "remove",
+            reportPath,
+            string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+            selectedProtocol,
+            port,
+            profile,
+            remoteAddress,
+            ruleName);
+        return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     public async Task<ConnectivityProbeReport> RunFixedPortProbeAsync(
@@ -345,6 +338,10 @@ public sealed class HostessctlConnectivityService
             arguments.Add("--listener-program");
             arguments.Add(listenerProgram);
         }
+        arguments.Add("--listener-rule-name");
+        arguments.Add(DefaultRuleName(port, selectedProtocol));
+        arguments.Add("--listener-remote-address");
+        arguments.Add("LocalSubnet");
         if (!string.IsNullOrWhiteSpace(serial))
         {
             arguments.Add("--serial");
@@ -416,6 +413,47 @@ public sealed class HostessctlConnectivityService
         }
     }
 
+    private static async Task<ConnectivityFirewallRuleReport> RunElevatedHostessctlAsync(
+        DirectoryInfo repoRoot,
+        IReadOnlyList<string> arguments,
+        FileInfo expectedReport,
+        CancellationToken cancellationToken)
+    {
+        var script = string.Join(
+            " ",
+            [
+                "$ErrorActionPreference = 'Stop';",
+                $"Set-Location -LiteralPath {PowerShellString(repoRoot.FullName)};",
+                "& python tools/hostessctl/hostessctl.py " + string.Join(" ", arguments.Select(PowerShellString)) + ";",
+                "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+            ]);
+        using var process = Process.Start(new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + EncodePowerShell(script),
+            UseShellExecute = true,
+            Verb = "runas",
+            WindowStyle = ProcessWindowStyle.Normal,
+        }) ?? throw new InvalidOperationException("Failed to start elevated Hostess firewall action.");
+
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException($"elevated Hostess firewall action exited with {process.ExitCode}");
+        }
+        if (!expectedReport.Exists)
+        {
+            throw new InvalidOperationException(
+                $"Hostess firewall action did not write report: {expectedReport.FullName}");
+        }
+        var report = await ReadReportAsync<ConnectivityFirewallRuleReport>(
+                expectedReport,
+                cancellationToken)
+            .ConfigureAwait(false);
+        report.ReportPath = expectedReport.FullName;
+        return report;
+    }
+
     private static async Task<T> ReadReportAsync<T>(
         FileInfo reportPath,
         CancellationToken cancellationToken)
@@ -429,59 +467,46 @@ public sealed class HostessctlConnectivityService
             ?? throw new InvalidOperationException($"Connectivity report was empty: {reportPath.FullName}");
     }
 
-    private static async Task<ConnectivityCheck> RunElevatedPowerShellAsync(
-        string name,
-        string script,
-        string successEvidence,
-        string operation,
-        object context,
-        CancellationToken cancellationToken)
+    private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"wpf-firewall-rule-{action}.json"));
+
+    private static List<string> FirewallRuleArguments(
+        string action,
+        FileInfo reportPath,
+        string program,
+        string protocol,
+        int port,
+        string profile,
+        string remoteAddress,
+        string ruleName)
     {
-        try
-        {
-            using var process = Process.Start(new ProcessStartInfo
-            {
-                FileName = "powershell.exe",
-                Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + EncodePowerShell(script),
-                UseShellExecute = true,
-                Verb = "runas",
-                WindowStyle = ProcessWindowStyle.Normal,
-            }) ?? throw new InvalidOperationException("Failed to start elevated PowerShell.");
-
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-            return SyntheticCheck(
-                name,
-                process.ExitCode == 0 ? "pass" : "fail",
-                process.ExitCode == 0 ? successEvidence : $"{operation} exited with {process.ExitCode}",
-                new { Operation = operation, ExitCode = process.ExitCode, Context = context },
-                process.ExitCode == 0 ? [] : ["hostess.issue.connectivity_probe.elevated_firewall_rule_failed"]);
-        }
-        catch (Exception ex) when (ex is System.ComponentModel.Win32Exception or InvalidOperationException)
-        {
-            return SyntheticCheck(
-                name,
-                "fail",
-                $"{operation} did not complete: {ex.Message}",
-                new { Operation = operation, Context = context, Error = ex.Message },
-                ["hostess.issue.connectivity_probe.elevated_firewall_rule_failed"]);
-        }
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+        return
+        [
+            "connectivity-probe",
+            "windows-firewall-rule",
+            "--action",
+            action,
+            "--out",
+            reportPath.FullName,
+            "--program",
+            string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+            "--port",
+            port.ToString(CultureInfo.InvariantCulture),
+            "--protocol",
+            NormalizeProtocol(protocol),
+            "--profile",
+            string.IsNullOrWhiteSpace(profile) ? "Public" : profile.Trim(),
+            "--remote-address",
+            string.IsNullOrWhiteSpace(remoteAddress) ? "LocalSubnet" : remoteAddress.Trim(),
+            "--rule-name",
+            string.IsNullOrWhiteSpace(ruleName) ? DefaultRuleName(port, protocol) : ruleName.Trim(),
+        ];
     }
-
-    private static ConnectivityCheck SyntheticCheck(
-        string name,
-        string status,
-        string evidence,
-        object observed,
-        IReadOnlyList<string>? issueCodes = null) =>
-        new()
-        {
-            Name = name,
-            Status = status,
-            Evidence = evidence,
-            Notes = "",
-            IssueCodes = issueCodes?.ToList() ?? [],
-            Observed = JsonSerializer.SerializeToElement(observed, JsonOptions),
-        };
 
     private static int ParsePort(string portText, int fallback)
     {

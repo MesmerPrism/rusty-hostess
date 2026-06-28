@@ -264,6 +264,10 @@
                           Command="{Binding ApplyFirewallRuleCommand}"
                           Margin="8,0,0,0"
                           ToolTip="Apply the planned firewall rule with Windows administrator approval"/>
+                  <Button Content="{Binding VerifyFirewallRuleButtonLabel}"
+                          Command="{Binding VerifyFirewallRuleCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Verify the product firewall rule without running the QCL data probe"/>
                   <Button Content="{Binding VerifyConnectivityButtonLabel}"
                           Command="{Binding VerifyConnectivityCommand}"
                           Margin="8,0,0,0"

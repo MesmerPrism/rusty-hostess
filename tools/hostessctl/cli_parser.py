@@ -725,7 +725,14 @@ def build_hostessctl_parser(
     connectivity_probe_firewall.add_argument("--profile", default="Public")
     connectivity_probe_firewall.add_argument("--remote-address", default="LocalSubnet")
     connectivity_probe_firewall.add_argument("--rule-name")
+    connectivity_probe_firewall.add_argument(
+        "--action",
+        choices=["plan", "apply", "verify", "remove"],
+        default=None,
+    )
     connectivity_probe_firewall.add_argument("--apply", action="store_true")
+    connectivity_probe_firewall.add_argument("--verify", action="store_true")
+    connectivity_probe_firewall.add_argument("--remove", action="store_true")
     connectivity_probe_firewall.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_stream_capability = connectivity_probe_subcommands.add_parser("stream-capability")
     connectivity_probe_stream_capability.add_argument("--input", required=True)
@@ -765,6 +772,8 @@ def build_hostessctl_parser(
     connectivity_probe_run_suite.add_argument("--listener-protocol", choices=["TCP", "UDP"], default="UDP")
     connectivity_probe_run_suite.add_argument("--listener-port", type=int, default=18767)
     connectivity_probe_run_suite.add_argument("--listener-bind-host", default="0.0.0.0")
+    connectivity_probe_run_suite.add_argument("--listener-rule-name", default="")
+    connectivity_probe_run_suite.add_argument("--listener-remote-address", default="LocalSubnet")
     connectivity_probe_run_suite.add_argument("--adb")
     connectivity_probe_run_suite.add_argument("--serial")
     connectivity_probe_run_suite.add_argument("--wifi-interface", default="wlan0")

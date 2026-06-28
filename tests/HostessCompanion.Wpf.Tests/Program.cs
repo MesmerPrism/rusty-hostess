@@ -8,6 +8,7 @@ var tests = new (string Name, Action Test)[]
     ("device-link projection promotes devices and transports", DeviceLinkProjectionPromotesDevicesAndTransports),
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
+    ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
 };
 
 var failed = 0;
@@ -112,6 +113,46 @@ static void ConnectivitySuiteRowsExposeGroupsAndMetrics()
     Assert(rows.Any(row => row.Name == "group.protocol"), "missing protocol group row");
     Assert(rows.Any(row => row.Name == "suite.qcl080" && row.Evidence.Contains("rtt_ms=12", StringComparison.Ordinal)), "missing metric summary");
     Assert(ConnectivityRows.StatusFromRows(rows) == "warn", "suite row warning must remain visible");
+}
+
+static void FirewallRowsExposeProductVerification()
+{
+    var listener = JsonSerializer.SerializeToElement(new
+    {
+        product_rule_verified = true,
+        expected_rule_name = "Rusty Hostess WPF QCL-080 UDP Freshness 18767",
+        expected_remote_address = "LocalSubnet",
+    });
+    var report = new ConnectivityFirewallRuleReport
+    {
+        Status = "pass",
+        Action = "verify",
+        Rule = new ConnectivityFirewallRule
+        {
+            Name = "Rusty Hostess WPF QCL-080 UDP Freshness 18767",
+            Program = "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+            Protocol = "UDP",
+            LocalPort = 18767,
+            Profiles = ["Public"],
+            RemoteAddress = "LocalSubnet",
+            ScopeNote = "product scoped listener",
+        },
+        Verification = new ConnectivityFirewallVerification
+        {
+            Status = "pass",
+            ProductRuleVerified = true,
+            AllowedOnActiveProfile = true,
+            ListenerFirewall = listener,
+        },
+    };
+
+    var rows = ConnectivityRows.ForFirewallPlan(report);
+
+    Assert(rows.Any(row => row.Name == "host.windows_firewall_rule_verify" && row.Status == "pass"),
+        "missing verify action row");
+    Assert(rows.Any(row => row.Evidence.Contains("product_rule_verified=True", StringComparison.Ordinal)),
+        "missing product verification evidence");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "verified product rule should pass");
 }
 
 static T ReadFixture<T>(string name)

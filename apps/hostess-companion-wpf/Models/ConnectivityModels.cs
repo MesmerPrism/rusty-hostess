@@ -325,8 +325,14 @@ public sealed class ConnectivityFirewallRuleReport
     [JsonPropertyName("powershell")]
     public ConnectivityFirewallPowerShell PowerShell { get; set; } = new();
 
+    [JsonPropertyName("verification")]
+    public ConnectivityFirewallVerification Verification { get; set; } = new();
+
     [JsonPropertyName("issues")]
     public List<CommandIssue> Issues { get; set; } = [];
+
+    [JsonPropertyName("action_result")]
+    public ConnectivityProcessResult ActionResult { get; set; } = new();
 
     [JsonPropertyName("apply_result")]
     public ConnectivityProcessResult ApplyResult { get; set; } = new();
@@ -365,6 +371,24 @@ public sealed class ConnectivityFirewallPowerShell
 
     [JsonPropertyName("script")]
     public string Script { get; set; } = "";
+}
+
+public sealed class ConnectivityFirewallVerification
+{
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("product_rule_verified")]
+    public bool ProductRuleVerified { get; set; }
+
+    [JsonPropertyName("allowed_on_active_profile")]
+    public bool AllowedOnActiveProfile { get; set; }
+
+    [JsonPropertyName("listener_firewall")]
+    public JsonElement ListenerFirewall { get; set; }
+
+    [JsonPropertyName("issue_codes")]
+    public List<string> IssueCodes { get; set; } = [];
 }
 
 public sealed class ConnectivityProcessResult

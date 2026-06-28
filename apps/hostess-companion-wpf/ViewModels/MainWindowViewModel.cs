@@ -27,7 +27,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     private string connectivityPort = "18767";
     private string connectivityProfile = "Public";
     private string connectivityRemoteAddress = "LocalSubnet";
-    private string connectivityRuleName = "Rusty Hostess QCL-080 UDP Freshness 18767";
+    private string connectivityRuleName = "Rusty Hostess WPF QCL-080 UDP Freshness 18767";
     private bool useQuestProfile = true;
     private bool checkBroker;
     private CheckViewModel? selectedCheck;
@@ -72,6 +72,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         RunProbeCommand = new AsyncRelayCommand(RunProbeAsync, () => !IsBusy);
         PlanFirewallRuleCommand = new AsyncRelayCommand(PlanFirewallRuleAsync, () => !IsBusy);
         ApplyFirewallRuleCommand = new AsyncRelayCommand(ApplyFirewallRuleAsync, () => !IsBusy);
+        VerifyFirewallRuleCommand = new AsyncRelayCommand(VerifyFirewallRuleAsync, () => !IsBusy);
         VerifyConnectivityCommand = new AsyncRelayCommand(VerifyConnectivityAsync, () => !IsBusy);
         RunConnectivitySuiteCommand = new AsyncRelayCommand(RunConnectivitySuiteAsync, () => !IsBusy);
         RemoveFirewallRuleCommand = new AsyncRelayCommand(RemoveFirewallRuleAsync, () => !IsBusy);
@@ -113,6 +114,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     public AsyncRelayCommand ApplyFirewallRuleCommand { get; }
 
+    public AsyncRelayCommand VerifyFirewallRuleCommand { get; }
+
     public AsyncRelayCommand VerifyConnectivityCommand { get; }
 
     public AsyncRelayCommand RunConnectivitySuiteCommand { get; }
@@ -133,6 +136,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 RunProbeCommand.RaiseCanExecuteChanged();
                 PlanFirewallRuleCommand.RaiseCanExecuteChanged();
                 ApplyFirewallRuleCommand.RaiseCanExecuteChanged();
+                VerifyFirewallRuleCommand.RaiseCanExecuteChanged();
                 VerifyConnectivityCommand.RaiseCanExecuteChanged();
                 RunConnectivitySuiteCommand.RaiseCanExecuteChanged();
                 RemoveFirewallRuleCommand.RaiseCanExecuteChanged();
@@ -143,6 +147,7 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                 OnPropertyChanged(nameof(RunProbeButtonLabel));
                 OnPropertyChanged(nameof(PlanFirewallRuleButtonLabel));
                 OnPropertyChanged(nameof(ApplyFirewallRuleButtonLabel));
+                OnPropertyChanged(nameof(VerifyFirewallRuleButtonLabel));
                 OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
                 OnPropertyChanged(nameof(RunConnectivitySuiteButtonLabel));
                 OnPropertyChanged(nameof(RemoveFirewallRuleButtonLabel));
@@ -163,6 +168,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
     public string PlanFirewallRuleButtonLabel => IsBusy ? "Planning" : "Plan rule";
 
     public string ApplyFirewallRuleButtonLabel => IsBusy ? "Applying" : "Apply rule";
+
+    public string VerifyFirewallRuleButtonLabel => IsBusy ? "Verifying" : "Verify rule";
 
     public string VerifyConnectivityButtonLabel =>
         IsBusy ? "Verifying" : ConnectivityProtocol == "UDP" ? "Verify QCL-080" : "Verify QCL-010";
@@ -725,17 +732,45 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
                         CancellationToken.None);
             currentFirewallRuleReport = report;
             UpdateFirewallInputsFromReport(report);
-            var rows = new List<ConnectivityCheck> { ConnectivityRows.FirewallPlanCheck(report) };
-            rows.AddRange(await connectivityService.ApplyFirewallRuleAsync(report, CancellationToken.None));
-            ApplyConnectivityRows(rows, ConnectivityRows.StatusFromRows(rows));
+            var applied = await connectivityService.ApplyFirewallRuleAsync(report, CancellationToken.None);
+            ApplyFirewallRuleReport(applied);
             SummaryLabel =
                 $"Firewall rule apply: {connectivityStatus}. " +
-                $"{report.Rule.Name}, {report.Rule.Protocol} {report.Rule.LocalPort}.";
+                $"{applied.Rule.Name}, {applied.Rule.Protocol} {applied.Rule.LocalPort}.";
         }
         catch (Exception ex)
         {
             ApplyConnectivityFailure("host.windows_firewall_rule_apply", ex);
             SummaryLabel = "Firewall rule apply failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
+    private async Task VerifyFirewallRuleAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var report = await connectivityService.VerifyFirewallRuleAsync(
+                    ConnectivityProgram,
+                    ConnectivityProtocol,
+                    ConnectivityPort,
+                    ConnectivityProfile,
+                    ConnectivityRemoteAddress,
+                    ConnectivityRuleName,
+                    CancellationToken.None);
+            ApplyFirewallRuleReport(report);
+            SummaryLabel =
+                $"Firewall rule verify: {report.Status}. " +
+                $"{report.Rule.Name}, product verified={report.Verification.ProductRuleVerified}.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("host.windows_firewall_rule_verify", ex);
+            SummaryLabel = "Firewall rule verify failed.";
         }
         finally
         {
@@ -815,12 +850,14 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
         try
         {
             var rows = await connectivityService.RemoveFirewallRuleAsync(
+                    ConnectivityProgram,
                     ConnectivityRuleName,
                     ConnectivityProtocol,
                     ConnectivityPort,
+                    ConnectivityProfile,
+                    ConnectivityRemoteAddress,
                     CancellationToken.None);
-            currentFirewallRuleReport = null;
-            ApplyConnectivityRows(rows, ConnectivityRows.StatusFromRows(rows));
+            ApplyFirewallRuleReport(rows);
             SummaryLabel = $"Firewall rule remove: {connectivityStatus}.";
         }
         catch (Exception ex)

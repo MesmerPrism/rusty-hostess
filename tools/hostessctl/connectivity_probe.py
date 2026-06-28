@@ -71,6 +71,15 @@ QCL050_HELPER_PROJECT = (
     / "qcl050_rfcomm_client"
     / "qcl050-rfcomm-client.csproj"
 )
+DEFAULT_WPF_FIREWALL_PROGRAM = (
+    Path(__file__).resolve().parents[2]
+    / "apps"
+    / "hostess-companion-wpf"
+    / "bin"
+    / "Debug"
+    / "net9.0-windows"
+    / "HostessCompanion.Wpf.exe"
+)
 
 
 def run_connectivity_probe(
@@ -160,15 +169,17 @@ def run_windows_firewall_rule(
     run_captured_func: Any | None = None,
     clock_func: Any | None = None,
 ) -> int:
-    """Write or apply a scoped Windows Firewall rule plan for QCL listeners."""
+    """Plan, apply, verify, or remove a scoped Windows Firewall listener rule."""
 
     run_captured = run_captured_func or default_run_captured
     clock = clock_func or utc_now
     report = windows_firewall_rule_report(args, observed_at=clock())
+    action = str(report.get("action") or "plan")
 
-    if getattr(args, "apply", False):
+    if action in {"apply", "remove"}:
         if report["status"] == "blocked":
-            report["apply_result"] = {
+            result_key = "apply_result" if action == "apply" else "remove_result"
+            report[result_key] = {
                 "attempted": False,
                 "returncode": None,
                 "stdout": "",
@@ -186,11 +197,26 @@ def run_windows_firewall_rule(
                 ],
                 allow_failure=True,
             )
-            report["apply_result"] = {
+            action_result = {
                 "attempted": True,
                 **completed_observed(result),
             }
+            report["action_result"] = action_result
+            if action == "apply":
+                report["apply_result"] = action_result
+            else:
+                report["remove_result"] = action_result
             report["status"] = "pass" if result.returncode == 0 else "fail"
+
+    if action in {"apply", "verify", "remove"} and report["status"] != "blocked":
+        verification = verify_windows_firewall_rule_report(report, run_captured)
+        report["verification"] = verification
+        if action == "verify":
+            report["status"] = verification["status"]
+        elif action == "apply" and report["status"] == "pass":
+            report["status"] = "pass" if verification["product_rule_verified"] is True else "warn"
+        elif action == "remove" and report["status"] == "pass":
+            report["status"] = "warn" if verification["product_rule_verified"] is True else "pass"
 
     serialized = json.dumps(report, indent=2, sort_keys=True) + "\n"
     out = str(getattr(args, "out", "") or "").strip()
@@ -207,18 +233,17 @@ def run_windows_firewall_rule(
 
 
 def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[str, Any]:
-    program = str(getattr(args, "program", "") or sys.executable).strip()
     port = int(getattr(args, "port", DEFAULT_QCL010_TCP_ECHO_PORT) or DEFAULT_QCL010_TCP_ECHO_PORT)
     protocol = normalize_firewall_protocol(str(getattr(args, "protocol", "") or "TCP"))
+    program = normalize_firewall_program_path(
+        str(getattr(args, "program", "") or default_firewall_program(protocol)).strip()
+    )
     profiles = normalize_firewall_profiles(str(getattr(args, "profile", "") or "Public"))
     remote_address = str(getattr(args, "remote_address", "") or "LocalSubnet").strip()
     rule_name = str(getattr(args, "rule_name", "") or "").strip()
     if not rule_name:
-        rule_name = (
-            f"Rusty Hostess QCL-010 TCP Echo {port}"
-            if protocol == "TCP"
-            else f"Rusty Hostess QCL-080 UDP Freshness {port}"
-        )
+        rule_name = default_firewall_rule_name(port, protocol)
+    action = firewall_rule_action(args)
 
     issues: list[dict[str, Any]] = []
     status = "planned"
@@ -240,21 +265,34 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
                 "firewall rule plan requires a TCP port from 1 to 65535",
             )
         )
+    if program and diagnostic_python_program_path(program):
+        issues.append(
+            issue_row(
+                "hostess.issue.connectivity_probe.firewall_rule_program_diagnostic",
+                "warning",
+                "diagnostic Python listener rules are not product Hostess/WPF listener rules",
+            )
+        )
 
-    script = build_windows_firewall_rule_script(
-        rule_name=rule_name,
-        program=program,
-        port=port,
-        protocol=protocol,
-        profiles=profiles,
-        remote_address=remote_address,
-    )
+    if action == "remove":
+        script = build_windows_firewall_rule_remove_script(rule_name=rule_name)
+    elif action == "verify":
+        script = build_windows_firewall_rule_verify_script(rule_name=rule_name)
+    else:
+        script = build_windows_firewall_rule_script(
+            rule_name=rule_name,
+            program=program,
+            port=port,
+            protocol=protocol,
+            profiles=profiles,
+            remote_address=remote_address,
+        )
     return {
         "schema": CONNECTIVITY_FIREWALL_RULE_SCHEMA,
         "schema_version": 1,
         "observed_at_utc": observed_at.isoformat().replace("+00:00", "Z"),
         "status": status,
-        "action": "apply" if getattr(args, "apply", False) else "plan",
+        "action": action,
         "rule": {
             "name": rule_name,
             "direction": "Inbound",
@@ -294,6 +332,43 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
         },
         "issues": issues,
     }
+
+
+def firewall_rule_action(args: argparse.Namespace) -> str:
+    action = str(getattr(args, "action", "") or "").strip().lower()
+    if action in {"plan", "apply", "verify", "remove"}:
+        return action
+    if getattr(args, "remove", False):
+        return "remove"
+    if getattr(args, "verify", False):
+        return "verify"
+    if getattr(args, "apply", False):
+        return "apply"
+    return "plan"
+
+
+def default_firewall_program(protocol: str) -> str:
+    return str(DEFAULT_WPF_FIREWALL_PROGRAM)
+
+
+def default_firewall_rule_name(port: int, protocol: str) -> str:
+    return (
+        f"Rusty Hostess WPF QCL-010 TCP Echo {port}"
+        if normalize_firewall_protocol(protocol) == "TCP"
+        else f"Rusty Hostess WPF QCL-080 UDP Freshness {port}"
+    )
+
+
+def normalize_firewall_program_path(program: str) -> str:
+    if not program:
+        return ""
+    candidate = Path(program)
+    if candidate.is_absolute():
+        return str(candidate)
+    try:
+        return str(candidate.resolve(strict=False))
+    except OSError:
+        return program
 
 
 def normalize_firewall_profiles(raw_profiles: str) -> list[str]:
@@ -343,6 +418,67 @@ def build_windows_firewall_rule_script(
             "Get-NetFirewallRule -DisplayName $ruleName | Select-Object DisplayName,Enabled,Direction,Action,Profile | ConvertTo-Json -Compress;",
         ]
     )
+
+
+def build_windows_firewall_rule_remove_script(*, rule_name: str) -> str:
+    return " ".join(
+        [
+            "$ErrorActionPreference = 'Stop';",
+            f"$ruleName = {ps_string_literal(rule_name)};",
+            "$rules = Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue;",
+            "if ($rules) { $rules | Remove-NetFirewallRule; }",
+            "[pscustomobject]@{DisplayName=$ruleName;Removed=($null -ne $rules)} | ConvertTo-Json -Compress;",
+        ]
+    )
+
+
+def build_windows_firewall_rule_verify_script(*, rule_name: str) -> str:
+    return " ".join(
+        [
+            "$ErrorActionPreference = 'Stop';",
+            f"$ruleName = {ps_string_literal(rule_name)};",
+            "Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | "
+            "Select-Object DisplayName,Enabled,Direction,Action,Profile | ConvertTo-Json -Compress;",
+        ]
+    )
+
+
+def verify_windows_firewall_rule_report(
+    report: dict[str, Any],
+    run_captured_func: Any,
+) -> dict[str, Any]:
+    rule = object_value(report.get("rule"))
+    listener = {
+        "program": str(rule.get("program") or ""),
+        "protocol": str(rule.get("protocol") or "UDP"),
+        "port": int(rule.get("local_port") or 0),
+        "bind_host": "0.0.0.0",
+        "rule_name": str(rule.get("name") or ""),
+        "remote_address": str(rule.get("remote_address") or "LocalSubnet"),
+    }
+    network_profile = collect_windows_network_profile(run_captured_func, listener=listener)
+    listener_firewall = object_value(network_profile.get("listener_firewall"))
+    product_rule_verified = listener_firewall.get("product_rule_verified") is True
+    allowed_on_active_profile = listener_firewall.get("allowed_on_active_profile") is True
+    issue_codes: list[str] = []
+    if not allowed_on_active_profile:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.no_udp_listener_firewall_allow_rule"
+            if normalize_firewall_protocol(str(rule.get("protocol") or "UDP")) == "UDP"
+            else "hostess.issue.connectivity_probe.no_tcp_listener_firewall_allow_rule"
+        )
+    if allowed_on_active_profile and not product_rule_verified:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.product_firewall_rule_not_verified"
+        )
+    return {
+        "status": "pass" if product_rule_verified else "warn" if allowed_on_active_profile else "fail",
+        "product_rule_verified": product_rule_verified,
+        "allowed_on_active_profile": allowed_on_active_profile,
+        "network_profile": network_profile,
+        "listener_firewall": listener_firewall,
+        "issue_codes": issue_codes,
+    }
 
 
 def live_same_wifi_report(
@@ -4173,10 +4309,12 @@ def redact_bluetooth_addresses(text: str) -> str:
 
 def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[str, Any] | None = None) -> dict[str, Any]:
     listener = listener or {}
-    listener_program = str(listener.get("program") or "")
+    listener_program = normalize_firewall_program_path(str(listener.get("program") or ""))
     listener_port = int(listener.get("port") or 0)
     listener_bind_host = str(listener.get("bind_host") or "")
     listener_protocol = normalize_firewall_protocol(str(listener.get("protocol") or "TCP"))
+    listener_rule_name = str(listener.get("rule_name") or default_firewall_rule_name(listener_port, listener_protocol))
+    listener_remote_address = str(listener.get("remote_address") or "LocalSubnet")
     command = [
         "powershell",
         "-NoProfile",
@@ -4186,6 +4324,8 @@ def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[st
             f"$listenerPort = {listener_port}; "
             f"$listenerBindHost = {ps_string_literal(listener_bind_host)}; "
             f"$listenerProtocol = {ps_string_literal(listener_protocol)}; "
+            f"$listenerRuleName = {ps_string_literal(listener_rule_name)}; "
+            f"$listenerRemoteAddress = {ps_string_literal(listener_remote_address)}; "
             "$listenerProtocolNumber = if ($listenerProtocol -eq 'UDP') { 17 } else { 6 }; "
             "function Convert-Profiles($mask) { "
             "  if ($mask -eq 2147483647) { return @('Domain','Private','Public') } "
@@ -4207,6 +4347,17 @@ def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[st
             "      $left = [int]$Matches[1]; $right = [int]$Matches[2]; "
             "      if ($port -ge $left -and $port -le $right) { return $true } "
             "    } "
+            "  } "
+            "  return $false "
+            "} "
+            "function Test-RemoteAddressMatch($remoteAddresses, $expectedRemoteAddress) { "
+            "  $expected = [string]$expectedRemoteAddress; "
+            "  if ([string]::IsNullOrWhiteSpace($expected)) { return $true } "
+            "  $text = [string]$remoteAddresses; "
+            "  if ([string]::IsNullOrWhiteSpace($text)) { return $false } "
+            "  foreach ($part in $text -split ',') { "
+            "    $candidate = $part.Trim(); "
+            "    if ($candidate.Equals($expected, [System.StringComparison]::OrdinalIgnoreCase)) { return $true } "
             "  } "
             "  return $false "
             "} "
@@ -4235,27 +4386,38 @@ def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[st
             "        $app = [string]$rule.ApplicationName; "
             "        $programMatches = (-not [string]::IsNullOrWhiteSpace($app)) -and "
             "          $app.Equals($listenerProgram, [System.StringComparison]::OrdinalIgnoreCase); "
+            "        $displayName = [string]$rule.Name; "
+            "        $nameMatches = [string]::IsNullOrWhiteSpace($listenerRuleName) -or "
+            "          $displayName.Equals($listenerRuleName, [System.StringComparison]::OrdinalIgnoreCase); "
             "        $ports = [string]$rule.LocalPorts; "
             "        $portScoped = (-not [string]::IsNullOrWhiteSpace($ports)) -and $ports -ne '*' -and $ports -ne 'Any'; "
             "        $portOnlyMatches = ([string]::IsNullOrWhiteSpace($app) -or $app -eq '*') -and $portScoped; "
             "        if (-not ($programMatches -or $portOnlyMatches)) { continue } "
             "        if (-not (($rule.Protocol -eq $listenerProtocolNumber) -or ($rule.Protocol -eq 256))) { continue } "
             "        if (-not (Test-PortMatch $ports $listenerPort)) { continue } "
+            "        $remoteAddresses = [string]$rule.RemoteAddresses; "
+            "        $remoteAddressMatches = Test-RemoteAddressMatch $remoteAddresses $listenerRemoteAddress; "
             "        $profiles = @(Convert-Profiles $rule.Profiles); "
             "        $profilesApply = $false; "
             "        foreach ($profile in $activeProfiles) { "
             "          if ($profiles -contains $profile -or $profiles -contains 'All') { $profilesApply = $true } "
             "        } "
+            "        $productScopeMatches = $programMatches -and $nameMatches -and $remoteAddressMatches -and $profilesApply; "
             "        $matches += [pscustomobject]@{ "
-            "          name=$rule.Name; profiles=$profiles; profile_mask=$rule.Profiles; "
-            "          protocol=$rule.Protocol; local_ports=$ports; application_name=$app; "
-            "          profiles_apply_to_active=$profilesApply "
+            "          name=$displayName; profiles=$profiles; profile_mask=$rule.Profiles; "
+            "          protocol=$rule.Protocol; local_ports=$ports; remote_addresses=$remoteAddresses; "
+            "          application_name=$app; profiles_apply_to_active=$profilesApply; "
+            "          program_matches=$programMatches; name_matches=$nameMatches; "
+            "          remote_address_matches=$remoteAddressMatches; product_scope_matches=$productScopeMatches "
             "        }; "
             "      } catch {} "
             "    } "
+            "    $productMatches = @($matches | Where-Object { $_.product_scope_matches }); "
             "    $listenerFirewall = [pscustomobject]@{ "
             "      program=$listenerProgram; protocol=$listenerProtocol; port=$listenerPort; bind_host=$listenerBindHost; "
+            "      expected_rule_name=$listenerRuleName; expected_remote_address=$listenerRemoteAddress; "
             "      active_profiles=$activeProfiles; matching_rule_count=$matches.Count; "
+            "      product_matching_rule_count=$productMatches.Count; product_rule_verified=($productMatches.Count -gt 0); "
             "      matching_rules=@($matches | Select-Object -First 20); "
             "      allowed_on_active_profile=[bool](@($matches | Where-Object { $_.profiles_apply_to_active }).Count -gt 0); "
             "      probe='windows_firewall_com_policy' "
@@ -4263,7 +4425,9 @@ def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[st
             "  } catch { "
             "    $listenerFirewall = [pscustomobject]@{ "
             "      program=$listenerProgram; protocol=$listenerProtocol; port=$listenerPort; bind_host=$listenerBindHost; "
+            "      expected_rule_name=$listenerRuleName; expected_remote_address=$listenerRemoteAddress; "
             "      active_profiles=$activeProfiles; matching_rule_count=0; matching_rules=@(); "
+            "      product_matching_rule_count=0; product_rule_verified=$false; "
             "      allowed_on_active_profile=$false; probe='windows_firewall_com_policy'; error=$_.Exception.Message "
             "    }; "
             "  } "
@@ -6365,11 +6529,18 @@ def udp_listener_from_result(args: argparse.Namespace, udp_result: dict[str, Any
     if port <= 0:
         return {}
     return {
-        "program": str(observed.get("listener_program") or sys.executable),
+        "program": str(observed.get("listener_program") or default_firewall_program("UDP")),
         "protocol": "UDP",
         "port": port,
         "bind_host": str(getattr(args, "udp_bind_host", "0.0.0.0") or "0.0.0.0"),
+        "rule_name": default_firewall_rule_name(port, "UDP"),
+        "remote_address": "LocalSubnet",
     }
+
+
+def diagnostic_python_program_path(program: Any) -> bool:
+    value = str(program or "").replace("\\", "/").lower()
+    return value.endswith("/python.exe") or value.endswith("/python") or value.endswith("python.exe")
 
 
 def live_qcl010_status(checks: list[dict[str, Any]], host_ip: str, device_ip: Any) -> str:

@@ -1360,7 +1360,11 @@ def stream_capability_requirements(
     )
     listener_allowed = firewall_listener.get("allowed_on_active_profile") is True
     product_rule_status = (
-        "missing" if diagnostic_python_program(firewall_listener.get("program")) else "present_unverified"
+        "satisfied"
+        if firewall_listener.get("product_rule_verified") is True
+        else "missing"
+        if diagnostic_python_program(firewall_listener.get("program"))
+        else "present_unverified"
     )
     if not firewall_listener:
         product_rule_status = "unknown"

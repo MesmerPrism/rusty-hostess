@@ -6,8 +6,19 @@ namespace HostessCompanion.Wpf.ViewModels;
 public static class ConnectivityRows
 {
     public static IReadOnlyList<ConnectivityCheck> ForFirewallPlan(
-        ConnectivityFirewallRuleReport report) =>
-        [FirewallPlanCheck(report)];
+        ConnectivityFirewallRuleReport report)
+    {
+        var rows = new List<ConnectivityCheck> { FirewallPlanCheck(report) };
+        if (!string.IsNullOrWhiteSpace(report.Verification.Status))
+        {
+            rows.Add(FirewallVerificationCheck(report));
+        }
+        if (report.ActionResult.Attempted)
+        {
+            rows.Add(FirewallActionResultCheck(report));
+        }
+        return rows;
+    }
 
     public static IReadOnlyList<ConnectivityCheck> ForProbeReport(
         ConnectivityProbeReport report) =>
@@ -151,7 +162,7 @@ public static class ConnectivityRows
     public static ConnectivityCheck FirewallPlanCheck(ConnectivityFirewallRuleReport report) =>
         new()
         {
-            Name = "host.windows_firewall_rule_plan",
+            Name = $"host.windows_firewall_rule_{(string.IsNullOrWhiteSpace(report.Action) ? "plan" : report.Action)}",
             Status = report.Status,
             Evidence =
                 $"{report.Rule.Name}: {report.Rule.Program}, {report.Rule.Protocol} {report.Rule.LocalPort}, " +
@@ -161,6 +172,34 @@ public static class ConnectivityRows
                 .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
                 .ToList(),
             Observed = ToObservedElement(report),
+        };
+
+    public static ConnectivityCheck FirewallVerificationCheck(ConnectivityFirewallRuleReport report) =>
+        new()
+        {
+            Name = "host.windows_firewall_rule_verify",
+            Status = report.Verification.ProductRuleVerified ? "pass" : report.Verification.AllowedOnActiveProfile ? "warn" : "fail",
+            Evidence =
+                $"product_rule_verified={report.Verification.ProductRuleVerified}; " +
+                $"allowed_on_active_profile={report.Verification.AllowedOnActiveProfile}",
+            Notes = report.Rule.ScopeNote,
+            IssueCodes = report.Verification.IssueCodes,
+            Observed = ExistingJsonElementOrFallback(
+                report.Verification.ListenerFirewall,
+                "host.windows_firewall_rule_verify"),
+        };
+
+    public static ConnectivityCheck FirewallActionResultCheck(ConnectivityFirewallRuleReport report) =>
+        new()
+        {
+            Name = $"host.windows_firewall_rule_{report.Action}_process",
+            Status = report.ActionResult.ReturnCode == 0 ? "pass" : "fail",
+            Evidence = $"exit={report.ActionResult.ReturnCode}",
+            Notes = report.ActionResult.Stderr,
+            IssueCodes = report.ActionResult.ReturnCode == 0
+                ? []
+                : ["hostess.issue.connectivity_probe.elevated_firewall_rule_failed"],
+            Observed = ToObservedElement(report.ActionResult),
         };
 
     public static string StatusFromRows(IReadOnlyList<ConnectivityCheck> rows)

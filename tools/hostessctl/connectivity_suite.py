@@ -330,6 +330,8 @@ def collect_environment_snapshot(args: argparse.Namespace, run_captured_func: An
         "protocol": str(getattr(args, "listener_protocol", "") or "UDP"),
         "port": int(getattr(args, "listener_port", 0) or 0),
         "bind_host": str(getattr(args, "listener_bind_host", "") or "0.0.0.0"),
+        "rule_name": str(getattr(args, "listener_rule_name", "") or ""),
+        "remote_address": str(getattr(args, "listener_remote_address", "") or "LocalSubnet"),
     }
     tools = {
         "python": sys.executable,

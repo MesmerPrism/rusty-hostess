@@ -212,13 +212,23 @@ address:
 ```powershell
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action apply `
   --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
   --protocol UDP `
   --port 18767 `
   --profile Public `
   --remote-address LocalSubnet `
   --rule-name "Rusty Hostess WPF QCL-080 UDP Freshness 18767" `
-  --out target\connectivity-probe\wpf-qcl080-udp-firewall-plan.json
+  --out target\connectivity-probe\wpf-qcl080-udp-firewall-apply.json
+python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action verify `
+  --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --protocol UDP `
+  --port 18767 `
+  --profile Public `
+  --remote-address LocalSubnet `
+  --rule-name "Rusty Hostess WPF QCL-080 UDP Freshness 18767" `
+  --out target\connectivity-probe\wpf-qcl080-udp-firewall-verify.json
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-080 `
@@ -242,6 +252,9 @@ datagrams, `0.0%` loss, Makepad runtime marker `packetsSent=24/24`,
 `HostessCompanion.Wpf.exe UDP/18767`, and descriptor status
 `usable_with_warnings`. The warning remains the active Windows network profile
 being `Public`; the scoped product-shaped firewall rule itself was present.
+Current validation should also preserve the firewall verification report and
+expect `product_rule_verified=true`; a generic listener allow rule or Python
+diagnostic rule is only data-path evidence, not product readiness.
 
 For QCL-080 over a non-router topology, pass the topology metadata explicitly
 so stream-capability descriptors do not inherit the default router label:

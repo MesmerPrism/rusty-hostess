@@ -127,6 +127,29 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --out target\connectivity-probe\<run-id>.json
 ```
 
+Firewall rule lifecycle is Hostess-owned. WPF plans, applies, verifies, and
+removes scoped product listener rules by requesting
+`connectivity-probe windows-firewall-rule`; it does not run ad hoc firewall
+logic in button handlers. The product UDP rule uses the WPF executable, fixed
+UDP port `18767`, the selected Windows profile, and `LocalSubnet`:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action verify `
+  --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --protocol UDP `
+  --port 18767 `
+  --profile Public `
+  --remote-address LocalSubnet `
+  --rule-name "Rusty Hostess WPF QCL-080 UDP Freshness 18767" `
+  --out target\connectivity-probe\wpf-qcl080-udp-firewall-verify.json
+```
+
+Use `--action apply` or `--action remove` for elevated lifecycle changes.
+Verification records `product_rule_verified` separately from generic
+`allowed_on_active_profile`, so broad port-only rules and diagnostic Python
+rules do not satisfy product readiness.
+
 For UDP, the page uses QCL-080 with the WPF executable itself in listener
 helper mode:
 

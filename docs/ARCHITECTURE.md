@@ -177,8 +177,8 @@ health, command-result stages, and stream capabilities without becoming the
 device-link authority. The same module also derives measured
 `rusty.quest.device_link.stream_capability.v1` descriptors from connectivity
 probe artifacts; QCL-080 app-owned UDP evidence becomes a reusable capability
-row only when the runtime marker, UDP freshness counters, firewall listener,
-and promotion decision are all preserved.
+row only when the runtime marker, UDP freshness counters, product-scoped WPF
+listener firewall verification, and promotion decision are all preserved.
 The same device-link adapter owns the planned downloadable
 `rusty.quest.device_link.install_environment_test_suite.v1` descriptor. That
 suite is the frontend-neutral map for host install checks, network adapter and
@@ -195,6 +195,11 @@ allowed to warn on host posture, such as Public firewall profile or missing
 listener allow rule, even when all fixture protocol slots pass. That makes the
 future installer and WPF page honest about the install environment without
 turning either frontend into a validator.
+Windows firewall listener lifecycle also stays in Hostess:
+`connectivity-probe windows-firewall-rule --action plan|apply|verify|remove`
+emits the rule report and verification evidence. WPF requests these actions and
+renders the report; it does not invent firewall scope rules or treat broad
+diagnostic Python listener allowances as product readiness.
 Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
 It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
 shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and
