@@ -176,10 +176,13 @@ Windows companion session orchestration uses
 <session.json>` writes ordered phases for host preflight, Quest device checks,
 broker transport, runtime launch, broker-stream command probing,
 app-private fallback recovery, and evidence packaging. The report references
-the readiness, catalog, bridge-route evidence, execution sidecar, validation,
-and optional logcat artifacts it produced. A broker-stream failure recovered by
-a passing app-private fallback is reported as a warning session, not as
-Manifold command authority for the fallback leg.
+the readiness, catalog, Quest device-link report, bridge-route evidence,
+execution sidecar, validation, and optional logcat artifacts it produced. The
+device-link artifact uses `rusty.quest.device_link.v1` to summarize device
+identity, ADB forward/tunnel state, broker readiness, runtime subscriber
+health, command-result stages, and stream capability descriptors. A
+broker-stream failure recovered by a passing app-private fallback is reported
+as a warning session, not as Manifold command authority for the fallback leg.
 
 Required fields:
 

@@ -57,7 +57,11 @@ python tools\hostessctl\hostessctl.py companion-session run `
 It renders the returned ordered phases, actions, issues, and artifact
 references from `rusty.hostess.companion.session.v1`. Session orchestration,
 fallback recovery, and evidence validation remain in `hostessctl`; WPF only
-requests the run and displays the result.
+requests the run and displays the result. The session artifact list also
+includes the Quest-owned `rusty.quest.device_link.v1` report, which is the
+operator-facing summary for device identity, ADB forward state, broker
+readiness, runtime subscriber health, command results, and stream capability
+costs.
 
 The Commands page safe probe calls:
 

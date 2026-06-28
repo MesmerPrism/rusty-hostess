@@ -162,6 +162,13 @@ This route is the frontend-neutral session backend for WPF, Makepad, CLI, and
 future companion shells; frontends render phases/actions/issues and may request
 the run, but they do not decide broker authority, runtime acceptance, fallback
 recovery, or evidence validity.
+Quest device-link report adaptation lives in
+`tools/hostessctl/device_link_report.py`. It summarizes Hostess readiness and
+bridge execution sidecars into the Quest-owned `rusty.quest.device_link.v1`
+shape so WPF, Makepad tooling, CLI, and later frontends can inspect device
+identity, ADB forward/tunnel state, broker readiness, runtime subscriber
+health, command-result stages, and stream capabilities without becoming the
+device-link authority.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

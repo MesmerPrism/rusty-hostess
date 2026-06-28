@@ -47,11 +47,34 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
             validation = read_json(out.with_name("session.validation-report.json"))
             request_artifact = artifact_with_role(report, "live_broker_stream_request")
             request = read_json(Path(request_artifact["path"]))
+            device_link_artifact = artifact_with_role(report, "device_link_report")
+            device_link = read_json(Path(device_link_artifact["path"]))
+            device_link_validation = read_json(
+                Path(artifact_with_role(report, "device_link_validation")["path"])
+            )
 
         self.assertEqual(status, 0)
         self.assertEqual(report["$schema"], HOSTESS_COMPANION_SESSION_SCHEMA)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
+        self.assertEqual(device_link["schema"], "rusty.quest.device_link.v1")
+        self.assertEqual(device_link["status"], "pass")
+        self.assertEqual(device_link_validation["status"], "pass")
+        self.assertEqual(
+            device_link["tunnels"][0]["transport_kind"],
+            "adb_forward",
+        )
+        self.assertEqual(
+            device_link["broker_endpoints"][0]["path"],
+            "/manifold/v1/events",
+        )
+        self.assertTrue(device_link["command_results"][0]["applied"])
+        self.assertTrue(
+            all(
+                not capability["high_rate_json_payload"]
+                for capability in device_link["stream_capabilities"]
+            )
+        )
         self.assertEqual(phase(report, "broker_stream_probe")["status"], "pass")
         self.assertEqual(phase(report, "app_private_fallback")["status"], "skipped")
         self.assertTrue(
@@ -97,9 +120,17 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
             validation = validate_companion_session_report(report)
             request_artifact = artifact_with_role(report, "app_private_fallback_request")
             request = read_json(Path(request_artifact["path"]))
+            device_link = read_json(
+                Path(artifact_with_role(report, "device_link_report")["path"])
+            )
 
         self.assertEqual(report["status"], "warn")
         self.assertEqual(validation["status"], "pass")
+        self.assertEqual(device_link["status"], "warn")
+        self.assertEqual(
+            device_link["command_results"][-1]["transport_kind"],
+            "app_private_json",
+        )
         self.assertEqual(phase(report, "broker_stream_probe")["status"], "warn")
         self.assertEqual(phase(report, "app_private_fallback")["status"], "pass")
         self.assertTrue(
@@ -117,6 +148,39 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
             request["request_id"].startswith(
                 "request.hostess.bridge_command.android_probe."
             )
+        )
+
+    def test_device_link_omits_tunnel_reference_when_broker_forward_is_disabled(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            tools = fake_toolchain(root)
+            descriptors = write_descriptor_root(root)
+            args = session_args(
+                out=str(root / "session.json"),
+                gui_descriptors_root=str(descriptors),
+                no_adb_forward_broker=True,
+                **tools,
+            )
+
+            report = build_companion_session_report(
+                args,
+                run_captured_func=FakeAdbRunner(),
+                clock_ms_func=FixedClock(),
+                which_func=lambda name: None,
+                broker_probe_func=lambda host, port, timeout: True,
+                broker_client_factory=lambda *args, **kwargs: None,
+                socket_probe_func=lambda host, port, timeout: True,
+                sleep_func=lambda seconds: None,
+                live_execution_func=fake_live_pass,
+            )
+            device_link = read_json(
+                Path(artifact_with_role(report, "device_link_report")["path"])
+            )
+
+        self.assertEqual(device_link["tunnels"], [])
+        self.assertNotIn(
+            "routed_through_tunnel_id",
+            device_link["broker_endpoints"][0],
         )
 
     def test_parser_accepts_companion_session_run_command(self) -> None:
@@ -160,6 +224,7 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
 def fake_live_pass(request: dict[str, Any], *, args: argparse.Namespace) -> dict[str, Any]:
     return fake_execution(
         request,
+        args=args,
         schema="rusty.hostess.bridge_command.live_android_execution_evidence.v1",
         route_id=request["route_id"],
         stages=["sent", "transport_ok", "authority_accepted", "runtime_accepted", "applied"],
@@ -174,6 +239,7 @@ def fake_live_pass(request: dict[str, Any], *, args: argparse.Namespace) -> dict
 def fake_live_fail(request: dict[str, Any], *, args: argparse.Namespace) -> dict[str, Any]:
     return fake_execution(
         request,
+        args=args,
         schema="rusty.hostess.bridge_command.live_android_execution_evidence.v1",
         route_id=request["route_id"],
         stages=["sent"],
@@ -189,6 +255,7 @@ def fake_live_fail(request: dict[str, Any], *, args: argparse.Namespace) -> dict
 def fake_fallback_pass(request: dict[str, Any], *, args: argparse.Namespace) -> dict[str, Any]:
     return fake_execution(
         request,
+        args=args,
         schema="rusty.hostess.bridge_command.android_execution_evidence.v1",
         route_id="bridge_route.command.android_app_private.applied",
         stages=["sent", "transport_ok", "runtime_accepted", "applied"],
@@ -198,6 +265,7 @@ def fake_fallback_pass(request: dict[str, Any], *, args: argparse.Namespace) -> 
 def fake_execution(
     request: dict[str, Any],
     *,
+    args: argparse.Namespace,
     schema: str,
     route_id: str,
     stages: list[str],
@@ -246,7 +314,41 @@ def fake_execution(
         "request_id": request["request_id"],
         "command": request["command"],
         "required_evidence_stages": request["required_evidence_stages"],
+        "android": {
+            "adb": str(args.adb),
+            "serial": str(args.serial),
+            "broker_package": str(getattr(args, "broker_package", "test.broker")),
+            "broker_activity": str(getattr(args, "broker_activity", "test.broker/.BrokerStartActivity")),
+            "makepad_package": str(getattr(args, "makepad_package", "test.makepad")),
+            "makepad_activity": str(getattr(args, "makepad_activity", "test.makepad/.Xr")),
+        },
+        "broker_stream": {
+            "host": str(getattr(args, "broker_host", "127.0.0.1")),
+            "port": int(getattr(args, "broker_local_port", 28765)),
+            "target_port": int(getattr(args, "broker_port", 18765)),
+            "local_forward_port": int(getattr(args, "broker_local_port", 28765)),
+            "adb_forward": not bool(getattr(args, "no_adb_forward_broker", False)),
+            "path": str(getattr(args, "broker_path", "/manifold/v1/events")),
+            "runtime_receipt_stream": str(
+                getattr(
+                    args,
+                    "runtime_receipt_stream",
+                    "stream.hostess.makepad.bridge_command.receipt",
+                )
+            ),
+        },
         "setup_actions": setup_actions or [],
+        "command_execution": {
+            "broker_messages": [
+                {
+                    "accepted": status == "pass",
+                    "runtime_receipt_required": True,
+                    "runtime_dispatch_delivered_count": (
+                        1 if "runtime_accepted" in stages and status == "pass" else 0
+                    ),
+                }
+            ]
+        },
         "stage_observations": stage_rows,
         "issues": issues,
         "bridge_route_evidence": bridge_evidence,

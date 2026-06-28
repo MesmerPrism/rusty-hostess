@@ -16,6 +16,7 @@ from tools.hostessctl import bridge_command_android_routes
 from tools.hostessctl import bridge_command_live_android_routes
 from tools.hostessctl import companion_catalog
 from tools.hostessctl import companion_readiness
+from tools.hostessctl import device_link_report
 from tools.hostessctl.bridge_command_routes import DEFAULT_RUNTIME_RECEIPT_STREAM
 from tools.hostessctl.bridge_route_evidence import validate_bridge_route_evidence
 from tools.hostessctl.broker_transport import BrokerWebSocketClient, MANIFOLD_BROKER_EVENTS_PATH
@@ -223,6 +224,16 @@ def build_companion_session_report(
             )
         )
 
+    _, device_link_validation = run_device_link_slice(
+        args,
+        out,
+        readiness_report=readiness_report,
+        live_execution=live_execution,
+        fallback_execution=fallback_execution,
+        observed_at_ms=int(clock_ms_func()),
+        artifact_refs=artifact_refs,
+    )
+
     phases = [
         readiness_phase("preflight", "Host preflight", readiness_report, {"host", "toolchain", "module_descriptor"}),
         readiness_phase("device", "Quest device", readiness_report, {"device", "runtime"}),
@@ -239,6 +250,7 @@ def build_companion_session_report(
             artifact_refs,
             readiness_validation,
             catalog_validation,
+            device_link_validation,
             live_validation,
             fallback_validation,
             recovered_by_fallback=recovered_by_fallback,
@@ -384,6 +396,49 @@ def run_catalog_slice(
                 validation_out,
                 validation.get("$schema"),
                 role="catalog_validation",
+                validation_status=validation.get("status"),
+            ),
+        ]
+    )
+    return report, validation
+
+
+def run_device_link_slice(
+    args: argparse.Namespace,
+    out: Path,
+    *,
+    readiness_report: dict[str, Any],
+    live_execution: dict[str, Any] | None,
+    fallback_execution: dict[str, Any] | None,
+    observed_at_ms: int,
+    artifact_refs: list[dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    device_link_out = out.with_name(f"{out.stem}.device-link.json")
+    report = device_link_report.build_device_link_report(
+        args,
+        readiness_report=readiness_report,
+        live_execution=live_execution,
+        fallback_execution=fallback_execution,
+        observed_at_ms=observed_at_ms,
+    )
+    validation = device_link_report.validate_device_link_report(report)
+    write_json(device_link_out, report)
+    validation_out = device_link_out.with_name(f"{device_link_out.stem}.validation-report.json")
+    write_json(validation_out, validation)
+    artifact_refs.extend(
+        [
+            artifact_ref(
+                "artifact.hostess.companion_session.device_link_report",
+                device_link_out,
+                report.get("schema"),
+                role="device_link_report",
+                validation_status=validation.get("status"),
+            ),
+            artifact_ref(
+                "artifact.hostess.companion_session.device_link_validation",
+                validation_out,
+                validation.get("$schema"),
+                role="device_link_validation",
                 validation_status=validation.get("status"),
             ),
         ]
@@ -753,6 +808,7 @@ def evidence_phase(
     artifact_refs: list[dict[str, Any]],
     readiness_validation: dict[str, Any],
     catalog_validation: dict[str, Any],
+    device_link_validation: dict[str, Any],
     live_validation: dict[str, Any] | None,
     fallback_validation: dict[str, Any] | None,
     *,
@@ -761,6 +817,7 @@ def evidence_phase(
     validations = [
         ("readiness", readiness_validation, False),
         ("catalog", catalog_validation, False),
+        ("device_link", device_link_validation, False),
         ("live_broker_stream", live_validation, recovered_by_fallback),
         ("app_private_fallback", fallback_validation, False),
     ]
