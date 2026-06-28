@@ -12,6 +12,7 @@ var tests = new (string Name, Action Test)[]
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
+    ("page viewmodels project backend reports", PageViewModelsProjectBackendReports),
 };
 
 var failed = 0;
@@ -192,13 +193,13 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
 
 static void PageViewModelsOwnWpfRowsAndSelections()
 {
-    AssertPageProperty("ReadinessPage", typeof(OperatorPageViewModel<CheckViewModel>));
-    AssertPageProperty("DevicesPage", typeof(OperatorPageViewModel<CheckViewModel>));
-    AssertPageProperty("ConnectivityPage", typeof(OperatorPageViewModel<ConnectivityCheckViewModel>));
+    AssertPageProperty("ReadinessPage", typeof(ReadinessPageViewModel));
+    AssertPageProperty("DevicesPage", typeof(DevicesPageViewModel));
+    AssertPageProperty("ConnectivityPage", typeof(ConnectivityPageViewModel));
     AssertPageProperty("SessionPage", typeof(SessionPageViewModel));
-    AssertPageProperty("TransportsPage", typeof(OperatorPageViewModel<TransportViewModel>));
-    AssertPageProperty("CommandsPage", typeof(OperatorPageViewModel<CommandStageViewModel>));
-    AssertPageProperty("EvidencePage", typeof(OperatorPageViewModel<EvidenceArtifactViewModel>));
+    AssertPageProperty("TransportsPage", typeof(TransportsPageViewModel));
+    AssertPageProperty("CommandsPage", typeof(CommandsPageViewModel));
+    AssertPageProperty("EvidencePage", typeof(EvidencePageViewModel));
 
     var staleMainWindowFields = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -252,6 +253,171 @@ static void PageViewModelsOwnWpfRowsAndSelections()
         "detail panel must project the selected page row title");
     Assert(vm.SelectedDetailText.Contains("product-owned firewall rule verified", StringComparison.Ordinal),
         "detail panel must project the selected page row detail text");
+}
+
+static void PageViewModelsProjectBackendReports()
+{
+    var readinessReport = new ReadinessReport
+    {
+        Status = "warn",
+        Checks =
+        [
+            new ReadinessCheck
+            {
+                CheckId = "device.adb",
+                Group = "device",
+                Title = "ADB device",
+                Status = "pass",
+                Severity = "info",
+                Evidence = "serial=device",
+                Observed = JsonSerializer.SerializeToElement(new { serial = "fixture" }),
+            },
+            new ReadinessCheck
+            {
+                CheckId = "host.python",
+                Group = "host",
+                Title = "Python",
+                Status = "pass",
+                Severity = "info",
+                Evidence = "python.exe",
+                Observed = JsonSerializer.SerializeToElement(new { path = "python.exe" }),
+            },
+        ],
+    };
+
+    var readinessPage = new ReadinessPageViewModel();
+    readinessPage.ApplyReport(readinessReport);
+    Assert(readinessPage.Rows.Count == 2, "readiness page must project all readiness checks");
+    Assert(readinessPage.SelectedRow?.CheckId == "device.adb", "readiness page must select the first projected row");
+
+    var devicesPage = new DevicesPageViewModel();
+    devicesPage.ApplyReadiness(readinessReport);
+    Assert(devicesPage.Rows.Count == 1 && devicesPage.Rows[0].CheckId == "device.adb",
+        "devices page must project only device/runtime/network readiness groups");
+
+    var deviceLinkReport = ReadFixture<DeviceLinkReport>("device-link-pass.json");
+    devicesPage.ApplyDeviceLink(deviceLinkReport);
+    Assert(devicesPage.Rows.Any(row => row.CheckId == "device_link.identity"),
+        "devices page must project device-link identity rows");
+
+    var transportsPage = new TransportsPageViewModel();
+    transportsPage.ApplyDeviceLink(deviceLinkReport);
+    Assert(transportsPage.Rows.Any(row => row.TransportId == "capability.command.hostess_makepad_bridge"),
+        "transports page must project device-link stream capabilities");
+
+    var connectivityPage = new ConnectivityPageViewModel();
+    connectivityPage.ApplyRows(
+    [
+        new ConnectivityCheck
+        {
+            Name = "qcl080.product_rule_verified",
+            Status = "pass",
+            Evidence = "target/qcl080.json",
+            Notes = "product-owned firewall rule verified",
+            Observed = JsonSerializer.SerializeToElement(new { product_rule_verified = true }),
+        },
+    ]);
+    Assert(connectivityPage.SelectedRow?.Name == "qcl080.product_rule_verified",
+        "connectivity page must select the first projected row");
+
+    var commandsPage = new CommandsPageViewModel();
+    commandsPage.ApplyExecution(new BridgeCommandExecution
+    {
+        StageObservations =
+        [
+            new CommandStageObservation
+            {
+                Stage = "applied",
+                Status = "pass",
+                EvidenceRefs = ["target/command.json"],
+            },
+        ],
+        Issues =
+        [
+            new CommandIssue
+            {
+                IssueCode = "hostess.issue.fixture",
+                Message = "fixture issue",
+            },
+        ],
+    });
+    Assert(commandsPage.Rows.Any(row => row.Stage == "applied" && row.Status == "pass"),
+        "commands page must project command stages");
+    Assert(commandsPage.Rows.Any(row => row.Stage == "hostess.issue.fixture" && row.Status == "fail"),
+        "commands page must project command issues as failure rows");
+
+    var evidencePage = new EvidencePageViewModel();
+    evidencePage.ApplyCatalog(new CompanionCatalog
+    {
+        Modules =
+        [
+            new CompanionModuleDescriptor
+            {
+                ModuleId = "module.fixture",
+                Title = "Fixture module",
+                OwnerLane = "hostess",
+                EvidenceArtifacts =
+                [
+                    new EvidenceArtifactBinding
+                    {
+                        Id = "artifact.fixture",
+                        Schema = "rusty.fixture.v1",
+                        OwnerLane = "hostess",
+                    },
+                ],
+            },
+        ],
+    });
+    Assert(evidencePage.Rows.Single().ArtifactId == "artifact.fixture",
+        "evidence page must project module evidence artifact bindings");
+
+    var sessionPage = new SessionPageViewModel();
+    sessionPage.ApplySession(
+        new CompanionSessionReport
+        {
+            SessionId = "session-a",
+            Status = "pass",
+            Phases =
+            [
+                new SessionPhase
+                {
+                    PhaseId = "phase-a",
+                    Title = "Phase A",
+                    Status = "pass",
+                    Summary = new SessionSummary { ActionCount = 1 },
+                    ArtifactRefs = ["artifact-a"],
+                },
+            ],
+            ArtifactRefs =
+            [
+                new SessionArtifactRef
+                {
+                    ArtifactId = "artifact-a",
+                    Role = "device_link_report",
+                    Path = "target/artifact-a.json",
+                    Schema = "rusty.quest.device_link.v1",
+                    ValidationStatus = "pass",
+                },
+            ],
+        },
+        artifact => $"preview {artifact.ArtifactId}");
+    Assert(sessionPage.SelectedPhase?.PhaseId == "phase-a", "session page must select first phase");
+    Assert(sessionPage.Artifacts.Single().ArtifactId == "artifact-a",
+        "session page must expand artifacts for selected phase");
+    Assert(sessionPage.SelectedDetailText.Contains("Phase: phase-a", StringComparison.Ordinal),
+        "session detail must project selected phase before an artifact is selected");
+    sessionPage.SelectedArtifact = sessionPage.Artifacts.Single();
+    Assert(sessionPage.SelectedDetailText.Contains("preview artifact-a", StringComparison.Ordinal),
+        "session detail must project selected artifact preview");
+
+    sessionPage.ApplyHistory(
+    [
+        new CompanionSessionReport { SessionId = "session-a", ReportPath = "target/a.json" },
+        new CompanionSessionReport { SessionId = "session-b", ReportPath = "target/b.json" },
+    ],
+        "target/b.json");
+    Assert(sessionPage.SelectedHistoryEntry?.SessionId == "session-b",
+        "session page must select requested history entry by report path");
 }
 
 static void AssertPageProperty(string propertyName, Type expectedType)

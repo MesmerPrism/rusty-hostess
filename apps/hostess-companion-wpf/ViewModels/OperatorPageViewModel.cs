@@ -3,7 +3,7 @@ using System.Windows.Media;
 
 namespace HostessCompanion.Wpf.ViewModels;
 
-public sealed class OperatorPageViewModel<TRow> : ObservableViewModel
+public class OperatorPageViewModel<TRow> : ObservableViewModel
     where TRow : class, IOperatorDetailRow
 {
     private readonly string emptyDetailTitle;
@@ -42,6 +42,22 @@ public sealed class OperatorPageViewModel<TRow> : ObservableViewModel
         || propertyName == nameof(SelectedDetailStatusLine)
         || propertyName == nameof(SelectedDetailBrush)
         || propertyName == nameof(SelectedDetailText);
+
+    public void ClearRows()
+    {
+        Rows.Clear();
+        SelectedRow = null;
+    }
+
+    protected void ReplaceRows(IEnumerable<TRow> rows)
+    {
+        Rows.Clear();
+        foreach (var row in rows)
+        {
+            Rows.Add(row);
+        }
+        SelectedRow = Rows.FirstOrDefault();
+    }
 
     private void OnDetailChanged()
     {

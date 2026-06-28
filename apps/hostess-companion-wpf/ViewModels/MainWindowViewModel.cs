@@ -7,8 +7,6 @@ namespace HostessCompanion.Wpf.ViewModels;
 
 public sealed partial class MainWindowViewModel : ObservableViewModel
 {
-    private static readonly HashSet<string> DeviceCheckGroups = ["device", "runtime", "network"];
-
     private readonly HostessctlReadinessService readinessService;
     private readonly HostessctlCatalogService catalogService;
     private readonly HostessctlCommandService commandService;
@@ -29,7 +27,6 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private bool useQuestProfile = true;
     private bool checkBroker;
     private NavigationItemViewModel? selectedNavigationItem;
-    private CompanionSessionReport? currentSession;
     private ConnectivityFirewallRuleReport? currentFirewallRuleReport;
 
     public MainWindowViewModel(
@@ -76,21 +73,19 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public ObservableCollection<NavigationItemViewModel> NavigationItems { get; } = [];
 
-    public OperatorPageViewModel<CheckViewModel> ReadinessPage { get; } = new("No readiness check selected");
+    public ReadinessPageViewModel ReadinessPage { get; } = new();
 
-    public OperatorPageViewModel<CheckViewModel> DevicesPage { get; } = new("No device check selected");
+    public DevicesPageViewModel DevicesPage { get; } = new();
 
-    public OperatorPageViewModel<ConnectivityCheckViewModel> ConnectivityPage { get; } =
-        new("No connectivity check selected");
+    public ConnectivityPageViewModel ConnectivityPage { get; } = new();
 
     public SessionPageViewModel SessionPage { get; } = new();
 
-    public OperatorPageViewModel<TransportViewModel> TransportsPage { get; } = new("No transport selected");
+    public TransportsPageViewModel TransportsPage { get; } = new();
 
-    public OperatorPageViewModel<CommandStageViewModel> CommandsPage { get; } = new("No command stage selected");
+    public CommandsPageViewModel CommandsPage { get; } = new();
 
-    public OperatorPageViewModel<EvidenceArtifactViewModel> EvidencePage { get; } =
-        new("No evidence artifact selected");
+    public EvidencePageViewModel EvidencePage { get; } = new();
 
     public ObservableCollection<CheckViewModel> Checks => ReadinessPage.Rows;
 
@@ -313,15 +308,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public SessionPhaseViewModel? SelectedSessionPhase
     {
         get => SessionPage.SelectedPhase;
-        set
-        {
-            var previous = SessionPage.SelectedPhase;
-            SessionPage.SelectedPhase = value;
-            if (!ReferenceEquals(previous, SessionPage.SelectedPhase))
-            {
-                PopulateSessionArtifactsForPhase(value);
-            }
-        }
+        set => SessionPage.SelectedPhase = value;
     }
 
     public SessionArtifactViewModel? SelectedSessionArtifact
@@ -462,36 +449,13 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         {
             reportStatus = "fail";
             catalogStatus = "unknown";
-            currentSession = null;
-            Checks.Clear();
-            DeviceChecks.Clear();
-            ConnectivityChecks.Clear();
-            SessionHistory.Clear();
-            SessionPhases.Clear();
-            SessionArtifacts.Clear();
-            Transports.Clear();
-            CommandStages.Clear();
-            EvidenceArtifacts.Clear();
-            var failure = new CheckViewModel(new ReadinessCheck
-            {
-                CheckId = "check.wpf.refresh",
-                Group = "wpf",
-                Title = "Companion refresh",
-                Status = "fail",
-                Severity = "error",
-                Required = true,
-                Evidence = ex.Message,
-            });
-            Checks.Add(failure);
-            SelectedCheck = failure;
-            SelectedDeviceCheck = null;
-            SelectedConnectivityCheck = null;
-            SelectedSessionHistoryEntry = null;
-            SelectedSessionPhase = null;
-            SelectedSessionArtifact = null;
-            SelectedTransport = null;
-            SelectedCommandStage = null;
-            SelectedEvidenceArtifact = null;
+            ReadinessPage.ApplyFailure(ex);
+            DevicesPage.ClearRows();
+            ConnectivityPage.ClearRows();
+            SessionPage.ClearSession();
+            TransportsPage.ClearRows();
+            CommandsPage.ClearRows();
+            EvidencePage.ClearRows();
             SummaryLabel = "Companion refresh failed.";
             OnPropertyChanged(nameof(ReportStatusLabel));
             OnPropertyChanged(nameof(ReportStatusBrush));
@@ -522,47 +486,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         }
         catch (Exception ex)
         {
-            currentSession = null;
-            SessionPhases.Clear();
-            SessionArtifacts.Clear();
-            var failure = new SessionPhaseViewModel(new SessionPhase
-            {
-                PhaseId = "wpf_session",
-                Title = "Companion session",
-                Status = "fail",
-                Required = true,
-                Summary = new SessionSummary
-                {
-                    ActionCount = 1,
-                    Fail = 1,
-                    IssueCount = 1,
-                },
-                Actions =
-                [
-                    new SessionAction
-                    {
-                        ActionId = "wpf.session.run",
-                        Title = "Run session",
-                        Status = "fail",
-                        Required = true,
-                        Severity = "error",
-                        Evidence = ex.Message,
-                        IssueCodes = ["hostess.issue.wpf.session_failed"],
-                    },
-                ],
-                Issues =
-                [
-                    new CommandIssue
-                    {
-                        IssueCode = "hostess.issue.wpf.session_failed",
-                        Severity = "error",
-                        Message = ex.Message,
-                    },
-                ],
-            });
-            SessionPhases.Add(failure);
-            SelectedSessionPhase = failure;
-            SelectedSessionArtifact = null;
+            SessionPage.ApplyFailure(ex);
             SummaryLabel = "Companion session failed.";
         }
         finally
@@ -633,17 +557,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         }
         catch (Exception ex)
         {
-            CommandStages.Clear();
-            var failure = new CommandStageViewModel(new CommandStageObservation
-            {
-                Stage = "wpf_command",
-                Status = "fail",
-                ObservedAtMs = 0,
-                EvidenceRefs = [ex.Message],
-                IssueCodes = ["hostess.issue.wpf.command_failed"],
-            });
-            CommandStages.Add(failure);
-            SelectedCommandStage = failure;
+            CommandsPage.ApplyFailure(ex);
             SummaryLabel = "Safe probe failed.";
         }
         finally
@@ -839,19 +753,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private void ApplyReport(ReadinessReport report)
     {
         reportStatus = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status;
-        Checks.Clear();
-        DeviceChecks.Clear();
-        foreach (var check in report.Checks)
-        {
-            var viewModel = new CheckViewModel(check);
-            Checks.Add(viewModel);
-            if (DeviceCheckGroups.Contains(viewModel.Group))
-            {
-                DeviceChecks.Add(viewModel);
-            }
-        }
-        SelectedCheck = Checks.FirstOrDefault();
-        SelectedDeviceCheck = DeviceChecks.FirstOrDefault();
+        ReadinessPage.ApplyReport(report);
+        DevicesPage.ApplyReadiness(report);
         OnPropertyChanged(nameof(ReportStatusLabel));
         OnPropertyChanged(nameof(ReportStatusBrush));
     }
@@ -859,38 +762,15 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private void ApplyCatalog(CompanionCatalog catalog)
     {
         catalogStatus = string.IsNullOrWhiteSpace(catalog.Status) ? "unknown" : catalog.Status;
-        Transports.Clear();
-        foreach (var transport in catalog.Transports)
-        {
-            Transports.Add(new TransportViewModel(transport));
-        }
-        EvidenceArtifacts.Clear();
-        foreach (var module in catalog.Modules)
-        {
-            foreach (var artifact in module.EvidenceArtifacts)
-            {
-                EvidenceArtifacts.Add(new EvidenceArtifactViewModel(module, artifact));
-            }
-        }
-        SelectedTransport = Transports.FirstOrDefault();
-        SelectedEvidenceArtifact = EvidenceArtifacts.FirstOrDefault();
+        TransportsPage.ApplyCatalog(catalog);
+        EvidencePage.ApplyCatalog(catalog);
         OnPropertyChanged(nameof(CatalogStatusLabel));
         OnPropertyChanged(nameof(CatalogStatusBrush));
     }
 
     private void ApplySession(CompanionSessionReport session)
     {
-        currentSession = session;
-        SessionPhases.Clear();
-        foreach (var phase in session.Phases)
-        {
-            SessionPhases.Add(new SessionPhaseViewModel(phase));
-        }
-        SelectedSessionPhase = SessionPhases.FirstOrDefault();
-        if (SelectedSessionPhase is null)
-        {
-            PopulateSessionArtifactsForPhase(null);
-        }
+        SessionPage.ApplySession(session, sessionService.ReadArtifactPreview);
         ApplyDeviceLink(sessionService.TryReadDeviceLinkReport(session));
     }
 
@@ -901,19 +781,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
             return;
         }
 
-        DeviceChecks.Clear();
-        foreach (var check in DeviceLinkOperatorProjection.BuildDeviceChecks(report))
-        {
-            DeviceChecks.Add(new CheckViewModel(check));
-        }
-        SelectedDeviceCheck = DeviceChecks.FirstOrDefault();
-
-        Transports.Clear();
-        foreach (var transport in DeviceLinkOperatorProjection.BuildTransportDescriptors(report))
-        {
-            Transports.Add(new TransportViewModel(transport));
-        }
-        SelectedTransport = Transports.FirstOrDefault();
+        DevicesPage.ApplyDeviceLink(report);
+        TransportsPage.ApplyDeviceLink(report);
     }
 
     private void ApplyFirewallRuleReport(ConnectivityFirewallRuleReport report)
@@ -968,18 +837,14 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)
     {
-        ConnectivityChecks.Clear();
-        foreach (var row in rows)
-        {
-            ConnectivityChecks.Add(new ConnectivityCheckViewModel(row));
-        }
-        SelectedConnectivityCheck = ConnectivityChecks.FirstOrDefault();
+        ConnectivityPage.ApplyRows(rows);
         SetConnectivityStatus(status);
     }
 
     private void ApplyConnectivityFailure(string checkName, Exception ex)
     {
-        ApplyConnectivityRows(ConnectivityRows.Failure(checkName, ex), "fail");
+        ConnectivityPage.ApplyFailure(checkName, ex);
+        SetConnectivityStatus("fail");
     }
 
     private void SetConnectivityStatus(string status)
@@ -994,73 +859,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         CancellationToken cancellationToken)
     {
         var reports = await sessionService.LoadHistoryAsync(cancellationToken);
-        SessionHistory.Clear();
-        foreach (var report in reports)
-        {
-            SessionHistory.Add(new SessionHistoryEntryViewModel(report));
-        }
-
-        if (!string.IsNullOrWhiteSpace(selectedReportPath))
-        {
-            SelectedSessionHistoryEntry = SessionHistory.FirstOrDefault(
-                entry => string.Equals(
-                    entry.ReportPath,
-                    selectedReportPath,
-                    StringComparison.OrdinalIgnoreCase));
-        }
-        else
-        {
-            var currentPath = SelectedSessionHistoryEntry?.ReportPath;
-            SelectedSessionHistoryEntry = SessionHistory.FirstOrDefault(
-                    entry => string.Equals(
-                        entry.ReportPath,
-                        currentPath,
-                        StringComparison.OrdinalIgnoreCase))
-                ?? SessionHistory.FirstOrDefault();
-        }
-    }
-
-    private void PopulateSessionArtifactsForPhase(SessionPhaseViewModel? phase)
-    {
-        SessionArtifacts.Clear();
-        SelectedSessionArtifact = null;
-        if (currentSession is null)
-        {
-            return;
-        }
-
-        var artifactIds = phase?.ArtifactIds.Count > 0
-            ? phase.ArtifactIds.ToHashSet(StringComparer.OrdinalIgnoreCase)
-            : currentSession.ArtifactRefs.Select(artifact => artifact.ArtifactId)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        foreach (var artifact in currentSession.ArtifactRefs.Where(
-                     artifact => artifactIds.Contains(artifact.ArtifactId)))
-        {
-            SessionArtifacts.Add(new SessionArtifactViewModel(
-                artifact,
-                sessionService.ReadArtifactPreview(artifact)));
-        }
+        SessionPage.ApplyHistory(reports, selectedReportPath);
     }
 
     private void ApplyCommandExecution(BridgeCommandExecution execution)
     {
-        CommandStages.Clear();
-        foreach (var stage in execution.StageObservations)
-        {
-            CommandStages.Add(new CommandStageViewModel(stage));
-        }
-        foreach (var issue in execution.Issues)
-        {
-            CommandStages.Add(new CommandStageViewModel(new CommandStageObservation
-            {
-                Stage = issue.IssueCode,
-                Status = "fail",
-                ObservedAtMs = 0,
-                EvidenceRefs = [issue.Message],
-                IssueCodes = [issue.IssueCode],
-            }));
-        }
-        SelectedCommandStage = CommandStages.FirstOrDefault();
+        CommandsPage.ApplyExecution(execution);
     }
 
     private void ConnectDetailNotifications<TRow>(

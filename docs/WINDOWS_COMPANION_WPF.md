@@ -28,6 +28,29 @@ Hostess/Manifold evidence routes.
 - Serial input for serial-scoped ADB checks.
 - Page-specific tables with a shared selected-row detail inspector.
 
+## Viewmodel Map
+
+`MainWindowViewModel` is the WPF coordinator and compatibility facade for XAML
+bindings. Service calls, busy state, aggregate status labels, navigation, and
+operator commands stay there. Page row ownership and report-to-row projection
+live in focused page viewmodels:
+
+- `ReadinessPageViewModel`: readiness checks and refresh failure rows.
+- `DevicesPageViewModel`: readiness-derived device/runtime/network rows and
+  `rusty.quest.device_link.v1` device rows.
+- `ConnectivityPageViewModel`: firewall, QCL, suite, and failure rows.
+- `SessionPageViewModel`: session history, phases, artifact expansion, and
+  session failure rows.
+- `TransportsPageViewModel`: catalog transport rows and device-link transport
+  capability rows.
+- `CommandsPageViewModel`: command stage and command issue rows.
+- `EvidencePageViewModel`: module evidence artifact rows.
+
+The legacy collection and selection properties on `MainWindowViewModel` remain
+as pass-through bindings for XAML stability. New page behavior should be added
+to the owning page viewmodel first, then surfaced through the window facade
+only when existing bindings or command coordination require it.
+
 ## Authority Boundary
 
 The WPF app is a requester and inspector. It does not decide that dependencies,
