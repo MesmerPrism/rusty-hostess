@@ -8,6 +8,7 @@ namespace HostessCompanion.Wpf.Services;
 public sealed class HostessctlSessionService
 {
     private const string SessionSchema = "rusty.hostess.companion.session.v1";
+    private const string SessionHistorySchema = "rusty.hostess.companion.session_history.v1";
     private const int ArtifactPreviewMaxChars = 20000;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -18,28 +19,24 @@ public sealed class HostessctlSessionService
     public async Task<IReadOnlyList<CompanionSessionReport>> LoadHistoryAsync(
         CancellationToken cancellationToken)
     {
-        var directory = SessionDirectory();
-        if (!directory.Exists)
-        {
-            return [];
-        }
-
+        var history = await RunSessionHistoryAsync(cancellationToken).ConfigureAwait(false);
         var reports = new List<CompanionSessionReport>();
-        foreach (var file in directory.EnumerateFiles("*.json"))
+        foreach (var entry in history.Sessions)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var report = await TryLoadSessionAsync(file, cancellationToken).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(entry.ReportPath))
+            {
+                continue;
+            }
+            var report = await TryLoadSessionAsync(new FileInfo(entry.ReportPath), cancellationToken)
+                .ConfigureAwait(false);
             if (report is not null)
             {
                 reports.Add(report);
             }
         }
 
-        return reports
-            .OrderByDescending(report => report.ReportLastWriteTimeLocal)
-            .ThenByDescending(report => report.StartedAtMs)
-            .Take(25)
-            .ToList();
+        return reports;
     }
 
     public async Task<CompanionSessionReport> LoadSessionAsync(
@@ -184,6 +181,66 @@ public sealed class HostessctlSessionService
         {
             return null;
         }
+    }
+
+    private static async Task<CompanionSessionHistoryReport> RunSessionHistoryAsync(
+        CancellationToken cancellationToken)
+    {
+        var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "companion-session",
+            "wpf-session-history.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = "python",
+            WorkingDirectory = repoRoot.FullName,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
+        startInfo.ArgumentList.Add("companion-session");
+        startInfo.ArgumentList.Add("history");
+        startInfo.ArgumentList.Add("--out");
+        startInfo.ArgumentList.Add(reportPath.FullName);
+        startInfo.ArgumentList.Add("--limit");
+        startInfo.ArgumentList.Add("25");
+
+        using var process = Process.Start(startInfo)
+            ?? throw new InvalidOperationException("Failed to start hostessctl session history process.");
+        var stdoutTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var stderrTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        var stdout = await stdoutTask.ConfigureAwait(false);
+        var stderr = await stderrTask.ConfigureAwait(false);
+        if (process.ExitCode != 0)
+        {
+            throw new InvalidOperationException(
+                $"hostessctl companion-session history exited with {process.ExitCode}: {stderr}{stdout}");
+        }
+        if (!reportPath.Exists)
+        {
+            throw new InvalidOperationException(
+                $"hostessctl did not write companion session history report: {reportPath.FullName}");
+        }
+
+        await using var stream = File.OpenRead(reportPath.FullName);
+        var report = await JsonSerializer.DeserializeAsync<CompanionSessionHistoryReport>(
+                stream,
+                JsonOptions,
+                cancellationToken)
+            .ConfigureAwait(false)
+            ?? throw new InvalidOperationException("Companion session history report was empty.");
+        if (report.Schema != SessionHistorySchema)
+        {
+            throw new InvalidOperationException(
+                $"Not a companion session history report: {reportPath.FullName}");
+        }
+        return report;
     }
 
     private static DirectoryInfo SessionDirectory()

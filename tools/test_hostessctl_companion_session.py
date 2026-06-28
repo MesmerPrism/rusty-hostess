@@ -10,7 +10,9 @@ from typing import Any
 
 from tools.hostessctl.cli_parser import build_hostessctl_parser
 from tools.hostessctl.companion_session import (
+    HOSTESS_COMPANION_SESSION_HISTORY_SCHEMA,
     HOSTESS_COMPANION_SESSION_SCHEMA,
+    build_companion_session_history_report,
     build_companion_session_report,
     run_companion_session,
     validate_companion_session_report,
@@ -219,6 +221,68 @@ class HostessCtlCompanionSessionTests(unittest.TestCase):
         self.assertEqual(args.runtime_subscriber_retry_wait_seconds, 5.0)
         self.assertTrue(args.check_broker)
         self.assertTrue(args.no_fallback)
+
+    def test_companion_session_history_indexes_saved_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            session_dir = root / "target" / "companion-session"
+            session_dir.mkdir(parents=True)
+            session_path = session_dir / "session-pass.json"
+            session_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_SESSION_SCHEMA,
+                        "status": "pass",
+                        "session_id": "session-pass",
+                        "frontend": "wpf",
+                        "profile": "hostess-makepad-quest",
+                        "started_at_ms": 1782320000000,
+                        "ended_at_ms": 1782320000100,
+                        "summary": {
+                            "phase_count": 7,
+                            "artifact_count": 3,
+                            "issue_count": 0,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (session_dir / "not-session.json").write_text("{}", encoding="utf-8")
+
+            report = build_companion_session_history_report(
+                argparse.Namespace(
+                    out=str(root / "history.json"),
+                    session_dir=str(session_dir),
+                    limit=25,
+                ),
+                clock_ms_func=FixedClock(),
+            )
+
+        self.assertEqual(report["$schema"], HOSTESS_COMPANION_SESSION_HISTORY_SCHEMA)
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["count"], 1)
+        self.assertEqual(report["sessions"][0]["session_id"], "session-pass")
+        self.assertEqual(report["sessions"][0]["report_path"], str(session_path))
+
+    def test_parser_accepts_companion_session_history_command(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "companion-session",
+                "history",
+                "--out",
+                "history.json",
+                "--session-dir",
+                "target/companion-session",
+                "--limit",
+                "5",
+            ]
+        )
+
+        self.assertEqual(args.command, "companion-session")
+        self.assertEqual(args.session_command, "history")
+        self.assertEqual(args.out, "history.json")
+        self.assertEqual(args.session_dir, "target/companion-session")
+        self.assertEqual(args.limit, 5)
 
 
 def fake_live_pass(request: dict[str, Any], *, args: argparse.Namespace) -> dict[str, Any]:

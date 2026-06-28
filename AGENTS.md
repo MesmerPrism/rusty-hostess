@@ -57,6 +57,11 @@ requirements; see `docs/LICENSING.md`.
   `rusty.lattice.*`, `rusty.matter.*`, `rusty.optics.*`, `rusty.quest.*`, or
   repo-local names); do not introduce `rusty.morphospace.*` schemas or
   `Morphospace*` core types by default.
+- Every WPF, Makepad, or future operator UI action must have a CLI-equivalent
+  or local API route that automation can exercise with the same inputs,
+  authority checks, and evidence artifacts. UI handlers collect parameters,
+  invoke the route, and project structured evidence; they do not own hidden
+  business logic or acceptance rules.
 ## Validation
 
 Run the narrow checks before committing:

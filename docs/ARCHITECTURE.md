@@ -46,6 +46,11 @@ into operator rows for Devices, Transports, and Connectivity. Those helpers
 keep UI composition reusable while preserving the authority boundary: Hostess
 and Quest reports own readiness, stream capabilities, subscriber delivery, and
 command-stage truth; WPF only renders and drills into the evidence.
+`OperatorActionCatalog` maps each visible WPF command to its Hostess
+CLI-equivalent route, evidence artifact, authority owner, and test coverage.
+Session browsing follows the same rule through `companion-session history`,
+which emits `rusty.hostess.companion.session_history.v1`; WPF loads selected
+session artifacts after that route has supplied the report index.
 
 The Android-class app shell includes a compact native Canvas telemetry view for
 phone and headset profiles, but that view is fallback/debug-only platform

@@ -35,6 +35,7 @@ HOSTESS_COMPANION_SESSION_SCHEMA = "rusty.hostess.companion.session.v1"
 HOSTESS_COMPANION_SESSION_VALIDATION_SCHEMA = (
     "rusty.hostess.companion.session_validation.v1"
 )
+HOSTESS_COMPANION_SESSION_HISTORY_SCHEMA = "rusty.hostess.companion.session_history.v1"
 VALID_SESSION_STATUSES = {"pass", "warn", "fail", "skipped"}
 SESSION_PHASE_IDS = (
     "preflight",
@@ -91,6 +92,85 @@ def run_companion_session(
     if getattr(args, "fail_on_error", False) and validation["status"] != "pass":
         return 2
     return 0
+
+
+def run_companion_session_history(
+    args: argparse.Namespace,
+    *,
+    clock_ms_func: Callable[[], int] | None = None,
+) -> int:
+    """Write a compact index of saved companion session reports."""
+
+    report = build_companion_session_history_report(
+        args,
+        clock_ms_func=clock_ms_func or epoch_ms,
+    )
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return 0
+
+
+def build_companion_session_history_report(
+    args: argparse.Namespace,
+    *,
+    clock_ms_func: Callable[[], int],
+) -> dict[str, Any]:
+    session_dir = Path(
+        getattr(args, "session_dir", None)
+        or repo_root() / "target" / "companion-session"
+    )
+    limit = max(0, int(getattr(args, "limit", 25) or 25))
+    reports: list[dict[str, Any]] = []
+    if session_dir.exists():
+        candidates = sorted(
+            session_dir.glob("*.json"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+        for path in candidates:
+            summary = companion_session_history_row(path)
+            if summary is None:
+                continue
+            reports.append(summary)
+            if limit and len(reports) >= limit:
+                break
+
+    return {
+        "$schema": HOSTESS_COMPANION_SESSION_HISTORY_SCHEMA,
+        "status": "pass",
+        "observed_at_ms": int(clock_ms_func()),
+        "session_dir": str(session_dir),
+        "limit": limit,
+        "count": len(reports),
+        "sessions": reports,
+    }
+
+
+def companion_session_history_row(path: Path) -> dict[str, Any] | None:
+    try:
+        report = load_json_object(path)
+    except (OSError, ValueError, json.JSONDecodeError):
+        return None
+    if report.get("$schema") != HOSTESS_COMPANION_SESSION_SCHEMA:
+        return None
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    try:
+        return {
+            "session_id": str(report.get("session_id") or path.stem),
+            "status": str(report.get("status") or "unknown"),
+            "frontend": str(report.get("frontend") or ""),
+            "profile": str(report.get("profile") or ""),
+            "started_at_ms": int(report.get("started_at_ms") or 0),
+            "ended_at_ms": int(report.get("ended_at_ms") or 0),
+            "phase_count": int(summary.get("phase_count") or 0),
+            "artifact_count": int(summary.get("artifact_count") or 0),
+            "issue_count": int(summary.get("issue_count") or 0),
+            "report_path": str(path),
+            "last_write_time_ms": int(path.stat().st_mtime * 1000),
+        }
+    except (OSError, TypeError, ValueError):
+        return None
 
 
 def build_companion_session_report(
@@ -1365,8 +1445,11 @@ def epoch_ms() -> int:
 
 __all__ = [
     "HOSTESS_COMPANION_SESSION_SCHEMA",
+    "HOSTESS_COMPANION_SESSION_HISTORY_SCHEMA",
     "HOSTESS_COMPANION_SESSION_VALIDATION_SCHEMA",
+    "build_companion_session_history_report",
     "build_companion_session_report",
+    "run_companion_session_history",
     "run_companion_session",
     "validate_companion_session_report",
 ]

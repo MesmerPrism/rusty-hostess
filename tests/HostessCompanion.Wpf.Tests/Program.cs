@@ -9,6 +9,7 @@ var tests = new (string Name, Action Test)[]
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
+    ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
 };
 
 var failed = 0;
@@ -153,6 +154,38 @@ static void FirewallRowsExposeProductVerification()
     Assert(rows.Any(row => row.Evidence.Contains("product_rule_verified=True", StringComparison.Ordinal)),
         "missing product verification evidence");
     Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "verified product rule should pass");
+}
+
+static void OperatorActionsMapWpfCommandsToCliRoutes()
+{
+    var commandProperties = typeof(MainWindowViewModel)
+        .GetProperties()
+        .Where(property => property.PropertyType == typeof(AsyncRelayCommand))
+        .Select(property => property.Name)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+    var mappedProperties = OperatorActionCatalog.All
+        .Select(action => action.UiCommandProperty)
+        .Order(StringComparer.Ordinal)
+        .ToArray();
+
+    Assert(
+        commandProperties.SequenceEqual(mappedProperties),
+        "every WPF command property must have an operator action descriptor");
+    foreach (var action in OperatorActionCatalog.All)
+    {
+        Assert(action.ActionId.StartsWith("wpf.", StringComparison.Ordinal), "action id must be WPF scoped");
+        Assert(!string.IsNullOrWhiteSpace(action.CliRoute), $"missing CLI route for {action.ActionId}");
+        Assert(!action.CliRoute.Contains("button", StringComparison.OrdinalIgnoreCase),
+            $"CLI route must not be UI-only for {action.ActionId}");
+        Assert(!string.IsNullOrWhiteSpace(action.EvidenceArtifact), $"missing evidence artifact for {action.ActionId}");
+        Assert(!string.IsNullOrWhiteSpace(action.TestCoverage), $"missing test coverage for {action.ActionId}");
+    }
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "LoadSessionHistoryCommand"
+            && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
+        "session history must stay backed by the companion-session history CLI route");
 }
 
 static T ReadFixture<T>(string name)

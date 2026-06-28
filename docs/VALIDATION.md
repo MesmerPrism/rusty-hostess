@@ -62,6 +62,17 @@ The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
 evidence promotion, and connectivity suite row grouping.
 
+Every new WPF operator action needs UI-equivalent CLI coverage before it is
+accepted as an operator capability. The minimum validation shape is: a
+Hostess CLI or local API route that emits the structured report/sidecar the UI
+renders, fixture or fake-mode coverage for that route, and a WPF projection
+test proving the viewmodel surface maps the same evidence into human-facing
+rows. WPF button handlers must not be the only executable path for setup,
+commands, probes, firewall changes, or evidence export.
+The WPF test suite also reflects over `MainWindowViewModel` command properties
+and compares them with `OperatorActionCatalog`, so a new command fails tests
+until its CLI-equivalent route, evidence artifact, and test coverage are named.
+
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host
 socket. These checks are warnings by default and become blocking only with

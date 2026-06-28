@@ -558,6 +558,10 @@ def build_hostessctl_parser(
     companion_session_run.add_argument("--skip-probe", action="store_true")
     companion_session_run.add_argument("--no-fallback", action="store_true")
     companion_session_run.add_argument("--fail-on-error", action="store_true")
+    companion_session_history = companion_session_subcommands.add_parser("history")
+    companion_session_history.add_argument("--out", required=True)
+    companion_session_history.add_argument("--session-dir")
+    companion_session_history.add_argument("--limit", type=int, default=25)
 
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(

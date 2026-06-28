@@ -45,6 +45,60 @@ public sealed class CompanionSessionReport
     public DateTime ReportLastWriteTimeLocal { get; set; }
 }
 
+public sealed class CompanionSessionHistoryReport
+{
+    [JsonPropertyName("$schema")]
+    public string Schema { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("session_dir")]
+    public string SessionDir { get; set; } = "";
+
+    [JsonPropertyName("count")]
+    public int Count { get; set; }
+
+    [JsonPropertyName("sessions")]
+    public List<CompanionSessionHistoryEntry> Sessions { get; set; } = [];
+}
+
+public sealed class CompanionSessionHistoryEntry
+{
+    [JsonPropertyName("session_id")]
+    public string SessionId { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("frontend")]
+    public string Frontend { get; set; } = "";
+
+    [JsonPropertyName("profile")]
+    public string Profile { get; set; } = "";
+
+    [JsonPropertyName("started_at_ms")]
+    public long StartedAtMs { get; set; }
+
+    [JsonPropertyName("ended_at_ms")]
+    public long EndedAtMs { get; set; }
+
+    [JsonPropertyName("phase_count")]
+    public int PhaseCount { get; set; }
+
+    [JsonPropertyName("artifact_count")]
+    public int ArtifactCount { get; set; }
+
+    [JsonPropertyName("issue_count")]
+    public int IssueCount { get; set; }
+
+    [JsonPropertyName("report_path")]
+    public string ReportPath { get; set; } = "";
+
+    [JsonPropertyName("last_write_time_ms")]
+    public long LastWriteTimeMs { get; set; }
+}
+
 public sealed class SessionSummary
 {
     [JsonPropertyName("phase_count")]

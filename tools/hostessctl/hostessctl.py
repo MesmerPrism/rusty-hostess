@@ -232,6 +232,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "companion-session":
         if args.session_command == "run":
             return companion_session.run_companion_session(args, run_captured_func=run_captured)
+        if args.session_command == "history":
+            return companion_session.run_companion_session_history(args)
         return 2
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":

@@ -100,6 +100,8 @@ public sealed partial class MainWindowViewModel : INotifyPropertyChanged
 
     public ObservableCollection<EvidenceArtifactViewModel> EvidenceArtifacts { get; } = [];
 
+    public IReadOnlyList<OperatorActionDescriptor> OperatorActions => OperatorActionCatalog.All;
+
     public AsyncRelayCommand RefreshCommand { get; }
 
     public AsyncRelayCommand RunSessionCommand { get; }

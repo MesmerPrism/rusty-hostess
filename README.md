@@ -144,9 +144,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/companion_session.py`: Windows companion session
   orchestrator. It composes readiness, descriptor catalog, live broker-stream
   command probing, and app-private fallback evidence into ordered phases in
-  `rusty.hostess.companion.session.v1` so WPF, Makepad, CLI, and future
-  frontends can render the same session state without owning orchestration
-  logic.
+  `rusty.hostess.companion.session.v1` and indexes saved reports through
+  `rusty.hostess.companion.session_history.v1` so WPF, Makepad, CLI, and
+  future frontends can render the same session state without owning
+  orchestration or history enumeration logic.
 - `tools/hostessctl/connectivity_probe.py`: Quest connectivity lab probe
   adapter. It emits `rusty.quest.connectivity_topology_probe.v1` reports for
   fixture and same-Wi-Fi live topology checks, keeping topology ownership,
@@ -282,6 +283,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   broker-stream command probe, records app-private fallback recovery when
   needed, and exposes ordered phases for WPF, Makepad, CLI, and future UI
   frontends.
+- `tools/hostessctl/hostessctl.py companion-session history`: emits a compact
+  `rusty.hostess.companion.session_history.v1` index of saved session reports.
+  The WPF History action consumes this route before loading selected report
+  artifacts, preserving UI-equivalent CLI coverage for session browsing.
 - `tools/hostessctl/hostessctl.py connectivity-probe run`: emits a
   `rusty.quest.connectivity_topology_probe.v1` report for the Quest
   connectivity lab. Fixture mode covers QCL-000 USB ADB command-feedback and

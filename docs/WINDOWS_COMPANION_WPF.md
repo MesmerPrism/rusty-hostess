@@ -34,6 +34,17 @@ The WPF app is a requester and inspector. It does not decide that dependencies,
 device state, broker routes, app-private receipts, or runtime behavior are
 valid.
 
+Every operator-visible WPF action must map to a CLI-equivalent Hostess route or
+to a future local API route that calls the same implementation path. The UI may
+collect parameters, show progress, and project evidence, but acceptance comes
+from the route's structured report, sidecar, receipt, or validation artifact.
+Automated tests should exercise the CLI/API route or its fixture output, then
+verify that WPF viewmodels render the same evidence a human operator sees.
+The durable action map lives in
+`apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs`; the WPF test
+suite reflects over `MainWindowViewModel` commands and fails when a command is
+added without a CLI-equivalent route and evidence artifact.
+
 All readiness state comes from:
 
 ```powershell
