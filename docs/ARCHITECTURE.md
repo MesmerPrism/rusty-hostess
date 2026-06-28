@@ -32,6 +32,15 @@ datastream. It is the first scalable Rusty GUI example for Hostess T. It
 observes run state and can request commands only through the same
 Hostess/Manifold command routes as `hostessctl`.
 
+The Windows companion shell lives in `apps/hostess-companion-wpf`. It is a WPF
+operational shell over Hostess readiness reports, Rusty GUI companion
+descriptors, and Hostess/Manifold bridge-command evidence. It calls
+`hostessctl companion-readiness` and `hostessctl companion-catalog`, displays
+Readiness, Session, Devices, Transports, Commands, and Evidence tables plus
+selected-row details, and does not implement dependency, device, broker,
+descriptor, command authority, session orchestration, or runtime acceptance
+logic inside WPF handlers.
+
 The Android-class app shell includes a compact native Canvas telemetry view for
 phone and headset profiles, but that view is fallback/debug-only platform
 evidence plumbing. Android Java owns Activity lifecycle, direct diagnostic BLE
@@ -81,6 +90,78 @@ envelopes, ACK normalization, retry connection, and stream-event timestamp
 aliasing are isolated from route orchestration. Projected Motion Breath broker
 publication and receipt listening live in
 `tools/hostessctl/pmb_broker_bridge.py`.
+Bridge command execution lives in
+`tools/hostessctl/bridge_command_routes.py`. It consumes a UI-neutral
+`rusty.hostess.bridge_command.request.v1` command request, sends the Manifold
+command envelope through `broker_transport.py`, subscribes to the selected
+runtime receipt stream, waits for authority ACK and runtime/applied receipts,
+and emits bridge-route evidence. It is the shared backend route that WPF,
+Makepad, and future UI shells should call instead of adding UI-local command
+acceptance logic.
+The Hostess Makepad broker-stream runtime consumer lives in
+`apps/hostess-t-makepad/src/manifold_bridge_command_subscriber.rs`. It
+subscribes to `stream.hostess.makepad.bridge_command`, reuses
+`bridge_command_inbox` to apply the benign safe-probe request, and publishes
+`rusty.hostess.makepad.bridge_command_runtime_receipt.v1` on
+`stream.hostess.makepad.bridge_command.receipt`.
+Connected-Quest broker-stream command orchestration lives in
+`tools/hostessctl/bridge_command_live_android_routes.py`. It owns the Hostess
+setup evidence around the shared command path: launch/check the Quest broker,
+prepare the serial-scoped ADB forward, wait for the forwarded broker socket,
+launch/check Hostess Makepad, then delegate the actual command to
+`bridge_command_routes.py`. WPF, Makepad, and future frontends can request this
+route, but they still render the sidecar instead of deciding broker authority
+or runtime acceptance themselves.
+Quest/Android app-private bridge command proof lives in
+`tools/hostessctl/bridge_command_android_routes.py` plus the Hostess Makepad
+`bridge_command_inbox` module. It stages the same request shape into the
+app-private settings directory with serial-scoped ADB and accepts only the
+benign `hostess.makepad.bridge_probe.set_marker` command. This route proves
+that the Quest runtime emitted `runtime_accepted` and `applied` receipts, but
+it intentionally does not claim Manifold `authority_accepted`; broker-stream
+dispatch remains the separate command-authority path.
+The broker-authorized Android command route is an explicit bring-up bridge over
+that gap: `run-bridge-command-android --broker-authority` first sends the
+command envelope to the Manifold broker and requires an accepted ACK, then
+stages the app-private runtime delivery request with
+`broker_authority_accepted=true`. It records
+`sent -> transport_ok -> authority_accepted -> runtime_accepted -> applied`,
+but the runtime delivery leg is still app-private JSON. When the selected
+authority is the Quest broker APK, `--adb-forward-broker` prepares the host TCP
+forward before the WebSocket authority request; the forward is transport setup
+evidence, not runtime acceptance.
+Bridge-route evidence normalization lives in
+`tools/hostessctl/bridge_route_evidence.py`. It converts Hostess route-stage
+observations into `rusty.manifold.bridge.route_evidence.v1` and validates the
+route-required stages from a Manifold descriptor, explicit CLI requirements, a
+Hostess input receipt, or the known bridge-route fixtures. It does not open
+sockets, run ADB, launch apps, or decide whether a command is authoritative;
+WPF, Makepad, and future frontends can call the same low-rate evidence adapter
+and render the resulting validation rows without becoming runtime authority.
+Windows companion readiness lives in
+`tools/hostessctl/companion_readiness.py`. It emits
+`rusty.hostess.companion.readiness_report.v1` for host, toolchain, device,
+runtime, broker package/process, ADB forward mapping, forwarded broker socket,
+direct broker socket, network, and Rusty GUI descriptor checks. Readiness is
+Hostess-owned execution/evidence, not GUI authority: WPF, Makepad, CLI, and
+future frontends render the report and may request refreshes, but they do not
+decide that ADB, broker routes, app-private receipts, package install state, or
+runtime acceptance are valid.
+Windows companion descriptor discovery lives in
+`tools/hostessctl/companion_catalog.py`. It emits
+`rusty.hostess.companion.catalog.v1` from Rusty GUI companion module,
+workspace, and transport descriptors, validates that GUI/WPF do not claim
+command or route authority, and gives WPF, Makepad, CLI, and future frontends a
+shared catalog for module lists, transport costs, and evidence artifact panels.
+Windows companion session orchestration lives in
+`tools/hostessctl/companion_session.py`. It emits
+`rusty.hostess.companion.session.v1` by composing readiness, descriptor
+catalog, connected-Quest broker-stream command probing, app-private fallback
+recovery, validation sidecars, and artifact references into ordered phases.
+This route is the frontend-neutral session backend for WPF, Makepad, CLI, and
+future companion shells; frontends render phases/actions/issues and may request
+the run, but they do not decide broker authority, runtime acceptance, fallback
+recovery, or evidence validity.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

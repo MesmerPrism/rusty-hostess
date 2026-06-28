@@ -1,0 +1,42 @@
+{
+  "$schema": "rusty.hostess.bridge_route_evidence_input.v1",
+  "evidence_id": "evidence.hostess.bridge_route.device.adb.transport_only",
+  "route_id": "bridge_route.device.adb.transport_only",
+  "status": "pass",
+  "started_at_ms": 1765002000000,
+  "ended_at_ms": 1765002000080,
+  "required_evidence_stages": [
+    "sent",
+    "transport_ok"
+  ],
+  "stage_observations": [
+    {
+      "stage": "sent",
+      "status": "pass",
+      "observed_at_ms": 1765002000001,
+      "evidence_refs": [
+        "evidence.hostess.adb_command"
+      ],
+      "issue_codes": []
+    },
+    {
+      "stage": "transport_ok",
+      "status": "pass",
+      "observed_at_ms": 1765002000070,
+      "evidence_refs": [
+        "evidence.hostess.adb_exit_zero"
+      ],
+      "issue_codes": []
+    }
+  ],
+  "artifact_refs": [
+    "artifact.hostess.adb_stdout",
+    "artifact.hostess.adb_stderr"
+  ],
+  "issues": [],
+  "source": {
+    "origin": "rusty-hostess",
+    "adapter": "hostessctl.android_artifacts",
+    "ui_frontend": "ui.neutral"
+  }
+}

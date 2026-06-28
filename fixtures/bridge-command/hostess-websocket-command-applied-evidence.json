@@ -1,0 +1,60 @@
+{
+  "$schema": "rusty.manifold.bridge.route_evidence.v1",
+  "artifact_refs": [
+    "artifact.hostess.bridge_command.command_execution",
+    "artifact.hostess.bridge_command.validation_report"
+  ],
+  "ended_at_ms": 1765004000035,
+  "evidence_id": "evidence.hostess.bridge_command.projection_scale.applied",
+  "issues": [],
+  "route_id": "bridge_route.command.websocket.applied",
+  "stage_reports": [
+    {
+      "evidence_refs": [
+        "evidence.hostess.bridge_command.command_envelope"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765004000005,
+      "stage": "sent",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.hostess.bridge_command.broker_ack"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765004000010,
+      "stage": "transport_ok",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.manifold.command_ack"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765004000010,
+      "stage": "authority_accepted",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.quest.runtime_receipt"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765004000020,
+      "stage": "runtime_accepted",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.quest.effective_state_marker"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765004000030,
+      "stage": "applied",
+      "status": "pass"
+    }
+  ],
+  "started_at_ms": 1765004000000,
+  "status": "pass"
+}

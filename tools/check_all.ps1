@@ -22,9 +22,16 @@ try {
         "tools\hostessctl\hostessctl.py",
         "tools\hostessctl\android_artifacts.py",
         "tools\hostessctl\android_files.py",
+        "tools\hostessctl\bridge_command_android_routes.py",
+        "tools\hostessctl\bridge_command_live_android_routes.py",
+        "tools\hostessctl\bridge_command_routes.py",
+        "tools\hostessctl\bridge_route_evidence.py",
         "tools\hostessctl\broker_telemetry_routes.py",
         "tools\hostessctl\broker_transport.py",
         "tools\hostessctl\cli_parser.py",
+        "tools\hostessctl\companion_catalog.py",
+        "tools\hostessctl\companion_readiness.py",
+        "tools\hostessctl\companion_session.py",
         "tools\hostessctl\live_capture_routes.py",
         "tools\hostessctl\makepad_pmb_setup.py",
         "tools\hostessctl\manifold_recording.py",
@@ -63,6 +70,13 @@ try {
         "tools\test_check_makepad_quest_gpu_evidence.py",
         "tools\test_check_makepad_quest_live_recorded_ab.py",
         "tools\test_hostessctl_cli_parser.py",
+        "tools\test_hostessctl_bridge_command_android.py",
+        "tools\test_hostessctl_bridge_command_live_android.py",
+        "tools\test_hostessctl_bridge_command.py",
+        "tools\test_hostessctl_bridge_route_evidence.py",
+        "tools\test_hostessctl_companion_catalog.py",
+        "tools\test_hostessctl_companion_readiness.py",
+        "tools\test_hostessctl_companion_session.py",
         "tools\test_hostessctl_questionnaire_bridge.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
@@ -72,6 +86,23 @@ try {
     }
     if (Test-Path "tools\test_telemetry_snapshot.py") {
         Invoke-Checked "python unit tests" "python" @("-m", "unittest", "discover", "-s", "tools", "-p", "test_*.py")
+    }
+    $GuiDescriptorRootCandidate = Join-Path $RepoRoot "..\rusty-gui\fixtures\descriptors"
+    if (Test-Path $GuiDescriptorRootCandidate) {
+        $CatalogOut = Join-Path $RepoRoot "target\companion-catalog\check-all-catalog.json"
+        New-Item -ItemType Directory -Force -Path (Split-Path $CatalogOut) | Out-Null
+        Invoke-Checked "companion catalog descriptor smoke" "python" @(
+            "tools\hostessctl\hostessctl.py",
+            "companion-catalog",
+            "--out",
+            $CatalogOut,
+            "--frontend",
+            "wpf",
+            "--fail-on-error"
+        )
+    }
+    if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
+        Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
     }
     $PackagesRootCandidate = Join-Path $RepoRoot "..\rusty-manifold-packages"
     $PmbPackageRootCandidate = Join-Path $PackagesRootCandidate "packages\projected-motion-breath"

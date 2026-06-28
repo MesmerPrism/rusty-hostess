@@ -125,6 +125,62 @@ The evidence must record `general_recorder=true`, `polar_specific=false`,
 `controller_specific=false`, and must only claim physical controller input when
 `stream.motion.object_pose` events were actually captured.
 
+Manifold bridge-route evidence uses
+`rusty.manifold.bridge.route_evidence.v1`.
+`hostessctl emit-bridge-route-evidence --input <input.json> --out <evidence.json>`
+normalizes a Hostess-owned input receipt with stage observations into the
+Manifold bridge-route shape and writes a neighboring
+`rusty.hostess.bridge_route_evidence.validation.v1` report. Applied command
+routes must prove `sent`, `transport_ok`, `authority_accepted`,
+`runtime_accepted`, and `applied`; transport-only device routes such as ADB
+must prove only the route-required transport stages. This is an evidence
+adapter for WPF, Makepad, and future UI shells. It does not run the transport
+or make Hostess the command authority.
+
+Bridge command execution uses
+`rusty.hostess.bridge_command.execution_evidence.v1` as its Hostess sidecar and
+`rusty.manifold.bridge.route_evidence.v1` as the frontend-neutral result.
+`hostessctl run-bridge-command --input <request.json> --out <evidence.json>`
+consumes `rusty.hostess.bridge_command.request.v1`, sends a Manifold command
+envelope through the broker WebSocket route, subscribes to the runtime receipt
+stream, waits for `transport_ok`, `authority_accepted`, `runtime_accepted`,
+and `applied` evidence, then writes a validation report. The default runtime
+receipt stream is `stream.hostess.makepad.bridge_command.receipt`; the Makepad
+subscriber receives command requests on `stream.hostess.makepad.bridge_command`
+and publishes `rusty.hostess.makepad.bridge_command_runtime_receipt.v1`.
+Transport and authority ACKs without runtime/applied receipts must fail
+validation for applied command routes.
+
+Live Android broker-stream command orchestration uses
+`rusty.hostess.bridge_command.live_android_execution_evidence.v1` as its
+Hostess sidecar. `hostessctl run-bridge-command-live-android --input
+<request.json> --out <evidence.json>` records broker launch/process checks,
+ADB forwarding, forwarded socket readiness, Hostess Makepad launch/process
+checks, and then embeds the normal broker-stream command execution. This is the
+preferred Windows companion safe-probe backend because setup and command
+evidence travel together while Manifold remains the command authority.
+
+Headset app-private bridge command proof uses
+`rusty.hostess.bridge_command.android_execution_evidence.v1` as its Hostess
+sidecar and still emits `rusty.manifold.bridge.route_evidence.v1` as the
+frontend-neutral result. `hostessctl run-bridge-command-android --input
+<request.json> --out <evidence.json>` stages the request into the Hostess
+Makepad app-private settings directory over serial-scoped ADB, launches the XR
+activity by default, and pulls
+`rusty.hostess.makepad.bridge_command_runtime_receipt.v1`. This route proves
+`sent`, `transport_ok`, `runtime_accepted`, and `applied`; it deliberately does
+not claim Manifold `authority_accepted`.
+
+Windows companion session orchestration uses
+`rusty.hostess.companion.session.v1`. `hostessctl companion-session run --out
+<session.json>` writes ordered phases for host preflight, Quest device checks,
+broker transport, runtime launch, broker-stream command probing,
+app-private fallback recovery, and evidence packaging. The report references
+the readiness, catalog, bridge-route evidence, execution sidecar, validation,
+and optional logcat artifacts it produced. A broker-stream failure recovered by
+a passing app-private fallback is reported as a warning session, not as
+Manifold command authority for the fallback leg.
+
 Required fields:
 
 - `host_profile`: `desktop`, `mobile`, or `headset`

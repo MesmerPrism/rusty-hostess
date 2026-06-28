@@ -12,3 +12,7 @@ tmp/
 *.jsonl
 !tools/quest-camera-profile/fixtures/*.jsonl
 captures/
+bin/
+obj/
+**/bin/
+**/obj/

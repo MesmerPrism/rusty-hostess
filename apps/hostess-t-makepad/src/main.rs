@@ -8,6 +8,7 @@ mod app_horizontal_alignment;
 mod app_mesh_replay_runtime;
 mod app_projection_target;
 mod app_stimulus_runtime;
+mod bridge_command_inbox;
 mod broker_h264_runtime;
 mod camera_pair;
 mod camera_projection_flow;
@@ -27,6 +28,7 @@ mod makepad_effective_settings;
 mod makepad_runtime_config;
 mod makepad_stereo_camera_panel;
 mod manifold_breath_feedback;
+mod manifold_bridge_command_subscriber;
 mod manifold_pose_publisher;
 mod matter_particle_texture;
 mod matter_surface_gpu;
@@ -54,6 +56,7 @@ mod stimulus_stereo_field_live;
 mod stimulus_volume_gpu;
 mod texture_probe_stats;
 use crate::makepad_runtime_config as makepad_config;
+use bridge_command_inbox::BridgeCommandInboxState;
 use camera_pair::{
     collect_makepad_camera_choices, frame_rate_token, makepad_display_source_eye_mapping,
     pixel_format_label, Camera2StereoPlan, MakepadCameraPair,
@@ -147,6 +150,9 @@ use makepad_widgets::makepad_platform::{
 use makepad_widgets::*;
 use manifold_breath_feedback::{
     BreathFeedbackSample, ManifoldBreathFeedbackConfig, ManifoldBreathFeedbackSubscriber,
+};
+use manifold_bridge_command_subscriber::{
+    ManifoldBridgeCommandSubscriber, ManifoldBridgeCommandSubscriberConfig,
 };
 use manifold_pose_publisher::{
     ManifoldPosePublisher, ManifoldPosePublisherConfig, ManifoldPoseSample,
@@ -380,6 +386,14 @@ pub struct App {
     mesh_replay_effective_settings_revision_key: Option<String>,
     #[rust]
     mesh_replay_effective_settings_gpu_proof_revision_key: Option<String>,
+    #[rust]
+    bridge_command_inbox: BridgeCommandInboxState,
+    #[rust]
+    bridge_command_probe_token: Option<String>,
+    #[rust]
+    manifold_bridge_command_subscriber: Option<ManifoldBridgeCommandSubscriber>,
+    #[rust]
+    manifold_bridge_command_config_marker: Option<String>,
     #[rust]
     mesh_replay_effective_settings_modified_ns: u128,
     #[rust]
@@ -764,6 +778,115 @@ impl App {
         let _ = shell_runtime_capabilities::write_selected_makepad_shell_runtime_capability_receipt(
             &self.shell_runtime_capabilities,
         );
+    }
+
+    fn handle_bridge_command_inbox(&mut self, phase: &str) {
+        if let Some(application) = self.bridge_command_inbox.poll(phase) {
+            self.bridge_command_probe_token = Some(application.probe_token);
+        }
+        self.handle_manifold_bridge_command_subscription(phase);
+    }
+
+    fn manifold_bridge_command_subscriber_config() -> ManifoldBridgeCommandSubscriberConfig {
+        ManifoldBridgeCommandSubscriberConfig {
+            enabled: hotload_bool(
+                KEY_MANIFOLD_BRIDGE_COMMAND_ENABLED,
+                DEFAULT_MANIFOLD_BRIDGE_COMMAND_ENABLED,
+            ),
+            broker_host: hotload_text(KEY_MANIFOLD_BROKER_HOST, DEFAULT_MANIFOLD_BROKER_HOST),
+            broker_port: hotload_u16(
+                KEY_MANIFOLD_BROKER_PORT,
+                DEFAULT_MANIFOLD_BROKER_PORT,
+                1,
+                u16::MAX,
+            ),
+            stream_id: hotload_text(
+                KEY_MANIFOLD_BRIDGE_COMMAND_STREAM,
+                DEFAULT_MANIFOLD_BRIDGE_COMMAND_STREAM,
+            ),
+            receipt_stream_id: hotload_text(
+                KEY_MANIFOLD_BRIDGE_COMMAND_RECEIPT_STREAM,
+                DEFAULT_MANIFOLD_BRIDGE_COMMAND_RECEIPT_STREAM,
+            ),
+            receiver_id: hotload_text(
+                KEY_MANIFOLD_BRIDGE_COMMAND_RECEIVER,
+                DEFAULT_MANIFOLD_BRIDGE_COMMAND_RECEIVER,
+            ),
+            connect_timeout_ms: hotload_u32(
+                KEY_MANIFOLD_BRIDGE_COMMAND_CONNECT_TIMEOUT_MS,
+                DEFAULT_MANIFOLD_BRIDGE_COMMAND_CONNECT_TIMEOUT_MS,
+                50,
+                5_000,
+            ) as u64,
+        }
+    }
+
+    fn manifold_bridge_command_config_marker_line(
+        config: &ManifoldBridgeCommandSubscriberConfig,
+    ) -> String {
+        let status = if config.enabled {
+            "enabled"
+        } else {
+            "disabled"
+        };
+        format!(
+            "RUSTY_HOSTESS_MAKEPAD_BRIDGE_COMMAND_SUBSCRIBER schema=rusty.hostess.makepad.bridge_command_subscriber.v1 phase=configure status={} enabled={} enabledRaw={} stream={} streamRaw={} receiptStream={} receiptStreamRaw={} receiver={} receiverRaw={} brokerHost={} brokerHostRaw={} brokerPort={} brokerPortRaw={} connectTimeoutMs={} connectTimeoutRaw={} highRateJsonPayload=false",
+            status,
+            config.enabled,
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BRIDGE_COMMAND_ENABLED)),
+            marker_token(&config.stream_id),
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BRIDGE_COMMAND_STREAM)),
+            marker_token(&config.receipt_stream_id),
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BRIDGE_COMMAND_RECEIPT_STREAM)),
+            marker_token(&config.receiver_id),
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BRIDGE_COMMAND_RECEIVER)),
+            marker_token(&config.broker_host),
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BROKER_HOST)),
+            config.broker_port,
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BROKER_PORT)),
+            config.connect_timeout_ms,
+            marker_token(&Self::runtime_marker_value(KEY_MANIFOLD_BRIDGE_COMMAND_CONNECT_TIMEOUT_MS)),
+        )
+    }
+
+    fn handle_manifold_bridge_command_subscription(&mut self, _phase: &str) {
+        let config = Self::manifold_bridge_command_subscriber_config();
+        let config_marker = Self::manifold_bridge_command_config_marker_line(&config);
+        if self
+            .manifold_bridge_command_config_marker
+            .as_ref()
+            .is_none_or(|previous| previous != &config_marker)
+        {
+            emit_marker_line(&config_marker);
+            self.manifold_bridge_command_config_marker = Some(config_marker);
+        }
+        if !config.enabled {
+            self.manifold_bridge_command_subscriber = None;
+            return;
+        }
+        if self
+            .manifold_bridge_command_subscriber
+            .as_ref()
+            .is_none_or(|subscriber| subscriber.config() != &config)
+        {
+            emit_marker_line(&format!(
+                "RUSTY_HOSTESS_MAKEPAD_BRIDGE_COMMAND_SUBSCRIBER schema=rusty.hostess.makepad.bridge_command_subscriber.v1 phase=subscribe status=ready stream={} receiptStream={} receiver={} brokerHost={} brokerPort={} subscribeCommand=subscribe receiptCommand=publish_stream_event receiptSchema=rusty.hostess.makepad.bridge_command_runtime_receipt.v1 highRateJsonPayload=false",
+                marker_token(&config.stream_id),
+                marker_token(&config.receipt_stream_id),
+                marker_token(&config.receiver_id),
+                marker_token(&config.broker_host),
+                config.broker_port,
+            ));
+            self.manifold_bridge_command_subscriber =
+                Some(ManifoldBridgeCommandSubscriber::new(config));
+        }
+        if let Some(application) = self
+            .manifold_bridge_command_subscriber
+            .as_ref()
+            .and_then(ManifoldBridgeCommandSubscriber::take_latest_application)
+        {
+            self.bridge_command_probe_token = Some(application.probe_token);
+        }
     }
 
     fn broker_h264_enabled() -> bool {
@@ -1273,6 +1396,7 @@ impl App {
 
         self.cadence_frame_count = self.cadence_frame_count.saturating_add(1);
         self.handle_mesh_replay_runtime_cadence(cx, next_frame_event.time);
+        self.handle_bridge_command_inbox("cadence");
         let interval_seconds = (next_frame_event.time - self.cadence_last_sample_time).max(0.0);
         if interval_seconds >= CADENCE_SAMPLE_SECONDS {
             self.emit_cadence_sample(cx, next_frame_event.time, interval_seconds);
@@ -1336,6 +1460,7 @@ impl AppMain for App {
     fn after_new_from_script(vm: &mut ScriptVm, app: &mut Self) {
         Self::emit_startup_markers_once("startup");
         app.initialize_hostess_shell_contract();
+        app.handle_bridge_command_inbox("startup");
         let camera_streaming_enabled = app.current_camera_streaming_enabled();
         app.apply_makepad_video_input_discovery_enabled(
             vm.cx_mut(),

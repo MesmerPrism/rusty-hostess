@@ -1,0 +1,17 @@
+{
+  "$schema": "rusty.hostess.bridge_command.request.v1",
+  "request_id": "request.hostess.bridge_command.android_rejected",
+  "evidence_id": "evidence.hostess.bridge_command.android_rejected",
+  "route_id": "bridge_route.command.android_app_private.applied",
+  "command": "hostess.makepad.unsupported",
+  "params": {
+    "probe_token": "probe.android-hotload.rejected",
+    "source": "fixture"
+  },
+  "required_evidence_stages": [
+    "sent",
+    "transport_ok",
+    "runtime_accepted",
+    "applied"
+  ]
+}

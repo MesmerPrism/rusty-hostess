@@ -146,6 +146,8 @@ def broker_command_message(
     params: dict[str, Any] | None = None,
     *,
     request_id: str | None = None,
+    client_id: str = "hostessctl.record_values",
+    app_package: str = "rusty-hostess",
 ) -> dict[str, Any]:
     return {
         "type": "command",
@@ -153,8 +155,8 @@ def broker_command_message(
         "request_id": request_id or f"hostess-record-values-{command.replace('.', '-')}",
         "command": command,
         "params": params or {},
-        "client_id": "hostessctl.record_values",
-        "app_package": "rusty-hostess",
+        "client_id": client_id,
+        "app_package": app_package,
     }
 
 

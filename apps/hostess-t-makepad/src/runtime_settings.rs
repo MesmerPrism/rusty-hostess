@@ -59,6 +59,14 @@ pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_STREAM: &str = "stream.breath.
 pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_RECEIVER: &str =
     "app.makepad_camera_shell.breath_feedback";
 pub(crate) const DEFAULT_MANIFOLD_BREATH_FEEDBACK_CONNECT_TIMEOUT_MS: u32 = 250;
+pub(crate) const DEFAULT_MANIFOLD_BRIDGE_COMMAND_ENABLED: bool = true;
+pub(crate) const DEFAULT_MANIFOLD_BRIDGE_COMMAND_STREAM: &str =
+    "stream.hostess.makepad.bridge_command";
+pub(crate) const DEFAULT_MANIFOLD_BRIDGE_COMMAND_RECEIPT_STREAM: &str =
+    "stream.hostess.makepad.bridge_command.receipt";
+pub(crate) const DEFAULT_MANIFOLD_BRIDGE_COMMAND_RECEIVER: &str =
+    "app.hostess_makepad.bridge_command_subscriber";
+pub(crate) const DEFAULT_MANIFOLD_BRIDGE_COMMAND_CONNECT_TIMEOUT_MS: u32 = 250;
 pub(crate) const DEFAULT_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS: &str = "offset-scale";
 pub(crate) const SUPPRESS_LIVE_CAMERA_SAMPLING: bool = false;
 pub(crate) const FORCE_FULL_SURFACE_LIVE_CAMERA_UV: bool = false;
@@ -261,6 +269,13 @@ pub(crate) const KEY_MANIFOLD_BREATH_FEEDBACK_STREAM: &str = "manifold_breath_fe
 pub(crate) const KEY_MANIFOLD_BREATH_FEEDBACK_RECEIVER: &str = "manifold_breath_feedback_receiver";
 pub(crate) const KEY_MANIFOLD_BREATH_FEEDBACK_CONNECT_TIMEOUT_MS: &str =
     "manifold_breath_feedback_connect_timeout_ms";
+pub(crate) const KEY_MANIFOLD_BRIDGE_COMMAND_ENABLED: &str = "manifold_bridge_command_enabled";
+pub(crate) const KEY_MANIFOLD_BRIDGE_COMMAND_STREAM: &str = "manifold_bridge_command_stream";
+pub(crate) const KEY_MANIFOLD_BRIDGE_COMMAND_RECEIPT_STREAM: &str =
+    "manifold_bridge_command_receipt_stream";
+pub(crate) const KEY_MANIFOLD_BRIDGE_COMMAND_RECEIVER: &str = "manifold_bridge_command_receiver";
+pub(crate) const KEY_MANIFOLD_BRIDGE_COMMAND_CONNECT_TIMEOUT_MS: &str =
+    "manifold_bridge_command_connect_timeout_ms";
 pub(crate) const KEY_MAKEPAD_PROJECTION_TARGET_JOYSTICK_CONTROLS: &str =
     "makepad_projection_target_joystick_controls";
 

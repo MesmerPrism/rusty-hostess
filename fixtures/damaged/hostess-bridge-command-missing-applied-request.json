@@ -1,0 +1,18 @@
+{
+  "$schema": "rusty.hostess.bridge_command.request.v1",
+  "request_id": "request.hostess.bridge_command.missing_applied",
+  "evidence_id": "evidence.hostess.bridge_command.missing_applied",
+  "route_id": "bridge_route.command.websocket.applied",
+  "command": "quest.projection_target.set_scale",
+  "params": {
+    "scale": 1.25,
+    "source": "damaged-fixture"
+  },
+  "required_evidence_stages": [
+    "sent",
+    "transport_ok",
+    "authority_accepted",
+    "runtime_accepted",
+    "applied"
+  ]
+}

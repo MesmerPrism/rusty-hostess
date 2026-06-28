@@ -1,0 +1,60 @@
+{
+  "$schema": "rusty.manifold.bridge.route_evidence.v1",
+  "artifact_refs": [
+    "artifact.hostess.command_receipt",
+    "artifact.quest.effective_state_marker"
+  ],
+  "ended_at_ms": 1765001000250,
+  "evidence_id": "evidence.hostess.bridge_route.command.websocket.applied",
+  "issues": [],
+  "route_id": "bridge_route.command.websocket.applied",
+  "stage_reports": [
+    {
+      "evidence_refs": [
+        "evidence.hostess.command_request"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765001000001,
+      "stage": "sent",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.hostess.websocket_ack"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765001000030,
+      "stage": "transport_ok",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.manifold.command_ack"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765001000060,
+      "stage": "authority_accepted",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.quest.runtime_receipt"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765001000150,
+      "stage": "runtime_accepted",
+      "status": "pass"
+    },
+    {
+      "evidence_refs": [
+        "evidence.quest.effective_state_marker"
+      ],
+      "issue_codes": [],
+      "observed_at_ms": 1765001000240,
+      "stage": "applied",
+      "status": "pass"
+    }
+  ],
+  "started_at_ms": 1765001000000,
+  "status": "pass"
+}

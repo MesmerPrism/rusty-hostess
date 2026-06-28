@@ -49,6 +49,12 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `apps/hostess-t-android/src/main/java/.../PmbAndroidEvidence.java`: PMB
   Android replay/controller-preflight evidence builders, scorecards, and
   failure report helpers.
+- `apps/hostess-companion-wpf`: Windows companion shell. It renders Hostess
+  readiness reports plus descriptor-driven Session, Devices, Transports,
+  Commands, and Evidence pages through WPF while calling `hostessctl
+  companion-readiness`, `hostessctl companion-catalog`,
+  `hostessctl companion-session run`, and bridge-command routes as backend
+  authority paths.
 - `tools/hostessctl/hostessctl.py`: compatibility facade for command dispatch,
   platform defaults, and existing imports. Route bodies live in focused helper
   modules so new command behavior does not accumulate in the CLI root.
@@ -101,6 +107,44 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   primitives, command envelope helpers, ACK normalization, retry connection,
   and stream-event aliasing used by recording routes. The CLI root re-exports
   these helpers as a compatibility facade for tests and existing callers.
+- `tools/hostessctl/bridge_command_android_routes.py`: headset-backed
+  bridge-command proof over the Hostess Makepad app-private command inbox. It
+  stages low-rate command JSON with serial-scoped ADB, collects the app-written
+  runtime receipt, and emits bridge-route evidence. With `--broker-authority`,
+  it first requires Manifold broker command acceptance before staging the
+  app-private runtime delivery request. With `--adb-forward-broker`, it prepares
+  the host-to-device broker port forward before requesting authority.
+- `tools/hostessctl/bridge_command_live_android_routes.py`: connected-Quest
+  orchestration for the broker-stream bridge command path. It starts/checks
+  the Manifold broker, prepares the ADB TCP forward, starts Hostess Makepad,
+  waits for socket/process readiness, then delegates command execution to
+  `bridge_command_routes.py` and records setup actions in a Hostess sidecar.
+- `tools/hostessctl/bridge_command_routes.py`: frontend-neutral bridge command
+  execution over the Manifold broker WebSocket route. It consumes a command
+  request JSON, sends a Manifold command envelope, waits for authority/runtime
+  receipts, and emits bridge-route evidence for WPF, Makepad, and future UI
+  shells.
+- `tools/hostessctl/bridge_route_evidence.py`: UI-neutral bridge-route
+  evidence normalization and validation. WPF, Makepad, and future frontends can
+  feed Hostess stage observations into the same Manifold bridge-route evidence
+  shape without becoming command or runtime authority.
+- `tools/hostessctl/companion_readiness.py`: Windows companion readiness report
+  route. It emits `rusty.hostess.companion.readiness_report.v1` for host,
+  toolchain, device, runtime, broker package/process, ADB forward mapping,
+  forwarded broker socket, direct broker socket, network, and Rusty GUI
+  descriptor checks so WPF, Makepad, CLI, and future frontends can render the
+  same precondition state.
+- `tools/hostessctl/companion_catalog.py`: Windows companion descriptor catalog
+  route. It loads Rusty GUI companion module, workspace, and transport
+  descriptors, validates frontend authority boundaries, and emits
+  `rusty.hostess.companion.catalog.v1` for WPF, Makepad, CLI, and future
+  frontends.
+- `tools/hostessctl/companion_session.py`: Windows companion session
+  orchestrator. It composes readiness, descriptor catalog, live broker-stream
+  command probing, and app-private fallback evidence into ordered phases in
+  `rusty.hostess.companion.session.v1` so WPF, Makepad, CLI, and future
+  frontends can render the same session state without owning orchestration
+  logic.
 - `tools/hostessctl/pmb_broker_bridge.py`: Projected Motion Breath feedback
   publication, breath-source selection, and PMB receipt listening over the
   broker transport.
@@ -185,6 +229,44 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   to `tools/hostessctl/manifold_recording.py`. The recorder remains
   general-purpose and records explicit missing-stream evidence instead of
   becoming Polar- or controller-specific.
+- `tools/hostessctl/hostessctl.py emit-bridge-route-evidence`: converts a
+  Hostess bridge-route input receipt into
+  `rusty.manifold.bridge.route_evidence.v1` plus a Hostess validation report.
+  It is a low-rate evidence adapter, not a transport runner.
+- `tools/hostessctl/hostessctl.py run-bridge-command`: sends a generic
+  Hostess bridge command request through the Manifold WebSocket command route
+  and writes `rusty.manifold.bridge.route_evidence.v1` plus Hostess execution
+  and validation sidecars. It is the shared backend path intended for WPF,
+  Makepad, and future UI frontends.
+- `tools/hostessctl/hostessctl.py run-bridge-command-live-android`: prepares a
+  connected Quest broker/runtime pair with serial-scoped ADB, then runs the
+  shared broker-stream command route. It is the preferred WPF safe-probe
+  backend because lifecycle, forwarding, socket readiness, Manifold authority,
+  runtime receipt, and applied evidence are captured in one sidecar.
+- `tools/hostessctl/hostessctl.py run-bridge-command-android`: stages the
+  same request shape into the Hostess Makepad app-private inbox on a connected
+  Android/Quest target, launches the XR activity, pulls the runtime receipt,
+  and writes bridge-route evidence. The raw app-private route proves `sent`,
+  `transport_ok`, `runtime_accepted`, and `applied`; the
+  `--broker-authority` route adds Manifold `authority_accepted` before runtime
+  delivery. Use `--adb-forward-broker` when the broker authority is the
+  connected Quest broker rather than a broker already listening on the host;
+  readiness reports both the ADB forward mapping and the local forwarded socket
+  separately.
+- `tools/hostessctl/hostessctl.py companion-readiness`: emits a frontend-neutral
+  readiness report plus validation sidecar. The command is safe for UI refresh:
+  blocked checks are recorded in the report, and the process only returns a
+  failing status when `--fail-on-blocking` is selected.
+- `tools/hostessctl/hostessctl.py companion-catalog`: emits a frontend-neutral
+  module/workspace/transport descriptor catalog plus validation sidecar. The WPF
+  shell uses it to render Devices, Transports, and Evidence pages without
+  hardcoding module authority in XAML or handlers.
+- `tools/hostessctl/hostessctl.py companion-session run`: emits a
+  frontend-neutral companion session report plus validation sidecar. The route
+  runs readiness/catalog collection, attempts the connected-Quest
+  broker-stream command probe, records app-private fallback recovery when
+  needed, and exposes ordered phases for WPF, Makepad, CLI, and future UI
+  frontends.
 - `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
   replay/live evidence into `rusty.hostess.telemetry.snapshot.v1` checkpoints
   for Makepad and future Rusty GUI surfaces.
@@ -196,8 +278,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
-python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_session.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\hostessctl\native_breathing_room_setup.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_catalog tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_session
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target quest --adb <adb> --serial <serial> --packages-root <packages-root> --out <pmb-quest-replay-evidence.json>
@@ -207,6 +289,7 @@ python tools\hostessctl\hostessctl.py snapshot-telemetry --input <capture.json> 
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
+dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 ```
 
 For Makepad running-telemetry validation from a replay checkpoint:

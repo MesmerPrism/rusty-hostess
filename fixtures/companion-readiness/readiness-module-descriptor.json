@@ -1,0 +1,84 @@
+{
+  "schema": "rusty.gui.companion.module_descriptor.v1",
+  "module_id": "companion.readiness.preconditions",
+  "title": "Readiness",
+  "family": "readiness_preconditions",
+  "owner_lane": "hostess",
+  "authority_role": "inspector",
+  "supported_frontends": [
+    "wpf",
+    "makepad",
+    "cli"
+  ],
+  "required_tools": [
+    {
+      "id": "tool.adb",
+      "name": "ADB",
+      "required": true,
+      "readiness_check_id": "check.tool.adb"
+    },
+    {
+      "id": "tool.android_sdk",
+      "name": "Android SDK",
+      "required": true,
+      "readiness_check_id": "check.tool.android_sdk"
+    }
+  ],
+  "required_device_states": [
+    {
+      "id": "device.adb_authorized",
+      "label": "ADB authorized",
+      "required": true
+    },
+    {
+      "id": "runtime.manifold_broker_ready",
+      "label": "Manifold broker installed, running, and forwarded",
+      "required": false
+    }
+  ],
+  "required_transports": [
+    {
+      "id": "transport.adb_usb",
+      "family": "adb",
+      "required": true
+    },
+    {
+      "id": "transport.websocket_broker",
+      "family": "websocket",
+      "required": false
+    }
+  ],
+  "readable_reports": [
+    {
+      "id": "report.hostess.companion.readiness",
+      "schema": "rusty.hostess.companion.readiness_report.v1",
+      "owner_lane": "hostess"
+    }
+  ],
+  "command_requests": [],
+  "evidence_artifacts": [
+    {
+      "id": "evidence.hostess.readiness",
+      "schema": "rusty.hostess.companion.readiness_report.v1",
+      "owner_lane": "hostess",
+      "redaction_required": false
+    }
+  ],
+  "remediation_actions": [
+    {
+      "id": "action.refresh_readiness",
+      "title": "Refresh readiness",
+      "command_id": "rusty.hostess.companion.readiness.refresh",
+      "manual_confirmation_required": false
+    }
+  ],
+  "action_policy": {
+    "auto_run_checks": true,
+    "state_changes_require_confirmation": true,
+    "destructive_actions_allowed": false
+  },
+  "sensitivity": [
+    "public_safe",
+    "local_machine"
+  ]
+}

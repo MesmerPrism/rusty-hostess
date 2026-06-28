@@ -1,0 +1,48 @@
+{
+  "$schema": "rusty.hostess.bridge_route_evidence_input.v1",
+  "evidence_id": "evidence.hostess.bridge_route.command.websocket.transport_only",
+  "route_id": "bridge_route.command.websocket.applied",
+  "status": "pass",
+  "started_at_ms": 1765003000000,
+  "ended_at_ms": 1765003000060,
+  "required_evidence_stages": [
+    "sent",
+    "transport_ok",
+    "authority_accepted",
+    "runtime_accepted",
+    "applied"
+  ],
+  "stage_observations": [
+    {
+      "stage": "sent",
+      "status": "pass",
+      "observed_at_ms": 1765003000001,
+      "evidence_refs": [
+        "evidence.hostess.command_request"
+      ],
+      "issue_codes": []
+    },
+    {
+      "stage": "transport_ok",
+      "status": "pass",
+      "observed_at_ms": 1765003000025,
+      "evidence_refs": [
+        "evidence.hostess.websocket_ack"
+      ],
+      "issue_codes": []
+    },
+    {
+      "stage": "authority_accepted",
+      "status": "pass",
+      "observed_at_ms": 1765003000055,
+      "evidence_refs": [
+        "evidence.manifold.command_ack"
+      ],
+      "issue_codes": []
+    }
+  ],
+  "artifact_refs": [
+    "artifact.hostess.transport_ack"
+  ],
+  "issues": []
+}

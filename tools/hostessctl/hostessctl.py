@@ -12,7 +12,14 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
 
 from tools.hostessctl import android_artifacts  # noqa: E402
+from tools.hostessctl import bridge_command_android_routes  # noqa: E402
+from tools.hostessctl import bridge_command_live_android_routes  # noqa: E402
+from tools.hostessctl import bridge_command_routes  # noqa: E402
+from tools.hostessctl import bridge_route_evidence  # noqa: E402
 from tools.hostessctl import broker_telemetry_routes  # noqa: E402
+from tools.hostessctl import companion_catalog  # noqa: E402
+from tools.hostessctl import companion_readiness  # noqa: E402
+from tools.hostessctl import companion_session  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
@@ -207,6 +214,22 @@ def dispatch_command(args: argparse.Namespace) -> int:
         return run_pmb_shell_handoff(args)
     if args.command == "record-values":
         return run_manifold_value_recording(args)
+    if args.command == "emit-bridge-route-evidence":
+        return emit_bridge_route_evidence(args)
+    if args.command == "run-bridge-command":
+        return run_bridge_command(args)
+    if args.command == "run-bridge-command-live-android":
+        return bridge_command_live_android_routes.run_bridge_command_live_android(args)
+    if args.command == "run-bridge-command-android":
+        return run_bridge_command_android(args)
+    if args.command == "companion-catalog":
+        return companion_catalog.run_companion_catalog(args)
+    if args.command == "companion-readiness":
+        return companion_readiness.run_companion_readiness(args)
+    if args.command == "companion-session":
+        if args.session_command == "run":
+            return companion_session.run_companion_session(args, run_captured_func=run_captured)
+        return 2
     if args.command == "render-telemetry":
         return render_telemetry(args)
     if args.command == "pull-makepad-render":
@@ -364,6 +387,22 @@ def run_manifold_value_recording(args: argparse.Namespace) -> int:
         run_live_capture_func=run_live_capture,
         record_broker_streams_func=record_broker_websocket_streams,
         broker_identity_func=broker_identity,
+    )
+
+
+def emit_bridge_route_evidence(args: argparse.Namespace) -> int:
+    return bridge_route_evidence.run_emit_bridge_route_evidence(args)
+
+
+def run_bridge_command(args: argparse.Namespace) -> int:
+    return bridge_command_routes.run_bridge_command(args)
+
+
+def run_bridge_command_android(args: argparse.Namespace) -> int:
+    return bridge_command_android_routes.run_bridge_command_android(
+        args,
+        run_func=run,
+        run_captured_func=run_captured,
     )
 
 

@@ -1,0 +1,251 @@
+<Window x:Class="HostessCompanion.Wpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Hostess Companion"
+        Width="1160"
+        Height="720"
+        MinWidth="900"
+        MinHeight="560"
+        Background="{StaticResource Brush.Background}">
+  <DockPanel>
+    <Border DockPanel.Dock="Top"
+            Height="52"
+            Background="{StaticResource Brush.Surface}"
+            BorderBrush="{StaticResource Brush.Border}"
+            BorderThickness="0,0,0,1">
+      <Grid Margin="20,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+        <TextBlock Text="Hostess Companion"
+                   FontSize="18"
+                   FontWeight="SemiBold"
+                   VerticalAlignment="Center"/>
+        <StackPanel Grid.Column="1"
+                    Orientation="Horizontal"
+                    VerticalAlignment="Center">
+          <TextBlock Text="{Binding ReportStatusLabel}"
+                     VerticalAlignment="Center"
+                     Foreground="{Binding ReportStatusBrush}"/>
+          <TextBlock Text="  /  "
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource Brush.Muted}"/>
+          <TextBlock Text="{Binding CatalogStatusLabel}"
+                     VerticalAlignment="Center"
+                     Foreground="{Binding CatalogStatusBrush}"/>
+        </StackPanel>
+      </Grid>
+    </Border>
+
+    <Grid>
+      <Grid.ColumnDefinitions>
+        <ColumnDefinition Width="240"/>
+        <ColumnDefinition Width="*"/>
+        <ColumnDefinition Width="320"/>
+      </Grid.ColumnDefinitions>
+
+      <Border Grid.Column="0"
+              Background="{StaticResource Brush.Surface}"
+              BorderBrush="{StaticResource Brush.Border}"
+              BorderThickness="0,0,1,0">
+        <ListBox ItemsSource="{Binding NavigationItems}"
+                 SelectedItem="{Binding SelectedNavigationItem}"
+                 DisplayMemberPath="Title"
+                 BorderThickness="0"
+                 Margin="0,12,0,0">
+          <ListBox.ItemContainerStyle>
+            <Style TargetType="ListBoxItem">
+              <Setter Property="Padding" Value="20,10"/>
+              <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+            </Style>
+          </ListBox.ItemContainerStyle>
+        </ListBox>
+      </Border>
+
+      <Grid Grid.Column="1" Margin="20">
+        <Grid.RowDefinitions>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="Auto"/>
+          <RowDefinition Height="*"/>
+          <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="{Binding PageTitle}"
+                   FontSize="20"
+                   FontWeight="SemiBold"
+                   Margin="0,0,0,12"/>
+
+        <Border Grid.Row="1"
+                Background="{StaticResource Brush.Surface}"
+                BorderBrush="{StaticResource Brush.Border}"
+                BorderThickness="1"
+                Padding="12"
+                Margin="0,0,0,12">
+          <Grid>
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="120"/>
+              <ColumnDefinition Width="220"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="*"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+              <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Serial"
+                       VerticalAlignment="Center"
+                       Foreground="{StaticResource Brush.Muted}"/>
+            <TextBox Grid.Column="1"
+                     Text="{Binding Serial, UpdateSourceTrigger=PropertyChanged}"/>
+            <CheckBox Grid.Column="2"
+                      Content="Quest profile"
+                      IsChecked="{Binding UseQuestProfile}"
+                      VerticalAlignment="Center"
+                      Margin="16,0,0,0"/>
+            <CheckBox Grid.Column="3"
+                      Content="Probe broker"
+                      IsChecked="{Binding CheckBroker}"
+                      VerticalAlignment="Center"
+                      Margin="16,0,0,0"/>
+            <Button Grid.Column="5"
+                    Content="{Binding RefreshButtonLabel}"
+                    Command="{Binding RefreshCommand}"/>
+            <Button Grid.Column="6"
+                    Content="{Binding RunSessionButtonLabel}"
+                    Command="{Binding RunSessionCommand}"
+                    Margin="8,0,0,0"
+                    Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}"/>
+            <Button Grid.Column="7"
+                    Content="{Binding RunProbeButtonLabel}"
+                    Command="{Binding RunProbeCommand}"
+                    Margin="8,0,0,0"
+                    Visibility="{Binding IsCommandsSelected, Converter={StaticResource BooleanToVisibility}}"/>
+          </Grid>
+        </Border>
+
+        <Grid Grid.Row="2">
+          <DataGrid ItemsSource="{Binding Checks}"
+                    SelectedItem="{Binding SelectedCheck}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsReadinessSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Group" Binding="{Binding Group}" Width="120"/>
+              <DataGridTextColumn Header="Check" Binding="{Binding Title}" Width="220"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridCheckBoxColumn Header="Required" Binding="{Binding Required}" Width="80"/>
+              <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding DeviceChecks}"
+                    SelectedItem="{Binding SelectedDeviceCheck}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsDevicesSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Group" Binding="{Binding Group}" Width="110"/>
+              <DataGridTextColumn Header="Condition" Binding="{Binding Title}" Width="220"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridCheckBoxColumn Header="Required" Binding="{Binding Required}" Width="80"/>
+              <DataGridTextColumn Header="Evidence" Binding="{Binding Evidence}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding SessionPhases}"
+                    SelectedItem="{Binding SelectedSessionPhase}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsSessionSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Phase" Binding="{Binding Title}" Width="190"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridCheckBoxColumn Header="Required" Binding="{Binding Required}" Width="80"/>
+              <DataGridTextColumn Header="Actions" Binding="{Binding ActionCount}" Width="80"/>
+              <DataGridTextColumn Header="Artifacts" Binding="{Binding ArtifactCount}" Width="80"/>
+              <DataGridTextColumn Header="Issues" Binding="{Binding IssueCount}" Width="80"/>
+              <DataGridTextColumn Header="Detail" Binding="{Binding StatusLine}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding Transports}"
+                    SelectedItem="{Binding SelectedTransport}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsTransportsSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Family" Binding="{Binding Family}" Width="130"/>
+              <DataGridTextColumn Header="Transport" Binding="{Binding Title}" Width="180"/>
+              <DataGridTextColumn Header="Plane" Binding="{Binding Plane}" Width="90"/>
+              <DataGridTextColumn Header="Delivery" Binding="{Binding Delivery}" Width="140"/>
+              <DataGridTextColumn Header="Payload" Binding="{Binding PayloadRate}" Width="130"/>
+              <DataGridTextColumn Header="Evidence stages" Binding="{Binding EvidenceStages}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding CommandStages}"
+                    SelectedItem="{Binding SelectedCommandStage}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsCommandsSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Stage" Binding="{Binding Stage}" Width="170"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridTextColumn Header="Observed ms" Binding="{Binding ObservedAtMs}" Width="120"/>
+              <DataGridTextColumn Header="Evidence" Binding="{Binding EvidenceRefs}" Width="*"/>
+              <DataGridTextColumn Header="Issues" Binding="{Binding IssueCodes}" Width="180"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding EvidenceArtifacts}"
+                    SelectedItem="{Binding SelectedEvidenceArtifact}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsEvidenceSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Module" Binding="{Binding ModuleTitle}" Width="180"/>
+              <DataGridTextColumn Header="Artifact" Binding="{Binding ArtifactId}" Width="180"/>
+              <DataGridTextColumn Header="Schema" Binding="{Binding Schema}" Width="*"/>
+              <DataGridTextColumn Header="Owner" Binding="{Binding OwnerLane}" Width="90"/>
+              <DataGridCheckBoxColumn Header="Redact" Binding="{Binding RedactionRequired}" Width="70"/>
+            </DataGrid.Columns>
+          </DataGrid>
+        </Grid>
+
+        <TextBlock Grid.Row="3"
+                   Text="{Binding SummaryLabel}"
+                   Margin="0,10,0,0"
+                   Foreground="{StaticResource Brush.Muted}"/>
+      </Grid>
+
+      <Border Grid.Column="2"
+              Background="{StaticResource Brush.Surface}"
+              BorderBrush="{StaticResource Brush.Border}"
+              BorderThickness="1,0,0,0"
+              Padding="16">
+        <Grid>
+          <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+          </Grid.RowDefinitions>
+          <TextBlock Text="Details"
+                     FontSize="16"
+                     FontWeight="SemiBold"
+                     Margin="0,0,0,12"/>
+          <TextBlock Grid.Row="1"
+                     Text="{Binding SelectedDetailTitle}"
+                     FontWeight="SemiBold"
+                     TextWrapping="Wrap"/>
+          <TextBlock Grid.Row="2"
+                     Text="{Binding SelectedDetailStatusLine}"
+                     Foreground="{Binding SelectedDetailBrush}"
+                     Margin="0,8,0,12"
+                     TextWrapping="Wrap"/>
+          <TextBox Grid.Row="3"
+                   Text="{Binding SelectedDetailText, Mode=OneWay}"
+                   TextWrapping="Wrap"
+                   AcceptsReturn="True"
+                   VerticalScrollBarVisibility="Auto"
+                   IsReadOnly="True"/>
+        </Grid>
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

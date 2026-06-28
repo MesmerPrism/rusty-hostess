@@ -1,0 +1,16 @@
+{
+  "$schema": "rusty.hostess.companion.readiness_report.v1",
+  "status": "pass",
+  "profile": "basic",
+  "started_at_ms": 1782320000000,
+  "ended_at_ms": 1782320000000,
+  "scope": {},
+  "summary": {
+    "pass": 0,
+    "warn": 0,
+    "fail": 0,
+    "skipped": 0,
+    "blocking": 0
+  },
+  "checks": []
+}
