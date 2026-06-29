@@ -1,0 +1,275 @@
+{
+  "$schema": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+  "schema_version": 1,
+  "matrix_id": "protocol-matrix.fixture.promoted",
+  "observed_at_utc": "2026-06-29T00:00:00Z",
+  "status": "pass",
+  "authority": {
+    "descriptor_owner": "rusty.quest.device_link",
+    "execution_owner": "rusty.hostess.connectivity_probe",
+    "command_authority": "rusty.manifold.command",
+    "ui_role": "requester_and_inspector",
+    "promotion_policy": "Reusable data-protocol promotion requires Quest-runtime or broker-owned QCL evidence; fixture rows are not accepted as promotion proof."
+  },
+  "inputs": [
+    {
+      "role": "device_link_report",
+      "schema": "rusty.quest.device_link.v1",
+      "path": "fixtures/companion/device-link-pass.json",
+      "status": "pass"
+    }
+  ],
+  "summary": {
+    "row_count": 5,
+    "required_row_count": 5,
+    "promoted_count": 5,
+    "required_promoted_count": 5,
+    "candidate_count": 0,
+    "blocked_count": 0,
+    "missing_count": 0,
+    "missing_gate_count": 0,
+    "pending_required_probe_ids": [],
+    "all_required_data_protocols_promoted": true
+  },
+  "rows": [
+    {
+      "capability_id": "capability.command.hostess_makepad_bridge",
+      "probe_id": "QCL-000",
+      "transport_kind": "manifold_websocket",
+      "semantic_family": "command",
+      "authority_owner": "rusty.manifold.command",
+      "required_for_fold_in": true,
+      "status": "usable",
+      "promotion_state": "promoted",
+      "promotion_allowed": true,
+      "evidence_tier": "quest_runtime",
+      "allowed_promotion_tiers": [
+        "quest_runtime"
+      ],
+      "promotion_gate": "Manifold command route must show sent, transport_ok, authority_accepted, runtime_accepted, and applied stages through a Quest runtime subscriber.",
+      "missing_gates": [],
+      "gate_results": [
+        {
+          "gate_id": "gate.qcl000.device_link_report",
+          "status": "satisfied",
+          "evidence": "device-link report loaded"
+        },
+        {
+          "gate_id": "gate.qcl000.runtime_subscriber",
+          "status": "satisfied",
+          "evidence": "runtime subscriber connected"
+        },
+        {
+          "gate_id": "gate.qcl000.applied_command_receipt",
+          "status": "satisfied",
+          "evidence": "command result applied through Manifold"
+        }
+      ],
+      "source": {
+        "artifact_path": "fixtures/companion/device-link-pass.json",
+        "schema": "rusty.quest.device_link.v1",
+        "status": "pass",
+        "probe_id": "QCL-000",
+        "run_id": "device_link.hostess.fixture",
+        "promotion_reason": "device-link command route evidence"
+      },
+      "descriptor": {},
+      "measurements": {
+        "runtime_dispatch_delivered_count": 1,
+        "applied": true
+      }
+    },
+    {
+      "capability_id": "capability.telemetry.pose_udp",
+      "probe_id": "QCL-080",
+      "transport_kind": "udp",
+      "semantic_family": "pose_or_low_rate_telemetry",
+      "authority_owner": "rusty.quest.device_link",
+      "required_for_fold_in": true,
+      "status": "usable",
+      "promotion_state": "promoted",
+      "promotion_allowed": true,
+      "evidence_tier": "quest_runtime",
+      "allowed_promotion_tiers": [
+        "quest_runtime"
+      ],
+      "promotion_gate": "QCL-080 must be an app-owned Quest runtime sender with measured packet receipt and a product-scoped Hostess/WPF listener firewall rule.",
+      "missing_gates": [],
+      "gate_results": [
+        {
+          "gate_id": "gate.qcl080.report_passed",
+          "status": "satisfied",
+          "evidence": "report status=pass"
+        },
+        {
+          "gate_id": "gate.qcl080.quest_runtime",
+          "status": "satisfied",
+          "evidence": "evidence_tier=quest_runtime"
+        },
+        {
+          "gate_id": "gate.qcl080.promotion_allowed",
+          "status": "satisfied",
+          "evidence": "promotion.allowed=true"
+        }
+      ],
+      "source": {
+        "artifact_path": "target/connectivity-probe/qcl080-live-wpf.json",
+        "schema": "rusty.quest.connectivity_topology_probe.v1",
+        "status": "pass",
+        "probe_id": "QCL-080",
+        "run_id": "qcl080-live-wpf"
+      },
+      "descriptor": {
+        "artifact_path": "target/connectivity-probe/qcl080-live-wpf.stream-capability.json",
+        "schema": "rusty.quest.device_link.stream_capability.v1",
+        "status": "usable"
+      },
+      "measurements": {
+        "udp_packets_received": 12,
+        "udp_loss_percent": 0.0
+      }
+    },
+    {
+      "capability_id": "capability.biosignal.lsl_clocked_samples",
+      "probe_id": "QCL-081",
+      "transport_kind": "lsl",
+      "semantic_family": "biosignal_or_clocked_samples",
+      "authority_owner": "rusty.quest.device_link",
+      "required_for_fold_in": true,
+      "status": "usable",
+      "promotion_state": "promoted",
+      "promotion_allowed": true,
+      "evidence_tier": "broker_owned",
+      "allowed_promotion_tiers": [
+        "quest_runtime",
+        "broker_owned"
+      ],
+      "promotion_gate": "QCL-081 host-loopback proves only dependency/protocol fit; promotion requires Quest-runtime or broker-owned live QCL evidence.",
+      "missing_gates": [],
+      "gate_results": [
+        {
+          "gate_id": "gate.qcl081.report_passed",
+          "status": "satisfied",
+          "evidence": "report status=pass"
+        },
+        {
+          "gate_id": "gate.qcl081.quest_runtime_or_broker_owned",
+          "status": "satisfied",
+          "evidence": "evidence_tier=broker_owned"
+        },
+        {
+          "gate_id": "gate.qcl081.promotion_allowed",
+          "status": "satisfied",
+          "evidence": "promotion.allowed=true"
+        }
+      ],
+      "source": {
+        "artifact_path": "target/connectivity-probe/qcl081-live-manifold-lsl-broker.json",
+        "schema": "rusty.quest.connectivity_topology_probe.v1",
+        "status": "pass",
+        "probe_id": "QCL-081",
+        "run_id": "qcl081-live-manifold-lsl-broker"
+      },
+      "descriptor": {},
+      "measurements": {
+        "lsl_samples_received": 16,
+        "lsl_sample_loss_percent": 0.0
+      }
+    },
+    {
+      "capability_id": "capability.control.osc_round_trip",
+      "probe_id": "QCL-083",
+      "transport_kind": "osc_udp",
+      "semantic_family": "control_or_low_rate_telemetry",
+      "authority_owner": "rusty.quest.device_link",
+      "required_for_fold_in": true,
+      "status": "usable",
+      "promotion_state": "promoted",
+      "promotion_allowed": true,
+      "evidence_tier": "quest_runtime",
+      "allowed_promotion_tiers": [
+        "quest_runtime",
+        "broker_owned"
+      ],
+      "promotion_gate": "QCL-083 host-loopback proves OSC shape/exchange only; promotion requires Quest-runtime or broker-owned live QCL evidence.",
+      "missing_gates": [],
+      "gate_results": [
+        {
+          "gate_id": "gate.qcl083.report_passed",
+          "status": "satisfied",
+          "evidence": "report status=pass"
+        },
+        {
+          "gate_id": "gate.qcl083.quest_runtime_or_broker_owned",
+          "status": "satisfied",
+          "evidence": "evidence_tier=quest_runtime"
+        },
+        {
+          "gate_id": "gate.qcl083.promotion_allowed",
+          "status": "satisfied",
+          "evidence": "promotion.allowed=true"
+        }
+      ],
+      "source": {
+        "artifact_path": "target/connectivity-probe/qcl083-live-quest-runtime.json",
+        "schema": "rusty.quest.connectivity_topology_probe.v1",
+        "status": "pass",
+        "probe_id": "QCL-083",
+        "run_id": "qcl083-live-quest-runtime"
+      },
+      "descriptor": {},
+      "measurements": {
+        "osc_messages_received": 16,
+        "osc_loss_percent": 0.0
+      }
+    },
+    {
+      "capability_id": "capability.protocol.zeromq_native_rust",
+      "probe_id": "QCL-084",
+      "transport_kind": "zeromq",
+      "semantic_family": "generic_data_protocol",
+      "authority_owner": "rusty.manifold.transport",
+      "required_for_fold_in": true,
+      "status": "usable",
+      "promotion_state": "promoted",
+      "promotion_allowed": true,
+      "evidence_tier": "broker_owned",
+      "allowed_promotion_tiers": [
+        "quest_runtime",
+        "broker_owned"
+      ],
+      "promotion_gate": "QCL-084 Manifold adapter loopback is dependency/protocol evidence; promotion requires broker-owned or Quest-runtime live QCL evidence.",
+      "missing_gates": [],
+      "gate_results": [
+        {
+          "gate_id": "gate.qcl084.report_passed",
+          "status": "satisfied",
+          "evidence": "report status=pass"
+        },
+        {
+          "gate_id": "gate.qcl084.quest_runtime_or_broker_owned",
+          "status": "satisfied",
+          "evidence": "evidence_tier=broker_owned"
+        },
+        {
+          "gate_id": "gate.qcl084.promotion_allowed",
+          "status": "satisfied",
+          "evidence": "promotion.allowed=true"
+        }
+      ],
+      "source": {
+        "artifact_path": "target/connectivity-probe/qcl084-live-native-rust-broker.json",
+        "schema": "rusty.quest.connectivity_topology_probe.v1",
+        "status": "pass",
+        "probe_id": "QCL-084",
+        "run_id": "qcl084-live-native-rust-broker"
+      },
+      "descriptor": {},
+      "measurements": {
+        "zeromq_messages_received": 16,
+        "zeromq_messages_requested": 16
+      }
+    }
+  ],
+  "issues": []
+}

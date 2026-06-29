@@ -32,11 +32,12 @@ datastream. It is the first scalable Rusty GUI example for Hostess T. It
 observes run state and can request commands only through the same
 Hostess/Manifold command routes as `hostessctl`.
 `apps/hostess-t-makepad/src/companion_frontend.rs` owns the source/fixture-only
-Makepad projection of Hostess companion catalog and Quest device-link reports.
-It reduces `rusty.hostess.companion.catalog.v1` and
-`rusty.quest.device_link.v1` evidence into compact rows and marker lines for a
-future Makepad panel; it does not own validation, setup, transport, or command
-authority.
+Makepad projection of Hostess companion catalog, Quest device-link, and
+protocol evidence matrix reports. It reduces
+`rusty.hostess.companion.catalog.v1`, `rusty.quest.device_link.v1`, and
+`rusty.quest.device_link.protocol_evidence_matrix.v1` evidence into compact
+rows and marker lines for a future Makepad panel; it does not own validation,
+setup, transport, protocol promotion, or command authority.
 
 The Windows companion shell lives in `apps/hostess-companion-wpf`. It is a WPF
 operational shell over Hostess readiness reports, Rusty GUI companion
@@ -300,7 +301,9 @@ QCL-000, QCL-080, QCL-081, QCL-083, and QCL-084 rows: device-link reports
 provide command/session authority, stream-capability descriptors preserve
 QCL-080 product UDP evidence, and connectivity probe reports provide the
 protocol rows. WPF and automated CLI smoke tests therefore share one
-artifact-selection policy.
+artifact-selection policy. Makepad companion projection consumes that finished
+matrix as another report artifact and only emits compact panel rows/markers; it
+does not re-evaluate gates or promotion state.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

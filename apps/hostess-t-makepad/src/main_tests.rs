@@ -4,8 +4,13 @@ use super::*;
 fn makepad_companion_frontend_projects_shared_reports() {
     let catalog = include_str!("../../../fixtures/companion/makepad-catalog-pass.json");
     let device_link = include_str!("../../../fixtures/companion/device-link-pass.json");
-    let projection =
-        companion_frontend::build_makepad_companion_rows(catalog, device_link).unwrap();
+    let protocol_matrix = include_str!("../../../fixtures/companion/protocol-matrix-promoted.json");
+    let projection = companion_frontend::build_makepad_companion_rows_with_protocol_matrix(
+        catalog,
+        device_link,
+        Some(protocol_matrix),
+    )
+    .unwrap();
 
     assert_eq!(projection.status, "pass");
     assert!(projection.rows.iter().any(|row| {
@@ -16,10 +21,15 @@ fn makepad_companion_frontend_projects_shared_reports() {
         .rows
         .iter()
         .any(|row| row.row_family == "runtime_subscriber"));
+    assert!(projection.rows.iter().any(|row| {
+        row.row_family == "protocol_matrix_protocol" && row.row_id == "protocol.QCL-084"
+    }));
     let marker =
         companion_frontend::makepad_companion_projection_marker_line("main_tests", &projection);
     assert!(marker.contains("RUSTY_HOSTESS_MAKEPAD_COMPANION_FRONTEND"));
     assert!(marker.contains("authority=requester_inspector"));
+    assert!(marker.contains("protocolMatrixRows="));
+    assert!(marker.contains("protocolRows=5"));
     assert!(marker.contains("highRateJsonPayload=false"));
 }
 

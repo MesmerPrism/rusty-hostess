@@ -70,7 +70,11 @@ WPF-only modules or transports.
 The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
 evidence promotion, connectivity suite row grouping, and catalog-backed
-workspace composition and validation-issue rows.
+workspace composition and validation-issue rows. Makepad companion frontend
+tests cover the same shared catalog and device-link reports plus the
+`rusty.quest.device_link.protocol_evidence_matrix.v1` report fixture so the
+headset-local frontend can render protocol promotion evidence without owning
+promotion gates.
 The WPF Session action also carries the live receipt wait envelope that CLI
 automation should use for headset smoke:
 `--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30
@@ -408,6 +412,11 @@ cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 ```
+
+The Makepad companion frontend fixture path is intentionally source-only:
+`fixtures\companion\protocol-matrix-promoted.json` is a backend protocol
+matrix report, and Makepad reduces it to rows/markers without re-running
+artifact selection or changing the matrix promotion policy.
 
 For Windows companion shell edits, run:
 

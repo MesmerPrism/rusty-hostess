@@ -1,8 +1,9 @@
 //! Makepad-facing projection over shared companion reports.
 //!
 //! This module is deliberately source/fixture only. It parses the same Hostess
-//! catalog and Quest device-link reports that WPF renders, then reduces them to
-//! compact rows a Makepad panel can display later without owning validation.
+//! catalog, Quest device-link, and protocol-matrix reports that WPF renders,
+//! then reduces them to compact rows a Makepad panel can display later without
+//! owning validation.
 
 use serde_json::Value;
 
@@ -12,6 +13,7 @@ pub(crate) const MAKEPAD_COMPANION_FRONTEND_SCHEMA: &str =
     "rusty.hostess.makepad.companion_frontend_projection.v1";
 const HOSTESS_COMPANION_CATALOG_SCHEMA: &str = "rusty.hostess.companion.catalog.v1";
 const QUEST_DEVICE_LINK_SCHEMA: &str = "rusty.quest.device_link.v1";
+const PROTOCOL_EVIDENCE_MATRIX_SCHEMA: &str = "rusty.quest.device_link.protocol_evidence_matrix.v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MakepadCompanionRow {
@@ -30,6 +32,7 @@ pub(crate) struct MakepadCompanionProjection {
     pub(crate) rows: Vec<MakepadCompanionRow>,
     pub(crate) catalog_rows: usize,
     pub(crate) device_link_rows: usize,
+    pub(crate) protocol_matrix_rows: usize,
 }
 
 pub(crate) fn project_companion_catalog(text: &str) -> Result<Vec<MakepadCompanionRow>, String> {
@@ -255,21 +258,119 @@ pub(crate) fn project_device_link(text: &str) -> Result<Vec<MakepadCompanionRow>
     Ok(rows)
 }
 
+pub(crate) fn project_protocol_matrix(text: &str) -> Result<Vec<MakepadCompanionRow>, String> {
+    let value = parse_report(text, PROTOCOL_EVIDENCE_MATRIX_SCHEMA)?;
+    let mut rows = Vec::new();
+    let summary = value.get("summary").filter(|row| row.is_object());
+    rows.push(MakepadCompanionRow {
+        row_id: string_field(&value, "matrix_id", "protocol_matrix.summary"),
+        row_family: "protocol_matrix_summary".to_string(),
+        status: string_field(&value, "status", "unknown"),
+        title: "Protocol evidence matrix".to_string(),
+        detail: match summary {
+            Some(summary) => format!(
+                "requiredPromoted={}/{} allPromoted={} pending={}",
+                numeric_field(summary, "required_promoted_count", "0"),
+                numeric_field(summary, "required_row_count", "0"),
+                bool_field(summary, "all_required_data_protocols_promoted"),
+                joined_strings(summary, "pending_required_probe_ids")
+            ),
+            None => "summary=missing".to_string(),
+        },
+        source_schema: PROTOCOL_EVIDENCE_MATRIX_SCHEMA.to_string(),
+        source_report: "protocol_matrix".to_string(),
+    });
+
+    for protocol in array_field(&value, "rows") {
+        let probe_id = string_field(protocol, "probe_id", "QCL-unknown");
+        let transport_kind = string_field(protocol, "transport_kind", "unknown");
+        rows.push(MakepadCompanionRow {
+            row_id: format!("protocol.{probe_id}"),
+            row_family: "protocol_matrix_protocol".to_string(),
+            status: string_field(protocol, "status", "unknown"),
+            title: format!("{probe_id} {transport_kind}"),
+            detail: format!(
+                "capability={} family={} tier={} promotion={} allowed={} required={} missingGates={}",
+                string_field(protocol, "capability_id", "unknown"),
+                string_field(protocol, "semantic_family", "unknown"),
+                string_field(protocol, "evidence_tier", "unknown"),
+                string_field(protocol, "promotion_state", "unknown"),
+                bool_field(protocol, "promotion_allowed"),
+                bool_field(protocol, "required_for_fold_in"),
+                joined_strings(protocol, "missing_gates")
+            ),
+            source_schema: PROTOCOL_EVIDENCE_MATRIX_SCHEMA.to_string(),
+            source_report: "protocol_matrix".to_string(),
+        });
+
+        for gate in array_field(protocol, "gate_results") {
+            let gate_id = string_field(gate, "gate_id", "protocol_matrix.gate");
+            rows.push(MakepadCompanionRow {
+                row_id: gate_id.clone(),
+                row_family: "protocol_matrix_gate".to_string(),
+                status: protocol_gate_status(&string_field(gate, "status", "unknown")),
+                title: gate_id,
+                detail: string_field(gate, "evidence", "No gate evidence"),
+                source_schema: PROTOCOL_EVIDENCE_MATRIX_SCHEMA.to_string(),
+                source_report: "protocol_matrix".to_string(),
+            });
+        }
+    }
+
+    for issue in array_field(&value, "issues") {
+        rows.push(MakepadCompanionRow {
+            row_id: first_string(
+                issue,
+                &["issue_code", "code", "id"],
+                "protocol_matrix.issue",
+            ),
+            row_family: "protocol_matrix_issue".to_string(),
+            status: first_string(issue, &["severity", "status"], "warning"),
+            title: first_string(
+                issue,
+                &["issue_code", "code", "title"],
+                "Protocol matrix issue",
+            ),
+            detail: first_string(issue, &["message", "detail", "evidence"], "No issue detail"),
+            source_schema: PROTOCOL_EVIDENCE_MATRIX_SCHEMA.to_string(),
+            source_report: "protocol_matrix".to_string(),
+        });
+    }
+    Ok(rows)
+}
+
 pub(crate) fn build_makepad_companion_rows(
     catalog_text: &str,
     device_link_text: &str,
+) -> Result<MakepadCompanionProjection, String> {
+    build_makepad_companion_rows_with_protocol_matrix(catalog_text, device_link_text, None)
+}
+
+pub(crate) fn build_makepad_companion_rows_with_protocol_matrix(
+    catalog_text: &str,
+    device_link_text: &str,
+    protocol_matrix_text: Option<&str>,
 ) -> Result<MakepadCompanionProjection, String> {
     let mut rows = project_companion_catalog(catalog_text)?;
     let catalog_rows = rows.len();
     let device_rows = project_device_link(device_link_text)?;
     let device_link_rows = device_rows.len();
     rows.extend(device_rows);
+    let protocol_matrix_rows = if let Some(protocol_matrix_text) = protocol_matrix_text {
+        let protocol_rows = project_protocol_matrix(protocol_matrix_text)?;
+        let protocol_matrix_rows = protocol_rows.len();
+        rows.extend(protocol_rows);
+        protocol_matrix_rows
+    } else {
+        0
+    };
     let status = aggregate_status(&rows).to_string();
     Ok(MakepadCompanionProjection {
         status,
         rows,
         catalog_rows,
         device_link_rows,
+        protocol_matrix_rows,
     })
 }
 
@@ -278,7 +379,7 @@ pub(crate) fn makepad_companion_projection_marker_line(
     projection: &MakepadCompanionProjection,
 ) -> String {
     format!(
-        "{} schema={} phase={} status={} rowCount={} catalogRows={} deviceLinkRows={} issueRows={} commandRows={} streamCapabilityRows={} authority=requester_inspector backendEvidence=hostess_companion_catalog_and_quest_device_link highRateJsonPayload=false settingsControlPayload=false",
+        "{} schema={} phase={} status={} rowCount={} catalogRows={} deviceLinkRows={} protocolMatrixRows={} issueRows={} commandRows={} streamCapabilityRows={} protocolRows={} protocolGateRows={} authority=requester_inspector backendEvidence=hostess_companion_catalog_quest_device_link_and_protocol_matrix highRateJsonPayload=false settingsControlPayload=false",
         MAKEPAD_COMPANION_FRONTEND_MARKER,
         MAKEPAD_COMPANION_FRONTEND_SCHEMA,
         marker_value(phase),
@@ -286,6 +387,7 @@ pub(crate) fn makepad_companion_projection_marker_line(
         projection.rows.len(),
         projection.catalog_rows,
         projection.device_link_rows,
+        projection.protocol_matrix_rows,
         projection
             .rows
             .iter()
@@ -300,6 +402,16 @@ pub(crate) fn makepad_companion_projection_marker_line(
             .rows
             .iter()
             .filter(|row| row.row_family == "stream_capability")
+            .count(),
+        projection
+            .rows
+            .iter()
+            .filter(|row| row.row_family == "protocol_matrix_protocol")
+            .count(),
+        projection
+            .rows
+            .iter()
+            .filter(|row| row.row_family == "protocol_matrix_gate")
             .count()
     )
 }
@@ -430,6 +542,21 @@ fn adb_state_status(state: &str) -> String {
     }
 }
 
+fn protocol_gate_status(status: &str) -> String {
+    match status {
+        "satisfied" => "pass".to_string(),
+        "missing" => "warn".to_string(),
+        "blocked" => "blocked".to_string(),
+        _ => {
+            if status.trim().is_empty() {
+                "unknown".to_string()
+            } else {
+                status.to_string()
+            }
+        }
+    }
+}
+
 fn path_suffix(value: &Value) -> String {
     let path = string_field(value, "path", "");
     if path.is_empty() {
@@ -459,7 +586,7 @@ fn is_fail_status(status: &str) -> bool {
 fn is_warn_status(status: &str) -> bool {
     matches!(
         status,
-        "warn" | "warning" | "degraded" | "usable_with_warnings"
+        "warn" | "warning" | "degraded" | "usable_with_warnings" | "missing" | "unknown"
     )
 }
 
@@ -486,6 +613,8 @@ mod tests {
 
     const CATALOG: &str = include_str!("../../../fixtures/companion/makepad-catalog-pass.json");
     const DEVICE_LINK: &str = include_str!("../../../fixtures/companion/device-link-pass.json");
+    const PROTOCOL_MATRIX: &str =
+        include_str!("../../../fixtures/companion/protocol-matrix-promoted.json");
 
     #[test]
     fn companion_frontend_projects_catalog_fixture() {
@@ -516,18 +645,53 @@ mod tests {
     }
 
     #[test]
+    fn companion_frontend_projects_protocol_matrix_fixture() {
+        let rows = project_protocol_matrix(PROTOCOL_MATRIX).expect("protocol matrix projects");
+
+        assert!(rows
+            .iter()
+            .any(|row| row.row_family == "protocol_matrix_summary" && row.status == "pass"));
+        assert!(rows.iter().any(|row| {
+            row.row_family == "protocol_matrix_protocol"
+                && row.row_id == "protocol.QCL-081"
+                && row.detail.contains("tier=broker_owned")
+        }));
+        assert!(rows.iter().any(|row| {
+            row.row_family == "protocol_matrix_protocol"
+                && row.row_id == "protocol.QCL-083"
+                && row.detail.contains("tier=quest_runtime")
+        }));
+        assert!(rows
+            .iter()
+            .any(|row| row.row_id == "gate.qcl084.promotion_allowed"));
+        assert!(rows
+            .iter()
+            .all(|row| row.source_report == "protocol_matrix"));
+    }
+
+    #[test]
     fn companion_frontend_marker_reports_shared_evidence_counts() {
-        let projection =
-            build_makepad_companion_rows(CATALOG, DEVICE_LINK).expect("projection builds");
+        let projection = build_makepad_companion_rows_with_protocol_matrix(
+            CATALOG,
+            DEVICE_LINK,
+            Some(PROTOCOL_MATRIX),
+        )
+        .expect("projection builds");
         let marker = makepad_companion_projection_marker_line("fixture", &projection);
 
         assert_eq!(projection.status, "pass");
+        assert!(projection.protocol_matrix_rows > 0);
         assert!(marker.contains(MAKEPAD_COMPANION_FRONTEND_MARKER));
         assert!(marker.contains("schema=rusty.hostess.makepad.companion_frontend_projection.v1"));
         assert!(marker.contains("status=pass"));
         assert!(marker.contains("catalogRows="));
         assert!(marker.contains("deviceLinkRows="));
+        assert!(marker.contains("protocolMatrixRows="));
+        assert!(marker.contains("protocolRows=5"));
         assert!(marker.contains("authority=requester_inspector"));
+        assert!(marker.contains(
+            "backendEvidence=hostess_companion_catalog_quest_device_link_and_protocol_matrix"
+        ));
         assert!(marker.contains("highRateJsonPayload=false"));
     }
 }

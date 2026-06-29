@@ -28,7 +28,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   itself from bounded `TelemetrySnapshot` checkpoint JSON, then watch an
   append-only telemetry JSONL stream and maintain independent rolling plots per
   datastream. Snapshots are evidence/checkpoint artifacts, not the live data
-  plane.
+  plane. Its companion frontend projection reduces shared catalog, device-link,
+  and protocol-matrix reports into compact rows without owning validation.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles, and
   owns platform lifecycle, BLE acquisition, permissions, ADB command bridging,
