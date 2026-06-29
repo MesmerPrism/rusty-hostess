@@ -1,0 +1,135 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "FEATURE_WIFI_DIRECT present on Quest probe",
+      "issue_codes": [],
+      "name": "wifi_direct.feature",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "windows peer available",
+      "issue_codes": [],
+      "name": "windows.wifi_direct_api",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "required permissions granted",
+      "issue_codes": [],
+      "name": "wifi_direct.permission_state",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "peer discovered",
+      "issue_codes": [],
+      "name": "wifi_direct.peer_discovery",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "group owner and client roles recorded",
+      "issue_codes": [],
+      "name": "wifi_direct.group_formation",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    },
+    {
+      "evidence": "bounded TCP message exchanged",
+      "issue_codes": [],
+      "name": "topology.socket_exchange",
+      "notes": "",
+      "observed": {},
+      "status": "pass"
+    }
+  ],
+  "classification": "experimental",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "model": "Quest 3S",
+    "wifi_direct_role": "group_owner_or_client"
+  },
+  "host": {
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl-041"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "osc_clock_offset_estimate_ms_median": null,
+    "osc_clock_offset_jitter_ms_p95": null,
+    "osc_estimated_one_way_ms_p95": null,
+    "osc_loss_percent": null,
+    "osc_messages_received": null,
+    "osc_messages_requested": null,
+    "osc_quest_processing_ms_p95": null,
+    "osc_rtt_ms_p95": null,
+    "reconnect_attempts": 1,
+    "tcp_connect_ms": 91,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null,
+    "wifi_direct_peer_count": 1,
+    "zeromq_clock_offset_estimate_ms_median": null,
+    "zeromq_clock_offset_jitter_ms_p95": null,
+    "zeromq_estimated_one_way_ms_p95": null,
+    "zeromq_messages_received": null,
+    "zeromq_messages_requested": null,
+    "zeromq_rtt_ms_p95": null,
+    "zeromq_server_processing_ms_p95": null
+  },
+  "observed_at_utc": "2026-06-29T14:18:10.065616Z",
+  "probe_id": "QCL-041",
+  "promotion": {
+    "allowed": false,
+    "reason": "Wi-Fi Direct remains experimental until repeated live peer and lifecycle evidence exists",
+    "target": "experimental topology descriptor"
+  },
+  "run_id": "20260629-141810-qcl-041",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "peer_to_peer_group",
+    "experimental": true,
+    "network_provider": "wifi_direct",
+    "owner": "wifi_direct",
+    "peer_class": "windows",
+    "requires_adb": true,
+    "requires_existing_wifi": false,
+    "requires_pairing": true,
+    "requires_termux": false
+  },
+  "transport": {
+    "family": "wifi_direct",
+    "payload_class": "bounded_tcp_probe",
+    "product_data_plane": false,
+    "protocol_role": "experimental_topology",
+    "route": "WifiP2pManager discovery/group/socket exchange"
+  }
+}

@@ -52,6 +52,13 @@ from tools.hostessctl.connectivity_udp import (
     udp_endpoint_source,
 )
 from tools.hostessctl.connectivity_media import qcl082_fixture_body
+from tools.hostessctl.connectivity_topology import (
+    DEFAULT_TOPOLOGY_FIXTURE_PROFILES,
+    TOPOLOGY_PROBE_IDS,
+    TOPOLOGY_REQUIRED_PASS_CHECKS,
+    is_topology_fixture_profile,
+    topology_fixture_body,
+)
 from tools.hostessctl.platform_defaults import (
     ANDROID_PACKAGE,
     ANDROID_QCL083_OSC_ACTION,
@@ -110,6 +117,10 @@ VALID_PROBE_IDS = {
     "QCL-000",
     "QCL-010",
     "QCL-011",
+    "QCL-020",
+    "QCL-030",
+    "QCL-040",
+    "QCL-041",
     "QCL-050",
     "QCL-051",
     "QCL-080",
@@ -1567,6 +1578,8 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
             profile = "qcl-000-usb-adb-pass"
         elif probe_id == "QCL-011":
             profile = "qcl-011-pc-hotspot-pass"
+        elif probe_id in DEFAULT_TOPOLOGY_FIXTURE_PROFILES:
+            profile = DEFAULT_TOPOLOGY_FIXTURE_PROFILES[probe_id]
         elif probe_id == "QCL-050":
             profile = "qcl-050-rfcomm-control-pass"
         elif probe_id == "QCL-051":
@@ -1602,6 +1615,19 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
     if profile == "qcl-011-pc-hotspot-off":
         report = base_report(args, observed_at=observed_at, probe_id="QCL-011")
         report.update(qcl011_fixture_body(status="blocked", hotspot_off=True))
+        return report
+    if is_topology_fixture_profile(profile):
+        report_probe_id = probe_id
+        if profile.startswith("qcl-020-"):
+            report_probe_id = "QCL-020"
+        elif profile.startswith("qcl-030-"):
+            report_probe_id = "QCL-030"
+        elif profile.startswith("qcl-040-"):
+            report_probe_id = "QCL-040"
+        elif profile.startswith("qcl-041-"):
+            report_probe_id = "QCL-041"
+        report = base_report(args, observed_at=observed_at, probe_id=report_probe_id)
+        report.update(topology_fixture_body(probe_id=report_probe_id, profile=profile))
         return report
     if profile == "qcl-050-rfcomm-control-pass":
         report = base_report(args, observed_at=observed_at, probe_id="QCL-050")
@@ -2624,6 +2650,11 @@ def validate_connectivity_probe_report(report: dict[str, Any]) -> dict[str, Any]
             warnings.append(f"{probe_id} report does not yet include UDP freshness coverage")
         if check_skipped(report, "protocol.lsl_discovery"):
             warnings.append(f"{probe_id} report does not yet include LSL discovery coverage")
+    if report.get("probe_id") in TOPOLOGY_PROBE_IDS and report.get("status") == "pass":
+        probe_id = str(report.get("probe_id"))
+        for required_check in TOPOLOGY_REQUIRED_PASS_CHECKS.get(probe_id, []):
+            if not check_passed(report, required_check):
+                errors.append(f"{probe_id} pass requires {required_check}")
     if report.get("probe_id") == "QCL-080" and report.get("status") == "pass":
         if not check_passed(report, "device.wifi_ipv4"):
             errors.append("QCL-080 pass requires device.wifi_ipv4")

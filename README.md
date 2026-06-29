@@ -174,6 +174,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/connectivity_media.py`: QCL-082 binary media-plane fixture
   report helpers for H.264/TCP framing, timestamp, queue/drop/backpressure, and
   high-rate JSON rejection evidence.
+- `tools/hostessctl/connectivity_topology.py`: QCL-020/QCL-030/QCL-040/QCL-041
+  topology fixture report helpers for Wi-Fi ADB stability, Quest
+  LocalOnlyHotspot, and Wi-Fi Direct phone/Windows peer limits. These fixtures
+  keep experimental topology rows CLI-visible before any WPF affordance is
+  accepted.
 - `tools/hostessctl/connectivity_bluetooth.py`: QCL-050/QCL-051 Bluetooth
   RFCOMM and BLE/GATT readiness, Android payload probes, Windows helper
   command construction, reconnect measurements, and Bluetooth transport rows.

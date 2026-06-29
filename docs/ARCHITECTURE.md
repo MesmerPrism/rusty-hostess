@@ -276,9 +276,11 @@ Makepad runtime UDP sender evidence; `connectivity_bluetooth.py` owns QCL-050
 RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, and transport
 helpers; `connectivity_media.py` owns QCL-082 binary media-plane fixture
 reports for H.264/TCP framing, timestamp, queue/drop/backpressure, and
-high-rate JSON rejection; and `connectivity_data_protocols.py` owns QCL-081
-LSL, QCL-083 OSC, and QCL-084 ZeroMQ adapter mechanics plus protocol-specific
-evidence rows.
+high-rate JSON rejection; `connectivity_topology.py` owns fixture-only
+QCL-020/QCL-030/QCL-040/QCL-041 topology report bodies for Wi-Fi ADB,
+LocalOnlyHotspot, and Wi-Fi Direct limitations; and
+`connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
+ZeroMQ adapter mechanics plus protocol-specific evidence rows.
 The Bluetooth helper owns QCL-050/QCL-051 readiness and payload
 evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
 server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
