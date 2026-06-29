@@ -7,8 +7,12 @@ import json
 import re
 import subprocess
 import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any
+
+CONNECTIVITY_PROBE_SCHEMA = "rusty.quest.connectivity_topology_probe.v1"
+DEFAULT_TCP_MARKER = "rusty-qcl-tcp-echo"
 
 def percentile(values: list[int | float], percentile_value: int) -> int | float | None:
     if not values:
@@ -196,6 +200,51 @@ def empty_measurements() -> dict[str, Any]:
         "reconnect_attempts": None,
     }
 
+def base_report(args: argparse.Namespace, *, observed_at: datetime, probe_id: str | None = None) -> dict[str, Any]:
+    selected_probe_id = probe_id or str(getattr(args, "probe_id", "") or "QCL-010")
+    ensure_probe_run_id(args, observed_at, selected_probe_id)
+    run_id = str(getattr(args, "run_id", "") or "").strip()
+    return {
+        "schema": CONNECTIVITY_PROBE_SCHEMA,
+        "schema_version": 1,
+        "probe_id": selected_probe_id,
+        "run_id": run_id,
+        "observed_at_utc": observed_at.isoformat().replace("+00:00", "Z"),
+        "status": "planned",
+        "classification": "baseline_candidate",
+        "topology": {},
+        "transport": {},
+        "device": {},
+        "host": {},
+        "termux_sidecar": {
+            "in_scope": False,
+            "uid_gate": "not_checked",
+            "bind_scope": "not_applicable",
+            "authority_role": "none",
+        },
+        "checks": [],
+        "measurements": empty_measurements(),
+        "command_stages": {
+            "sent": "not_applicable",
+            "transport_ok": "not_applicable",
+            "authority_accepted": "not_applicable",
+            "runtime_accepted": "not_applicable",
+            "applied": "not_applicable",
+        },
+        "issues": [],
+        "artifacts": [],
+        "promotion": {"allowed": False, "target": "none", "reason": "not evaluated"},
+    }
+
+def ensure_probe_run_id(args: argparse.Namespace, observed_at: datetime, probe_id: str) -> str:
+    run_id = str(getattr(args, "run_id", "") or "").strip()
+    if run_id:
+        return run_id
+    stamp = observed_at.strftime("%Y%m%d-%H%M%S")
+    run_id = f"{stamp}-{probe_id.lower()}"
+    setattr(args, "run_id", run_id)
+    return run_id
+
 def check_row(
     name: str,
     status: str,
@@ -216,6 +265,18 @@ def check_row(
 
 def issue_row(issue_code: str, severity: str, message: str) -> dict[str, str]:
     return {"issue_code": issue_code, "severity": severity, "message": message}
+
+
+def append_issue_once(
+    issues: list[dict[str, Any]],
+    issue_code: str,
+    severity: str,
+    message: str,
+) -> None:
+    if any(issue.get("issue_code") == issue_code for issue in issues):
+        return
+    issues.append(issue_row(issue_code, severity, message))
+
 
 def check_status(checks: list[dict[str, Any]], name: str) -> str:
     for check in checks:

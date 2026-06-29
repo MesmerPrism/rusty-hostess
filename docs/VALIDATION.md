@@ -25,7 +25,7 @@ The check covers the available local surface:
 For fast CLI/evidence edits, run the Python path first:
 
 ```powershell
-python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py
+python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py
 python -m unittest discover -s tools -p "test_*.py"
 ```
 
@@ -120,12 +120,17 @@ source artifact rows into a frontend-neutral operator view. Individual
 connectivity-probe rows can show topology and promotion gates, but use
 `connectivity-probe protocol-matrix` first when the view needs latest-artifact
 selection or protocol-promotion state.
-The WPF Protocol Matrix action follows that sequence: it asks
+The WPF Protocol Matrix action follows that sequence: it runs the fixture
+suite, refreshes the QCL-082 Rusty Quest media-stream source-contract report
+through `connectivity-probe run --media-stream-session-plan` when the sibling
+plan exists, accepts QCL-082 broker/runtime status artifacts through
+`connectivity-probe run --media-stream-runtime-status`, asks
 `connectivity-probe protocol-matrix` for source selection and promotion state,
-then asks `companion-report projection --include-protocol-matrix-inputs` for
-the normalized operator rows that the Connectivity page renders. The flag keeps
+then asks
+`companion-report projection --include-protocol-matrix-inputs` for the
+normalized operator rows that the Connectivity page renders. The flag keeps
 device-link and connectivity-probe source selection inside the CLI route rather
-than the WPF service.
+than WPF row projection.
 
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host
@@ -207,15 +212,25 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --fail-on-error
 ```
 
-`--latest-artifact-dir` selects the newest valid
-`rusty.quest.connectivity_topology_probe.v1` report per requested probe id and
-ignores protocol-matrix, validation, and stream-capability sidecars.
+`--latest-artifact-dir` recursively selects the newest valid
+`rusty.quest.connectivity_topology_probe.v1` report per requested probe id from
+the directory tree. Broad scans prefer independently produced run reports over
+generated `*-artifacts` suite copies, and ignore protocol-matrix, validation,
+and stream-capability sidecars.
 `--latest-device-link-dir` selects the newest
 `rusty.quest.device_link.v1` report, and `--latest-stream-capability-dir`
 selects the newest stream descriptor per requested probe id plus that
 descriptor's source probe report. The WPF Protocol Matrix action runs the
-fixture suite for baseline coverage and then calls this route so CLI
-automation and human operators inspect the same promotion rows.
+fixture suite for baseline coverage, refreshes the QCL-082 source-contract
+probe report through the same CLI route when the Rusty Quest media-stream plan
+exists, and then calls this route so CLI automation and human operators inspect
+the same promotion rows.
+Latest probe selection ranks evidence quality before file recency: a promoted
+Quest-runtime or broker-owned QCL report stays the selected protocol row even
+when a newer source-contract-only candidate exists. The WPF route still passes
+the refreshed QCL-082 media-stream source-contract report as an explicit
+matrix input so operators can inspect the dirty-camera fold-in contract without
+letting it demote stronger live evidence.
 When a recent WPF session and QCL-080 stream-capability run exist, this route
 can reproduce the consolidated operator matrix: QCL-000 from live device-link,
 QCL-050/QCL-051 from Bluetooth probe evidence, QCL-080 from live product UDP
@@ -225,7 +240,8 @@ protocol artifacts.
 The firewall plan artifact is also part of that CLI-equivalent path: for the
 WPF QCL-080 UDP rule it records the exact follow-on
 `connectivity-probe run --probe-id QCL-080 --udp-listener-helper
-<HostessCompanion.Wpf.exe> --udp-sender-source makepad-runtime` arguments, so
+apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe
+--udp-sender-source makepad-runtime` arguments, so
 operators and automation use the same product listener rule rather than a
 diagnostic Python allowance.
 
@@ -235,17 +251,82 @@ discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
 show the same missing Quest-side `pylsl/liblsl` evidence that CLI automation
 sees.
 
-QCL-082 is the binary media-plane slot. The fixture pass report declares the
-TCP binary/H.264 packet shape, `RMANVID1` marker, timestamp policy, bounded
-queue, drop/close backpressure behavior, and frame/byte/drop/queue counters.
-The damaged fixture rejects high-rate JSON media payloads. Both are
-CLI/WPF-visible protocol-fit evidence only; promotion still needs live
-Quest-runtime or broker-owned binary transport evidence:
+QCL-082 is the binary media-plane slot. The built-in fixture pass report
+declares the TCP binary/H.264 packet shape, `RMANVID1` marker, timestamp
+policy, bounded queue, drop/close backpressure behavior, and frame/byte/drop/
+queue counters. Hostess can also ingest the Rusty Quest
+`rusty.quest.media_stream_session.v1` source contract from the media/display
+streaming branch and translate it into the same QCL-082 connectivity report.
+That route accepts MediaProjection display-stream source contracts, rejects
+high-rate JSON media payloads, and rejects shell-hidden display plans that are
+not lab-only. Hostess can also ingest broker/runtime status artifacts with
+`rusty.quest.media_stream.android_runtime_status.v1` or Manifold command ACKs
+carrying `media_stream_runtime`. That broker-owned route proves accepted
+`command.media_stream.*` commands, selected source/runtime state, consent or
+lab-only gating, and binary-plane policy. Hostess can also arm a bounded TCP
+`RMANVID1` receiver with `connectivity-probe rmanvid1-receiver-capture`; the
+capture command writes the raw byte stream plus receiver sidecar/result
+artifacts. The QCL report route then ingests that capture through
+`--media-stream-rmanvid1-capture`, parses stream headers and packet records
+without decoding H.264, and joins receiver queue/drop/backpressure/close
+evidence. Source contracts, runtime status artifacts, and fixture receiver
+captures are CLI/WPF-visible candidate checks only; promotion still needs live
+broker-owned or Quest-runtime receiver frame, byte, drop, close-reason, and
+queue evidence:
 
 ```powershell
-python tools\hostessctl\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-binary-plane-pass --out target\connectivity-probe\qcl082-media-binary-plane-pass.json --fail-on-error
-python tools\hostessctl\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-high-rate-json-misuse --out target\connectivity-probe\qcl082-media-high-rate-json-misuse.json
-python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --input target\connectivity-probe\qcl082-media-binary-plane-pass.json --out target\connectivity-probe\qcl082-media-binary-plane-pass.protocol-matrix.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-session-plan S:\Work\repos\active\rusty-quest\fixtures\media-stream-sessions\display-composite-mediaprojection-h264.plan.json `
+  --out target\connectivity-probe\qcl082-media-stream-session-plan.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-session-plan S:\Work\repos\active\rusty-quest\fixtures\damaged\media-stream-high-rate-json.plan.json `
+  --out target\connectivity-probe\qcl082-media-stream-high-rate-json.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-session-plan S:\Work\repos\active\rusty-quest\fixtures\damaged\media-stream-shell-display-production.plan.json `
+  --out target\connectivity-probe\qcl082-media-stream-shell-production.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-capture `
+  --bind-host 0.0.0.0 `
+  --port 9079 `
+  --capture-out target\connectivity-probe\media-stream.rmanvid1 `
+  --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
+  --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --capture-kind live_broker_stream `
+  --max-packets 240 `
+  --out target\connectivity-probe\media-stream-receiver-result.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
+  --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
+  --input target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
+  --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.protocol-matrix.json `
+  --fail-on-error
 ```
 
 QCL-081 also has a broker-owned Manifold LSL evidence path for host-side
@@ -296,6 +377,8 @@ Live Bluetooth QCL-050/QCL-051 validation now has app-owned payload routes in
 addition to the passive readiness probes:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 dotnet build tools\connectivity_probe\qcl050_rfcomm_client\qcl050-rfcomm-client.csproj
 dotnet build tools\connectivity_probe\qcl051_ble_gatt_client\qcl051-ble-gatt-client.csproj
 python tools\hostessctl\hostessctl.py connectivity-probe run `
@@ -304,8 +387,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --bluetooth-payload-source android-rfcomm `
   --bluetooth-message-count 3 `
   --bluetooth-timeout-seconds 35 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --out target\connectivity-probe\qcl050-live-android-rfcomm.json
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
@@ -314,8 +397,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --bluetooth-message-count 3 `
   --bluetooth-reconnect-count 1 `
   --bluetooth-timeout-seconds 60 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --out target\connectivity-probe\qcl051-live-android-ble-gatt-reconnect.json
 ```
 
@@ -348,7 +431,14 @@ network as the PC. The route uses serial-scoped ADB for observation, then tests
 host/Quest LAN reachability separately:
 
 ```powershell
-python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-010 --adb <adb.exe> --serial <quest-serial> --out target\connectivity-probe\qcl-010-live-same-wifi.json
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-010 `
+  --adb $Adb `
+  --serial $QuestSerial `
+  --out target\connectivity-probe\qcl-010-live-same-wifi.json
 ```
 
 Live Windows PC-hotspot QCL-011 validation requires Windows Mobile Hotspot on
@@ -356,11 +446,13 @@ and the Quest joined to that hotspot. Use the hotspot interface address
 (`192.168.137.1` on the current Windows default) as `--host-ip`:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-011 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --host-ip 192.168.137.1 `
   --tcp-echo-port 18766 `
   --out target\connectivity-probe\qcl011-live-pc-hotspot.json
@@ -380,6 +472,8 @@ program, UDP port `18767`, the active profile, and `LocalSubnet` remote
 address:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --action apply `
@@ -402,8 +496,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-080 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --udp-port 18767 `
   --udp-sender-source makepad-runtime `
   --udp-listener-helper apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
@@ -429,15 +523,31 @@ The firewall plan report should name the same WPF executable in
 `probe_usage.connectivity_probe_args`, which keeps the subsequent QCL-080 run
 bound to the product listener.
 
+The 2026-06-29 refresh produced
+`wpf-qcl080-firewall-verify-20260629-223107.json`,
+`qcl080-live-wpf-product-20260629-223133.json`,
+`qcl080-live-wpf-product-20260629-223133.stream-capability.json`,
+`wpf-live-protocol-matrix-20260629-223238.json`, and
+`wpf-live-projection-20260629-223238.json`: the firewall verification reported
+`product_rule_verified=true` for
+`HostessCompanion.Wpf.exe UDP/18767` on the active Public profile, the WPF
+listener captured 24/24 app-owned Makepad runtime datagrams with `0.0%` loss
+and `jitter_ms_p95=96`, the runtime marker reported `senderSource=makepad-runtime`
+and `socketOwner=app-owned`, the stream descriptor remained
+`usable_with_warnings`, and the protocol matrix selected QCL-080 as
+`quest_runtime` / `promoted_with_warnings` with no missing gates.
+
 For QCL-080 over a non-router topology, pass the topology metadata explicitly
 so stream-capability descriptors do not inherit the default router label:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-080 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --host-ip 192.168.137.1 `
   --topology-owner pc_hotspot `
   --network-provider windows_mobile_hotspot `

@@ -388,6 +388,12 @@ public sealed class HostessctlConnectivityService
             .ConfigureAwait(false);
 
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var qcl082SourceContractReport = await RunQcl082MediaStreamSessionPlanIfAvailableAsync(
+                repoRoot,
+                suite.SuiteRunId,
+                cancellationToken)
+            .ConfigureAwait(false);
+
         var reportPath = new FileInfo(Path.Combine(
             repoRoot.FullName,
             "target",
@@ -395,39 +401,50 @@ public sealed class HostessctlConnectivityService
             $"{suite.SuiteRunId}.protocol-matrix.json"));
         Directory.CreateDirectory(reportPath.Directory!.FullName);
 
+        var matrixArguments = new List<string>
+        {
+            "connectivity-probe",
+            "protocol-matrix",
+            "--suite-run",
+            suite.ReportPath,
+        };
+        if (qcl082SourceContractReport is not null)
+        {
+            matrixArguments.Add("--input");
+            matrixArguments.Add(qcl082SourceContractReport.FullName);
+        }
+        matrixArguments.AddRange(
+        [
+            "--latest-artifact-dir",
+            Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
+            "--latest-probe-id",
+            "QCL-050",
+            "--latest-probe-id",
+            "QCL-051",
+            "--latest-probe-id",
+            "QCL-080",
+            "--latest-probe-id",
+            "QCL-081",
+            "--latest-probe-id",
+            "QCL-082",
+            "--latest-probe-id",
+            "QCL-083",
+            "--latest-probe-id",
+            "QCL-084",
+            "--latest-device-link-dir",
+            Path.Combine(repoRoot.FullName, "target", "companion-session"),
+            "--latest-stream-capability-dir",
+            Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
+            "--latest-stream-probe-id",
+            "QCL-080",
+            "--out",
+            reportPath.FullName,
+            "--fail-on-error",
+        ]);
+
         await RunHostessctlAsync(
                 repoRoot,
-                [
-                    "connectivity-probe",
-                    "protocol-matrix",
-                    "--suite-run",
-                    suite.ReportPath,
-                    "--latest-artifact-dir",
-                    Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
-                    "--latest-probe-id",
-                    "QCL-050",
-                    "--latest-probe-id",
-                    "QCL-051",
-                    "--latest-probe-id",
-                    "QCL-080",
-                    "--latest-probe-id",
-                    "QCL-081",
-                    "--latest-probe-id",
-                    "QCL-082",
-                    "--latest-probe-id",
-                    "QCL-083",
-                    "--latest-probe-id",
-                    "QCL-084",
-                    "--latest-device-link-dir",
-                    Path.Combine(repoRoot.FullName, "target", "companion-session"),
-                    "--latest-stream-capability-dir",
-                    Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
-                    "--latest-stream-probe-id",
-                    "QCL-080",
-                    "--out",
-                    reportPath.FullName,
-                    "--fail-on-error",
-                ],
+                matrixArguments,
                 reportPath,
                 cancellationToken)
             .ConfigureAwait(false);
@@ -601,6 +618,54 @@ public sealed class HostessctlConnectivityService
         report.ReportPath = projectionPath.FullName;
         return report;
     }
+
+    private static async Task<FileInfo?> RunQcl082MediaStreamSessionPlanIfAvailableAsync(
+        DirectoryInfo repoRoot,
+        string suiteRunId,
+        CancellationToken cancellationToken)
+    {
+        var planPath = DefaultQcl082MediaStreamSessionPlanPath(repoRoot);
+        if (!planPath.Exists)
+        {
+            return null;
+        }
+
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"{suiteRunId}.qcl082-media-stream-session-plan.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        await RunHostessctlAsync(
+                repoRoot,
+                [
+                    "connectivity-probe",
+                    "run",
+                    "--mode",
+                    "fixture",
+                    "--probe-id",
+                    "QCL-082",
+                    "--media-stream-session-plan",
+                    planPath.FullName,
+                    "--out",
+                    reportPath.FullName,
+                    "--fail-on-error",
+                ],
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return reportPath;
+    }
+
+    private static FileInfo DefaultQcl082MediaStreamSessionPlanPath(DirectoryInfo repoRoot) =>
+        new(Path.GetFullPath(Path.Combine(
+            repoRoot.FullName,
+            "..",
+            "rusty-quest",
+            "fixtures",
+            "media-stream-sessions",
+            "display-composite-mediaprojection-h264.plan.json")));
 
     private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>
         new(Path.Combine(

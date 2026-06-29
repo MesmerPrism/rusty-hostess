@@ -77,13 +77,13 @@ added without a CLI-equivalent route and evidence artifact.
 All readiness state comes from:
 
 ```powershell
-python tools\hostessctl\hostessctl.py companion-readiness --out <report.json>
+python tools\hostessctl\hostessctl.py companion-readiness --out target\companion-readiness\wpf-readiness.json
 ```
 
 Descriptor catalog state comes from:
 
 ```powershell
-python tools\hostessctl\hostessctl.py companion-catalog --out <catalog.json>
+python tools\hostessctl\hostessctl.py companion-catalog --out target\companion-catalog\wpf-catalog.json
 ```
 
 The shell reads `rusty.hostess.companion.readiness_report.v1` and
@@ -115,12 +115,14 @@ command/readiness semantics.
 The Session page calls:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py companion-session run `
   --out target\companion-session\wpf-session.json `
   --frontend wpf `
   --profile hostess-makepad-quest `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --wait-seconds 30 `
   --fallback-wait-seconds 30 `
   --authority-wait-seconds 30 `
@@ -161,11 +163,13 @@ runtime_accepted -> applied` command stages actually passed.
 The Commands page safe probe calls:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
   --input fixtures\bridge-command\hostess-broker-stream-command-request.json `
   --out target\companion-command\wpf-broker-stream-probe-evidence.json `
-  --adb <adb.exe> `
-  --serial <quest-serial>
+  --adb $Adb `
+  --serial $QuestSerial
 ```
 
 It displays the Hostess execution sidecar stages instead of deciding command
@@ -179,11 +183,13 @@ If the broker-stream execution does not produce a passing sidecar, the button
 falls back to:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py run-bridge-command-android `
   --input fixtures\bridge-command\hostess-android-hotload-command-request.json `
   --out target\companion-command\wpf-app-private-probe-evidence.json `
-  --adb <adb.exe> `
-  --serial <quest-serial>
+  --adb $Adb `
+  --serial $QuestSerial
 ```
 
 That fallback is app-private runtime staging. It is useful for recovery and
@@ -193,13 +199,17 @@ The Connectivity page calls the same Hostess-owned probe routes. For TCP, it
 keeps QCL-010 available:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$TcpEchoPort = 18766
+$RunId = 'wpf-qcl010-live'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-010 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
-  --tcp-echo-port <port> `
-  --out target\connectivity-probe\<run-id>.json
+  --adb $Adb `
+  --serial $QuestSerial `
+  --tcp-echo-port $TcpEchoPort `
+  --out "target\connectivity-probe\$RunId.json"
 ```
 
 Firewall rule lifecycle is Hostess-owned. WPF plans, applies, verifies, and
@@ -232,23 +242,27 @@ For UDP, the page uses QCL-080 with the WPF executable itself in listener
 helper mode:
 
 ```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$RunId = 'wpf-qcl080-live'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-080 `
-  --adb <adb.exe> `
-  --serial <quest-serial> `
+  --adb $Adb `
+  --serial $QuestSerial `
   --udp-port 18767 `
   --udp-sender-source makepad-runtime `
   --udp-listener-helper apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
-  --out target\connectivity-probe\<run-id>.json
+  --out "target\connectivity-probe\$RunId.json"
 ```
 
 It then derives the reusable stream descriptor:
 
 ```powershell
+$RunId = 'wpf-qcl080-live'
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability `
-  --input target\connectivity-probe\<run-id>.json `
-  --out target\connectivity-probe\<run-id>.stream-capability.json `
+  --input "target\connectivity-probe\$RunId.json" `
+  --out "target\connectivity-probe\$RunId.stream-capability.json" `
   --fail-on-error
 ```
 
@@ -274,8 +288,65 @@ success proves the diagnostic harness is coherent; live protocol promotion
 still comes from the individual QCL reports and stream capability descriptors.
 
 The Protocol Matrix action keeps that split explicit. WPF first requests the
-fixture suite, then shells to the CLI roll-up with the shared latest-artifact
-resolver:
+fixture suite, refreshes the QCL-082 Rusty Quest media-stream source-contract
+report when the sibling plan exists, accepts QCL-082 broker/runtime status
+artifacts when present, then shells to the CLI roll-up with the shared
+latest-artifact resolver:
+
+When the Rusty Quest media/display streaming branch is present, WPF and CLI
+automation use the same source-contract refresh route to translate the
+source-neutral media-stream session plan:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-session-plan S:\Work\repos\active\rusty-quest\fixtures\media-stream-sessions\display-composite-mediaprojection-h264.plan.json `
+  --out target\connectivity-probe\qcl082-media-stream-session-plan.json `
+  --fail-on-error
+```
+
+Broker/runtime status artifacts from the same branch use a second
+CLI-equivalent route. This is broker-owned candidate evidence for command
+acceptance, source/runtime state, consent or lab-only gating, and binary-plane
+policy; it still does not promote QCL-082 without measured receiver counters:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
+  --fail-on-error
+```
+
+Receiver-counter evidence uses a third CLI-equivalent route. Hostess first
+arms a bounded TCP `RMANVID1` receiver, writes the raw capture and receiver
+sidecar/result artifacts, then parses the bounded stream header and packet
+records into the QCL report. WPF should only render the generated report
+through protocol-matrix/projection; it must not parse binary media itself:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-capture `
+  --bind-host 0.0.0.0 `
+  --port 9079 `
+  --capture-out target\connectivity-probe\media-stream.rmanvid1 `
+  --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
+  --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --capture-kind live_broker_stream `
+  --max-packets 240 `
+  --out target\connectivity-probe\media-stream-receiver-result.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
+  --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
+  --fail-on-error
+```
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
@@ -294,15 +365,20 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --out target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json
 ```
 
-The resolver selects the newest valid QCL report for each requested probe id,
-the newest device-link report from recent companion sessions, and the newest
-stream descriptor plus its source probe report for requested probe ids. This
+The resolver recursively selects the newest valid QCL report for each
+requested probe id under `--latest-artifact-dir`, preferring independent run
+reports over generated `*-artifacts` suite copies during broad scans. It also
+selects the newest device-link report from recent companion sessions and the
+newest stream descriptor plus its source probe report for requested probe ids.
+This
 lets the Protocol Matrix action reuse a previous WPF Session run for QCL-000
 command authority, previous QCL-050/QCL-051 Bluetooth probe reports, and a
 previous QCL-080 stream-capability run for product UDP evidence while also
-surfacing the QCL-082 media/binary fixture row without moving artifact scanning
-or promotion rules into WPF. If those live artifacts are missing, the fixture
-suite rows remain visible as candidates with missing gates.
+surfacing the QCL-082 media/binary fixture or Rusty Quest media-stream
+source-contract/runtime-status/receiver-counter rows without moving artifact
+scanning, binary parsing, or promotion rules into WPF. If those live artifacts
+are missing, the fixture suite rows remain visible as candidates with missing
+gates.
 
 After the matrix route selects the evidence inputs, WPF asks Hostess for the
 shared read-only operator projection:

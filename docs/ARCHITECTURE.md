@@ -62,9 +62,12 @@ is a row-normalizing view contract for WPF, Makepad, CLI automation, and future
 frontends; it does not select latest artifacts, validate QCL source evidence,
 run probes, change firewall/device state, declare topology readiness, or
 re-evaluate protocol promotion gates.
-The WPF Protocol Matrix action first requests the Hostess protocol-matrix
-route, preserving that route's latest-artifact selection and promotion policy,
-then passes the suite and matrix artifacts into
+The WPF Protocol Matrix action first requests the fixture suite, optionally
+refreshes the QCL-082 source-contract report from the sibling Rusty Quest
+media-stream session plan when that branch is present, accepts broker/runtime
+status artifacts through the same Hostess CLI route, then requests the Hostess
+protocol-matrix route. That preserves the CLI route's latest-artifact
+selection and promotion policy before WPF passes the suite and matrix artifacts into
 `companion-report projection --include-protocol-matrix-inputs`. The CLI
 projection route derives selected device-link and connectivity-probe inputs
 from the matrix, so WPF does not parse matrix sources or own artifact
@@ -277,20 +280,47 @@ observe headset Wi-Fi identity, then tests LAN reachability separately so ADB
 is not mistaken for the data path.
 The probe module is now a facade over focused helpers:
 `connectivity_probe_common.py` owns shared check rows, issue rows, JSON/ADB/
-PowerShell cleanup, Android readback, and measurement helpers;
+PowerShell cleanup, Android readback, the shared QCL report skeleton, and the
+empty measurement shape;
+`connectivity_probe_fixtures.py` owns QCL fixture report construction, damaged
+fixture variants, and fixture ingestion of media session/runtime/receiver
+artifacts while preserving the facade import surface;
+`connectivity_probe_live_reports.py` owns pure live report shaping for QCL
+status derivation, listener rows, topology summaries, and measurement
+projection while route execution remains in the facade and protocol helpers;
+`connectivity_probe_validation.py` owns the shared QCL report schema/status
+validator so route dispatch, fixture construction, live probing, WPF rows, and
+Makepad rows all depend on the same report acceptance surface;
 `connectivity_firewall.py` owns Windows Firewall listener rule planning,
 apply/verify/remove reports, product-rule verification, and network/firewall
 profile summaries used by QCL-010/QCL-080 and WPF operator rows;
-`connectivity_udp.py` owns QCL-080 UDP freshness sender/listener mechanics and
-Makepad runtime UDP sender evidence; `connectivity_bluetooth.py` owns QCL-050
-RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, and transport
-helpers; `connectivity_media.py` owns QCL-082 binary media-plane fixture
-reports for H.264/TCP framing, timestamp, queue/drop/backpressure, and
-high-rate JSON rejection; `connectivity_topology.py` owns fixture-only
-QCL-020/QCL-030/QCL-040/QCL-041 topology report bodies for Wi-Fi ADB,
-LocalOnlyHotspot, and Wi-Fi Direct limitations; and
+`connectivity_lan.py` owns serial-scoped Quest ADB identity collection, host
+IPv4 selection, same-subnet checks, ICMP probes, Windows Mobile Hotspot state
+collection, TCP echo transport probes, and QCL-010/QCL-011 live report
+assembly used by live QCL LAN routes;
+`connectivity_udp.py` owns QCL-080 UDP freshness live report assembly,
+sender/listener mechanics, Makepad runtime UDP sender evidence, WPF
+listener-helper ingestion, and app-owned runtime-marker parsing;
+`connectivity_bluetooth.py` owns QCL-050
+RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, transport helpers,
+and live report assembly; `connectivity_media.py` owns QCL-082 binary media-plane fixture
+reports, Rusty Quest `rusty.quest.media_stream_session.v1` source-contract
+ingestion, and `rusty.quest.media_stream.android_runtime_status.v1`
+broker/runtime artifact ingestion for H.264/TCP framing, accepted
+`command.media_stream.*` commands, timestamp, queue/drop/backpressure,
+source-classification, shell-display lab gating, and high-rate JSON rejection;
+`connectivity_media_receiver.py` owns QCL-082 Hostess receiver-counter
+evidence by arming bounded TCP `RMANVID1` captures, parsing stream headers and
+packet records, writing receiver sidecar queue/drop/close counters, and pairing
+that evidence with broker runtime status when available;
+`connectivity_topology.py` owns topology metadata helpers, Windows Mobile
+Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
+topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
+limitations; and
 `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
-ZeroMQ adapter mechanics plus protocol-specific evidence rows.
+ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution helpers, and
+protocol-specific live report assembly, source-specific report promotion
+gates, and evidence rows.
 The Bluetooth helper owns QCL-050/QCL-051 readiness and payload
 evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
 server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
@@ -317,9 +347,22 @@ QCL-082 is the media/binary data-plane slot. Its fixture route declares the
 source-neutral `tcp_binary` contract shape, `RMANVID1` packet marker,
 frame-timestamp policy, bounded receiver queue, drop/close backpressure rules,
 and the rule that high-rate media payloads must not ride JSON command/report
-streams. This is protocol-fit evidence only; promotion still requires a
-Quest-runtime or broker-owned binary transport/codec path with measured frame,
-byte, drop, and queue counters.
+streams. Its media-stream plan route consumes Rusty Quest
+`rusty.quest.media_stream_session.v1` plans from the camera/display streaming
+work and projects them into the same QCL-082 report schema. Its broker/runtime
+status route consumes `rusty.quest.media_stream.android_runtime_status.v1` or a
+Manifold command ACK carrying `media_stream_runtime`, proving command
+acceptance, selected source/runtime state, consent or lab-only gating, and
+binary-plane policy from the broker side. Its receiver-counter route can first
+arm a bounded TCP listener that writes a raw `RMANVID1` capture and sidecar,
+then parse that byte stream without decoding H.264, validate packet boundaries
+and timestamps, and require queue capacity, drops, backpressure, and close
+reason. This lets WPF and CLI automation see MediaProjection display-stream
+contracts, shell-hidden display lab gates, and receiver packet evidence without
+making Hostess the source authority for Android capture. Session plans remain
+source-contract evidence; broker/runtime status is broker-owned candidate
+evidence; receiver counters become promotable only when paired with live
+broker-owned or Quest-runtime status.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ

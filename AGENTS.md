@@ -71,7 +71,7 @@ requirements; see `docs/LICENSING.md`.
 Run the narrow checks before committing:
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_session tools.test_makepad_morphospace_boundaries
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
@@ -115,6 +115,43 @@ generic code or sanitized sample fixtures.
   produce compact rows and marker lines for operator panels; it must not own
   validation, setup, transport, protocol promotion, artifact selection, or
   command authority.
+- Keep `tools\hostessctl\connectivity_media_receiver.py` as the QCL-082
+  Hostess receiver-counter owner. It may arm bounded TCP `RMANVID1` captures,
+  write raw capture/sidecar/result artifacts, and parse packet counters, but
+  it must not own Android camera/display source setup or QCL promotion policy.
+- Keep `tools\hostessctl\connectivity_probe_fixtures.py` as the QCL fixture
+  construction owner. `connectivity_probe.py` may preserve facade imports and
+  route fixture mode to it, but fixture bodies, damaged fixture variants, and
+  media/status fixture ingestion belong in the fixture helper.
+- Keep `tools\hostessctl\connectivity_probe_validation.py` as the shared
+  QCL report validator. `connectivity_probe.py` may dispatch routes and
+  preserve facade imports, but validation requirements and schema/report
+  checks belong in the validator helper.
+- Keep `tools\hostessctl\connectivity_probe_live_reports.py` as the pure live
+  report-shaping owner for QCL status derivation, listener report rows,
+  topology summaries, and measurement projection. It must not own live ADB,
+  socket, broker, or protocol execution.
+- Keep `tools\hostessctl\connectivity_bluetooth.py` as the QCL-050/QCL-051
+  Bluetooth readiness, payload, reconnect, transport, and live report assembly
+  owner. `connectivity_probe.py` may preserve facade imports and route
+  dispatch, but Bluetooth evidence logic belongs in the helper.
+- Keep `tools\hostessctl\connectivity_data_protocols.py` as the QCL-081,
+  QCL-083, and QCL-084 data-protocol mechanics owner. It may own host
+  loopbacks, Manifold broker wrappers, Quest-runtime OSC/ZeroMQ probe helpers,
+  live report assembly, protocol evidence rows, and source-specific report
+  promotion gates; it must not own protocol-matrix promotion or WPF projection.
+- Keep `tools\hostessctl\connectivity_lan.py` as the live LAN/device transport
+  helper owner for Quest ADB identity, host IPv4 selection, same-subnet checks,
+  ICMP checks, Windows Mobile Hotspot state collection, and TCP echo transport
+  probes, including QCL-010/QCL-011 live report assembly. `connectivity_probe.py`
+  may preserve facade imports and route dispatch, but LAN probing mechanics
+  belong in the helper.
+- Keep `tools\hostessctl\connectivity_udp.py` as the QCL-080 UDP freshness
+  owner. It owns the live QCL-080 report assembly, UDP sender/listener
+  mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,
+  and app-owned UDP runtime-marker parsing. `connectivity_probe.py` may
+  preserve facade imports and dispatch, but QCL-080 evidence logic belongs in
+  the UDP helper.
 
 ## Quest Makepad APK Route
 

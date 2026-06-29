@@ -315,6 +315,18 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "projection must include the suite source artifact");
     Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_probe_report"),
         "projection must include protocol-matrix source probe artifacts");
+    if (RustyQuestMediaStreamSessionPlanExists())
+    {
+        var sourceContractArtifact = $"{run.Suite.SuiteRunId}.qcl082-media-stream-session-plan.json";
+        Assert(run.Matrix.Inputs.Any(input =>
+                input.Role == "connectivity_probe_report"
+                && input.Path.EndsWith(sourceContractArtifact, StringComparison.Ordinal)),
+            "protocol matrix must consume the QCL-082 Rusty Quest media-stream source-contract artifact");
+        Assert(run.Projection.SourceArtifacts.Any(source =>
+                source.Role == "connectivity_probe_report"
+                && source.Path.EndsWith(sourceContractArtifact, StringComparison.Ordinal)),
+            "projection must include the QCL-082 Rusty Quest media-stream source-contract artifact");
+    }
 }
 
 static void FirewallRowsExposeProductVerification()
@@ -421,22 +433,52 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "LoadSessionHistoryCommand"
             && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
-    Assert(
-        OperatorActionCatalog.All.Any(action =>
-            action.UiCommandProperty == "RunProtocolMatrixCommand"
-            && action.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-artifact-dir", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal)
-            && action.CliRoute.Contains("QCL-050", StringComparison.Ordinal)
-            && action.CliRoute.Contains("QCL-051", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)
-            && action.CliRoute.Contains("companion-report projection", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--include-protocol-matrix-inputs", StringComparison.Ordinal)
-            && action.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal)
-            && action.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal)),
-        "protocol matrix must render the shared companion-report projection artifact");
+    var protocolMatrixAction = OperatorActionCatalog.All.Single(action =>
+        action.UiCommandProperty == "RunProtocolMatrixCommand");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal),
+        "protocol matrix action must advertise the protocol-matrix CLI route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--latest-artifact-dir", StringComparison.Ordinal),
+        "protocol matrix action must advertise latest artifact directory selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal),
+        "protocol matrix action must advertise latest probe-id selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-050", StringComparison.Ordinal),
+        "protocol matrix action must include Bluetooth readiness probe QCL-050");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-051", StringComparison.Ordinal),
+        "protocol matrix action must include Bluetooth reconnect probe QCL-051");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-080", StringComparison.Ordinal),
+        "protocol matrix action must include UDP freshness probe QCL-080");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-081", StringComparison.Ordinal),
+        "protocol matrix action must include LSL probe QCL-081");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-082", StringComparison.Ordinal),
+        "protocol matrix action must include media-stream probe QCL-082");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-083", StringComparison.Ordinal),
+        "protocol matrix action must include OSC probe QCL-083");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-084", StringComparison.Ordinal),
+        "protocol matrix action must include ZeroMQ probe QCL-084");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-session-plan", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 media-stream source-contract input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-runtime-status", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 broker runtime-status input");
+    Assert(protocolMatrixAction.CliRoute.Contains("rmanvid1-receiver-capture", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 RMANVID1 receiver capture route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-rmanvid1-capture", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 RMANVID1 capture evidence input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-receiver-sidecar", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 receiver sidecar evidence input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal),
+        "protocol matrix action must advertise latest device-link directory selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal),
+        "protocol matrix action must advertise latest stream-capability directory selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal),
+        "protocol matrix action must advertise latest stream probe-id selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("companion-report projection", StringComparison.Ordinal),
+        "protocol matrix action must render a companion-report projection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--include-protocol-matrix-inputs", StringComparison.Ordinal),
+        "protocol matrix action must include protocol-matrix inputs in the report projection");
+    Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal),
+        "protocol matrix action must advertise topology probe evidence");
+    Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal),
+        "protocol matrix action must render the shared companion-report projection artifact");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();
@@ -815,6 +857,33 @@ static T ReadFixture<T>(string name)
             stream,
             new JsonSerializerOptions { PropertyNameCaseInsensitive = true })
         ?? throw new InvalidOperationException($"fixture {name} was empty");
+}
+
+static bool RustyQuestMediaStreamSessionPlanExists()
+{
+    var repoRoot = LocateHostessRepoRoot();
+    var planPath = Path.GetFullPath(Path.Combine(
+        repoRoot.FullName,
+        "..",
+        "rusty-quest",
+        "fixtures",
+        "media-stream-sessions",
+        "display-composite-mediaprojection-h264.plan.json"));
+    return File.Exists(planPath);
+}
+
+static DirectoryInfo LocateHostessRepoRoot()
+{
+    var current = new DirectoryInfo(AppContext.BaseDirectory);
+    while (current is not null)
+    {
+        if (File.Exists(Path.Combine(current.FullName, "tools", "hostessctl", "hostessctl.py")))
+        {
+            return current;
+        }
+        current = current.Parent;
+    }
+    throw new InvalidOperationException("Could not locate rusty-hostess repository root.");
 }
 
 static void Assert(bool condition, string message)

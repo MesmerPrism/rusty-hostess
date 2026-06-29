@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import socket
 import subprocess
 import tempfile
+import threading
+import time
 import unittest
 from datetime import UTC, datetime
 from pathlib import Path
@@ -15,6 +18,7 @@ from tools.hostessctl.connectivity_firewall import (
     CONNECTIVITY_FIREWALL_RULE_SCHEMA,
     windows_firewall_rule_report,
 )
+from tools.hostessctl.connectivity_media_receiver import run_rmanvid1_receiver_capture
 from tools.hostessctl.connectivity_probe import (
     CONNECTIVITY_PROBE_SCHEMA,
     DEFAULT_QCL080_UDP_PORT,
@@ -426,6 +430,291 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_media_stream_session_plan_validates_source_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "display-composite-mediaprojection-h264.plan.json"
+            plan_path.write_text(json.dumps(media_stream_session_plan()), encoding="utf-8")
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_session_plan=str(plan_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-082")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["transport"]["endpoint_source"], "rusty-quest-media-stream-session-plan")
+        self.assertEqual(report["transport"]["packet_magic"], "RMANVID1")
+        self.assertEqual(check(report, "protocol.media_stream_session_contract")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_source_classification")["status"], "pass")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(
+            report["media_stream_session_plan"]["source"]["source_kind"],
+            "display_composite_mediaprojection_mediacodec_surface",
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_media_stream_session_plan_rejects_high_rate_json_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "media-stream-high-rate-json.plan.json"
+            plan_path.write_text(
+                json.dumps(media_stream_session_plan(high_rate_payload_plane="control-json")),
+                encoding="utf-8",
+            )
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_session_plan=str(plan_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_high_rate_json_guard")["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.media_high_rate_json_payload"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_media_stream_session_plan_rejects_shell_display_production(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            plan_path = Path(tmpdir) / "media-stream-shell-display-production.plan.json"
+            plan_path.write_text(
+                json.dumps(media_stream_session_plan(shell_display=True, shell_display_production=True)),
+                encoding="utf-8",
+            )
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_session_plan=str(plan_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_shell_lab_gate")["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.shell_display_route_not_lab_only"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_media_stream_runtime_status_validates_broker_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status_path = Path(tmpdir) / "media-stream-runtime-status.json"
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_runtime_status=str(status_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-082")
+        self.assertEqual(report["status"], "warn")
+        self.assertEqual(
+            report["transport"]["endpoint_source"],
+            "rusty-quest-manifold-broker-media-stream-runtime",
+        )
+        self.assertEqual(check(report, "protocol.media_stream_runtime_status")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_stream_command_ack")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_binary_runtime_counters")["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(
+            report["media_stream_runtime_status"]["source"]["display_frame_source"],
+            "display_composite_mediaprojection_mediacodec_surface",
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_media_stream_runtime_status_rejects_high_rate_json_media(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status_path = Path(tmpdir) / "media-stream-runtime-status.json"
+            status_path.write_text(
+                json.dumps(media_stream_runtime_ack(high_rate_json_payload=True)),
+                encoding="utf-8",
+            )
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_runtime_status=str(status_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_high_rate_json_guard")["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.media_high_rate_json_payload"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_validates_counters(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            sidecar_path.write_text(json.dumps(media_stream_receiver_sidecar()), encoding="utf-8")
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-082")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(
+            report["transport"]["endpoint_source"],
+            "rusty-quest-manifold-broker-media-stream-runtime",
+        )
+        self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_stream_runtime_status")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_packet_boundaries")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_timestamp_policy")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_backpressure_policy")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_receiver_counters")["status"], "pass")
+        self.assertEqual(report["measurements"]["media_frames_received"], 3)
+        self.assertEqual(report["measurements"]["media_bytes_received"], 41)
+        self.assertEqual(report["measurements"]["media_dropped_frames"], 0)
+        self.assertEqual(report["measurements"]["media_receiver_queue_depth_max"], 2)
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_allows_live_broker_promotion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            sidecar_path.write_text(
+                json.dumps(media_stream_receiver_sidecar(capture_kind="live_broker_stream")),
+                encoding="utf-8",
+            )
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(report["media_stream_receiver_capture"]["capture_kind"], "live_broker_stream")
+        self.assertTrue(report["media_stream_receiver_capture"]["source"]["broker_or_quest_source"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_rejects_invalid_magic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes(invalid_magic=True))
+            sidecar_path.write_text(json.dumps(media_stream_receiver_sidecar()), encoding="utf-8")
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"]
+                == "hostess.issue.connectivity_probe.media_receiver_capture_magic_invalid"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_command_captures_loopback_stream(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "captured.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            status_path = root / "runtime-status.json"
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            port = free_tcp_port()
+            args = probe_args(
+                connectivity_probe_command="rmanvid1-receiver-capture",
+                out=str(result_path),
+                capture_out=str(capture_path),
+                sidecar_out=str(sidecar_path),
+                bind_host="127.0.0.1",
+                port=port,
+                timeout_seconds=2.0,
+                max_packets=4,
+                max_bytes=1048576,
+                max_packet_bytes=4194304,
+                max_metadata_bytes=262144,
+                queue_capacity_packets=48,
+                capture_kind="fixture_loopback_receiver",
+                source_endpoint_source="",
+                source_remote_endpoint="127.0.0.1:8879",
+                command_id="command.media_stream.start_source",
+                session_id="session.media_stream.test",
+                runtime_status=str(status_path),
+                fail_on_error=True,
+            )
+            result: dict[str, int | None] = {"code": None}
+            thread = threading.Thread(
+                target=lambda: result.__setitem__("code", run_rmanvid1_receiver_capture(args)),
+                daemon=True,
+            )
+            thread.start()
+            send_rmanvid1_loopback_payload(port, rmanvid1_capture_bytes())
+            thread.join(timeout=4.0)
+
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(result["code"], 0)
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            sidecar = json.loads(sidecar_path.read_text(encoding="utf-8"))
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        self.assertEqual(receipt["status"], "pass")
+        self.assertEqual(receipt["close_reason"], "max_packets_reached")
+        self.assertEqual(receipt["capture_stats"]["packet_count"], 4)
+        self.assertEqual(sidecar["receiver"]["arrival_timestamped_packet_count"], 4)
+        self.assertEqual(sidecar["receiver"]["max_queue_depth_observed"], 1)
+        self.assertIn("--media-stream-rmanvid1-capture", receipt["follow_on_qcl082_args"])
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_timestamp_policy")["status"], "pass")
+
     def test_qcl083_fixture_validates_osc_loopback_pass(self) -> None:
         report = fixture_report(
             probe_args(probe_id="QCL-083", fixture_profile="qcl-083-osc-loopback-pass"),
@@ -717,6 +1006,9 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         common_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_probe_common.py"
         ).read_text(encoding="utf-8")
+        lan_source = (REPO_ROOT / "tools" / "hostessctl" / "connectivity_lan.py").read_text(
+            encoding="utf-8"
+        )
         udp_source = (REPO_ROOT / "tools" / "hostessctl" / "connectivity_udp.py").read_text(
             encoding="utf-8"
         )
@@ -726,18 +1018,34 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertIn("from tools.hostessctl.connectivity_probe_common import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_topology import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_udp import", probe_source)
+        facade_defs = re.findall(r"^def ([A-Za-z_][A-Za-z0-9_]*)\(", probe_source, re.MULTILINE)
+        self.assertEqual(facade_defs, ["run_connectivity_probe", "utc_now"])
+        self.assertNotIn("def live_udp_freshness_report", probe_source)
+        self.assertNotIn("def live_lsl_report", probe_source)
+        self.assertNotIn("def live_osc_report", probe_source)
+        self.assertNotIn("def live_zeromq_report", probe_source)
+        self.assertNotIn("def live_bluetooth_report", probe_source)
+        self.assertNotIn("def live_same_wifi_report", probe_source)
         self.assertNotIn("def device_to_host_udp_freshness", probe_source)
+        self.assertNotIn("def collect_device_identity", probe_source)
         self.assertNotIn("def qcl020_wifi_adb_body", probe_source)
         self.assertNotIn("def lsl_discovery_sample_continuity", probe_source)
         self.assertNotIn("def osc_loopback_probe", probe_source)
         self.assertNotIn("def run_qcl050_android_rfcomm_probe", probe_source)
         self.assertNotIn("def zeromq_loopback_probe", probe_source)
         self.assertIn("def run_qcl050_android_rfcomm_probe", bluetooth_source)
+        self.assertIn("def live_bluetooth_report", bluetooth_source)
         self.assertIn("def qcl020_wifi_adb_body", topology_source)
+        self.assertIn("def live_lsl_report", protocol_source)
+        self.assertIn("def live_osc_report", protocol_source)
+        self.assertIn("def live_zeromq_report", protocol_source)
         self.assertIn("def lsl_discovery_sample_continuity", protocol_source)
         self.assertIn("def osc_loopback_probe", protocol_source)
         self.assertIn("def zeromq_loopback_probe", protocol_source)
         self.assertIn("def check_row", common_source)
+        self.assertIn("def live_same_wifi_report", lan_source)
+        self.assertIn("def collect_device_identity", lan_source)
+        self.assertIn("def live_udp_freshness_report", udp_source)
         self.assertIn("def device_to_host_udp_freshness", udp_source)
 
     def test_live_lsl_report_classifies_host_loopback_as_warning(self) -> None:
@@ -1215,6 +1523,14 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
                 "QCL-082",
                 "--fixture-profile",
                 "qcl-082-media-binary-plane-pass",
+                "--media-stream-session-plan",
+                "S:\\Work\\repos\\active\\rusty-quest\\fixtures\\media-stream-sessions\\display-composite-mediaprojection-h264.plan.json",
+                "--media-stream-runtime-status",
+                "target\\connectivity-probe\\media-stream-runtime-status.json",
+                "--media-stream-rmanvid1-capture",
+                "target\\connectivity-probe\\media-stream.rmanvid1",
+                "--media-stream-receiver-sidecar",
+                "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
                 "--out",
                 "target/qcl082.json",
             ]
@@ -1222,6 +1538,66 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
 
         self.assertEqual(args.probe_id, "QCL-082")
         self.assertEqual(args.fixture_profile, "qcl-082-media-binary-plane-pass")
+        self.assertEqual(
+            args.media_stream_session_plan,
+            "S:\\Work\\repos\\active\\rusty-quest\\fixtures\\media-stream-sessions\\display-composite-mediaprojection-h264.plan.json",
+        )
+        self.assertEqual(
+            args.media_stream_runtime_status,
+            "target\\connectivity-probe\\media-stream-runtime-status.json",
+        )
+        self.assertEqual(
+            args.media_stream_rmanvid1_capture,
+            "target\\connectivity-probe\\media-stream.rmanvid1",
+        )
+        self.assertEqual(
+            args.media_stream_receiver_sidecar,
+            "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+        )
+
+    def test_parser_accepts_rmanvid1_receiver_capture_command(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "rmanvid1-receiver-capture",
+                "--bind-host",
+                "0.0.0.0",
+                "--port",
+                "9079",
+                "--capture-out",
+                "target\\connectivity-probe\\media-stream.rmanvid1",
+                "--sidecar-out",
+                "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+                "--runtime-status",
+                "target\\connectivity-probe\\media-stream-runtime-status.json",
+                "--capture-kind",
+                "live_broker_stream",
+                "--max-packets",
+                "8",
+                "--max-bytes",
+                "1048576",
+                "--out",
+                "target\\connectivity-probe\\media-stream-receiver-result.json",
+                "--fail-on-error",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "rmanvid1-receiver-capture")
+        self.assertEqual(args.bind_host, "0.0.0.0")
+        self.assertEqual(args.port, 9079)
+        self.assertEqual(args.capture_kind, "live_broker_stream")
+        self.assertEqual(args.max_packets, 8)
+        self.assertEqual(args.max_bytes, 1048576)
+        self.assertTrue(args.fail_on_error)
 
     def test_parser_accepts_bluetooth_probe(self) -> None:
         args = build_hostessctl_parser(
@@ -1928,6 +2304,28 @@ def check(report: dict[str, Any], name: str) -> dict[str, Any]:
     raise AssertionError(f"missing check {name}")
 
 
+def free_tcp_port() -> int:
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+        sock.bind(("127.0.0.1", 0))
+        return int(sock.getsockname()[1])
+
+
+def send_rmanvid1_loopback_payload(port: int, payload: bytes) -> None:
+    deadline = time.monotonic() + 2.0
+    last_error: OSError | None = None
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection(("127.0.0.1", port), timeout=0.25) as client:
+                for offset in range(0, len(payload), 23):
+                    client.sendall(payload[offset : offset + 23])
+                    time.sleep(0.001)
+                return
+        except OSError as exc:
+            last_error = exc
+            time.sleep(0.025)
+    raise AssertionError(f"receiver did not accept loopback connection: {last_error}")
+
+
 def probe_args(**overrides: object) -> argparse.Namespace:
     defaults: dict[str, object] = {
         "command": "connectivity-probe",
@@ -1938,6 +2336,26 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "run_id": "",
         "mode": "fixture",
         "fixture_profile": "",
+        "media_stream_session_plan": "",
+        "media_stream_runtime_status": "",
+        "media_stream_rmanvid1_capture": "",
+        "media_stream_receiver_sidecar": "",
+        "capture_out": "target/connectivity-probe/media-stream.rmanvid1",
+        "sidecar_out": "target/connectivity-probe/media-stream-receiver-sidecar.json",
+        "bind_host": "0.0.0.0",
+        "port": 9079,
+        "timeout_seconds": 10.0,
+        "max_packets": 240,
+        "max_bytes": 67108864,
+        "max_packet_bytes": 4194304,
+        "max_metadata_bytes": 262144,
+        "queue_capacity_packets": 48,
+        "capture_kind": "fixture_loopback_receiver",
+        "source_endpoint_source": "",
+        "source_remote_endpoint": "",
+        "command_id": "command.media_stream.start_source",
+        "session_id": "",
+        "runtime_status": "",
         "adb": "adb.exe",
         "serial": "serial-1",
         "wifi_interface": "wlan0",
@@ -2134,6 +2552,292 @@ def qcl051_android_probe_report() -> dict[str, Any]:
         "errors": [],
         "issue_codes": [],
     }
+
+
+def media_stream_session_plan(
+    *,
+    high_rate_payload_plane: str = "binary-media",
+    shell_display: bool = False,
+    shell_display_production: bool = False,
+) -> dict[str, Any]:
+    source_kind = (
+        "shell_display_mirror_mediacodec_surface"
+        if shell_display
+        else "display_composite_mediaprojection_mediacodec_surface"
+    )
+    source_family = "quest-shell-display-mirror" if shell_display else "quest-display-composite-mediaprojection"
+    source_id = "quest-a-shell-display-mirror" if shell_display else "quest-a-display-composite"
+    return {
+        "schema": "rusty.quest.media_stream_session.v1",
+        "session_id": "session.media_stream.test",
+        "topology_id": "quest_display_to_pc",
+        "privacy_tier": "local_lan_diagnostic",
+        "devices": [
+            {"device_id": "quest-a", "device_kind": "quest", "role": "sender"},
+            {"device_id": "pc-host", "device_kind": "windows_pc", "role": "receiver"},
+        ],
+        "sources": [
+            {
+                "source_id": source_id,
+                "device_id": "quest-a",
+                "source_family": source_family,
+                "source_kind": source_kind,
+                "capture_route": "shell-hidden-display-mirror" if shell_display else "display-composite",
+                "capture_authority": (
+                    "adb_shell_hidden_api_developer_only"
+                    if shell_display
+                    else "android_mediaprojection_consent"
+                ),
+                "deployment_classification": (
+                    "production_candidate"
+                    if shell_display_production
+                    else "lab_developer_only"
+                    if shell_display
+                    else "production_candidate"
+                ),
+                "track_role": "display",
+                "developer_shell_required": shell_display and not shell_display_production,
+                "consent_required": not shell_display,
+                "display": {
+                    "display_id": "default",
+                    "rotation": "runtime-reported",
+                    "density_dpi": 320,
+                    "content_crop": {
+                        "left": 0,
+                        "top": 0,
+                        "width": 1920,
+                        "height": 1080,
+                    },
+                    "protected_content_policy": "omit-protected-content",
+                    "consent_state": "android-mediaprojection-consent-required",
+                    "privacy_indicator": "system-capture-indicator-required",
+                    "foreground_package_reporting": "not-collected",
+                },
+            }
+        ],
+        "lanes": [
+            {
+                "lane_id": "quest-a-display-to-pc-host",
+                "direction": "outgoing",
+                "source_id": source_id,
+                "source_device_id": "quest-a",
+                "sink_device_id": "pc-host",
+                "media": {
+                    "track_id": "quest-a.display.h264",
+                    "track_role": "display",
+                    "track_kind": "video",
+                    "codec": "h264",
+                    "stream_framing": "diagnostic-h264-packet-stream",
+                    "width": 1920,
+                    "height": 1080,
+                    "frame_rate_hz": 60,
+                    "bitrate_bps": 8000000,
+                    "max_packet_bytes": 4194304,
+                    "metadata_transport": "stream-header-sidecar-status",
+                    "timestamp_domain": "android-display-frame-time",
+                    "high_rate_payload_plane": high_rate_payload_plane,
+                },
+                "transport": {
+                    "transport_kind": "lan_tcp",
+                    "relay_required": False,
+                    "encryption_required": False,
+                },
+                "queue": {
+                    "max_buffered_packets": 48,
+                    "max_buffered_bytes": 16777216,
+                    "drop_policy": "drop-oldest-complete-frame",
+                    "slow_peer_close": True,
+                },
+                "receiver_first_required": True,
+            }
+        ],
+        "runtime_endpoints": [
+            {
+                "device_id": "quest-a",
+                "adapter_kind": "quest_manifold_broker_android",
+                "source_bindings": [
+                    {
+                        "source_id": source_id,
+                        "track_role": "display",
+                        "source_host": "127.0.0.1",
+                        "source_port": 8879,
+                    }
+                ],
+                "receiver_bind_host": "127.0.0.1",
+                "receiver_ports": [],
+                "transport_bind_host": "0.0.0.0",
+                "transport_receive_ports": [],
+            },
+            {
+                "device_id": "pc-host",
+                "adapter_kind": "windows_hostess",
+                "source_bindings": [],
+                "receiver_bind_host": "127.0.0.1",
+                "receiver_ports": [{"track_role": "display", "port": 8979}],
+                "transport_bind_host": "0.0.0.0",
+                "transport_receive_ports": [{"track_role": "display", "port": 9079}],
+            },
+        ],
+        "transport_routes": [
+            {
+                "lane_id": "quest-a-display-to-pc-host",
+                "source_device_id": "quest-a",
+                "sink_device_id": "pc-host",
+                "track_role": "display",
+                "route_kind": "direct_tcp_connect",
+                "connect_host": "pc-host.local",
+                "connect_port": 9079,
+            }
+        ],
+        "security": {
+            "visible_streaming_indicator": True,
+            "explicit_pairing_required": True,
+            "immediate_stop_command": "media_stream.stop",
+            "raw_media_logging": False,
+        },
+        "observability": {
+            "required_markers": [
+                "media-stream-session-started",
+                "receiver-armed",
+                "display-source-bound",
+                "sender-started",
+                "frame-painted",
+                "lane-closed",
+            ],
+            "required_counters": [
+                "bytes_sent",
+                "bytes_received",
+                "media_packets",
+                "codec_config_packets",
+                "keyframes",
+                "queue_drops",
+                "close_reason",
+                "capture_to_encode_ms",
+                "encode_to_receive_ms",
+            ],
+        },
+    }
+
+
+def media_stream_runtime_ack(*, high_rate_json_payload: bool = False) -> dict[str, Any]:
+    runtime_status = {
+        "schema": "rusty.quest.media_stream.android_runtime_status.v1",
+        "runtime_family": "media_stream",
+        "compatibility_runtime": "remote_camera",
+        "session_id": "session.media_stream.test",
+        "active_count": 0,
+        "matched_count": 0,
+        "created_count": 0,
+        "stopped_count": 0,
+        "failed_count": 0,
+        "lanes": [],
+        "high_rate_json_payload": high_rate_json_payload,
+        "media_payload_plane": "json-event" if high_rate_json_payload else "binary-media",
+        "sender_source_runtime": {
+            "session_id": "session.media_stream.test",
+            "source_count": 0,
+            "sources": [],
+            "high_rate_json_payload": high_rate_json_payload,
+        },
+    }
+    media_stream_runtime = {
+        "schema": "rusty.quest.media_stream.android_runtime_status.v1",
+        "command_id": "command.media_stream.start_source",
+        "runtime_family": "media_stream",
+        "compatibility_runtime": "remote_camera",
+        "session_id": "session.media_stream.test",
+        "status": "sender_source_unavailable",
+        "high_rate_json_payload": high_rate_json_payload,
+        "media_socket_runtime_started": False,
+        "sender_source_runtime": {
+            "schema": "rusty.quest.media_stream.android_display_source_adapter.v1",
+            "session_id": "session.media_stream.test",
+            "source_kind": "display_composite_mediaprojection_mediacodec_surface",
+            "state": "source_unavailable",
+            "source_available": False,
+            "runtime_started": False,
+            "media_payload_plane": "json-event" if high_rate_json_payload else "binary-media",
+            "high_rate_json_payload": high_rate_json_payload,
+            "reason": "mediaprojection_consent_route_not_implemented_in_broker_apk",
+            "source_family": "display",
+            "display_frame_source": "display_composite_mediaprojection_mediacodec_surface",
+            "capture_authority": "android_mediaprojection_user_consent",
+            "adapter_surface_only": True,
+            "lab_only": False,
+            "production_allowed": True,
+        },
+        "runtime_status": runtime_status,
+    }
+    return {
+        "type": "command_ack",
+        "schema": "rusty.manifold.command.ack.v1",
+        "request_id": "request.media-stream.test",
+        "command": "command.media_stream.start_source",
+        "accepted": True,
+        "status": "sender_source_unavailable",
+        "authority": "rusty.manifold",
+        "live_stream_events_synthesized": False,
+        "high_rate_json_payload": high_rate_json_payload,
+        "media_socket_runtime_started": False,
+        "media_stream_runtime": media_stream_runtime,
+    }
+
+
+def media_stream_receiver_sidecar(*, capture_kind: str = "fixture_rmanvid1_capture") -> dict[str, Any]:
+    return {
+        "schema": "rusty.hostess.media_stream.receiver_capture_sidecar.v1",
+        "capture_kind": capture_kind,
+        "receiver": {
+            "local_endpoint": "0.0.0.0:9079",
+            "queue_capacity_packets": 48,
+            "max_queue_depth_observed": 2,
+            "drop_policy": "drop-oldest-complete-frame",
+            "close_policy": "close_after_sustained_overrun",
+            "close_reason": "eof_after_test_window",
+            "dropped_frames": 0,
+            "backpressure_events": 0,
+            "arrival_timestamped_packet_count": 4,
+            "receiver_arrival_timestamps": True,
+            "timestamp_gap_ms_p95": 33,
+            "decode_error_count": 0,
+        },
+        "source": {
+            "endpoint_source": "rusty-quest-manifold-broker-media-stream-runtime",
+            "remote_endpoint": "127.0.0.1:8879",
+            "command_id": "command.media_stream.start_source",
+            "session_id": "session.media_stream.test",
+        },
+    }
+
+
+def rmanvid1_capture_bytes(*, invalid_magic: bool = False) -> bytes:
+    metadata = json.dumps(
+        {
+            "schema": "rusty.quest.media_stream.rmanvid1.header_metadata.v1",
+            "session_id": "session.media_stream.test",
+            "source_kind": "display_composite_mediaprojection_mediacodec_surface",
+        },
+        separators=(",", ":"),
+    ).encode("utf-8")
+    packets = [
+        (1000, 2, b"\x00\x00\x00\x01sps", 1_000_000, 10_000_000),
+        (16666, 1, b"\x00\x00\x00\x01keyframe", 17_000_000, 26_000_000),
+        (33333, 0, b"\x00\x00\x00\x01delta-a", 34_000_000, 43_000_000),
+        (50000, 0, b"\x00\x00\x00\x01delta-b", 51_000_000, 60_000_000),
+    ]
+    data = bytearray()
+    data.extend((b"BROKEN01" if invalid_magic else b"RMANVID1"))
+    for value in [1, 1, 1920, 1080, 0, len(metadata)]:
+        data.extend(int(value).to_bytes(4, "big"))
+    data.extend(metadata)
+    for presentation_time_us, flags, payload, source_elapsed_ns, source_unix_ns in packets:
+        data.extend(int(presentation_time_us).to_bytes(8, "big"))
+        data.extend(int(flags).to_bytes(4, "big"))
+        data.extend(len(payload).to_bytes(4, "big"))
+        data.extend(int(source_elapsed_ns).to_bytes(8, "big"))
+        data.extend(int(source_unix_ns).to_bytes(8, "big"))
+        data.extend(payload)
+    return bytes(data)
 
 
 def fixed_datetime() -> datetime:

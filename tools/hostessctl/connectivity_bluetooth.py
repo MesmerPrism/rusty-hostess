@@ -10,12 +10,15 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.connectivity_probe_common import (
+    adb_command,
+    append_issue_once,
+    base_report,
     check_status,
     check_row,
-    adb_command,
     collect_android_activity_launch_precondition,
     completed_observed,
     empty_measurements,
+    ensure_probe_run_id,
     powershell_executable,
     read_android_json_with_retry,
     redact_command_for_report,
@@ -936,6 +939,193 @@ def qcl051_ble_gatt_payload_checks(payload_result: dict[str, Any]) -> list[dict[
             issue_codes=[] if reconnect_cleanup_pass else ["hostess.issue.connectivity_probe.bluetooth_reconnect_not_tested"],
         ),
     ]
+
+def live_bluetooth_report(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    run_timeout_func: Any | None = None,
+    clock_func: Any,
+) -> dict[str, Any]:
+    selected_probe_id = str(getattr(args, "probe_id", "QCL-050") or "QCL-050")
+    if selected_probe_id not in {"QCL-050", "QCL-051"}:
+        raise SystemExit("live Bluetooth readiness currently supports --probe-id QCL-050 or QCL-051")
+    if not getattr(args, "adb", None) or not getattr(args, "serial", None):
+        raise SystemExit("connectivity-probe live Bluetooth mode requires --adb and --serial")
+
+    observed_at = clock_func()
+    ensure_probe_run_id(args, observed_at, selected_probe_id)
+    checks: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+
+    host_bluetooth = collect_windows_bluetooth_status(run_captured_func)
+    host_adapter_status, host_adapter_issue_codes = windows_bluetooth_adapter_status(host_bluetooth)
+    checks.append(
+        check_row(
+            "host.bluetooth_adapter",
+            host_adapter_status,
+            windows_bluetooth_adapter_summary(host_bluetooth),
+            observed=host_bluetooth,
+            issue_codes=host_adapter_issue_codes,
+        )
+    )
+    host_service_status, host_service_issue_codes = windows_bluetooth_service_status(host_bluetooth)
+    checks.append(
+        check_row(
+            "host.bluetooth_service",
+            host_service_status,
+            windows_bluetooth_service_summary(host_bluetooth),
+            observed=host_bluetooth,
+            issue_codes=host_service_issue_codes,
+        )
+    )
+    for issue_code in host_adapter_issue_codes + host_service_issue_codes:
+        append_issue_once(
+            issues,
+            issue_code,
+            "error",
+            "Windows Bluetooth adapter or service is not ready for the Bluetooth probe",
+        )
+
+    device_bluetooth = collect_quest_bluetooth_status(args, run_captured_func)
+    device_status, device_issue_codes = quest_bluetooth_adapter_status(device_bluetooth)
+    checks.append(
+        check_row(
+            "device.bluetooth_adapter",
+            device_status,
+            quest_bluetooth_adapter_summary(device_bluetooth),
+            observed=device_bluetooth,
+            issue_codes=device_issue_codes,
+        )
+    )
+    for issue_code in device_issue_codes:
+        append_issue_once(
+            issues,
+            issue_code,
+            "error",
+            "Quest Bluetooth adapter is not ready for the Bluetooth probe",
+        )
+
+    payload_result: dict[str, Any] | None = None
+    bluetooth_payload_source = str(getattr(args, "bluetooth_payload_source", "passive") or "passive")
+    if bluetooth_payload_source == "android-ble-gatt":
+        if selected_probe_id != "QCL-051":
+            raise SystemExit("--bluetooth-payload-source android-ble-gatt currently supports --probe-id QCL-051")
+        payload_result = run_qcl051_android_ble_gatt_probe(args, run_captured_func, run_timeout_func)
+        checks.extend(qcl051_ble_gatt_payload_checks(payload_result))
+    elif bluetooth_payload_source == "android-rfcomm":
+        if selected_probe_id != "QCL-050":
+            raise SystemExit("--bluetooth-payload-source android-rfcomm currently supports --probe-id QCL-050")
+        payload_result = run_qcl050_android_rfcomm_probe(args, run_captured_func, run_timeout_func)
+        checks.extend(qcl050_rfcomm_payload_checks(payload_result))
+    else:
+        checks.append(
+            check_row(
+                "bluetooth.pairing_bond_state",
+                "skipped",
+                "manual pairing/bond rehearsal has not been run in this passive readiness probe",
+                issue_codes=["hostess.issue.connectivity_probe.bluetooth_pairing_not_tested"],
+            )
+        )
+        checks.append(bluetooth_protocol_check(selected_probe_id, status="skipped"))
+        checks.append(
+            check_row(
+                "protocol.bluetooth_payload_exchange",
+                "skipped",
+                "no RFCOMM socket or BLE/GATT characteristic payload exchange has been attempted yet",
+                issue_codes=["hostess.issue.connectivity_probe.bluetooth_payload_not_tested"],
+            )
+        )
+
+    for check in checks:
+        for issue_code in check.get("issue_codes", []) or []:
+            if issue_code.startswith("hostess.issue.connectivity_probe.ble_gatt") or issue_code.startswith(
+                "hostess.issue.connectivity_probe.rfcomm"
+            ):
+                append_issue_once(
+                    issues,
+                    issue_code,
+                    "error" if check.get("status") in {"fail", "blocked"} else "warning",
+                    str(check.get("evidence") or issue_code),
+                )
+
+    status = live_bluetooth_status(checks)
+    if status == "warn":
+        issue_code = (
+            "hostess.issue.connectivity_probe.bluetooth_reconnect_not_tested"
+            if payload_result and payload_result.get("status") == "pass"
+            else "hostess.issue.connectivity_probe.bluetooth_passive_readiness_only"
+        )
+        append_issue_once(
+            issues,
+            issue_code,
+            "warning",
+            (
+                f"{selected_probe_id} proved BLE/GATT payload exchange, but reconnect/manual pairing rehearsal remains separate"
+                if payload_result and payload_result.get("status") == "pass" and selected_probe_id == "QCL-051"
+                else f"{selected_probe_id} proved RFCOMM payload exchange, but reconnect rehearsal remains separate"
+                if payload_result and payload_result.get("status") == "pass"
+                else f"{selected_probe_id} proved passive adapter readiness only; pairing and payload exchange remain separate"
+            ),
+        )
+    if status in {"fail", "blocked"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.bluetooth_readiness_not_proven",
+            "error",
+            f"{selected_probe_id} Bluetooth readiness was not proven by the available checks",
+        )
+
+    promotion_allowed = (
+        selected_probe_id == "QCL-051"
+        and status == "pass"
+        and bool(payload_result)
+        and payload_result.get("status") == "pass"
+    )
+    promotion_reason = (
+        "BLE/GATT app-owned payload exchange, cleanup, and reconnect passed"
+        if promotion_allowed
+        else (
+            "BLE/GATT payload exchange proved, but reconnect and manual pairing/prompt behavior remain unproven"
+            if payload_result and payload_result.get("status") == "pass" and selected_probe_id == "QCL-051"
+            else "RFCOMM payload exchange proved, but reconnect rehearsal remains unproven"
+            if payload_result and payload_result.get("status") == "pass"
+            else "passive Bluetooth readiness only; pairing, service discovery, payload exchange, reconnect, and cleanup remain unproven"
+        )
+    )
+
+    report = base_report(args, observed_at=observed_at)
+    report.update(
+        {
+            "status": status,
+            "classification": "discovery_control_candidate",
+            "topology": topology_for_bluetooth_probe(selected_probe_id),
+            "transport": bluetooth_transport_for_probe(selected_probe_id),
+            "device": {
+                "serial_redacted": False,
+                "serial": str(getattr(args, "serial", "")),
+                "model": device_bluetooth.get("name") or "unknown",
+                "bluetooth": device_bluetooth,
+                "adb_provider": str(getattr(args, "adb", "")),
+            },
+            "host": {
+                "os": "windows",
+                "bluetooth": host_bluetooth,
+                "toolchain_profile": f"hostessctl.connectivity_probe.{selected_probe_id.lower()}",
+            },
+            "checks": checks,
+            "measurements": bluetooth_measurements(payload_result),
+            "issues": issues,
+            "promotion": {
+                "allowed": promotion_allowed,
+                "target": "quest.device_link bluetooth discovery/control descriptor",
+                "reason": promotion_reason,
+            },
+        }
+    )
+    if payload_result is not None:
+        report["bluetooth_payload_probe"] = payload_result
+    return report
 
 def live_bluetooth_status(checks: list[dict[str, Any]]) -> str:
     required = [

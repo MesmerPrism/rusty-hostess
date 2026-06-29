@@ -64,6 +64,114 @@ def default_topology_fixture_profile(probe_id: str) -> str:
 
     return DEFAULT_TOPOLOGY_FIXTURE_PROFILES.get(probe_id, "")
 
+def topology_for_probe(probe_id: str) -> dict[str, Any]:
+    if probe_id == "QCL-011":
+        return {
+            "owner": "pc_hotspot",
+            "network_provider": "windows_mobile_hotspot",
+            "endpoint_direction": "quest_to_host_lan",
+            "requires_existing_wifi": False,
+            "requires_adb": True,
+            "requires_pairing": True,
+            "requires_termux": False,
+            "experimental": False,
+        }
+    return {
+        "owner": "external_wifi",
+        "network_provider": "router_or_existing_wifi",
+        "endpoint_direction": "quest_to_host_lan",
+        "requires_existing_wifi": True,
+        "requires_adb": True,
+        "requires_pairing": False,
+        "requires_termux": False,
+        "experimental": False,
+    }
+
+def topology_for_args(args: Any, probe_id: str) -> dict[str, Any]:
+    topology = topology_for_probe(probe_id)
+    owner = str(getattr(args, "topology_owner", "") or "").strip()
+    provider = str(getattr(args, "network_provider", "") or "").strip()
+    if owner:
+        topology.update(topology_defaults_for_owner(owner))
+        topology["owner"] = owner
+    if provider:
+        topology["network_provider"] = provider
+    return topology
+
+def topology_defaults_for_owner(owner: str) -> dict[str, Any]:
+    defaults: dict[str, dict[str, Any]] = {
+        "external_wifi": {
+            "network_provider": "router_or_existing_wifi",
+            "requires_existing_wifi": True,
+            "requires_pairing": False,
+            "experimental": False,
+        },
+        "pc_hotspot": {
+            "network_provider": "windows_mobile_hotspot",
+            "requires_existing_wifi": False,
+            "requires_pairing": True,
+            "experimental": False,
+        },
+        "phone_hotspot": {
+            "network_provider": "phone_hotspot",
+            "requires_existing_wifi": False,
+            "requires_pairing": True,
+            "experimental": False,
+        },
+        "travel_router": {
+            "network_provider": "travel_router",
+            "requires_existing_wifi": False,
+            "requires_pairing": True,
+            "experimental": False,
+        },
+        "local_only_hotspot": {
+            "network_provider": "android_local_only_hotspot",
+            "requires_existing_wifi": False,
+            "requires_pairing": True,
+            "experimental": True,
+        },
+        "wifi_direct": {
+            "network_provider": "wifi_direct",
+            "requires_existing_wifi": False,
+            "requires_pairing": True,
+            "experimental": True,
+        },
+    }
+    return {
+        "endpoint_direction": "quest_to_host_lan",
+        "requires_adb": True,
+        "requires_termux": False,
+        **defaults.get(owner, {}),
+    }
+
+def windows_mobile_hotspot_status(hotspot: dict[str, Any]) -> tuple[str, list[str]]:
+    if not hotspot:
+        return "blocked", ["hostess.issue.connectivity_probe.pc_hotspot_state_unavailable"]
+    if hotspot.get("available") is not True:
+        return "blocked", ["hostess.issue.connectivity_probe.pc_hotspot_unavailable"]
+    state = str(hotspot.get("state") or "").strip().lower()
+    if state == "on":
+        return "pass", []
+    if state == "off":
+        return "blocked", ["hostess.issue.connectivity_probe.pc_hotspot_off"]
+    return "warn", ["hostess.issue.connectivity_probe.pc_hotspot_state_unexpected"]
+
+def windows_mobile_hotspot_summary(hotspot: dict[str, Any]) -> str:
+    if not hotspot:
+        return "Windows Mobile Hotspot state not available"
+    state = str(hotspot.get("state") or "unknown")
+    ssid = str(hotspot.get("ssid") or "")
+    source = str(hotspot.get("source_profile") or "")
+    clients = hotspot.get("client_count")
+    max_clients = hotspot.get("max_client_count")
+    if hotspot.get("available") is not True:
+        error = str(hotspot.get("error") or "")
+        return f"Mobile Hotspot unavailable: state={state} {error}".strip()
+    return (
+        f"Mobile Hotspot {state}; ssid={ssid or 'unknown'}; "
+        f"source={source or 'unknown'}; clients={clients}/{max_clients}"
+    )
+
 
 def is_topology_fixture_profile(profile: str) -> bool:
     return profile in TOPOLOGY_FIXTURE_PROFILES

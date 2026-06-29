@@ -12,10 +12,27 @@ import time
 from pathlib import Path
 from typing import Any
 
+from tools.hostessctl.connectivity_firewall import (
+    collect_windows_network_profile,
+    network_profile_summary,
+    windows_firewall_listener_status,
+    windows_firewall_listener_summary,
+    windows_network_profile_status,
+)
+from tools.hostessctl.connectivity_lan import (
+    choose_host_ip,
+    collect_device_identity,
+    collect_host_ipv4_candidates,
+    same_subnet_check,
+)
 from tools.hostessctl.connectivity_probe_common import (
+    append_issue_once,
     adb_command,
+    base_report,
+    check_status,
     check_row,
     completed_observed,
+    issue_row,
     list_value,
     object_value,
     percentile,
@@ -23,6 +40,12 @@ from tools.hostessctl.connectivity_probe_common import (
     shell_word,
     wait_for_json_file,
 )
+from tools.hostessctl.connectivity_probe_live_reports import (
+    live_qcl080_status,
+    measurements_from_udp_check,
+    udp_listener_from_result,
+)
+from tools.hostessctl.connectivity_topology import topology_for_args
 from tools.hostessctl.platform_defaults import (
     MAKEPAD_ANDROID_PACKAGE,
     MAKEPAD_ANDROID_XR_ACTIVITY,
@@ -37,6 +60,184 @@ QCL080_APP_MARKER_PREFIX = "RUSTY_HOSTESS_MAKEPAD_QCL080_UDP_SENDER"
 QCL080_APP_MARKER_SCHEMA = "rusty.hostess.makepad.qcl080_udp_sender.v1"
 
 QCL080_APP_PROPERTY_PREFIX = "debug.rustyquest.makepad.qcl080.udp"
+
+
+def live_udp_freshness_report(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    run_timeout_func: Any,
+    clock_func: Any,
+    host_ipv4_func: Any | None = None,
+    udp_freshness_func: Any | None = None,
+) -> dict[str, Any]:
+    if getattr(args, "probe_id", "QCL-080") != "QCL-080":
+        raise SystemExit("live UDP freshness currently supports --probe-id QCL-080")
+    if not getattr(args, "adb", None) or not getattr(args, "serial", None):
+        raise SystemExit("connectivity-probe live QCL-080 mode requires --adb and --serial")
+
+    observed_at = clock_func()
+    checks: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+
+    device = collect_device_identity(args, run_captured_func, checks, issues)
+    host_candidates = (
+        host_ipv4_func()
+        if host_ipv4_func is not None
+        else collect_host_ipv4_candidates(run_captured_func)
+    )
+    host_ip = str(getattr(args, "host_ip", "") or "").strip() or choose_host_ip(
+        host_candidates,
+        device.get("wifi_ipv4"),
+        device.get("wifi_prefix_length"),
+    )
+    checks.append(
+        check_row(
+            "host.ipv4_candidate",
+            "pass" if host_ip else "blocked",
+            f"selected={host_ip or 'none'} candidates={','.join(candidate.get('ip', '') for candidate in host_candidates)}",
+            observed={"selected_ip": host_ip, "candidates": host_candidates},
+            issue_codes=[] if host_ip else ["hostess.issue.connectivity_probe.host_ip_missing"],
+        )
+    )
+    if not host_ip:
+        issues.append(
+            issue_row(
+                "hostess.issue.connectivity_probe.host_ip_missing",
+                "error",
+                "no host IPv4 address was available for the UDP freshness probe",
+            )
+        )
+
+    same_subnet = same_subnet_check(host_ip, device.get("wifi_ipv4"), device.get("wifi_prefix_length"))
+    checks.append(same_subnet)
+    if same_subnet["status"] == "fail":
+        issues.append(
+            issue_row(
+                "hostess.issue.connectivity_probe.subnet_mismatch",
+                "warning",
+                "selected host IPv4 address is not in the Quest Wi-Fi subnet",
+            )
+        )
+
+    udp_result: dict[str, Any] | None = None
+    if host_ip and not getattr(args, "skip_udp_freshness", False):
+        udp_runner = udp_freshness_func or device_to_host_udp_freshness
+        udp_result = udp_runner(args, host_ip, run_timeout_func)
+        checks.append(udp_result)
+        runtime_udp_sender = runtime_qcl080_udp_sender_check_from_result(udp_result)
+        if runtime_udp_sender is not None:
+            checks.append(runtime_udp_sender)
+    else:
+        checks.append(check_row("protocol.udp_freshness", "skipped", "UDP freshness skipped or missing host IP"))
+
+    listener = udp_listener_from_result(args, udp_result)
+    network_profile = collect_windows_network_profile(run_captured_func, listener=listener)
+    network_status, network_issue_codes = windows_network_profile_status(network_profile)
+    checks.append(
+        check_row(
+            "host.windows_network_firewall_profile",
+            network_status if network_profile else "skipped",
+            network_profile_summary(network_profile) if network_profile else "Windows network/firewall profile not available",
+            observed=network_profile,
+            issue_codes=network_issue_codes,
+        )
+    )
+    for issue_code in network_issue_codes:
+        append_issue_once(
+            issues,
+            issue_code,
+            "warning",
+            "active Windows network/firewall profile can block Quest-to-PC LAN listeners",
+        )
+
+    listener_firewall = object_value(network_profile.get("listener_firewall"))
+    listener_status, listener_issue_codes = windows_firewall_listener_status(listener_firewall, udp_result)
+    checks.append(
+        check_row(
+            "host.windows_firewall_listener",
+            listener_status,
+            windows_firewall_listener_summary(listener_firewall),
+            observed=listener_firewall,
+            issue_codes=listener_issue_codes,
+        )
+    )
+    for issue_code in listener_issue_codes:
+        append_issue_once(
+            issues,
+            issue_code,
+            "error" if listener_status == "fail" else "warning",
+            "no Windows Firewall allow rule covers the Hostess UDP freshness listener for the active profile",
+        )
+
+    status = live_qcl080_status(checks, host_ip, device.get("wifi_ipv4"))
+    if status in {"fail", "blocked"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.udp_freshness_not_proven",
+            "error",
+            "UDP freshness was not proven by the available checks",
+        )
+    if check_status(checks, "protocol.udp_freshness") == "warn":
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.udp_freshness_degraded",
+            "warning",
+            "UDP packets arrived, but loss or jitter exceeded the configured pass threshold",
+        )
+
+    report = base_report(args, observed_at=observed_at)
+    endpoint_source = udp_endpoint_source(udp_result)
+    app_owned_sender = endpoint_source == "app_owned_runtime_udp_sender"
+    runtime_sender_status = check_status(checks, "runtime.qcl080_udp_sender")
+    promotion_allowed = (
+        check_status(checks, "protocol.udp_freshness") in {"pass", "warn"}
+        and (not app_owned_sender or runtime_sender_status == "pass")
+    )
+    report.update(
+        {
+            "status": status,
+            "classification": "protocol_fit_candidate",
+            "topology": topology_for_args(args, "QCL-080"),
+            "transport": {
+                "family": "udp",
+                "route": "qcl080_udp_freshness",
+                "local_endpoint": f"{host_ip or 'unknown'}:{listener.get('port', 'unknown')}",
+                "remote_endpoint": str(device.get("wifi_ipv4") or "unknown"),
+                "protocol_role": "freshness_probe",
+                "payload_class": (
+                    "low_rate_app_owned_diagnostic_datagram"
+                    if app_owned_sender
+                    else "low_rate_diagnostic_datagram"
+                ),
+                "endpoint_source": endpoint_source,
+            },
+            "device": device,
+            "host": {
+                "os": "windows",
+                "selected_ipv4": host_ip,
+                "ipv4_candidates": host_candidates,
+                "firewall_profile": network_profile_summary(network_profile) if network_profile else "not_checked",
+                "firewall_listener": listener_firewall,
+                "adb_provider": str(getattr(args, "adb", "")),
+                "toolchain_profile": "hostessctl.connectivity_probe.qcl080",
+            },
+            "checks": checks,
+            "measurements": measurements_from_udp_check(udp_result),
+            "issues": issues,
+            "promotion": {
+                "allowed": promotion_allowed,
+                "target": "quest.device_link UDP stream capability descriptor",
+                "reason": (
+                    "QCL-080 proves app-owned Makepad runtime UDP datagrams over Wi-Fi"
+                    if promotion_allowed and app_owned_sender
+                    else "QCL-080 proves diagnostic UDP datagrams over Wi-Fi; app-owned runtime sender remains separate evidence"
+                ),
+            },
+        }
+    )
+    return report
+
 
 def qcl080_app_owned_marker_observed(
     *,

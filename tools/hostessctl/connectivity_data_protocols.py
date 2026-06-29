@@ -15,16 +15,50 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.connectivity_probe_common import (
-    check_row,
     adb_command,
+    append_issue_once,
+    base_report,
+    check_row,
+    collect_android_activity_launch_precondition,
     completed_observed,
     dedupe_issue_codes,
+    ensure_probe_run_id,
     float_value,
     int_value,
+    median,
     object_value,
+    parse_json_string,
     percentile,
+    read_android_json_with_retry,
+    redact_command_for_report,
+    round_float,
+    sanitize_filename,
     trim_text,
 )
+from tools.hostessctl.connectivity_lan import (
+    choose_host_ip,
+    collect_device_identity,
+    collect_host_ipv4_candidates,
+    same_subnet_check,
+)
+from tools.hostessctl.connectivity_probe_live_reports import (
+    live_qcl081_status,
+    live_qcl083_status,
+    live_qcl084_status,
+    measurements_from_lsl_probe,
+    measurements_from_osc_probe,
+    measurements_from_zeromq_probe,
+    protocol_topology_for_report,
+)
+from tools.hostessctl.platform_defaults import (
+    ANDROID_PACKAGE,
+    ANDROID_QCL083_OSC_ACTION,
+    ANDROID_REMOTE_QCL083_OSC_EVIDENCE,
+)
+
+DEFAULT_QCL083_OSC_PORT = 18783
+DEFAULT_QCL084_ZEROMQ_PORT = 18784
+
 
 def parse_probe_json_stdout(stdout: str) -> dict[str, Any]:
     for line in reversed((stdout or "").splitlines()):
@@ -38,6 +72,980 @@ def parse_probe_json_stdout(stdout: str) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     return {}
+
+
+def run_qcl083_android_osc_probe(
+    args: argparse.Namespace,
+    run_captured_func: Any,
+    *,
+    device: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    run_id = str(getattr(args, "run_id", "") or "qcl083-android-osc")
+    package_name = str(getattr(args, "hostess_android_package", "") or ANDROID_PACKAGE)
+    message_count = max(1, int(getattr(args, "osc_message_count", 16) or 16))
+    timeout_seconds = max(3.0, float(getattr(args, "osc_timeout_seconds", 5.0) or 5.0))
+    osc_port = int(getattr(args, "osc_port", 0) or 0) or DEFAULT_QCL083_OSC_PORT
+    osc_address = str(getattr(args, "osc_address", "/rusty/qcl083") or "/rusty/qcl083")
+    device_ip = str((device or {}).get("wifi_ipv4") or "").strip()
+    remote_path = qcl083_remote_evidence_path(package_name)
+
+    if not getattr(args, "adb", None) or not getattr(args, "serial", None):
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "endpoint_source": "app_owned_android_osc_server",
+            "address": osc_address,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "loss_percent": 100.0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.osc_android_adb_missing"],
+            "notes": "QCL-083 Quest runtime OSC probe requires --adb and --serial",
+        }
+    if not device_ip:
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "endpoint_source": "app_owned_android_osc_server",
+            "address": osc_address,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "loss_percent": 100.0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.device_wifi_ip_missing"],
+            "notes": "QCL-083 Quest runtime OSC probe requires a Quest Wi-Fi IPv4 address",
+        }
+
+    launch_precondition = collect_android_activity_launch_precondition(args, run_captured_func)
+    if launch_precondition.get("blocked"):
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "endpoint_source": "app_owned_android_osc_server",
+            "address": osc_address,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "loss_percent": 100.0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.osc_runtime_not_launchable"],
+            "android": {
+                "launch_precondition": launch_precondition,
+                "remote_evidence": remote_path,
+                "evidence": {},
+                "evidence_available": False,
+            },
+            "notes": "QCL-083 Android OSC activity was blocked by the current foreground/runtime state",
+        }
+
+    run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "rm", "-f", remote_path],
+        allow_failure=True,
+    )
+    run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "am", "force-stop", package_name],
+        allow_failure=True,
+    )
+    android_start = run_captured_func(
+        [
+            str(getattr(args, "adb")),
+            "-s",
+            str(getattr(args, "serial")),
+            "shell",
+            "am",
+            "start",
+            "-a",
+            ANDROID_QCL083_OSC_ACTION,
+            "-n",
+            f"{package_name}/.MainActivity",
+            "--es",
+            "run_id",
+            run_id,
+            "--ei",
+            "message_count",
+            str(message_count),
+            "--el",
+            "timeout_ms",
+            str(int(timeout_seconds * 1000)),
+            "--ei",
+            "listen_port",
+            str(osc_port),
+            "--es",
+            "osc_address",
+            osc_address,
+        ],
+        allow_failure=True,
+    )
+    time.sleep(0.75)
+    host_probe = osc_quest_runtime_payload_probe(
+        args,
+        device_ip=device_ip,
+        port=osc_port,
+        address=osc_address,
+        message_count=message_count,
+        timeout_seconds=timeout_seconds,
+        run_id=run_id,
+    )
+    android_report = read_android_json_with_retry(
+        args,
+        remote_path,
+        run_captured_func,
+        timeout_seconds=timeout_seconds + 2.0,
+    )
+
+    host_status = str(host_probe.get("status") or "")
+    android_status = str(android_report.get("status") or "")
+    if host_status == "blocked" or android_status == "blocked":
+        status = "blocked"
+    elif host_status == "pass" and android_status == "pass":
+        status = "pass"
+    elif host_probe.get("messages_acknowledged", 0) or android_report.get("messages_received", 0):
+        status = "warn"
+    else:
+        status = "fail"
+
+    issue_codes: list[str] = []
+    for source_report in [host_probe, android_report]:
+        for issue_code in source_report.get("issue_codes", []) or []:
+            if issue_code not in issue_codes:
+                issue_codes.append(str(issue_code))
+    if not android_report:
+        issue_codes.append("hostess.issue.connectivity_probe.osc_android_evidence_missing")
+        if status == "pass":
+            status = "warn"
+
+    result = dict(host_probe)
+    result.update(
+        {
+            "status": status,
+            "source": "quest-runtime",
+            "endpoint_source": "app_owned_android_osc_server",
+            "address": osc_address,
+            "device_endpoint": f"{device_ip}:{osc_port}",
+            "issue_codes": issue_codes,
+            "android": {
+                "start": completed_observed(android_start),
+                "remote_evidence": remote_path,
+                "evidence": android_report,
+                "evidence_available": bool(android_report),
+            },
+            "windows": {
+                "evidence": host_probe,
+                "evidence_available": bool(host_probe),
+            },
+            "notes": "Quest app-owned OSC UDP server with host timestamped round-trip probe",
+        }
+    )
+    return result
+
+def osc_quest_runtime_payload_probe(
+    args: argparse.Namespace,
+    *,
+    device_ip: str,
+    port: int,
+    address: str,
+    message_count: int,
+    timeout_seconds: float,
+    run_id: str,
+) -> dict[str, Any]:
+    max_loss_percent = max(0.0, float(getattr(args, "osc_max_loss_percent", 0.0) or 0.0))
+    received_sequences: list[int] = []
+    acknowledged_sequences: list[int] = []
+    rtts: list[float] = []
+    quest_processing: list[float] = []
+    clock_offsets: list[float] = []
+    measurements: list[dict[str, Any]] = []
+    issue_codes: list[str] = []
+
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
+            client_socket.bind(("", 0))
+            client_socket.settimeout(min(1.0, timeout_seconds))
+            for sequence in range(message_count):
+                host_send_ns = time.monotonic_ns()
+                marker = json.dumps(
+                    {
+                        "run_id": run_id,
+                        "sequence": sequence,
+                        "host_send_monotonic_ns": host_send_ns,
+                    },
+                    separators=(",", ":"),
+                    sort_keys=True,
+                )
+                client_socket.sendto(build_osc_message(address, sequence, marker), (device_ip, port))
+                try:
+                    ack, _addr = client_socket.recvfrom(8192)
+                except socket.timeout:
+                    continue
+                host_receive_ns = time.monotonic_ns()
+                parsed_ack = parse_osc_message(ack)
+                if parsed_ack.get("address") != "/rusty/qcl083/ack":
+                    issue_codes.append("hostess.issue.connectivity_probe.osc_ack_address_mismatch")
+                    continue
+                if int(parsed_ack.get("sequence", -1)) != sequence:
+                    issue_codes.append("hostess.issue.connectivity_probe.osc_ack_sequence_mismatch")
+                    continue
+                ack_marker = parse_json_string(str(parsed_ack.get("marker") or "{}"))
+                quest_received_ns = int_value(ack_marker.get("quest_received_elapsed_ns"))
+                quest_send_ns = int_value(ack_marker.get("quest_send_elapsed_ns"))
+                rtt_ms = (host_receive_ns - host_send_ns) / 1_000_000.0
+                processing_ms = None
+                clock_offset_ms = None
+                one_way_estimate_ms = None
+                if quest_received_ns is not None and quest_send_ns is not None:
+                    processing_ms = max(0.0, (quest_send_ns - quest_received_ns) / 1_000_000.0)
+                    clock_offset_ms = (
+                        (quest_received_ns - host_send_ns) + (quest_send_ns - host_receive_ns)
+                    ) / 2_000_000.0
+                    one_way_estimate_ms = max(0.0, (rtt_ms - processing_ms) / 2.0)
+                    quest_processing.append(processing_ms)
+                    clock_offsets.append(clock_offset_ms)
+                received_sequences.append(sequence)
+                acknowledged_sequences.append(sequence)
+                rtts.append(rtt_ms)
+                measurements.append(
+                    {
+                        "sequence": sequence,
+                        "round_trip_ms": round(rtt_ms, 3),
+                        "quest_processing_ms": round(processing_ms, 3) if processing_ms is not None else None,
+                        "estimated_one_way_ms": (
+                            round(one_way_estimate_ms, 3) if one_way_estimate_ms is not None else None
+                        ),
+                        "clock_offset_estimate_ms": (
+                            round(clock_offset_ms, 3) if clock_offset_ms is not None else None
+                        ),
+                    }
+                )
+                time.sleep(0.005)
+    except OSError as exc:
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "address": address,
+            "messages_requested": message_count,
+            "messages_received": len(received_sequences),
+            "messages_acknowledged": len(acknowledged_sequences),
+            "loss_percent": 100.0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.osc_client_socket_failed"],
+            "notes": str(exc),
+        }
+
+    acknowledged_count = len(acknowledged_sequences)
+    loss_percent = round(((message_count - acknowledged_count) / message_count) * 100.0, 2)
+    monotonic = acknowledged_sequences == list(range(acknowledged_count))
+    if acknowledged_count == message_count and monotonic and loss_percent <= max_loss_percent:
+        status = "pass"
+    elif acknowledged_count > 0:
+        status = "warn"
+        issue_codes.append("hostess.issue.connectivity_probe.osc_exchange_degraded")
+    else:
+        status = "fail"
+        issue_codes.append("hostess.issue.connectivity_probe.osc_exchange_failed")
+
+    median_offset = median(clock_offsets)
+    offset_jitter = [abs(value - median_offset) for value in clock_offsets] if median_offset is not None else []
+    return {
+        "status": status,
+        "source": "quest-runtime",
+        "address": address,
+        "messages_requested": message_count,
+        "messages_received": len(received_sequences),
+        "messages_acknowledged": acknowledged_count,
+        "loss_percent": loss_percent,
+        "round_trip_ms_p95": round_float(percentile(rtts, 95)),
+        "round_trip_ms_max": round_float(max(rtts) if rtts else None),
+        "quest_processing_ms_p95": round_float(percentile(quest_processing, 95)),
+        "estimated_one_way_ms_p95": round_float(percentile(
+            [
+                max(0.0, (measurement["round_trip_ms"] - (measurement["quest_processing_ms"] or 0.0)) / 2.0)
+                for measurement in measurements
+            ],
+            95,
+        )),
+        "clock_offset_estimate_ms_median": round_float(median_offset),
+        "clock_offset_jitter_ms_p95": round_float(percentile(offset_jitter, 95)),
+        "monotonic_sequences": monotonic,
+        "received_sequences": received_sequences[:50],
+        "acknowledged_sequences": acknowledged_sequences[:50],
+        "timing_samples": measurements[:50],
+        "issue_codes": dedupe_issue_codes(issue_codes),
+        "notes": "host-to-Quest OSC UDP payload exchange with NTP-style monotonic clock offset estimate",
+    }
+
+def run_qcl084_android_zeromq_probe(
+    args: argparse.Namespace,
+    run_captured_func: Any,
+    *,
+    device: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    run_id = str(getattr(args, "run_id", "") or "qcl084-android-zeromq")
+    message_count = max(1, int(getattr(args, "zeromq_message_count", 16) or 16))
+    timeout_seconds = max(3.0, float(getattr(args, "zeromq_timeout_seconds", 5.0) or 5.0))
+    port = int(getattr(args, "zeromq_port", 0) or 0) or DEFAULT_QCL084_ZEROMQ_PORT
+    device_ip = str((device or {}).get("wifi_ipv4") or "").strip()
+    pattern = str(getattr(args, "zeromq_pattern", "req-rep") or "req-rep")
+    if pattern != "req-rep":
+        return zeromq_blocked_result(
+            source="quest-runtime",
+            pattern=pattern,
+            message_count=message_count,
+            issue_code="hostess.issue.connectivity_probe.zeromq_pattern_not_implemented",
+            notes="QCL-084 Quest runtime probe currently supports REQ/REP for latency measurement",
+        )
+    if not getattr(args, "adb", None) or not getattr(args, "serial", None):
+        return zeromq_blocked_result(
+            source="quest-runtime",
+            pattern=pattern,
+            message_count=message_count,
+            issue_code="hostess.issue.connectivity_probe.zeromq_android_adb_missing",
+            notes="QCL-084 Quest runtime ZeroMQ probe requires --adb and --serial",
+        )
+    if not device_ip:
+        return zeromq_blocked_result(
+            source="quest-runtime",
+            pattern=pattern,
+            message_count=message_count,
+            issue_code="hostess.issue.connectivity_probe.device_wifi_ip_missing",
+            notes="QCL-084 Quest runtime ZeroMQ probe requires a Quest Wi-Fi IPv4 address",
+        )
+
+    host_binary = resolve_qcl084_probe_binary(args, target="android")
+    client_binary = resolve_qcl084_probe_binary(args, target="windows")
+    if host_binary is None or not host_binary.exists():
+        return zeromq_blocked_result(
+            source="quest-runtime",
+            pattern=pattern,
+            message_count=message_count,
+            issue_code="hostess.issue.connectivity_probe.zeromq_android_binary_missing",
+            notes="Android qcl084_req_rep_probe binary was not found; build rusty-manifold-zmq for aarch64-linux-android",
+        )
+    if client_binary is None or not client_binary.exists():
+        return zeromq_blocked_result(
+            source="quest-runtime",
+            pattern=pattern,
+            message_count=message_count,
+            issue_code="hostess.issue.connectivity_probe.zeromq_client_binary_missing",
+            notes="Windows qcl084_req_rep_probe binary was not found; build rusty-manifold-zmq example on the host",
+        )
+
+    device_binary = str(
+        getattr(args, "zeromq_android_binary_device_path", "")
+        or "/data/local/tmp/rusty-qcl084-req-rep-probe"
+    )
+    safe_run = sanitize_filename(run_id)
+    remote_server_json = f"/data/local/tmp/{safe_run}.qcl084-server.json"
+    remote_server_err = f"/data/local/tmp/{safe_run}.qcl084-server.err"
+    endpoint_bind = f"tcp://0.0.0.0:{port}"
+    endpoint_connect = f"tcp://{device_ip}:{port}"
+
+    push = run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "push", str(host_binary), device_binary],
+        allow_failure=True,
+    )
+    chmod = run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "chmod", "755", device_binary],
+        allow_failure=True,
+    )
+    run_captured_func(
+        [
+            str(getattr(args, "adb")),
+            "-s",
+            str(getattr(args, "serial")),
+            "shell",
+            "rm",
+            "-f",
+            remote_server_json,
+            remote_server_err,
+        ],
+        allow_failure=True,
+    )
+    launch_command = (
+        f"nohup {shell_quote(device_binary)} server "
+        f"--endpoint {shell_quote(endpoint_bind)} "
+        f"--run-id {shell_quote(run_id)} "
+        f"--message-count {message_count} "
+        f"--timeout-ms {int(timeout_seconds * 1000)} "
+        f"> {shell_quote(remote_server_json)} 2> {shell_quote(remote_server_err)} &"
+    )
+    server_start = run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", launch_command],
+        allow_failure=True,
+    )
+    time.sleep(1.0)
+
+    client_command = [
+        str(client_binary),
+        "client",
+        "--endpoint",
+        endpoint_connect,
+        "--run-id",
+        run_id,
+        "--message-count",
+        str(message_count),
+        "--timeout-ms",
+        str(int(timeout_seconds * 1000)),
+        "--connect-settle-ms",
+        "500",
+    ]
+    try:
+        client_run = subprocess.run(
+            client_command,
+            cwd=str(client_binary.parent),
+            text=True,
+            capture_output=True,
+            timeout=timeout_seconds + 10.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        client_report = {}
+        client_observed = {
+            "returncode": None,
+            "stdout": exc.stdout or "",
+            "stderr": exc.stderr or "",
+            "timeout": True,
+        }
+    else:
+        client_report = parse_probe_json_stdout(client_run.stdout)
+        client_observed = completed_observed(client_run)
+
+    server_report = read_android_json_with_retry(
+        args,
+        remote_server_json,
+        run_captured_func,
+        timeout_seconds=timeout_seconds + 2.0,
+    )
+    server_err = run_captured_func(
+        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "cat", remote_server_err],
+        allow_failure=True,
+    )
+
+    client_status = str(client_report.get("status") or "")
+    server_status = str(server_report.get("status") or "")
+    if push.returncode != 0 or chmod.returncode != 0:
+        status = "blocked"
+    elif client_status == "pass" and server_status == "pass":
+        status = "pass"
+    elif client_report.get("messages_acknowledged", 0) or server_report.get("messages_acknowledged", 0):
+        status = "warn"
+    else:
+        status = "fail"
+
+    issue_codes: list[str] = []
+    for report in [client_report, server_report]:
+        for issue_code in report.get("issue_codes", []) or []:
+            if issue_code not in issue_codes:
+                issue_codes.append(str(issue_code))
+    if push.returncode != 0:
+        issue_codes.append("hostess.issue.connectivity_probe.zeromq_android_binary_push_failed")
+    if chmod.returncode != 0:
+        issue_codes.append("hostess.issue.connectivity_probe.zeromq_android_binary_chmod_failed")
+    if not client_report:
+        issue_codes.append("hostess.issue.connectivity_probe.zeromq_client_report_missing")
+    if not server_report:
+        issue_codes.append("hostess.issue.connectivity_probe.zeromq_server_report_missing")
+
+    return {
+        "status": status,
+        "source": "quest-runtime",
+        "pattern": pattern,
+        "endpoint": endpoint_connect,
+        "device_endpoint": endpoint_bind,
+        "messages_requested": message_count,
+        "messages_received": client_report.get("messages_received", 0),
+        "messages_acknowledged": client_report.get("messages_acknowledged", 0),
+        "loss_percent": client_report.get("loss_percent", 100.0),
+        "round_trip_ms_p95": client_report.get("round_trip_ms_p95"),
+        "round_trip_ms_max": client_report.get("round_trip_ms_max"),
+        "server_processing_ms_p95": client_report.get("server_processing_ms_p95"),
+        "estimated_one_way_ms_p95": client_report.get("estimated_one_way_ms_p95"),
+        "clock_offset_estimate_ms_median": client_report.get("clock_offset_estimate_ms_median"),
+        "clock_offset_jitter_ms_p95": client_report.get("clock_offset_jitter_ms_p95"),
+        "received_sequences": client_report.get("received_sequences", []),
+        "acknowledged_sequences": client_report.get("acknowledged_sequences", []),
+        "timing_samples": client_report.get("timing_samples", []),
+        "issue_codes": dedupe_issue_codes(issue_codes),
+        "notes": "Quest native Rust ZeroMQ REQ/REP server with Windows native Rust client",
+        "android": {
+            "push": completed_observed(push),
+            "chmod": completed_observed(chmod),
+            "start": completed_observed(server_start),
+            "device_binary": device_binary,
+            "server_stdout_path": remote_server_json,
+            "server_stderr_path": remote_server_err,
+            "server_stderr": trim_text(server_err.stdout, limit=800),
+            "evidence": server_report,
+            "evidence_available": bool(server_report),
+        },
+        "windows": {
+            "client_command": redact_command_for_report(client_command),
+            "run": client_observed,
+            "evidence": client_report,
+            "evidence_available": bool(client_report),
+        },
+    }
+
+def zeromq_blocked_result(
+    *,
+    source: str,
+    pattern: str,
+    message_count: int,
+    issue_code: str,
+    notes: str,
+) -> dict[str, Any]:
+    return {
+        "status": "blocked",
+        "source": source,
+        "pattern": pattern,
+        "messages_requested": message_count,
+        "messages_received": 0,
+        "messages_acknowledged": 0,
+        "round_trip_ms_p95": None,
+        "issue_codes": [issue_code],
+        "notes": notes,
+    }
+
+def resolve_qcl084_probe_binary(args: argparse.Namespace, *, target: str) -> Path | None:
+    if target == "android":
+        explicit = str(getattr(args, "zeromq_android_binary_host_path", "") or "").strip()
+        if explicit:
+            return Path(explicit)
+        root = resolve_manifold_root(args)
+        if root is None:
+            return None
+        return root / "target" / "aarch64-linux-android" / "release" / "examples" / "qcl084_req_rep_probe"
+    root = resolve_manifold_root(args)
+    if root is None:
+        return None
+    candidates = [
+        root / "target" / "debug" / "examples" / "qcl084_req_rep_probe.exe",
+        root / "target" / "release" / "examples" / "qcl084_req_rep_probe.exe",
+        root / "target" / "debug" / "examples" / "qcl084_req_rep_probe",
+        root / "target" / "release" / "examples" / "qcl084_req_rep_probe",
+    ]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+    return candidates[0]
+
+def shell_quote(value: str) -> str:
+    return "'" + value.replace("'", "'\"'\"'") + "'"
+
+def qcl083_remote_evidence_path(package_name: str) -> str:
+    if package_name == ANDROID_PACKAGE:
+        return ANDROID_REMOTE_QCL083_OSC_EVIDENCE
+    return f"/sdcard/Android/data/{package_name}/files/hostess-t/evidence/qcl083-osc/latest.json"
+
+def live_lsl_report(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    run_timeout_func: Any,
+    clock_func: Any,
+    host_ipv4_func: Any | None = None,
+    lsl_probe_func: Any | None = None,
+) -> dict[str, Any]:
+    if getattr(args, "probe_id", "QCL-081") != "QCL-081":
+        raise SystemExit("live LSL currently supports --probe-id QCL-081")
+
+    observed_at = clock_func()
+    ensure_probe_run_id(args, observed_at, "QCL-081")
+    checks: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+    device: dict[str, Any] = {
+        "serial_redacted": True,
+        "foreground_package": "not_checked",
+        "adb_state": "not_provided",
+        "wifi_interface": str(getattr(args, "wifi_interface", "wlan0") or "wlan0"),
+        "wifi_ipv4": "",
+        "wifi_prefix_length": None,
+    }
+    host_candidates: list[dict[str, Any]] = []
+    host_ip = str(getattr(args, "host_ip", "") or "").strip()
+
+    if getattr(args, "adb", None) and getattr(args, "serial", None):
+        device = collect_device_identity(args, run_captured_func, checks, issues)
+        host_candidates = (
+            host_ipv4_func()
+            if host_ipv4_func is not None
+            else collect_host_ipv4_candidates(run_captured_func)
+        )
+        host_ip = host_ip or choose_host_ip(
+            host_candidates,
+            device.get("wifi_ipv4"),
+            device.get("wifi_prefix_length"),
+        )
+        checks.append(
+            check_row(
+                "host.ipv4_candidate",
+                "pass" if host_ip else "blocked",
+                f"selected={host_ip or 'none'}",
+                observed={"selected_ip": host_ip, "candidates": host_candidates},
+                issue_codes=[] if host_ip else ["hostess.issue.connectivity_probe.host_ip_missing"],
+            )
+        )
+        checks.append(same_subnet_check(host_ip, device.get("wifi_ipv4"), device.get("wifi_prefix_length")))
+    else:
+        checks.append(
+            check_row(
+                "device.adb_state",
+                "skipped",
+                "ADB serial not provided; QCL-081 will not prove Quest topology",
+            )
+        )
+
+    source = str(getattr(args, "lsl_source", "host-loopback") or "host-loopback")
+    if source == "quest-runtime" and lsl_probe_func is None:
+        lsl_result = lsl_quest_runtime_preflight(args, run_captured_func)
+    elif source == "manifold-lsl-broker" and lsl_probe_func is None:
+        lsl_result = lsl_manifold_broker_probe(args, run_captured_func)
+    else:
+        lsl_probe = lsl_probe_func or lsl_discovery_sample_continuity
+        lsl_result = lsl_probe(args)
+    checks.extend(lsl_checks_from_probe(lsl_result))
+    for issue_code in lsl_result.get("issue_codes", []):
+        append_issue_once(
+            issues,
+            str(issue_code),
+            "error" if lsl_result.get("status") in {"fail", "blocked"} else "warning",
+            "LSL discovery or sample continuity did not satisfy the requested probe",
+        )
+
+    status = live_qcl081_status(checks, source=source, device_ip=device.get("wifi_ipv4"))
+    if status == "warn" and source == "host-loopback":
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.lsl_host_loopback_not_quest_topology",
+            "warning",
+            "host-local LSL loopback proves the Python/LSL stack, not Quest-to-PC Wi-Fi discovery",
+        )
+    if status in {"fail", "blocked"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.lsl_continuity_not_proven",
+            "error",
+            "LSL discovery and sample continuity were not proven",
+        )
+
+    lsl_route_evidence = object_value(lsl_result.get("bridge_route_evidence"))
+    lsl_broker_owned = (
+        source == "manifold-lsl-broker"
+        and str(lsl_result.get("evidence_tier") or "") == "broker_owned"
+        and str(lsl_result.get("authority_owner") or "") == "rusty.manifold.transport"
+        and str(lsl_route_evidence.get("status") or "") == "pass"
+    )
+    promotion_allowed = status == "pass" and (
+        source == "quest-runtime" or lsl_broker_owned
+    )
+
+    report = base_report(args, observed_at=observed_at)
+    report.update(
+        {
+            "status": status,
+            "classification": "protocol_fit_candidate",
+            "topology": {
+                "owner": "external_wifi" if device.get("wifi_ipv4") else "host_local",
+                "network_provider": "router_or_existing_wifi" if device.get("wifi_ipv4") else "loopback",
+                "endpoint_direction": "lsl_multicast_discovery_plus_tcp_samples",
+                "requires_existing_wifi": bool(device.get("wifi_ipv4")),
+                "requires_adb": bool(getattr(args, "adb", None) and getattr(args, "serial", None)),
+                "requires_pairing": False,
+                "requires_termux": False,
+                "experimental": source != "host-loopback",
+            },
+            "transport": {
+                "family": "lsl",
+                "route": "qcl081_lsl_discovery_sample_continuity",
+                "local_endpoint": host_ip or "host-loopback",
+                "remote_endpoint": str(device.get("wifi_ipv4") or source),
+                "protocol_role": "study_stream_probe",
+                "payload_class": "lsl_float32_samples",
+                "endpoint_source": source,
+            },
+            "device": device,
+            "host": {
+                "os": "windows",
+                "selected_ipv4": host_ip,
+                "ipv4_candidates": host_candidates,
+                "adb_provider": str(getattr(args, "adb", "")),
+                "toolchain_profile": "hostessctl.connectivity_probe.qcl081",
+            },
+            "checks": checks,
+            "measurements": measurements_from_lsl_probe(lsl_result),
+            "issues": issues,
+            "promotion": {
+                "allowed": promotion_allowed,
+                "target": "quest.device_link LSL stream capability descriptor",
+                "reason": (
+                    "QCL-081 proves Quest-runtime LSL discovery and sample continuity"
+                    if promotion_allowed and source == "quest-runtime"
+                    else "QCL-081 proves Manifold-owned LSL producer/sample continuity"
+                    if promotion_allowed and source == "manifold-lsl-broker"
+                    else "QCL-081 host loopback is a dependency/protocol check; Quest-owned LSL producer remains separate evidence"
+                    if source == "host-loopback"
+                    else "QCL-081 did not prove a Quest-owned LSL producer; Quest-side liblsl/pylsl runtime remains the blocking dependency"
+                ),
+            },
+        }
+    )
+    report["lsl_payload_probe"] = lsl_result
+    return report
+
+
+def live_osc_report(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    clock_func: Any,
+    host_ipv4_func: Any | None = None,
+    osc_probe_func: Any | None = None,
+) -> dict[str, Any]:
+    if getattr(args, "probe_id", "QCL-083") != "QCL-083":
+        raise SystemExit("live OSC currently supports --probe-id QCL-083")
+
+    observed_at = clock_func()
+    ensure_probe_run_id(args, observed_at, "QCL-083")
+    checks, issues, device, host_candidates, host_ip = protocol_topology_checks(
+        args,
+        run_captured_func=run_captured_func,
+        host_ipv4_func=host_ipv4_func,
+    )
+    source = str(getattr(args, "osc_source", "host-loopback") or "host-loopback")
+    if source == "quest-runtime" and osc_probe_func is None:
+        osc_result = run_qcl083_android_osc_probe(
+            args,
+            run_captured_func,
+            device=device,
+        )
+    else:
+        osc_probe = osc_probe_func or osc_loopback_probe
+        osc_result = osc_probe(args)
+    checks.extend(osc_checks_from_probe(osc_result))
+    for issue_code in osc_result.get("issue_codes", []):
+        append_issue_once(
+            issues,
+            str(issue_code),
+            "error" if osc_result.get("status") in {"fail", "blocked"} else "warning",
+            "OSC message exchange did not satisfy the requested probe",
+        )
+
+    status = live_qcl083_status(checks, source=source, device_ip=device.get("wifi_ipv4"))
+    if status == "warn" and source == "host-loopback":
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.osc_host_loopback_not_quest_topology",
+            "warning",
+            "host-local OSC loopback proves packet parsing and UDP loopback only, not Quest-to-PC topology",
+        )
+    if status in {"fail", "blocked"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.osc_exchange_not_proven",
+            "error",
+            "OSC packet exchange was not proven",
+        )
+
+    promotion_allowed = status == "pass" and source != "host-loopback"
+    report = base_report(args, observed_at=observed_at)
+    report.update(
+        {
+            "status": status,
+            "classification": "protocol_fit_candidate",
+            "topology": protocol_topology_for_report(
+                device=device,
+                source=source,
+                host_ip=host_ip,
+                endpoint_direction="osc_udp_control_telemetry",
+            ),
+            "transport": {
+                "family": "osc",
+                "route": "qcl083_osc_udp_payload_exchange",
+                "local_endpoint": host_ip or "host-loopback",
+                "remote_endpoint": str(device.get("wifi_ipv4") or source),
+                "protocol_role": "low_rate_control_telemetry_probe",
+                "payload_class": "osc_bounded_messages",
+                "endpoint_source": source,
+            },
+            "device": device,
+            "host": {
+                "os": "windows",
+                "selected_ipv4": host_ip,
+                "ipv4_candidates": host_candidates,
+                "adb_provider": str(getattr(args, "adb", "")),
+                "toolchain_profile": "hostessctl.connectivity_probe.qcl083",
+            },
+            "checks": checks,
+            "measurements": measurements_from_osc_probe(osc_result),
+            "issues": issues,
+            "promotion": {
+                "allowed": promotion_allowed,
+                "target": "quest.device_link OSC control/telemetry capability descriptor",
+                "reason": (
+                    "QCL-083 proves Quest/runtime-owned OSC payload exchange"
+                    if promotion_allowed
+                    else "QCL-083 host loopback is a dependency/protocol check; Quest-owned OSC sender/receiver remains separate evidence"
+                ),
+            },
+        }
+    )
+    report["osc_payload_probe"] = osc_result
+    return report
+
+
+def live_zeromq_report(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    clock_func: Any,
+    host_ipv4_func: Any | None = None,
+    zeromq_probe_func: Any | None = None,
+) -> dict[str, Any]:
+    if getattr(args, "probe_id", "QCL-084") != "QCL-084":
+        raise SystemExit("live ZeroMQ currently supports --probe-id QCL-084")
+
+    observed_at = clock_func()
+    ensure_probe_run_id(args, observed_at, "QCL-084")
+    checks, issues, device, host_candidates, host_ip = protocol_topology_checks(
+        args,
+        run_captured_func=run_captured_func,
+        host_ipv4_func=host_ipv4_func,
+    )
+    source = str(getattr(args, "zeromq_source", "host-loopback") or "host-loopback")
+    if source == "quest-runtime" and zeromq_probe_func is None:
+        zeromq_result = run_qcl084_android_zeromq_probe(
+            args,
+            run_captured_func,
+            device=device,
+        )
+    else:
+        zeromq_probe = zeromq_probe_func or zeromq_loopback_probe
+        zeromq_result = zeromq_probe(args)
+    checks.extend(zeromq_checks_from_probe(zeromq_result))
+    for issue_code in zeromq_result.get("issue_codes", []):
+        append_issue_once(
+            issues,
+            str(issue_code),
+            "error" if zeromq_result.get("status") in {"fail", "blocked"} else "warning",
+            "ZeroMQ exchange did not satisfy the requested probe",
+        )
+
+    status = live_qcl084_status(checks, source=source, device_ip=device.get("wifi_ipv4"))
+    if status == "warn" and source in {"host-loopback", "manifold-zmq-loopback", "rusty-xr-zmq-loopback"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.zeromq_host_loopback_not_quest_topology",
+            "warning",
+            "host-local ZeroMQ loopback proves the adapter dependency only, not Quest-to-PC topology or a Quest-owned runtime route",
+        )
+    if status in {"fail", "blocked"}:
+        append_issue_once(
+            issues,
+            "hostess.issue.connectivity_probe.zeromq_exchange_not_proven",
+            "error",
+            "ZeroMQ message exchange was not proven",
+        )
+
+    promotion_allowed = status == "pass" and source in {"native-rust-broker", "quest-runtime"}
+    report = base_report(args, observed_at=observed_at)
+    report.update(
+        {
+            "status": status,
+            "classification": "protocol_fit_candidate",
+            "topology": protocol_topology_for_report(
+                device=device,
+                source=source,
+                host_ip=host_ip,
+                endpoint_direction="zeromq_socket_exchange",
+            ),
+            "transport": {
+                "family": "zeromq",
+                "route": "qcl084_zeromq_socket_exchange",
+                "local_endpoint": host_ip or "host-loopback",
+                "remote_endpoint": str(device.get("wifi_ipv4") or source),
+                "protocol_role": "native_rust_transport_probe",
+                "payload_class": "bounded_zeromq_messages",
+                "endpoint_source": source,
+            },
+            "device": device,
+            "host": {
+                "os": "windows",
+                "selected_ipv4": host_ip,
+                "ipv4_candidates": host_candidates,
+                "adb_provider": str(getattr(args, "adb", "")),
+                "toolchain_profile": "hostessctl.connectivity_probe.qcl084",
+            },
+            "checks": checks,
+            "measurements": measurements_from_zeromq_probe(zeromq_result),
+            "issues": issues,
+            "promotion": {
+                "allowed": promotion_allowed,
+                "target": "quest.device_link ZeroMQ/native Rust transport capability descriptor",
+                "reason": (
+                    "QCL-084 proves native Rust broker/runtime ZeroMQ exchange"
+                    if promotion_allowed
+                    else "QCL-084 does not yet prove native Rust broker/runtime ZeroMQ; Manifold adapter dependency or Quest-owned route remains separate evidence"
+                ),
+            },
+        }
+    )
+    report["zeromq_payload_probe"] = zeromq_result
+    return report
+
+
+
+
+
+def protocol_topology_checks(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    host_ipv4_func: Any | None = None,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]], str]:
+    checks: list[dict[str, Any]] = []
+    issues: list[dict[str, Any]] = []
+    device: dict[str, Any] = {
+        "serial_redacted": True,
+        "foreground_package": "not_checked",
+        "adb_state": "not_provided",
+        "wifi_interface": str(getattr(args, "wifi_interface", "wlan0") or "wlan0"),
+        "wifi_ipv4": "",
+        "wifi_prefix_length": None,
+    }
+    host_candidates: list[dict[str, Any]] = []
+    host_ip = str(getattr(args, "host_ip", "") or "").strip()
+    if getattr(args, "adb", None) and getattr(args, "serial", None):
+        device = collect_device_identity(args, run_captured_func, checks, issues)
+        host_candidates = (
+            host_ipv4_func()
+            if host_ipv4_func is not None
+            else collect_host_ipv4_candidates(run_captured_func)
+        )
+        host_ip = host_ip or choose_host_ip(
+            host_candidates,
+            device.get("wifi_ipv4"),
+            device.get("wifi_prefix_length"),
+        )
+        checks.append(
+            check_row(
+                "host.ipv4_candidate",
+                "pass" if host_ip else "blocked",
+                f"selected={host_ip or 'none'}",
+                observed={"selected_ip": host_ip, "candidates": host_candidates},
+                issue_codes=[] if host_ip else ["hostess.issue.connectivity_probe.host_ip_missing"],
+            )
+        )
+        checks.append(same_subnet_check(host_ip, device.get("wifi_ipv4"), device.get("wifi_prefix_length")))
+    else:
+        checks.append(
+            check_row(
+                "device.adb_state",
+                "skipped",
+                "ADB serial not provided; protocol probe will not prove Quest topology",
+            )
+        )
+    return checks, issues, device, host_candidates, host_ip
 
 def lsl_discovery_sample_continuity(args: argparse.Namespace) -> dict[str, Any]:
     source = str(getattr(args, "lsl_source", "host-loopback") or "host-loopback")

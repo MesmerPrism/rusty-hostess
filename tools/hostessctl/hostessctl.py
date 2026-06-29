@@ -21,6 +21,7 @@ from tools.hostessctl import companion_catalog  # noqa: E402
 from tools.hostessctl import companion_readiness  # noqa: E402
 from tools.hostessctl import companion_report_projection  # noqa: E402
 from tools.hostessctl import companion_session  # noqa: E402
+from tools.hostessctl import connectivity_media_receiver  # noqa: E402
 from tools.hostessctl import connectivity_probe  # noqa: E402
 from tools.hostessctl import connectivity_suite  # noqa: E402
 from tools.hostessctl import device_link_report  # noqa: E402
@@ -244,6 +245,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":
             return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
+        if args.connectivity_probe_command == "rmanvid1-receiver-capture":
+            return connectivity_media_receiver.run_rmanvid1_receiver_capture(args)
         if args.connectivity_probe_command == "windows-firewall-rule":
             return connectivity_probe.run_windows_firewall_rule(args, run_captured_func=run_captured)
         if args.connectivity_probe_command == "stream-capability":

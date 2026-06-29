@@ -170,15 +170,37 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   planning, apply/verify/remove report shaping, product-rule verification, and
   Windows network/firewall profile summaries used by QCL-010/QCL-080 and WPF
   operator rows.
+- `tools/hostessctl/connectivity_lan.py`: live LAN/device transport helpers
+  for serial-scoped Quest ADB identity, host IPv4 selection, same-subnet checks,
+  ICMP probes, Windows Mobile Hotspot state collection, TCP echo probes, and
+  QCL-010/QCL-011 live report assembly.
 - `tools/hostessctl/connectivity_probe_common.py`: shared connectivity report
-  helpers for check rows, issue rows, JSON/ADB/PowerShell cleanup, Android
-  readback, and small measurement utilities.
+  helpers for the QCL report skeleton, check rows, issue rows,
+  JSON/ADB/PowerShell cleanup, Android readback, and small measurement
+  utilities.
+- `tools/hostessctl/connectivity_probe_fixtures.py`: QCL fixture report
+  construction, damaged fixture variants, and fixture ingestion for media
+  session/runtime/receiver artifacts.
+- `tools/hostessctl/connectivity_probe_live_reports.py`: pure live report
+  shaping for QCL live status derivation, listener rows, protocol topology
+  summaries, and measurements. It has no ADB, socket, broker, or protocol
+  execution authority.
+- `tools/hostessctl/connectivity_probe_validation.py`: shared QCL connectivity
+  report schema/status validation used by the probe facade, tests, WPF, Makepad,
+  and CLI automation before rendered operator rows are accepted.
 - `tools/hostessctl/connectivity_udp.py`: QCL-080 UDP freshness sender/listener
-  mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,
-  and app-owned UDP runtime-marker parsing.
+  live report assembly, sender/listener mechanics, Makepad runtime UDP sender
+  setup, WPF listener-helper ingestion, and app-owned UDP runtime-marker
+  parsing.
 - `tools/hostessctl/connectivity_media.py`: QCL-082 binary media-plane fixture
-  report helpers for H.264/TCP framing, timestamp, queue/drop/backpressure, and
-  high-rate JSON rejection evidence.
+  report helpers, Rusty Quest media-stream session plan ingestion, and
+  broker/runtime status artifact ingestion for H.264/TCP framing, command
+  acceptance, timestamp, queue/drop/backpressure, source classification,
+  shell-display lab gating, and high-rate JSON rejection evidence.
+- `tools/hostessctl/connectivity_media_receiver.py`: QCL-082 Hostess
+  receiver-counter helpers for bounded `RMANVID1` stream-header and packet
+  parsing, bounded TCP receiver capture, receiver sidecar counters,
+  runtime-status pairing, and no-decode binary media evidence.
 - `tools/hostessctl/connectivity_topology.py`: QCL-020/QCL-030/QCL-040/QCL-041
   topology fixture report helpers for Wi-Fi ADB stability, Quest
   LocalOnlyHotspot, and Wi-Fi Direct phone/Windows peer limits. These fixtures
@@ -186,10 +208,12 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   accepted.
 - `tools/hostessctl/connectivity_bluetooth.py`: QCL-050/QCL-051 Bluetooth
   RFCOMM and BLE/GATT readiness, Android payload probes, Windows helper
-  command construction, reconnect measurements, and Bluetooth transport rows.
+  command construction, live report assembly, reconnect measurements, and
+  Bluetooth transport rows.
 - `tools/hostessctl/connectivity_data_protocols.py`: QCL-081/QCL-083/QCL-084
-  LSL, OSC, and ZeroMQ adapter mechanics plus their protocol-specific
-  evidence-row derivation.
+  LSL, OSC, and ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution
+  helpers, live report assembly, source-specific report promotion gates, and
+  their protocol-specific evidence-row derivation.
 - `tools/hostessctl/connectivity_suite.py`: install/environment/protocol suite
   runner. It executes selected QCL slots, records host network/firewall/tool
   snapshots, aggregates grouped results, and emits
@@ -359,7 +383,7 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_udp.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\hostessctl\native_breathing_room_setup.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_udp.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\hostessctl\native_breathing_room_setup.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_catalog tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_report_projection tools.test_hostessctl_companion_session tools.test_hostessctl_connectivity_probe
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>

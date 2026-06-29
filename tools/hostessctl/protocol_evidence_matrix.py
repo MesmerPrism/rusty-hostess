@@ -319,8 +319,8 @@ def latest_probe_reports_in_dir(artifact_dir: Path, probe_ids: list[str]) -> lis
         return []
 
     requested = set(probe_ids)
-    latest: dict[str, tuple[int, str, Path]] = {}
-    for path in artifact_dir.glob("*.json"):
+    latest: dict[str, tuple[int, int, int, str, Path]] = {}
+    for path in artifact_dir.rglob("*.json"):
         payload = read_json(path)
         if classify_payload(payload) != "connectivity_probe_report":
             continue
@@ -331,11 +331,29 @@ def latest_probe_reports_in_dir(artifact_dir: Path, probe_ids: list[str]) -> lis
             mtime_ns = path.stat().st_mtime_ns
         except OSError:
             mtime_ns = 0
-        candidate = (mtime_ns, path.name, path)
+        candidate = (
+            probe_report_quality_score({"path": path, "payload": payload}),
+            probe_report_search_rank(artifact_dir, path),
+            mtime_ns,
+            str(path),
+            path,
+        )
         if probe_id not in latest or candidate > latest[probe_id]:
             latest[probe_id] = candidate
 
-    return [latest[probe_id][2] for probe_id in probe_ids if probe_id in latest]
+    return [latest[probe_id][4] for probe_id in probe_ids if probe_id in latest]
+
+
+def probe_report_search_rank(artifact_dir: Path, path: Path) -> int:
+    """Prefer independent run reports over generated suite artifact copies."""
+    try:
+        relative = path.relative_to(artifact_dir)
+    except ValueError:
+        relative = path
+    parent_parts = relative.parts[:-1]
+    if any(part.endswith("-artifacts") for part in parent_parts):
+        return 0
+    return 1
 
 
 def latest_device_link_paths(args: argparse.Namespace) -> list[Path]:
@@ -701,6 +719,7 @@ def qcl082_media_requirements(report: dict[str, Any]) -> list[dict[str, Any]]:
     timestamp_policy = qcl082_check_passed(report, "protocol.media_timestamp_policy")
     backpressure_policy = qcl082_check_passed(report, "protocol.media_backpressure_policy")
     json_guard = qcl082_check_passed(report, "protocol.media_high_rate_json_guard")
+    broker_runtime_status = qcl082_check_passed(report, "protocol.media_stream_runtime_status")
     measurement_keys = [
         "media_frames_received",
         "media_bytes_received",
@@ -752,6 +771,15 @@ def qcl082_media_requirements(report: dict[str, Any]) -> list[dict[str, Any]]:
                 "high-rate media payloads rejected from JSON streams"
                 if json_guard
                 else "high-rate JSON payload rejection missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.broker_runtime_status",
+            "satisfied" if broker_runtime_status else "missing",
+            (
+                "broker media-stream runtime status loaded"
+                if broker_runtime_status
+                else "broker media-stream runtime status missing"
             ),
         ),
         gate_result(
@@ -812,8 +840,6 @@ def protocol_promotion_state(row_status: str, promotion_allowed: bool) -> str:
 def evidence_tier(report: dict[str, Any]) -> str:
     if not report:
         return "none"
-    if is_fixture_report(report):
-        return "fixture"
     probe_id = str(report.get("probe_id") or "")
     transport = object_value(report.get("transport"))
     endpoint_source = str(transport.get("endpoint_source") or "")
@@ -824,8 +850,14 @@ def evidence_tier(report: dict[str, Any]) -> str:
         return "quest_runtime"
     if endpoint_source == "quest-runtime":
         return "quest_runtime"
-    if endpoint_source in {"native-rust-broker", "manifold-lsl-broker"}:
+    if endpoint_source in {
+        "native-rust-broker",
+        "manifold-lsl-broker",
+        "rusty-quest-manifold-broker-media-stream-runtime",
+    }:
         return "broker_owned"
+    if is_fixture_report(report):
+        return "fixture"
     if probe_id in {"QCL-050", "QCL-051"} and promotion_allowed:
         return "quest_runtime"
     if endpoint_source in {"host-loopback", "manifold-zmq-loopback", "rusty-xr-zmq-loopback"}:
@@ -885,6 +917,14 @@ def select_best_probe_report(entries: list[Any]) -> dict[str, Any]:
 
 
 def probe_report_score(entry: dict[str, Any]) -> tuple[int, int, str]:
+    return (
+        probe_report_quality_score(entry),
+        len(str(object_value(entry.get("payload")).get("observed_at_utc") or "")),
+        str(entry.get("path") or ""),
+    )
+
+
+def probe_report_quality_score(entry: dict[str, Any]) -> int:
     report = object_value(entry.get("payload"))
     promotion_score = 100 if object_value(report.get("promotion")).get("allowed") is True else 0
     status_score = {
@@ -904,7 +944,7 @@ def probe_report_score(entry: dict[str, Any]) -> tuple[int, int, str]:
         "fixture": 5,
         "none": 0,
     }.get(evidence_tier(report), 0)
-    return (promotion_score + status_score + tier_score, len(str(report.get("observed_at_utc") or "")), str(entry.get("path") or ""))
+    return promotion_score + status_score + tier_score
 
 
 def select_best_device_link_report(entries: list[Any]) -> dict[str, Any]:

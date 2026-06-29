@@ -75,6 +75,90 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(qcl082["promotion_state"], "rejected")
         self.assertIn("gate.qcl082.media_high_rate_json_guard", qcl082["missing_gates"])
 
+    def test_qcl082_media_stream_session_plan_remains_candidate_source_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl082_path = root / "qcl082-media-stream-session-plan.json"
+            qcl082_path.write_text(json.dumps(qcl082_source_contract_report()), encoding="utf-8")
+
+            report = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl082-media-stream-session-plan",
+                    input=[str(qcl082_path)],
+                    suite_run=[],
+                    fail_on_error=True,
+                )
+            )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl082 = row(report, "QCL-082")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl082["status"], "candidate")
+        self.assertEqual(qcl082["promotion_state"], "candidate")
+        self.assertEqual(qcl082["evidence_tier"], "fixture")
+        self.assertEqual(qcl082["source"]["endpoint_source"], "rusty-quest-media-stream-session-plan")
+        self.assertEqual(qcl082["missing_gates"], ["gate.qcl082.broker_runtime_status"])
+        self.assertFalse(qcl082["promotion_allowed"])
+
+    def test_qcl082_media_stream_runtime_status_is_broker_owned_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl082_path = root / "qcl082-media-stream-runtime-status.json"
+            qcl082_path.write_text(json.dumps(qcl082_runtime_status_report()), encoding="utf-8")
+
+            report = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl082-media-stream-runtime-status",
+                    input=[str(qcl082_path)],
+                    suite_run=[],
+                    fail_on_error=True,
+                )
+            )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl082 = row(report, "QCL-082")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl082["status"], "candidate")
+        self.assertEqual(qcl082["promotion_state"], "candidate")
+        self.assertEqual(qcl082["evidence_tier"], "broker_owned")
+        self.assertEqual(
+            qcl082["source"]["endpoint_source"],
+            "rusty-quest-manifold-broker-media-stream-runtime",
+        )
+        self.assertIn("gate.qcl082.media_measurements_declared", qcl082["missing_gates"])
+        self.assertNotIn("gate.qcl082.broker_runtime_status", qcl082["missing_gates"])
+        self.assertFalse(qcl082["promotion_allowed"])
+
+    def test_qcl082_receiver_counters_can_promote_broker_owned_live_capture(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl082_path = root / "qcl082-rmanvid1-receiver-capture.json"
+            qcl082_path.write_text(json.dumps(qcl082_receiver_capture_report()), encoding="utf-8")
+
+            report = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl082-rmanvid1-receiver-capture",
+                    input=[str(qcl082_path)],
+                    suite_run=[],
+                    fail_on_error=True,
+                )
+            )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl082 = row(report, "QCL-082")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl082["status"], "usable")
+        self.assertEqual(qcl082["promotion_state"], "promoted")
+        self.assertEqual(qcl082["evidence_tier"], "broker_owned")
+        self.assertEqual(qcl082["missing_gates"], [])
+        self.assertTrue(qcl082["promotion_allowed"])
+
     def test_promoted_udp_descriptor_satisfies_qcl080_without_promoting_other_protocols(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -207,6 +291,91 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(row(matrix, "QCL-084")["status"], "usable")
         self.assertNotIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
         self.assertNotIn("QCL-084", matrix["summary"]["pending_required_probe_ids"])
+
+    def test_latest_artifact_dir_loads_nested_probe_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            nested_root = root / "qcl082-live-20260629"
+            suite_artifacts_root = root / "wpf-connectivity-suite-smoke-artifacts"
+            nested_root.mkdir()
+            suite_artifacts_root.mkdir()
+            stale_qcl082_path = root / "qcl082-stale.json"
+            latest_qcl082_path = nested_root / "qcl082-live-broker-report.json"
+            suite_qcl082_path = suite_artifacts_root / "QCL-082-qcl-082-media-binary-plane-pass.json"
+
+            stale_qcl082 = qcl082_receiver_capture_report()
+            stale_qcl082["run_id"] = "qcl082-stale"
+            stale_qcl082["promotion"]["allowed"] = False
+            suite_qcl082 = qcl082_receiver_capture_report()
+            suite_qcl082["run_id"] = "qcl082-suite-fixture-copy"
+            suite_qcl082["promotion"]["allowed"] = False
+            stale_qcl082_path.write_text(json.dumps(stale_qcl082), encoding="utf-8")
+            latest_qcl082_path.write_text(json.dumps(qcl082_receiver_capture_report()), encoding="utf-8")
+            suite_qcl082_path.write_text(json.dumps(suite_qcl082), encoding="utf-8")
+            os.utime(stale_qcl082_path, (1, 1))
+            os.utime(latest_qcl082_path, (2, 2))
+            os.utime(suite_qcl082_path, (3, 3))
+
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="latest-nested-artifacts",
+                    input=[],
+                    suite_run=[],
+                    latest_artifact_dir=[str(root)],
+                    latest_probe_id=["QCL-082"],
+                    fail_on_error=True,
+                )
+            )
+
+        input_paths = [item["path"] for item in matrix["inputs"]]
+        self.assertIn(str(latest_qcl082_path), input_paths)
+        self.assertNotIn(str(stale_qcl082_path), input_paths)
+        self.assertNotIn(str(suite_qcl082_path), input_paths)
+        self.assertEqual(row(matrix, "QCL-082")["source"]["artifact_path"], str(latest_qcl082_path))
+        self.assertEqual(row(matrix, "QCL-082")["status"], "usable")
+        self.assertEqual(row(matrix, "QCL-082")["promotion_state"], "promoted")
+        self.assertEqual(row(matrix, "QCL-082")["evidence_tier"], "broker_owned")
+
+    def test_latest_artifact_dir_prefers_promoted_qcl082_over_newer_source_contract(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            promoted_root = root / "qcl082-live-20260629"
+            promoted_root.mkdir()
+            promoted_qcl082_path = promoted_root / "qcl082-live-broker-report.json"
+            source_contract_path = root / "wpf-connectivity-suite.qcl082-media-stream-session-plan.json"
+
+            source_contract = qcl082_source_contract_report()
+            source_contract["run_id"] = "qcl082-newer-source-contract"
+            promoted_qcl082_path.write_text(
+                json.dumps(qcl082_receiver_capture_report()),
+                encoding="utf-8",
+            )
+            source_contract_path.write_text(json.dumps(source_contract), encoding="utf-8")
+            os.utime(promoted_qcl082_path, (1, 1))
+            os.utime(source_contract_path, (5, 5))
+
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="latest-prefers-promoted-qcl082",
+                    input=[],
+                    suite_run=[],
+                    latest_artifact_dir=[str(root)],
+                    latest_probe_id=["QCL-082"],
+                    fail_on_error=True,
+                )
+            )
+
+        input_paths = [item["path"] for item in matrix["inputs"]]
+        self.assertIn(str(promoted_qcl082_path), input_paths)
+        self.assertNotIn(str(source_contract_path), input_paths)
+        self.assertEqual(row(matrix, "QCL-082")["source"]["artifact_path"], str(promoted_qcl082_path))
+        self.assertEqual(row(matrix, "QCL-082")["status"], "usable")
+        self.assertEqual(row(matrix, "QCL-082")["promotion_state"], "promoted")
+        self.assertEqual(row(matrix, "QCL-082")["evidence_tier"], "broker_owned")
 
     def test_latest_consolidated_operator_artifacts_promote_required_rows(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -474,6 +643,126 @@ def promoted_qcl080_report() -> dict[str, Any]:
             "product_scope_matches": True,
         }
     )
+    return report
+
+
+def qcl082_source_contract_report() -> dict[str, Any]:
+    report = read_json(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json")
+    report["run_id"] = "qcl082-media-stream-session-plan"
+    report["classification"] = "protocol_fit_source_contract"
+    report["transport"]["endpoint_source"] = "rusty-quest-media-stream-session-plan"
+    report["host"]["toolchain_profile"] = "hostessctl.connectivity_probe.qcl082.media_stream_session_plan.fixture"
+    report["promotion"]["allowed"] = False
+    report["promotion"]["reason"] = (
+        "Rusty Quest media-stream session plan is source-contract evidence; "
+        "Quest-runtime or broker-owned binary counters remain required"
+    )
+    report["media_stream_session_plan"] = {
+        "schema": "rusty.quest.media_stream_session.v1",
+        "session_id": "session.media_stream.quest_display_composite_to_pc",
+        "source": {
+            "source_family": "quest-display-composite-mediaprojection",
+            "source_kind": "display_composite_mediaprojection_mediacodec_surface",
+            "capture_authority": "android_mediaprojection_consent",
+        },
+    }
+    return report
+
+
+def qcl082_runtime_status_report() -> dict[str, Any]:
+    report = read_json(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json")
+    report["run_id"] = "qcl082-media-stream-runtime-status"
+    report["status"] = "warn"
+    report["classification"] = "protocol_fit_broker_runtime_status"
+    report["transport"]["endpoint_source"] = "rusty-quest-manifold-broker-media-stream-runtime"
+    report["transport"]["route"] = "rusty_quest_media_stream_runtime_status"
+    report["host"]["toolchain_profile"] = "hostessctl.connectivity_probe.qcl082.media_stream_runtime_status.fixture"
+    report["measurements"]["media_frames_received"] = None
+    report["measurements"]["media_bytes_received"] = None
+    report["measurements"]["media_dropped_frames"] = None
+    report["measurements"]["media_receiver_queue_depth_max"] = None
+    report["promotion"]["allowed"] = False
+    report["promotion"]["reason"] = (
+        "Rusty Quest broker media-stream runtime status is command/source-state "
+        "evidence; live binary receiver counters remain required"
+    )
+    report["checks"].append(
+        {
+            "name": "protocol.media_stream_runtime_status",
+            "status": "pass",
+            "summary": "Rusty Quest media-stream runtime status schema accepted",
+            "observed": {
+                "schema": "rusty.quest.media_stream.android_runtime_status.v1",
+                "runtime_family": "media_stream",
+                "session_id": "session.media_stream.test",
+            },
+            "issue_codes": [],
+        }
+    )
+    report["media_stream_runtime_status"] = {
+        "schema": "rusty.quest.media_stream.android_runtime_status.v1",
+        "command_id": "command.media_stream.start_source",
+        "session_id": "session.media_stream.test",
+        "runtime_family": "media_stream",
+        "status": "sender_source_unavailable",
+        "source": {
+            "display_frame_source": "display_composite_mediaprojection_mediacodec_surface",
+            "capture_authority": "android_mediaprojection_user_consent",
+            "adapter_surface_only": True,
+            "production_allowed": True,
+        },
+    }
+    return report
+
+
+def qcl082_receiver_capture_report() -> dict[str, Any]:
+    report = read_json(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json")
+    report["run_id"] = "qcl082-rmanvid1-receiver-capture"
+    report["classification"] = "protocol_fit_receiver_counters"
+    report["transport"]["endpoint_source"] = "rusty-quest-manifold-broker-media-stream-runtime"
+    report["transport"]["route"] = "hostess_rmanvid1_receiver_capture"
+    report["transport"]["protocol_role"] = "binary_media_plane_receiver_counters"
+    report["host"]["toolchain_profile"] = "hostessctl.connectivity_probe.qcl082.rmanvid1_receiver_capture"
+    report["promotion"]["allowed"] = True
+    report["promotion"]["reason"] = "RMANVID1 receiver counters are paired with live broker/Quest runtime evidence"
+    report["checks"].append(
+        {
+            "name": "protocol.media_stream_runtime_status",
+            "status": "pass",
+            "summary": "receiver capture is paired with broker media-stream runtime status",
+            "observed": {
+                "runtime_status_path": "target/connectivity-probe/qcl082-runtime-status.json",
+                "endpoint_source": "rusty-quest-manifold-broker-media-stream-runtime",
+                "capture_kind": "live_broker_stream",
+            },
+            "issue_codes": [],
+        }
+    )
+    report["checks"].append(
+        {
+            "name": "protocol.media_receiver_counters",
+            "status": "pass",
+            "summary": "receiver capture reports frame, byte, drop, queue, and close counters",
+            "observed": {
+                "video_packet_count": 24,
+                "payload_bytes": 1048576,
+                "dropped_frames": 0,
+                "max_queue_depth_observed": 2,
+                "backpressure_events": 0,
+                "close_reason": "eof_after_test_window",
+            },
+            "issue_codes": [],
+        }
+    )
+    report["media_stream_receiver_capture"] = {
+        "schema": "rusty.hostess.media_stream.rmanvid1_capture_stats.v1",
+        "capture_kind": "live_broker_stream",
+        "live_capture": True,
+        "source": {
+            "endpoint_source": "rusty-quest-manifold-broker-media-stream-runtime",
+            "runtime_status_observed": True,
+        },
+    }
     return report
 
 

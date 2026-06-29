@@ -684,6 +684,35 @@ def build_hostessctl_parser(
             "qcl-084-zeromq-dependency-missing",
         ],
     )
+    connectivity_probe_run.add_argument("--media-stream-session-plan", default="")
+    connectivity_probe_run.add_argument("--media-stream-runtime-status", default="")
+    connectivity_probe_run.add_argument("--media-stream-rmanvid1-capture", default="")
+    connectivity_probe_run.add_argument("--media-stream-receiver-sidecar", default="")
+    connectivity_probe_receiver_capture = connectivity_probe_subcommands.add_parser(
+        "rmanvid1-receiver-capture"
+    )
+    connectivity_probe_receiver_capture.add_argument("--out", required=True)
+    connectivity_probe_receiver_capture.add_argument("--capture-out", required=True)
+    connectivity_probe_receiver_capture.add_argument("--sidecar-out", required=True)
+    connectivity_probe_receiver_capture.add_argument("--bind-host", default="0.0.0.0")
+    connectivity_probe_receiver_capture.add_argument("--port", type=int, default=9079)
+    connectivity_probe_receiver_capture.add_argument("--timeout-seconds", type=float, default=10.0)
+    connectivity_probe_receiver_capture.add_argument("--max-packets", type=int, default=240)
+    connectivity_probe_receiver_capture.add_argument("--max-bytes", type=int, default=67108864)
+    connectivity_probe_receiver_capture.add_argument("--max-packet-bytes", type=int, default=4194304)
+    connectivity_probe_receiver_capture.add_argument("--max-metadata-bytes", type=int, default=262144)
+    connectivity_probe_receiver_capture.add_argument("--queue-capacity-packets", type=int, default=48)
+    connectivity_probe_receiver_capture.add_argument(
+        "--capture-kind",
+        choices=["fixture_loopback_receiver", "live_broker_stream", "live_quest_runtime_stream"],
+        default="fixture_loopback_receiver",
+    )
+    connectivity_probe_receiver_capture.add_argument("--source-endpoint-source", default="")
+    connectivity_probe_receiver_capture.add_argument("--source-remote-endpoint", default="")
+    connectivity_probe_receiver_capture.add_argument("--command-id", default="command.media_stream.start_source")
+    connectivity_probe_receiver_capture.add_argument("--session-id", default="")
+    connectivity_probe_receiver_capture.add_argument("--runtime-status", default="")
+    connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_run.add_argument("--adb")
     connectivity_probe_run.add_argument("--serial")
     connectivity_probe_run.add_argument("--wifi-interface", default="wlan0")
