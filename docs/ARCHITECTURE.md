@@ -53,6 +53,13 @@ into operator rows for Devices, Transports, and Connectivity. Those helpers
 keep UI composition reusable while preserving the authority boundary: Hostess
 and Quest reports own readiness, stream capabilities, subscriber delivery, and
 command-stage truth; WPF only renders and drills into the evidence.
+The equivalent source-owned read-only projection route is
+`hostessctl companion-report projection`. It emits
+`rusty.hostess.companion.report_projection.v1` from explicit device-link,
+protocol-matrix, and suite-run source artifacts. The route is a row-normalizing
+view contract for WPF, Makepad, CLI automation, and future frontends; it does
+not select latest artifacts, validate QCL source evidence, run probes, change
+firewall/device state, or re-evaluate protocol promotion gates.
 Page-owned viewmodels keep the row projection families separated:
 `ReadinessPageViewModel`, `DevicesPageViewModel`,
 `ConnectivityPageViewModel`, `SessionPageViewModel`,
@@ -203,6 +210,14 @@ Its receipt/process wait defaults live in
 `tools/hostessctl/companion_session_defaults.py` so the parser, CLI docs, and
 WPF invocation can share the same argument surface without coupling the parser
 to the session orchestration module.
+Read-only report projection lives in
+`tools/hostessctl/companion_report_projection.py`. It consumes only explicit
+artifact paths and copies source status, evidence tier, promotion state,
+missing gates, issue codes, and detailed payloads into frontend-neutral rows.
+Source artifacts remain authoritative: `device_link_report.py` owns device and
+command-route evidence, `connectivity_suite.py` owns suite execution, and
+`protocol_evidence_matrix.py` owns promotion policy and latest-artifact
+selection.
 Quest device-link report adaptation lives in
 `tools/hostessctl/device_link_report.py`. It summarizes Hostess readiness and
 bridge execution sidecars into the Quest-owned `rusty.quest.device_link.v1`

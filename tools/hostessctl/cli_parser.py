@@ -600,6 +600,25 @@ def build_hostessctl_parser(
     companion_session_history.add_argument("--session-dir")
     companion_session_history.add_argument("--limit", type=int, default=25)
 
+    companion_report = subcommands.add_parser("companion-report")
+    companion_report_subcommands = companion_report.add_subparsers(
+        dest="companion_report_command",
+        required=True,
+    )
+    companion_report_projection = companion_report_subcommands.add_parser("projection")
+    companion_report_projection.add_argument("--out", required=True)
+    companion_report_projection.add_argument("--validation-out")
+    companion_report_projection.add_argument("--projection-id")
+    companion_report_projection.add_argument(
+        "--frontend",
+        choices=["wpf", "makepad", "cli"],
+        default="cli",
+    )
+    companion_report_projection.add_argument("--device-link", action="append")
+    companion_report_projection.add_argument("--protocol-matrix", action="append")
+    companion_report_projection.add_argument("--suite-run", action="append")
+    companion_report_projection.add_argument("--fail-on-error", action="store_true")
+
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(
         dest="connectivity_probe_command",

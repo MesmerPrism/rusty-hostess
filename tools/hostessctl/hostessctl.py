@@ -19,6 +19,7 @@ from tools.hostessctl import bridge_route_evidence  # noqa: E402
 from tools.hostessctl import broker_telemetry_routes  # noqa: E402
 from tools.hostessctl import companion_catalog  # noqa: E402
 from tools.hostessctl import companion_readiness  # noqa: E402
+from tools.hostessctl import companion_report_projection  # noqa: E402
 from tools.hostessctl import companion_session  # noqa: E402
 from tools.hostessctl import connectivity_probe  # noqa: E402
 from tools.hostessctl import connectivity_suite  # noqa: E402
@@ -235,6 +236,10 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return companion_session.run_companion_session(args, run_captured_func=run_captured)
         if args.session_command == "history":
             return companion_session.run_companion_session_history(args)
+        return 2
+    if args.command == "companion-report":
+        if args.companion_report_command == "projection":
+            return companion_report_projection.run_companion_report_projection(args)
         return 2
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":
