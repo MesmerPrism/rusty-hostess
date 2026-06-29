@@ -11,8 +11,11 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.cli_parser import build_hostessctl_parser
-from tools.hostessctl.connectivity_probe import (
+from tools.hostessctl.connectivity_firewall import (
     CONNECTIVITY_FIREWALL_RULE_SCHEMA,
+    windows_firewall_rule_report,
+)
+from tools.hostessctl.connectivity_probe import (
     CONNECTIVITY_PROBE_SCHEMA,
     DEFAULT_QCL080_UDP_PORT,
     device_to_host_tcp_echo,
@@ -30,7 +33,7 @@ from tools.hostessctl.connectivity_probe import (
     strip_powershell_clixml_noise,
     udp_listener_from_result,
     validate_connectivity_probe_report,
-    windows_firewall_rule_report,
+    windows_firewall_rule_report as facade_windows_firewall_rule_report,
 )
 
 
@@ -38,6 +41,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 class HostessCtlConnectivityProbeTests(unittest.TestCase):
+    def test_connectivity_probe_reexports_firewall_report_helper(self) -> None:
+        self.assertIs(facade_windows_firewall_rule_report, windows_firewall_rule_report)
+
     def test_qcl000_fixture_validates_command_feedback_baseline(self) -> None:
         report = fixture_report(
             probe_args(probe_id="QCL-000", fixture_profile="qcl-000-usb-adb-pass"),

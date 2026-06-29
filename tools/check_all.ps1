@@ -36,6 +36,7 @@ try {
         "tools\hostessctl\companion_session_defaults.py",
         "tools\hostessctl\connectivity_bluetooth.py",
         "tools\hostessctl\connectivity_data_protocols.py",
+        "tools\hostessctl\connectivity_firewall.py",
         "tools\hostessctl\connectivity_probe.py",
         "tools\hostessctl\connectivity_probe_common.py",
         "tools\hostessctl\connectivity_suite.py",

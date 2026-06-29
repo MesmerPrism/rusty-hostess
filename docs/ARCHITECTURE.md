@@ -278,6 +278,9 @@ is not mistaken for the data path.
 The probe module is now a facade over focused helpers:
 `connectivity_probe_common.py` owns shared check rows, issue rows, JSON/ADB/
 PowerShell cleanup, Android readback, and measurement helpers;
+`connectivity_firewall.py` owns Windows Firewall listener rule planning,
+apply/verify/remove reports, product-rule verification, and network/firewall
+profile summaries used by QCL-010/QCL-080 and WPF operator rows;
 `connectivity_udp.py` owns QCL-080 UDP freshness sender/listener mechanics and
 Makepad runtime UDP sender evidence; `connectivity_bluetooth.py` owns QCL-050
 RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, and transport
