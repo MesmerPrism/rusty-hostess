@@ -47,6 +47,7 @@ try {
         "tools\hostessctl\pmb_host_run_evidence.py",
         "tools\hostessctl\pmb_native_receipts.py",
         "tools\hostessctl\pmb_support.py",
+        "tools\hostessctl\protocol_evidence_matrix.py",
         "tools\hostessctl\questionnaire_bridge.py",
         "tools\hostessctl\recording_evidence.py",
         "tools\hostessctl\runtime.py",
@@ -83,6 +84,7 @@ try {
         "tools\test_hostessctl_connectivity_probe.py",
         "tools\test_hostessctl_connectivity_suite.py",
         "tools\test_hostessctl_device_link_report.py",
+        "tools\test_hostessctl_protocol_evidence_matrix.py",
         "tools\test_hostessctl_questionnaire_bridge.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"

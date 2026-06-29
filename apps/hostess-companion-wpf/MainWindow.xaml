@@ -276,6 +276,10 @@
                           Command="{Binding RunConnectivitySuiteCommand}"
                           Margin="8,0,0,0"
                           ToolTip="Run the fixture install/environment/protocol suite and render grouped results"/>
+                  <Button Content="{Binding RunProtocolMatrixButtonLabel}"
+                          Command="{Binding RunProtocolMatrixCommand}"
+                          Margin="8,0,0,0"
+                          ToolTip="Build the protocol promotion evidence matrix from CLI suite artifacts"/>
                   <Button Content="{Binding RemoveFirewallRuleButtonLabel}"
                           Command="{Binding RemoveFirewallRuleCommand}"
                           Margin="8,0,0,0"

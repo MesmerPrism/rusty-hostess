@@ -70,6 +70,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         VerifyFirewallRuleCommand = new AsyncRelayCommand(VerifyFirewallRuleAsync, () => !IsBusy);
         VerifyConnectivityCommand = new AsyncRelayCommand(VerifyConnectivityAsync, () => !IsBusy);
         RunConnectivitySuiteCommand = new AsyncRelayCommand(RunConnectivitySuiteAsync, () => !IsBusy);
+        RunProtocolMatrixCommand = new AsyncRelayCommand(RunProtocolMatrixAsync, () => !IsBusy);
         RemoveFirewallRuleCommand = new AsyncRelayCommand(RemoveFirewallRuleAsync, () => !IsBusy);
     }
 
@@ -133,6 +134,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public AsyncRelayCommand RunConnectivitySuiteCommand { get; }
 
+    public AsyncRelayCommand RunProtocolMatrixCommand { get; }
+
     public AsyncRelayCommand RemoveFirewallRuleCommand { get; }
 
     public bool IsBusy
@@ -152,6 +155,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 VerifyFirewallRuleCommand.RaiseCanExecuteChanged();
                 VerifyConnectivityCommand.RaiseCanExecuteChanged();
                 RunConnectivitySuiteCommand.RaiseCanExecuteChanged();
+                RunProtocolMatrixCommand.RaiseCanExecuteChanged();
                 RemoveFirewallRuleCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(RefreshButtonLabel));
                 OnPropertyChanged(nameof(RunSessionButtonLabel));
@@ -163,6 +167,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 OnPropertyChanged(nameof(VerifyFirewallRuleButtonLabel));
                 OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
                 OnPropertyChanged(nameof(RunConnectivitySuiteButtonLabel));
+                OnPropertyChanged(nameof(RunProtocolMatrixButtonLabel));
                 OnPropertyChanged(nameof(RemoveFirewallRuleButtonLabel));
             }
         }
@@ -188,6 +193,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         IsBusy ? "Verifying" : ConnectivityProtocol == "UDP" ? "Verify QCL-080" : "Verify QCL-010";
 
     public string RunConnectivitySuiteButtonLabel => IsBusy ? "Running" : "Run suite";
+
+    public string RunProtocolMatrixButtonLabel => IsBusy ? "Building" : "Protocol matrix";
 
     public string RemoveFirewallRuleButtonLabel => IsBusy ? "Removing" : "Remove rule";
 
@@ -745,6 +752,33 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         }
     }
 
+    private async Task RunProtocolMatrixAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var matrix = await connectivityService.RunProtocolEvidenceMatrixAsync(
+                    Serial,
+                    ConnectivityProgram,
+                    ConnectivityProtocol,
+                    ConnectivityPort,
+                    CancellationToken.None);
+            ApplyProtocolEvidenceMatrix(matrix);
+            SummaryLabel =
+                $"Protocol matrix {matrix.MatrixId}: {matrix.Status}. " +
+                $"{matrix.Rows.Count} capability rows.";
+        }
+        catch (Exception ex)
+        {
+            ApplyConnectivityFailure("connectivity_probe.protocol_matrix", ex);
+            SummaryLabel = "Protocol matrix failed.";
+        }
+        finally
+        {
+            IsBusy = false;
+        }
+    }
+
     private async Task RemoveFirewallRuleAsync()
     {
         IsBusy = true;
@@ -856,6 +890,11 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private void ApplyConnectivitySuiteReport(ConnectivitySuiteRunReport report)
     {
         ApplyConnectivityRows(ConnectivityRows.ForSuiteReport(report), report.Status);
+    }
+
+    private void ApplyProtocolEvidenceMatrix(ConnectivityProtocolEvidenceMatrix matrix)
+    {
+        ApplyConnectivityRows(ConnectivityRows.ForProtocolEvidenceMatrix(matrix), matrix.Status);
     }
 
     private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)

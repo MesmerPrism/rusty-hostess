@@ -258,6 +258,13 @@ ZeroMQ route. The generic proof now lives in the Manifold-owned
 `rusty-manifold-zmq` adapter, while Hostess can still ingest the public
 Rusty-XR compatibility proof and the Goofi sidecar witness log. Neither WPF
 nor Hostess should make Goofi the protocol authority.
+`hostessctl connectivity-probe protocol-matrix` is the roll-up contract for
+operator protocol promotion views. It consumes existing suite, probe,
+device-link, and stream-capability artifacts and classifies each protocol by
+evidence tier, promotion state, and missing gate. WPF renders this matrix as a
+requester/inspector; promotion rules stay in the CLI/report module so fixture
+and host-loopback LSL/OSC/ZeroMQ evidence cannot accidentally become UI-only
+acceptance proof.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

@@ -142,6 +142,72 @@ public static class ConnectivityRows
         return rows;
     }
 
+    public static IReadOnlyList<ConnectivityCheck> ForProtocolEvidenceMatrix(
+        ConnectivityProtocolEvidenceMatrix matrix)
+    {
+        var rows = new List<ConnectivityCheck>
+        {
+            new()
+            {
+                Name = "quest.device_link.protocol_evidence_matrix",
+                Status = string.IsNullOrWhiteSpace(matrix.Status) ? "unknown" : matrix.Status,
+                Evidence = $"{matrix.MatrixId}: {matrix.Rows.Count} protocol capability rows",
+                Notes = matrix.ReportPath,
+                IssueCodes = matrix.Issues.Select(issue => issue.IssueCode)
+                    .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+                    .ToList(),
+                Observed = ExistingJsonElementOrFallback(
+                    matrix.Summary,
+                    "quest.device_link.protocol_evidence_matrix"),
+            },
+        };
+
+        foreach (var protocol in matrix.Rows)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = $"{protocol.ProbeId}.{protocol.TransportKind}",
+                Status = string.IsNullOrWhiteSpace(protocol.Status) ? "unknown" : protocol.Status,
+                Evidence =
+                    $"{protocol.CapabilityId}: tier={protocol.EvidenceTier}, " +
+                    $"promotion={protocol.PromotionState}, allowed={protocol.PromotionAllowed}",
+                Notes = protocol.MissingGates.Count == 0
+                    ? protocol.PromotionGate
+                    : $"{protocol.PromotionGate} Missing: {string.Join(", ", protocol.MissingGates)}",
+                IssueCodes = ProtocolIssueCodes(protocol),
+                Observed = ToObservedElement(protocol),
+            });
+
+            foreach (var gate in protocol.GateResults)
+            {
+                rows.Add(new ConnectivityCheck
+                {
+                    Name = gate.GateId,
+                    Status = StatusForProtocolGate(gate.Status),
+                    Evidence = gate.Evidence,
+                    Notes = protocol.CapabilityId,
+                    IssueCodes = gate.Status == "satisfied" ? [] : [gate.GateId],
+                    Observed = ToObservedElement(gate),
+                });
+            }
+        }
+
+        foreach (var issue in matrix.Issues)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = issue.IssueCode,
+                Status = issue.Severity == "error" ? "fail" : "warn",
+                Evidence = issue.Message,
+                Notes = issue.Severity,
+                IssueCodes = string.IsNullOrWhiteSpace(issue.IssueCode) ? [] : [issue.IssueCode],
+                Observed = ToObservedElement(issue),
+            });
+        }
+
+        return rows;
+    }
+
     public static IReadOnlyList<ConnectivityCheck> Failure(string checkName, Exception ex) =>
         [
             new ConnectivityCheck
@@ -246,6 +312,28 @@ public static class ConnectivityRows
         "blocked" => "blocked",
         _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
     };
+
+    private static string StatusForProtocolGate(string status) => status switch
+    {
+        "satisfied" => "pass",
+        "missing" => "warn",
+        "blocked" => "blocked",
+        _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
+    };
+
+    private static List<string> ProtocolIssueCodes(ConnectivityProtocolEvidenceRow row)
+    {
+        if (row.MissingGates.Count == 0)
+        {
+            return [];
+        }
+        var codes = new List<string>(row.MissingGates);
+        if (row.RequiredForFoldIn)
+        {
+            codes.Add("hostess.issue.protocol_evidence_matrix.required_protocol_not_promoted");
+        }
+        return codes;
+    }
 
     private static JsonElement ToObservedElement<T>(T value)
     {

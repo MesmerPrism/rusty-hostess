@@ -85,6 +85,14 @@ public static class OperatorActionCatalog
             "Hostess",
             "tools.test_hostessctl_connectivity_suite; HostessCompanion.Wpf.Tests"),
         new(
+            "wpf.connectivity.protocol_matrix",
+            "Build protocol matrix",
+            "RunProtocolMatrixCommand",
+            "connectivity-probe run-suite; connectivity-probe protocol-matrix",
+            "rusty.quest.device_link.protocol_evidence_matrix.v1",
+            "Hostess / Rusty Quest / Manifold",
+            "tools.test_hostessctl_protocol_evidence_matrix; HostessCompanion.Wpf.Tests"),
+        new(
             "wpf.connectivity.firewall.remove",
             "Remove firewall rule",
             "RemoveFirewallRuleCommand",

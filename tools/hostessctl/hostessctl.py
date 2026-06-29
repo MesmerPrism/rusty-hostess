@@ -29,6 +29,7 @@ from tools.hostessctl import manifold_recording as manifold_recording_routes  # 
 from tools.hostessctl import native_breathing_room_setup  # noqa: E402
 from tools.hostessctl import pmb_android_routes  # noqa: E402
 from tools.hostessctl import pmb_desktop_routes  # noqa: E402
+from tools.hostessctl import protocol_evidence_matrix  # noqa: E402
 from tools.hostessctl import questionnaire_bridge  # noqa: E402
 from tools.hostessctl import telemetry_routes  # noqa: E402
 from tools.hostessctl.broker_transport import (  # noqa: E402
@@ -246,6 +247,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return device_link_report.run_install_test_suite_descriptor(args)
         if args.connectivity_probe_command == "run-suite":
             return connectivity_suite.run_connectivity_suite(args, run_captured_func=run_captured)
+        if args.connectivity_probe_command == "protocol-matrix":
+            return protocol_evidence_matrix.run_protocol_evidence_matrix(args)
         return 2
     if args.command == "render-telemetry":
         return render_telemetry(args)

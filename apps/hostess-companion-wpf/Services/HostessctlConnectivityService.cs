@@ -358,6 +358,52 @@ public sealed class HostessctlConnectivityService
         return report;
     }
 
+    public async Task<ConnectivityProtocolEvidenceMatrix> RunProtocolEvidenceMatrixAsync(
+        string serial,
+        string program,
+        string protocol,
+        string portText,
+        CancellationToken cancellationToken)
+    {
+        var suite = await RunFixtureSuiteAsync(
+                serial,
+                program,
+                protocol,
+                portText,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"{suite.SuiteRunId}.protocol-matrix.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        await RunHostessctlAsync(
+                repoRoot,
+                [
+                    "connectivity-probe",
+                    "protocol-matrix",
+                    "--suite-run",
+                    suite.ReportPath,
+                    "--out",
+                    reportPath.FullName,
+                    "--fail-on-error",
+                ],
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var matrix = await ReadReportAsync<ConnectivityProtocolEvidenceMatrix>(
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        matrix.ReportPath = reportPath.FullName;
+        return matrix;
+    }
+
     public string DefaultRuleNameForPort(string portText, string protocol) =>
         DefaultRuleName(ParsePort(portText, DefaultPortForProtocol(NormalizeProtocol(protocol))), NormalizeProtocol(protocol));
 

@@ -9,6 +9,7 @@ var tests = new (string Name, Action Test)[]
     ("device-link projection promotes devices and transports", DeviceLinkProjectionPromotesDevicesAndTransports),
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
+    ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
@@ -119,6 +120,70 @@ static void ConnectivitySuiteRowsExposeGroupsAndMetrics()
     Assert(ConnectivityRows.StatusFromRows(rows) == "warn", "suite row warning must remain visible");
 }
 
+static void ProtocolMatrixRowsExposePromotionGates()
+{
+    var matrix = new ConnectivityProtocolEvidenceMatrix
+    {
+        Status = "warn",
+        MatrixId = "matrix-fixture",
+        ReportPath = "target/protocol-matrix.json",
+        Summary = JsonSerializer.SerializeToElement(new
+        {
+            all_required_data_protocols_promoted = false,
+            pending_required_probe_ids = new[] { "QCL-084" },
+        }),
+        Rows =
+        [
+            new ConnectivityProtocolEvidenceRow
+            {
+                CapabilityId = "capability.protocol.zeromq_native_rust",
+                ProbeId = "QCL-084",
+                TransportKind = "zeromq",
+                SemanticFamily = "generic_data_protocol",
+                AuthorityOwner = "rusty.manifold.transport",
+                RequiredForFoldIn = true,
+                Status = "candidate",
+                PromotionState = "candidate",
+                PromotionAllowed = false,
+                EvidenceTier = "host_loopback",
+                PromotionGate = "broker-owned or Quest-runtime evidence required",
+                MissingGates =
+                [
+                    "gate.qcl084.quest_runtime_or_broker_owned",
+                    "gate.qcl084.promotion_allowed",
+                ],
+                GateResults =
+                [
+                    new ConnectivityProtocolEvidenceGate
+                    {
+                        GateId = "gate.qcl084.quest_runtime_or_broker_owned",
+                        Status = "missing",
+                        Evidence = "evidence_tier=host_loopback",
+                    },
+                    new ConnectivityProtocolEvidenceGate
+                    {
+                        GateId = "gate.qcl084.report_passed",
+                        Status = "satisfied",
+                        Evidence = "report status=pass",
+                    },
+                ],
+                Measurements = JsonSerializer.SerializeToElement(new { zeromq_messages_received = 5 }),
+            },
+        ],
+    };
+
+    var rows = ConnectivityRows.ForProtocolEvidenceMatrix(matrix);
+
+    Assert(rows[0].Name == "quest.device_link.protocol_evidence_matrix", "missing matrix summary row");
+    Assert(rows.Any(row => row.Name == "QCL-084.zeromq" && row.Status == "candidate"),
+        "missing QCL-084 protocol row");
+    Assert(rows.Any(row => row.Name == "gate.qcl084.quest_runtime_or_broker_owned" && row.Status == "warn"),
+        "missing gate row");
+    Assert(rows.Any(row => row.IssueCodes.Contains("hostess.issue.protocol_evidence_matrix.required_protocol_not_promoted")),
+        "missing required protocol warning");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "warn", "protocol matrix warnings must remain visible");
+}
+
 static void FirewallRowsExposeProductVerification()
 {
     var listener = JsonSerializer.SerializeToElement(new
@@ -189,6 +254,11 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "LoadSessionHistoryCommand"
             && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "RunProtocolMatrixCommand"
+            && action.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal)),
+        "protocol matrix must stay backed by the connectivity-probe protocol-matrix CLI route");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();

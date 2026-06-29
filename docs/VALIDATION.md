@@ -110,6 +110,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-081 
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-083 --mode fixture --fixture-profile qcl-083-osc-loopback-pass --out target\connectivity-probe\qcl-083-osc-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-084 --mode fixture --fixture-profile qcl-084-zeromq-loopback-pass --out target\connectivity-probe\qcl-084-zeromq-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-080-app-owned-udp-freshness-pass.json --out target\connectivity-probe\qcl-080-app-owned.stream-capability.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --suite-run target\connectivity-probe\device-link-suite-run.json --out target\connectivity-probe\device-link-protocol-matrix.json --fail-on-error
 ```
 
 The test-suite descriptor is the installer-facing index. It must cover host,
@@ -126,6 +127,13 @@ python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source host-loopback --out target\connectivity-probe\qcl083-live-host-loopback.json
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source manifold-zmq-loopback --zeromq-pattern pub-sub --zeromq-manifold-root S:\Work\repos\active\rusty-manifold --out target\connectivity-probe\qcl084-live-manifold-zmq-loopback.json
 ```
+
+The protocol evidence matrix is the WPF-equivalent CLI report for promotion
+state. It rolls up suite/probe/device-link artifacts and marks each protocol as
+`usable`, `usable_with_warnings`, `candidate`, `blocked`, `missing`, or
+`rejected` with explicit missing gates. Fixture and host-loopback LSL/OSC/ZeroMQ
+rows must remain candidates until Quest-runtime or broker-owned live QCL
+evidence exists.
 
 QCL-084 is the generic ZeroMQ data-protocol slot. Its primary proof is the
 pure-Rust `rusty-manifold-zmq` PUB/SUB adapter consuming

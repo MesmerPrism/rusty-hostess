@@ -156,6 +156,98 @@ public sealed class ConnectivitySuiteGroupResult
     public List<string> SlotIds { get; set; } = [];
 }
 
+public sealed class ConnectivityProtocolEvidenceMatrix
+{
+    [JsonPropertyName("$schema")]
+    public string Schema { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("matrix_id")]
+    public string MatrixId { get; set; } = "";
+
+    [JsonPropertyName("summary")]
+    public JsonElement Summary { get; set; }
+
+    [JsonPropertyName("rows")]
+    public List<ConnectivityProtocolEvidenceRow> Rows { get; set; } = [];
+
+    [JsonPropertyName("issues")]
+    public List<CommandIssue> Issues { get; set; } = [];
+
+    public string ReportPath { get; set; } = "";
+}
+
+public sealed class ConnectivityProtocolEvidenceRow
+{
+    [JsonPropertyName("capability_id")]
+    public string CapabilityId { get; set; } = "";
+
+    [JsonPropertyName("probe_id")]
+    public string ProbeId { get; set; } = "";
+
+    [JsonPropertyName("transport_kind")]
+    public string TransportKind { get; set; } = "";
+
+    [JsonPropertyName("semantic_family")]
+    public string SemanticFamily { get; set; } = "";
+
+    [JsonPropertyName("authority_owner")]
+    public string AuthorityOwner { get; set; } = "";
+
+    [JsonPropertyName("required_for_fold_in")]
+    public bool RequiredForFoldIn { get; set; }
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("promotion_state")]
+    public string PromotionState { get; set; } = "";
+
+    [JsonPropertyName("promotion_allowed")]
+    public bool PromotionAllowed { get; set; }
+
+    [JsonPropertyName("evidence_tier")]
+    public string EvidenceTier { get; set; } = "";
+
+    [JsonPropertyName("promotion_gate")]
+    public string PromotionGate { get; set; } = "";
+
+    [JsonPropertyName("missing_gates")]
+    public List<string> MissingGates { get; set; } = [];
+
+    [JsonPropertyName("gate_results")]
+    public List<ConnectivityProtocolEvidenceGate> GateResults { get; set; } = [];
+
+    [JsonPropertyName("source")]
+    public JsonElement Source { get; set; }
+
+    [JsonPropertyName("descriptor")]
+    public JsonElement Descriptor { get; set; }
+
+    [JsonPropertyName("measurements")]
+    public JsonElement Measurements { get; set; }
+
+    [JsonPropertyName("next_cli")]
+    public string NextCli { get; set; } = "";
+}
+
+public sealed class ConnectivityProtocolEvidenceGate
+{
+    [JsonPropertyName("gate_id")]
+    public string GateId { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("evidence")]
+    public string Evidence { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
 public sealed class ConnectivityStreamCapabilityDescriptor
 {
     [JsonPropertyName("$schema")]
