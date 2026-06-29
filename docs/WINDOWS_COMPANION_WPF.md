@@ -309,6 +309,7 @@ shared read-only operator projection:
 python tools\hostessctl\hostessctl.py companion-report projection `
   --frontend wpf `
   --device-link target\companion-session\wpf-session.device-link.json `
+  --connectivity-probe target\connectivity-probe\qcl030-local-only-hotspot.json `
   --protocol-matrix target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json `
   --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
   --out target\companion-report\wpf-connectivity-suite.projection.json `
@@ -316,9 +317,12 @@ python tools\hostessctl\hostessctl.py companion-report projection `
 ```
 
 The WPF service derives the device-link input from the protocol-matrix source
-selection when it runs the full action. The rows shown in the Protocol Matrix
-page come from `rusty.hostess.companion.report_projection.v1`, so WPF,
-Makepad-facing tests, and CLI automation use the same row contract.
+selection when it runs the full action. It can also pass explicit
+connectivity-probe artifacts when an operator view needs topology rows without
+moving probe execution or promotion rules into WPF. The rows shown in the
+Protocol Matrix page come from
+`rusty.hostess.companion.report_projection.v1`, so WPF, Makepad-facing tests,
+and CLI automation use the same row contract.
 
 ## Build
 

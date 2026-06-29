@@ -109,13 +109,15 @@ python -m unittest tools.test_hostessctl_companion_report_projection
 python tools\hostessctl\hostessctl.py companion-report projection `
   --frontend wpf `
   --device-link fixtures\companion\device-link-pass.json `
+  --connectivity-probe fixtures\connectivity-probe\qcl-030-local-only-hotspot-started.json `
   --protocol-matrix fixtures\companion\protocol-matrix-promoted.json `
   --out target\companion-report\projection-smoke.json `
   --fail-on-error
 ```
 
 That route emits `rusty.hostess.companion.report_projection.v1` and only copies
-source artifact rows into a frontend-neutral operator view. Use
+source artifact rows into a frontend-neutral operator view. Individual
+connectivity-probe rows can show topology and promotion gates, but use
 `connectivity-probe protocol-matrix` first when the view needs latest-artifact
 selection or protocol-promotion state.
 The WPF Protocol Matrix action follows that sequence: it asks

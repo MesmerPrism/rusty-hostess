@@ -158,9 +158,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/companion_report_projection.py`: frontend-neutral
   read-only report projection. It emits
   `rusty.hostess.companion.report_projection.v1` from explicit device-link,
-  protocol-matrix, and suite-run artifacts so WPF, Makepad, CLI automation, and
-  future frontends can compare the same operator rows without owning artifact
-  selection, validation, command authority, or protocol promotion.
+  connectivity-probe, protocol-matrix, and suite-run artifacts so WPF, Makepad,
+  CLI automation, and future frontends can compare the same operator rows
+  without owning artifact selection, validation, command authority, topology
+  readiness, or protocol promotion.
 - `tools/hostessctl/connectivity_probe.py`: Quest connectivity lab probe
   facade. It emits `rusty.quest.connectivity_topology_probe.v1` reports,
   dispatches QCL routes, and preserves the CLI/report shape for WPF, Makepad,
@@ -322,8 +323,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   operator report views; source artifacts still own validity, latest-artifact
   selection, and protocol promotion. The WPF Protocol Matrix action feeds the
   matrix-selected device-link artifact plus suite-run and protocol-matrix
-  reports into this route, then renders the projection rows instead of
-  re-normalizing promotion evidence in the UI.
+  reports into this route; topology report views can pass explicit
+  connectivity-probe reports through the same route instead of re-normalizing
+  evidence in the UI.
 - `tools/hostessctl/hostessctl.py connectivity-probe run`: emits a
   `rusty.quest.connectivity_topology_probe.v1` report for the Quest
   connectivity lab. Fixture mode covers QCL-000 USB ADB command-feedback and

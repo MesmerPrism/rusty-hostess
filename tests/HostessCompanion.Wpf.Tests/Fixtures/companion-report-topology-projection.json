@@ -1,0 +1,325 @@
+{
+  "$schema": "rusty.hostess.companion.report_projection.v1",
+  "authority": {
+    "acceptance_owner": "source_artifacts",
+    "command_authority": "rusty.manifold.command",
+    "device_link_authority": "rusty.quest.device_link",
+    "policy": "This report only projects Hostess, Quest, and Manifold evidence into frontend rows. It does not run probes, select latest artifacts, change firewall/device state, or promote protocols.",
+    "projection_only": true,
+    "protocol_promotion_authority": "rusty.quest.device_link.protocol_evidence_matrix",
+    "ui_role": "requester_and_inspector"
+  },
+  "frontend": "wpf",
+  "generated_at_utc": "2026-06-29T14:32:01.950197Z",
+  "issues": [],
+  "projection_id": "projection.topology.fixture",
+  "rows": [
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "classification": "experimental",
+        "observed_at_utc": "2026-06-29T14:18:10.001481Z",
+        "probe_id": "QCL-030",
+        "run_id": "20260629-141810-qcl-030"
+      },
+      "evidence": "experimental / 20260629-141810-qcl-030",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_summary",
+      "label": "QCL-030 connectivity probe",
+      "metrics": {
+        "jitter_ms_p95": null,
+        "lsl_discovery_ms": null,
+        "lsl_sample_loss_percent": null,
+        "lsl_samples_received": null,
+        "lsl_samples_requested": null,
+        "osc_clock_offset_estimate_ms_median": null,
+        "osc_clock_offset_jitter_ms_p95": null,
+        "osc_estimated_one_way_ms_p95": null,
+        "osc_loss_percent": null,
+        "osc_messages_received": null,
+        "osc_messages_requested": null,
+        "osc_quest_processing_ms_p95": null,
+        "osc_rtt_ms_p95": null,
+        "reconnect_attempts": 1,
+        "tcp_connect_ms": 68,
+        "throughput_mbps": null,
+        "udp_loss_percent": 0.0,
+        "udp_packets_received": 6,
+        "udp_packets_sent": 6,
+        "websocket_echo_ms": null,
+        "zeromq_clock_offset_estimate_ms_median": null,
+        "zeromq_clock_offset_jitter_ms_p95": null,
+        "zeromq_estimated_one_way_ms_p95": null,
+        "zeromq_messages_received": null,
+        "zeromq_messages_requested": null,
+        "zeromq_rtt_ms_p95": null,
+        "zeromq_server_processing_ms_p95": null
+      },
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.summary.QCL-030",
+      "section": "connectivity",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "endpoint_direction": "quest_provides_local_link",
+        "experimental": true,
+        "network_provider": "android_local_only_hotspot",
+        "owner": "local_only_hotspot",
+        "requires_adb": true,
+        "requires_existing_wifi": false,
+        "requires_pairing": true,
+        "requires_termux": false
+      },
+      "evidence": "local_only_hotspot / android_local_only_hotspot / quest_provides_local_link",
+      "evidence_tier": "",
+      "issue_codes": [
+        "hostess.issue.connectivity_probe.experimental_topology"
+      ],
+      "issue_count": 1,
+      "kind": "topology",
+      "label": "QCL-030 topology",
+      "metrics": {},
+      "notes": "requires ADB, requires pairing, experimental",
+      "required": false,
+      "row_id": "connectivity_probe.topology.QCL-030",
+      "section": "connectivity_topology",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "candidate"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "family": "local_only_hotspot",
+        "payload_class": "tcp_udp_probe",
+        "product_data_plane": false,
+        "protocol_role": "experimental_topology",
+        "route": "WifiManager.startLocalOnlyHotspot"
+      },
+      "evidence": "local_only_hotspot / experimental_topology / tcp_udp_probe",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_transport",
+      "label": "QCL-030 transport",
+      "metrics": {},
+      "notes": "WifiManager.startLocalOnlyHotspot",
+      "required": false,
+      "row_id": "connectivity_probe.transport.QCL-030",
+      "section": "transport",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "candidate"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "evidence": "WifiManager.startLocalOnlyHotspot API present",
+        "issue_codes": [],
+        "name": "android.local_only_hotspot.feature",
+        "notes": "",
+        "observed": {},
+        "status": "pass"
+      },
+      "evidence": "WifiManager.startLocalOnlyHotspot API present",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_check",
+      "label": "android.local_only_hotspot.feature",
+      "metrics": {},
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.check.QCL-030.android.local_only_hotspot.feature",
+      "section": "connectivity_check",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "evidence": "onStarted callback returned SSID/passphrase",
+        "issue_codes": [],
+        "name": "android.local_only_hotspot.started",
+        "notes": "",
+        "observed": {
+          "ssid_redacted": true
+        },
+        "status": "pass"
+      },
+      "evidence": "onStarted callback returned SSID/passphrase",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_check",
+      "label": "android.local_only_hotspot.started",
+      "metrics": {},
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.check.QCL-030.android.local_only_hotspot.started",
+      "section": "connectivity_check",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "evidence": "Windows client joined Quest-provided local-only hotspot",
+        "issue_codes": [],
+        "name": "pc.local_only_hotspot_join",
+        "notes": "",
+        "observed": {},
+        "status": "pass"
+      },
+      "evidence": "Windows client joined Quest-provided local-only hotspot",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_check",
+      "label": "pc.local_only_hotspot_join",
+      "metrics": {},
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.check.QCL-030.pc.local_only_hotspot_join",
+      "section": "connectivity_check",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "evidence": "TCP echo and bounded UDP datagrams exchanged",
+        "issue_codes": [],
+        "name": "topology.socket_exchange",
+        "notes": "",
+        "observed": {},
+        "status": "pass"
+      },
+      "evidence": "TCP echo and bounded UDP datagrams exchanged",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_check",
+      "label": "topology.socket_exchange",
+      "metrics": {},
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.check.QCL-030.topology.socket_exchange",
+      "section": "connectivity_check",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.hostess.connectivity_probe",
+      "details": {
+        "evidence": "reservation closed and restart gate clean",
+        "issue_codes": [],
+        "name": "android.local_only_hotspot.cleanup",
+        "notes": "",
+        "observed": {},
+        "status": "pass"
+      },
+      "evidence": "reservation closed and restart gate clean",
+      "evidence_tier": "",
+      "issue_codes": [],
+      "issue_count": 0,
+      "kind": "connectivity_probe_check",
+      "label": "android.local_only_hotspot.cleanup",
+      "metrics": {},
+      "notes": "",
+      "required": false,
+      "row_id": "connectivity_probe.check.QCL-030.android.local_only_hotspot.cleanup",
+      "section": "connectivity_check",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "pass"
+    },
+    {
+      "authority_owner": "rusty.quest.device_link.protocol_evidence_matrix",
+      "details": {
+        "allowed": false,
+        "reason": "LocalOnlyHotspot remains experimental until repeated live Horizon OS lifecycle evidence exists",
+        "target": "experimental topology descriptor"
+      },
+      "evidence": "allowed=False; target=experimental topology descriptor",
+      "evidence_tier": "",
+      "issue_codes": [
+        "gate.qcl-030.promotion_allowed"
+      ],
+      "issue_count": 1,
+      "kind": "connectivity_promotion_gate",
+      "label": "QCL-030 promotion gate",
+      "metrics": {},
+      "notes": "LocalOnlyHotspot remains experimental until repeated live Horizon OS lifecycle evidence exists",
+      "required": false,
+      "row_id": "connectivity_probe.promotion.QCL-030",
+      "section": "promotion",
+      "source_artifact": "source.connectivity_probe_report.1",
+      "source_path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "source_schema": "rusty.quest.connectivity_topology_probe.v1",
+      "status": "candidate"
+    }
+  ],
+  "schema_version": 1,
+  "source_artifacts": [
+    {
+      "path": "fixtures\\connectivity-probe\\qcl-030-local-only-hotspot-started.json",
+      "requested_role": "connectivity_probe_report",
+      "role": "connectivity_probe_report",
+      "schema": "rusty.quest.connectivity_topology_probe.v1",
+      "sha256": "54ac51c087aaad9352b349580e950bd58eb3a73dc71f0f4da77bfc790563c2e6",
+      "source_id": "source.connectivity_probe_report.1",
+      "status": "pass",
+      "summary": {
+        "check_count": 5,
+        "classification": "experimental",
+        "issue_count": 0,
+        "network_provider": "android_local_only_hotspot",
+        "probe_id": "QCL-030",
+        "promotion_allowed": false,
+        "status": "pass",
+        "topology_owner": "local_only_hotspot",
+        "transport_family": "local_only_hotspot"
+      }
+    }
+  ],
+  "status": "pass",
+  "summary": {
+    "issue_count": 0,
+    "row_count": 9,
+    "row_status_counts": {
+      "candidate": 3,
+      "pass": 6
+    },
+    "section_counts": {
+      "connectivity": 1,
+      "connectivity_check": 5,
+      "connectivity_topology": 1,
+      "promotion": 1,
+      "transport": 1
+    },
+    "source_count": 1,
+    "source_status_counts": {
+      "pass": 1
+    }
+  }
+}

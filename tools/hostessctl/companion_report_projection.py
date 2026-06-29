@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
+from tools.hostessctl.connectivity_probe import CONNECTIVITY_PROBE_SCHEMA
 from tools.hostessctl.device_link_report import QUEST_DEVICE_LINK_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import PROTOCOL_EVIDENCE_MATRIX_SCHEMA
 
@@ -78,6 +79,8 @@ def build_companion_report_projection(
         projected_role = source["role"]
         if projected_role == "device_link_report":
             rows.extend(project_device_link_rows(payload, source))
+        elif projected_role == "connectivity_probe_report":
+            rows.extend(project_connectivity_probe_rows(payload, source))
         elif projected_role == "protocol_evidence_matrix":
             rows.extend(project_protocol_matrix_rows(payload, source))
         elif projected_role == "connectivity_suite_run":
@@ -115,6 +118,8 @@ def selected_source_paths(args: argparse.Namespace) -> list[tuple[str, Path]]:
     paths: list[tuple[str, Path]] = []
     for raw in argument_values(getattr(args, "device_link", None)):
         paths.append(("device_link_report", Path(raw)))
+    for raw in argument_values(getattr(args, "connectivity_probe", None)):
+        paths.append(("connectivity_probe_report", Path(raw)))
     for raw in argument_values(getattr(args, "protocol_matrix", None)):
         paths.append(("protocol_evidence_matrix", Path(raw)))
     for raw in argument_values(getattr(args, "suite_run", None)):
@@ -427,6 +432,139 @@ def project_protocol_matrix_rows(
     return rows
 
 
+def project_connectivity_probe_rows(
+    report: dict[str, Any],
+    source: dict[str, Any],
+) -> list[dict[str, Any]]:
+    probe_id = str(report.get("probe_id") or "QCL")
+    rows: list[dict[str, Any]] = [
+        row(
+            f"connectivity_probe.summary.{safe_token(probe_id)}",
+            "connectivity",
+            "connectivity_probe_summary",
+            f"{probe_id} connectivity probe",
+            report_status(report),
+            source,
+            authority_owner="rusty.hostess.connectivity_probe",
+            evidence=(
+                f"{report.get('classification') or 'unknown'} / "
+                f"{report.get('run_id') or ''}"
+            ).strip(" /"),
+            metrics=object_value(report.get("measurements")),
+            details={
+                "probe_id": probe_id,
+                "run_id": report.get("run_id"),
+                "observed_at_utc": report.get("observed_at_utc"),
+                "classification": report.get("classification"),
+            },
+        )
+    ]
+
+    topology = object_value(report.get("topology"))
+    if topology:
+        rows.append(
+            row(
+                f"connectivity_probe.topology.{safe_token(probe_id)}",
+                "connectivity_topology",
+                "topology",
+                f"{probe_id} topology",
+                "candidate" if topology.get("experimental") else "pass",
+                source,
+                authority_owner="rusty.hostess.connectivity_probe",
+                evidence=(
+                    f"{topology.get('owner') or 'unknown'} / "
+                    f"{topology.get('network_provider') or 'unknown'} / "
+                    f"{topology.get('endpoint_direction') or 'unknown'}"
+                ),
+                notes=topology_notes(topology),
+                issue_codes=(
+                    ["hostess.issue.connectivity_probe.experimental_topology"]
+                    if topology.get("experimental")
+                    else []
+                ),
+                details=topology,
+            )
+        )
+
+    transport = object_value(report.get("transport"))
+    if transport:
+        rows.append(
+            row(
+                f"connectivity_probe.transport.{safe_token(probe_id)}",
+                "transport",
+                "connectivity_transport",
+                f"{probe_id} transport",
+                "candidate" if transport.get("product_data_plane") is False else "pass",
+                source,
+                authority_owner="rusty.hostess.connectivity_probe",
+                evidence=(
+                    f"{transport.get('family') or 'unknown'} / "
+                    f"{transport.get('protocol_role') or 'unknown'} / "
+                    f"{transport.get('payload_class') or 'unknown'}"
+                ),
+                notes=str(transport.get("route") or ""),
+                details=transport,
+            )
+        )
+
+    for check in list_objects(report.get("checks")):
+        check_name = str(check.get("name") or "check")
+        rows.append(
+            row(
+                f"connectivity_probe.check.{safe_token(probe_id)}.{safe_token(check_name)}",
+                "connectivity_check",
+                "connectivity_probe_check",
+                check_name,
+                str(check.get("status") or "unknown"),
+                source,
+                authority_owner="rusty.hostess.connectivity_probe",
+                evidence=str(check.get("evidence") or ""),
+                notes=str(check.get("notes") or ""),
+                issue_codes=string_list(check.get("issue_codes")),
+                details=check,
+            )
+        )
+
+    promotion = object_value(report.get("promotion"))
+    if promotion:
+        allowed = promotion.get("allowed") is True
+        rows.append(
+            row(
+                f"connectivity_probe.promotion.{safe_token(probe_id)}",
+                "promotion",
+                "connectivity_promotion_gate",
+                f"{probe_id} promotion gate",
+                "pass" if allowed else "candidate",
+                source,
+                authority_owner="rusty.quest.device_link.protocol_evidence_matrix",
+                evidence=(
+                    f"allowed={allowed}; target={promotion.get('target') or ''}"
+                ),
+                notes=str(promotion.get("reason") or ""),
+                issue_codes=[] if allowed else [f"gate.{probe_id.lower()}.promotion_allowed"],
+                details=promotion,
+            )
+        )
+
+    for probe_issue in list_objects(report.get("issues")):
+        code = str(probe_issue.get("issue_code") or "connectivity_probe.issue")
+        rows.append(
+            row(
+                f"connectivity_probe.issue.{safe_token(probe_id)}.{safe_token(code)}",
+                "issue",
+                "source_issue",
+                code,
+                status_from_severity(str(probe_issue.get("severity") or "")),
+                source,
+                authority_owner="rusty.hostess.connectivity_probe",
+                evidence=str(probe_issue.get("message") or ""),
+                issue_codes=[code],
+                details=probe_issue,
+            )
+        )
+    return rows
+
+
 def project_connectivity_suite_rows(
     report: dict[str, Any],
     source: dict[str, Any],
@@ -643,6 +781,8 @@ def classify_source_payload(payload: dict[str, Any]) -> str:
     schema = str(payload.get("$schema") or payload.get("schema") or "")
     if schema == QUEST_DEVICE_LINK_SCHEMA:
         return "device_link_report"
+    if schema == CONNECTIVITY_PROBE_SCHEMA:
+        return "connectivity_probe_report"
     if schema == PROTOCOL_EVIDENCE_MATRIX_SCHEMA:
         return "protocol_evidence_matrix"
     if schema == CONNECTIVITY_SUITE_RUN_SCHEMA:
@@ -671,6 +811,21 @@ def source_summary(role: str, payload: dict[str, Any]) -> dict[str, Any]:
             "all_required_data_protocols_promoted": summary.get(
                 "all_required_data_protocols_promoted"
             ),
+        }
+    if role == "connectivity_probe_report":
+        topology = object_value(payload.get("topology"))
+        transport = object_value(payload.get("transport"))
+        promotion = object_value(payload.get("promotion"))
+        return {
+            "probe_id": payload.get("probe_id"),
+            "status": payload.get("status"),
+            "classification": payload.get("classification"),
+            "topology_owner": topology.get("owner"),
+            "network_provider": topology.get("network_provider"),
+            "transport_family": transport.get("family"),
+            "promotion_allowed": promotion.get("allowed"),
+            "check_count": len(list_objects(payload.get("checks"))),
+            "issue_count": len(list_objects(payload.get("issues"))),
         }
     if role == "connectivity_suite_run":
         summary = object_value(payload.get("summary"))
@@ -702,6 +857,21 @@ def slot_notes(slot: dict[str, Any]) -> str:
             f"({slot.get('descriptor_status') or ''})"
         )
     return str(slot.get("report_path") or "")
+
+
+def topology_notes(topology: dict[str, Any]) -> str:
+    flags = []
+    if topology.get("requires_existing_wifi") is True:
+        flags.append("requires existing Wi-Fi")
+    if topology.get("requires_adb") is True:
+        flags.append("requires ADB")
+    if topology.get("requires_pairing") is True:
+        flags.append("requires pairing")
+    if topology.get("requires_termux") is True:
+        flags.append("requires Termux")
+    if topology.get("experimental") is True:
+        flags.append("experimental")
+    return ", ".join(flags)
 
 
 def report_status(report: dict[str, Any]) -> str:

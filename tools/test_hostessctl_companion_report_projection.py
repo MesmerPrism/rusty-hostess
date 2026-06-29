@@ -120,6 +120,51 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertIn("gate.qcl081.quest_runtime_or_broker_owned", qcl081["issue_codes"])
         self.assertNotEqual(qcl081["details"]["promotion_state"], "promoted")
 
+    def test_projection_accepts_connectivity_probe_topology_artifact(self) -> None:
+        report = build_companion_report_projection(
+            argparse.Namespace(
+                out="target/companion-report/topology-projection.json",
+                validation_out=None,
+                projection_id="projection.topology",
+                frontend="wpf",
+                device_link=[],
+                connectivity_probe=[
+                    str(
+                        REPO_ROOT
+                        / "fixtures"
+                        / "connectivity-probe"
+                        / "qcl-030-local-only-hotspot-started.json"
+                    )
+                ],
+                protocol_matrix=[],
+                suite_run=[],
+                fail_on_error=True,
+            ),
+            clock_func=fixed_clock,
+        )
+        validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["summary"]["source_count"], 1)
+        self.assertEqual(report["source_artifacts"][0]["role"], "connectivity_probe_report")
+        self.assertEqual(report["source_artifacts"][0]["summary"]["probe_id"], "QCL-030")
+
+        topology = find_row(report, "connectivity_probe.topology.QCL-030")
+        self.assertEqual(topology["status"], "candidate")
+        self.assertEqual(topology["authority_owner"], "rusty.hostess.connectivity_probe")
+        self.assertIn("experimental", topology["issue_codes"][0])
+        self.assertEqual(topology["details"]["owner"], "local_only_hotspot")
+
+        check = find_row(report, "connectivity_probe.check.QCL-030.topology.socket_exchange")
+        self.assertEqual(check["status"], "pass")
+        self.assertIn("bounded UDP", check["evidence"])
+
+        promotion = find_row(report, "connectivity_probe.promotion.QCL-030")
+        self.assertEqual(promotion["status"], "candidate")
+        self.assertFalse(promotion["details"]["allowed"])
+        self.assertIn("gate.qcl-030.promotion_allowed", promotion["issue_codes"])
+
     def test_cli_writes_projection_and_validation_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -132,6 +177,13 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
                     "makepad",
                     "--device-link",
                     str(REPO_ROOT / "fixtures" / "companion" / "device-link-pass.json"),
+                    "--connectivity-probe",
+                    str(
+                        REPO_ROOT
+                        / "fixtures"
+                        / "connectivity-probe"
+                        / "qcl-030-local-only-hotspot-started.json"
+                    ),
                     "--protocol-matrix",
                     str(REPO_ROOT / "fixtures" / "companion" / "protocol-matrix-promoted.json"),
                     "--out",
@@ -152,6 +204,9 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertEqual(args.frontend, "makepad")
         self.assertEqual(report["projection_id"], "projection.cli")
         self.assertEqual(report["frontend"], "makepad")
+        self.assertTrue(
+            any(source["role"] == "connectivity_probe_report" for source in report["source_artifacts"])
+        )
         self.assertEqual(validation["status"], "pass")
 
 

@@ -13,6 +13,7 @@ var tests = new (string Name, Action Test)[]
     ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
     ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
     ("companion report projection rows expose shared artifact", CompanionReportProjectionRowsExposeSharedArtifact),
+    ("companion report projection projects topology probe rows", CompanionReportProjectionProjectsTopologyProbeRows),
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
@@ -264,6 +265,31 @@ static void CompanionReportProjectionRowsExposeSharedArtifact()
     Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "projection fixture should project pass");
 }
 
+static void CompanionReportProjectionProjectsTopologyProbeRows()
+{
+    var projection = ReadFixture<CompanionReportProjection>("companion-report-topology-projection.json");
+    projection.ReportPath = "target/companion-report/projection.topology.wpf.json";
+
+    var rows = ConnectivityRows.ForCompanionReportProjection(projection);
+
+    Assert(rows.Any(row => row.Name == "projection.source.connectivity_probe_report.source.connectivity_probe_report.1"
+        && row.Evidence.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal)),
+        "missing connectivity-probe source row");
+    Assert(rows.Any(row =>
+            row.Name == "connectivity_probe.topology.QCL-030"
+            && row.Status == "candidate"
+            && row.Evidence.Contains("local_only_hotspot", StringComparison.Ordinal)
+            && row.IssueCodes.Contains("hostess.issue.connectivity_probe.experimental_topology")),
+        "missing topology candidate row");
+    Assert(rows.Any(row =>
+            row.Name == "connectivity_probe.promotion.QCL-030"
+            && row.Status == "candidate"
+            && row.IssueCodes.Contains("gate.qcl-030.promotion_allowed")),
+        "missing topology promotion gate row");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "planned",
+        "topology projection must stay planned until live evidence promotes it");
+}
+
 static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
 {
     var run = new HostessctlConnectivityService()
@@ -287,6 +313,8 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "projection must include the protocol matrix summary row");
     Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_suite_run"),
         "projection must include the suite source artifact");
+    Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_probe_report"),
+        "projection must include protocol-matrix source probe artifacts");
 }
 
 static void FirewallRowsExposeProductVerification()
@@ -403,6 +431,8 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             && action.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal)
             && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)
             && action.CliRoute.Contains("companion-report projection", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--connectivity-probe", StringComparison.Ordinal)
+            && action.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal)
             && action.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal)),
         "protocol matrix must render the shared companion-report projection artifact");
     var firewallActions = OperatorActionCatalog.All
