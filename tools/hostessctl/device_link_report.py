@@ -172,6 +172,18 @@ def build_stream_capability_descriptor_from_connectivity_probe(
 ) -> dict[str, Any]:
     """Build a measured stream-capability descriptor from a QCL probe report."""
 
+    if str(report.get("probe_id") or "") == "QCL-083":
+        return build_qcl083_stream_capability_descriptor(report, source_path=source_path)
+    return build_qcl080_stream_capability_descriptor(report, source_path=source_path)
+
+
+def build_qcl080_stream_capability_descriptor(
+    report: dict[str, Any],
+    *,
+    source_path: Path | None = None,
+) -> dict[str, Any]:
+    """Build the measured QCL-080 app-owned UDP freshness descriptor."""
+
     transport = object_value(report.get("transport"))
     topology = object_value(report.get("topology"))
     host = object_value(report.get("host"))
@@ -318,6 +330,153 @@ def build_stream_capability_descriptor_from_connectivity_probe(
     }
 
 
+def build_qcl083_stream_capability_descriptor(
+    report: dict[str, Any],
+    *,
+    source_path: Path | None = None,
+) -> dict[str, Any]:
+    """Build the measured QCL-083 OSC runtime round-trip descriptor."""
+
+    transport = object_value(report.get("transport"))
+    topology = object_value(report.get("topology"))
+    device = object_value(report.get("device"))
+    measurements = object_value(report.get("measurements"))
+    promotion = object_value(report.get("promotion"))
+    runtime_evidence = qcl083_runtime_evidence(report)
+    requirements = qcl083_stream_capability_requirements(
+        report,
+        transport=transport,
+        runtime_evidence=runtime_evidence,
+        measurements=measurements,
+    )
+    status = qcl083_stream_capability_status(
+        report,
+        transport=transport,
+        runtime_evidence=runtime_evidence,
+        measurements=measurements,
+        requirements=requirements,
+    )
+
+    return {
+        "$schema": QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA,
+        "schema_version": 1,
+        "capability_id": f"capability.qcl083.osc_round_trip.{safe_id(report.get('run_id'))}",
+        "bridge_route_id": "bridge_route.quest_device_link.qcl083.osc_exchange",
+        "stream_id": "stream.protocol_fit.osc.round_trip",
+        "semantic_family": "control_or_low_rate_telemetry",
+        "transport_kind": "osc_udp",
+        "payload_plane": "osc_message",
+        "rate_class": "control",
+        "reliability": "udp_ack_measured",
+        "direction": str(topology.get("endpoint_direction") or "host_to_quest_runtime_with_ack"),
+        "clock_policy": "host_send_quest_ack_timestamps_with_offset_estimate",
+        "queue_policy": "bounded_request_ack_window",
+        "max_rate_hz": 60,
+        "high_rate_json_payload": False,
+        "status": status,
+        "required_conditions": qcl083_required_conditions(
+            requirements,
+            report=report,
+            transport=transport,
+            runtime_evidence=runtime_evidence,
+        ),
+        "timing": timing_profile(
+            rtt_strategy="native_round_trip_ack",
+            clock_alignment="host_send_quest_ack_timestamps_with_offset_estimate",
+            metrics=[
+                "osc_rtt_ms_p95",
+                "osc_quest_processing_ms_p95",
+                "osc_estimated_one_way_ms_p95",
+                "osc_clock_offset_estimate_ms_median",
+                "osc_clock_offset_jitter_ms_p95",
+            ],
+            rtt_supported=True,
+            fallback_timing_source="parallel_lsl_reference",
+        ),
+        "test_slots": [
+            test_slot(
+                "QCL-083",
+                "qcl-083-osc-loopback-pass",
+                "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source quest-runtime --out target\\connectivity-probe\\qcl083-live-quest-runtime.json",
+                "OSC message shape, Quest-runtime payload exchange, and ACK timing metrics",
+                metrics=[
+                    "osc_messages_received",
+                    "osc_loss_percent",
+                    "osc_rtt_ms_p95",
+                    "osc_estimated_one_way_ms_p95",
+                ],
+            )
+        ],
+        "source_probe": {
+            "schema": report.get("schema"),
+            "probe_id": report.get("probe_id"),
+            "run_id": report.get("run_id"),
+            "observed_at_utc": report.get("observed_at_utc"),
+            "status": report.get("status"),
+            "classification": report.get("classification"),
+            "promotion_allowed": promotion.get("allowed"),
+            "promotion_target": promotion.get("target"),
+            "promotion_reason": promotion.get("reason"),
+            "artifact_path": str(source_path) if source_path else "",
+            "artifact_sha256": sha256_file(source_path) if source_path else "",
+        },
+        "topology_evidence": {
+            "owner": topology.get("owner"),
+            "network_provider": topology.get("network_provider"),
+            "requires_existing_wifi": topology.get("requires_existing_wifi"),
+            "requires_adb_for_setup_or_observation": topology.get("requires_adb"),
+            "requires_termux": topology.get("requires_termux"),
+            "experimental": topology.get("experimental"),
+        },
+        "transport_evidence": {
+            "route": transport.get("route"),
+            "protocol_role": transport.get("protocol_role"),
+            "endpoint_source": transport.get("endpoint_source"),
+            "payload_class": transport.get("payload_class"),
+            "local_endpoint": transport.get("local_endpoint"),
+            "remote_endpoint": transport.get("remote_endpoint"),
+        },
+        "runtime_evidence": runtime_evidence,
+        "device_identity": {
+            "model": device.get("model"),
+            "adb_state": device.get("adb_state"),
+            "wifi_ipv4": device.get("wifi_ipv4"),
+            "wifi_prefix_length": device.get("wifi_prefix_length"),
+            "serial_redacted": device.get("serial_redacted", True),
+        },
+        "measurements": {
+            "osc_messages_requested": int_or_none(measurements.get("osc_messages_requested")),
+            "osc_messages_received": int_or_none(measurements.get("osc_messages_received")),
+            "osc_loss_percent": float_or_none(measurements.get("osc_loss_percent")),
+            "osc_rtt_ms_p95": float_or_none(measurements.get("osc_rtt_ms_p95")),
+            "osc_quest_processing_ms_p95": float_or_none(
+                measurements.get("osc_quest_processing_ms_p95")
+            ),
+            "osc_estimated_one_way_ms_p95": float_or_none(
+                measurements.get("osc_estimated_one_way_ms_p95")
+            ),
+            "osc_clock_offset_estimate_ms_median": float_or_none(
+                measurements.get("osc_clock_offset_estimate_ms_median")
+            ),
+            "osc_clock_offset_jitter_ms_p95": float_or_none(
+                measurements.get("osc_clock_offset_jitter_ms_p95")
+            ),
+        },
+        "requirements": requirements,
+        "warnings": qcl083_stream_capability_warnings(report, requirements),
+        "recommended_for": [
+            "Quest app-owned low-rate OSC control packets",
+            "status messages with native ACK timing",
+            "operator readiness diagnostics for same-Wi-Fi Quest runtime routes",
+        ],
+        "not_for": [
+            "bulk media",
+            "lossless sample streams without sequence repair",
+            "strict command authority without Manifold acceptance",
+        ],
+    }
+
+
 def validate_stream_capability_descriptor(descriptor: dict[str, Any]) -> dict[str, Any]:
     errors: list[str] = []
     warnings: list[str] = []
@@ -334,18 +493,32 @@ def validate_stream_capability_descriptor(descriptor: dict[str, Any]) -> dict[st
     transport = object_value(descriptor.get("transport_evidence"))
     source_probe = object_value(descriptor.get("source_probe"))
     if status in {"usable", "usable_with_warnings"}:
-        if source_probe.get("probe_id") != "QCL-080" or source_probe.get("promotion_allowed") is not True:
-            errors.append("usable QCL-080 capabilities require a promoted QCL-080 source probe")
-        if transport.get("endpoint_source") != "app_owned_runtime_udp_sender":
-            errors.append("usable QCL-080 capabilities require an app-owned runtime UDP sender")
-        if runtime.get("status") != "sent" or runtime.get("socket_owner") != "app-owned":
-            errors.append("usable QCL-080 capabilities require sent app-owned runtime evidence")
-        packets_sent = int_or_none(runtime.get("packets_sent"))
-        if packets_sent is None or packets_sent < 1:
-            errors.append("usable QCL-080 capabilities require runtime packets_sent evidence")
-        packets_received = int_or_none(measurements.get("udp_packets_received"))
-        if packets_received is None or packets_received < 1:
-            errors.append("usable QCL-080 capabilities require received UDP packets")
+        probe_id = str(source_probe.get("probe_id") or "")
+        if probe_id == "QCL-080":
+            if source_probe.get("promotion_allowed") is not True:
+                errors.append("usable QCL-080 capabilities require a promoted QCL-080 source probe")
+            if transport.get("endpoint_source") != "app_owned_runtime_udp_sender":
+                errors.append("usable QCL-080 capabilities require an app-owned runtime UDP sender")
+            if runtime.get("status") != "sent" or runtime.get("socket_owner") != "app-owned":
+                errors.append("usable QCL-080 capabilities require sent app-owned runtime evidence")
+            packets_sent = int_or_none(runtime.get("packets_sent"))
+            if packets_sent is None or packets_sent < 1:
+                errors.append("usable QCL-080 capabilities require runtime packets_sent evidence")
+            packets_received = int_or_none(measurements.get("udp_packets_received"))
+            if packets_received is None or packets_received < 1:
+                errors.append("usable QCL-080 capabilities require received UDP packets")
+        elif probe_id == "QCL-083":
+            if source_probe.get("promotion_allowed") is not True:
+                errors.append("usable QCL-083 capabilities require a promoted QCL-083 source probe")
+            if transport.get("endpoint_source") != "quest-runtime":
+                errors.append("usable QCL-083 capabilities require Quest-runtime endpoint evidence")
+            if runtime.get("status") != "pass":
+                errors.append("usable QCL-083 capabilities require passing runtime OSC evidence")
+            messages_received = int_or_none(measurements.get("osc_messages_received"))
+            if messages_received is None or messages_received < 1:
+                errors.append("usable QCL-083 capabilities require received OSC ACK evidence")
+        else:
+            errors.append("usable stream capabilities require a supported promoted source probe")
 
     for requirement in list_value(descriptor.get("requirements")):
         if not isinstance(requirement, dict):
@@ -1538,6 +1711,216 @@ def qcl080_required_conditions(
             if transport.get("endpoint_source") == "app_owned_runtime_udp_sender"
             else "blocked",
             remediation="Promote only app-owned runtime UDP senders into reusable stream capability descriptors.",
+            evidence_refs=["transport.endpoint_source"],
+        ),
+    ]
+
+
+def qcl083_runtime_evidence(report: dict[str, Any]) -> dict[str, Any]:
+    probe = object_value(report.get("osc_payload_probe"))
+    android = object_value(probe.get("android"))
+    android_evidence = object_value(android.get("evidence"))
+    osc_server = object_value(android_evidence.get("osc_server"))
+    return {
+        "status": probe.get("status"),
+        "source": probe.get("source"),
+        "endpoint_source": probe.get("endpoint_source"),
+        "address": probe.get("address"),
+        "device_endpoint": probe.get("device_endpoint"),
+        "messages_requested": int_or_none(probe.get("messages_requested")),
+        "messages_acknowledged": int_or_none(probe.get("messages_acknowledged")),
+        "loss_percent": float_or_none(probe.get("loss_percent")),
+        "round_trip_ms_p95": float_or_none(probe.get("round_trip_ms_p95")),
+        "android_status": android_evidence.get("status"),
+        "android_authority": android_evidence.get("authority"),
+        "android_evidence_available": android.get("evidence_available") is True,
+        "android_messages_received": int_or_none(android_evidence.get("messages_received")),
+        "android_messages_acknowledged": int_or_none(android_evidence.get("messages_acknowledged")),
+        "android_socket_opened": osc_server.get("socket_opened"),
+        "android_socket_closed": osc_server.get("socket_closed"),
+        "remote_evidence": android.get("remote_evidence"),
+        "high_rate_json_payload": False,
+    }
+
+
+def qcl083_stream_capability_requirements(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    measurements: dict[str, Any],
+) -> list[dict[str, Any]]:
+    shape_ok = report_check(report, "protocol.osc_message_shape")
+    exchange_ok = report_check(report, "protocol.osc_payload_exchange")
+    messages_requested = int_or_none(measurements.get("osc_messages_requested"))
+    messages_received = int_or_none(measurements.get("osc_messages_received"))
+    loss_percent = float_or_none(measurements.get("osc_loss_percent"))
+    message_counts_ok = (
+        messages_requested is not None
+        and messages_requested > 0
+        and messages_received is not None
+        and messages_received >= messages_requested
+        and (loss_percent is None or loss_percent <= 0.0)
+    )
+    runtime_ok = (
+        transport.get("endpoint_source") == "quest-runtime"
+        and runtime_evidence.get("endpoint_source") == "app_owned_android_osc_server"
+        and runtime_evidence.get("status") == "pass"
+        and runtime_evidence.get("android_status") == "pass"
+        and runtime_evidence.get("android_authority") == "app_owned_runtime_osc_udp_server"
+        and runtime_evidence.get("android_socket_opened") is True
+        and runtime_evidence.get("android_socket_closed") is True
+    )
+    return [
+        {
+            "requirement_id": "requirement.quest_device_link.qcl083.message_shape",
+            "status": "satisfied" if object_value(shape_ok).get("status") == "pass" else "missing",
+            "evidence": evidence_text(shape_ok),
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl083.payload_exchange",
+            "status": "satisfied"
+            if object_value(exchange_ok).get("status") == "pass" and message_counts_ok
+            else "missing",
+            "observed_messages_requested": messages_requested,
+            "observed_messages_received": messages_received,
+            "observed_loss_percent": loss_percent,
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl083.quest_runtime_endpoint",
+            "status": "satisfied" if runtime_ok else "missing",
+            "evidence": str(runtime_evidence.get("remote_evidence") or ""),
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl083_live_promotion",
+            "status": "satisfied"
+            if object_value(report.get("promotion")).get("allowed") is True
+            else "missing",
+            "source_status": report.get("status"),
+            "required": True,
+        },
+    ]
+
+
+def qcl083_stream_capability_status(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    measurements: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> str:
+    if report.get("status") in {"fail", "blocked"}:
+        return "blocked"
+    if report.get("schema") != "rusty.quest.connectivity_topology_probe.v1":
+        return "rejected"
+    if report.get("probe_id") != "QCL-083" or transport.get("family") != "osc":
+        return "rejected"
+    if transport.get("endpoint_source") == "host-loopback":
+        return "candidate"
+    if transport.get("endpoint_source") != "quest-runtime":
+        return "rejected"
+    if runtime_evidence.get("status") != "pass":
+        return "blocked"
+    messages_received = int_or_none(measurements.get("osc_messages_received"))
+    if messages_received is None or messages_received < 1:
+        return "blocked"
+    if object_value(report.get("promotion")).get("allowed") is not True:
+        return "candidate"
+    has_requirement_warning = any(
+        str(requirement.get("status") or "") in {"missing", "blocked", "unknown"}
+        for requirement in requirements
+        if isinstance(requirement, dict)
+    )
+    has_report_warning = report.get("status") == "warn" or any(
+        object_value(issue).get("severity") == "warning" for issue in list_value(report.get("issues"))
+    )
+    if has_requirement_warning or has_report_warning:
+        return "usable_with_warnings"
+    return "usable"
+
+
+def qcl083_stream_capability_warnings(
+    report: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for issue in list_value(report.get("issues")):
+        if not isinstance(issue, dict):
+            continue
+        warnings.append(
+            {
+                "issue_code": str(issue.get("issue_code") or ""),
+                "severity": str(issue.get("severity") or "warning"),
+                "message": str(issue.get("message") or issue.get("issue_code") or ""),
+            }
+        )
+    for requirement in requirements:
+        if not isinstance(requirement, dict):
+            continue
+        if str(requirement.get("status") or "") not in {"missing", "blocked", "unknown"}:
+            continue
+        warnings.append(
+            {
+                "issue_code": "hostess.issue.device_link.stream_capability.qcl083_requirement_missing",
+                "severity": "warning",
+                "message": f"{requirement.get('requirement_id')} is {requirement.get('status')}",
+            }
+        )
+    return warnings
+
+
+def qcl083_required_conditions(
+    requirements: list[dict[str, Any]],
+    *,
+    report: dict[str, Any],
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+) -> list[dict[str, Any]]:
+    statuses = {
+        requirement_suffix(row): requirement_condition_status(str(row.get("status") or "unknown"))
+        for row in requirements
+        if isinstance(row, dict)
+    }
+    return [
+        condition(
+            "condition.qcl083.message_shape",
+            "protocol",
+            statuses.get("message_shape", "unknown"),
+            remediation="Run QCL-083 and reject malformed OSC address, typetag, or payload combinations.",
+            evidence_refs=["protocol.osc_message_shape"],
+        ),
+        condition(
+            "condition.qcl083.payload_exchange",
+            "protocol",
+            statuses.get("payload_exchange", "unknown"),
+            remediation="Run QCL-083 with the required message count and zero unacceptable loss.",
+            evidence_refs=["protocol.osc_payload_exchange", "osc_messages_received"],
+        ),
+        condition(
+            "condition.qcl083.quest_runtime_endpoint",
+            "runtime",
+            statuses.get("quest_runtime_endpoint", "unknown"),
+            remediation="Use the Hostess Android QCL-083 action or future Rusty Quest runtime endpoint.",
+            evidence_refs=["osc_payload_probe.android.evidence"],
+            notes=str(runtime_evidence.get("remote_evidence") or ""),
+        ),
+        condition(
+            "condition.qcl083.live_promotion",
+            "protocol",
+            statuses.get("qcl083_live_promotion", "unknown"),
+            remediation="Run QCL-083 live on the target topology and keep the promotion decision with the artifact.",
+            evidence_refs=["promotion.allowed"],
+            notes=str(object_value(report.get("promotion")).get("reason") or ""),
+        ),
+        condition(
+            "condition.qcl083.endpoint_source",
+            "runtime",
+            "satisfied" if transport.get("endpoint_source") == "quest-runtime" else "blocked",
+            remediation="Promote only Quest-runtime OSC endpoint evidence into reusable OSC descriptors.",
             evidence_refs=["transport.endpoint_source"],
         ),
     ]

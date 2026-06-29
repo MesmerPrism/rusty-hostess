@@ -128,6 +128,42 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertEqual(requirement(descriptor, "app_owned_runtime_sender")["status"], "missing")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl083_quest_runtime_report_promotes_measured_osc_capability(self) -> None:
+        descriptor = build_stream_capability_descriptor_from_connectivity_probe(
+            qcl083_quest_runtime_fixture()
+        )
+        validation = validate_stream_capability_descriptor(descriptor)
+
+        self.assertEqual(descriptor["$schema"], QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA)
+        self.assertEqual(descriptor["status"], "usable")
+        self.assertEqual(descriptor["transport_kind"], "osc_udp")
+        self.assertEqual(descriptor["payload_plane"], "osc_message")
+        self.assertEqual(descriptor["timing"]["rtt_strategy"], "native_round_trip_ack")
+        self.assertTrue(descriptor["timing"]["rtt_supported"])
+        self.assertEqual(
+            descriptor["transport_evidence"]["endpoint_source"],
+            "quest-runtime",
+        )
+        self.assertEqual(
+            descriptor["runtime_evidence"]["endpoint_source"],
+            "app_owned_android_osc_server",
+        )
+        self.assertEqual(
+            descriptor["runtime_evidence"]["android_authority"],
+            "app_owned_runtime_osc_udp_server",
+        )
+        self.assertEqual(descriptor["measurements"]["osc_messages_received"], 16)
+        self.assertEqual(descriptor["measurements"]["osc_loss_percent"], 0.0)
+        self.assertEqual(requirement(descriptor, "qcl083_live_promotion")["status"], "satisfied")
+        self.assertTrue(
+            any(
+                row["condition_id"] == "condition.qcl083.quest_runtime_endpoint"
+                for row in descriptor["required_conditions"]
+            )
+        )
+        self.assertEqual(descriptor["test_slots"][0]["probe_id"], "QCL-083")
+        self.assertEqual(validation["status"], "pass")
+
     def test_stream_capability_cli_writes_descriptor_and_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -148,6 +184,31 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(descriptor["$schema"], QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA)
+        self.assertEqual(descriptor["source_probe"]["artifact_path"], str(source))
+        self.assertTrue(descriptor["source_probe"]["artifact_sha256"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_stream_capability_cli_writes_qcl083_descriptor_and_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "qcl083.json"
+            out = root / "qcl083.stream-capability.json"
+            source.write_text(json.dumps(qcl083_quest_runtime_fixture()), encoding="utf-8")
+
+            status = run_stream_capability_descriptor(
+                argparse.Namespace(
+                    input=str(source),
+                    out=str(out),
+                    validation_out=None,
+                    fail_on_error=True,
+                )
+            )
+            descriptor = read_json(out)
+            validation = read_json(out.with_name("qcl083.stream-capability.validation-report.json"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(descriptor["transport_kind"], "osc_udp")
+        self.assertEqual(descriptor["status"], "usable")
         self.assertEqual(descriptor["source_probe"]["artifact_path"], str(source))
         self.assertTrue(descriptor["source_probe"]["artifact_sha256"])
         self.assertEqual(validation["status"], "pass")
@@ -262,6 +323,61 @@ def qcl080_app_owned_fixture() -> dict[str, Any]:
         / "connectivity-probe"
         / "qcl-080-app-owned-udp-freshness-pass.json"
     )
+
+
+def qcl083_quest_runtime_fixture() -> dict[str, Any]:
+    report = read_json(
+        REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-083-osc-loopback-pass.json"
+    )
+    report["run_id"] = "qcl083-quest-runtime"
+    report["status"] = "pass"
+    report["device"] = {
+        "adb_state": "device",
+        "model": "Quest 3S",
+        "serial_redacted": False,
+        "wifi_ipv4": "192.168.2.56",
+        "wifi_prefix_length": 24,
+    }
+    report["topology"]["endpoint_direction"] = "host_to_quest_runtime_with_ack"
+    report["transport"]["endpoint_source"] = "quest-runtime"
+    report["transport"]["local_endpoint"] = "192.168.2.54"
+    report["transport"]["remote_endpoint"] = "192.168.2.56"
+    report["promotion"] = {
+        "allowed": True,
+        "target": "quest.device_link OSC control/telemetry capability descriptor",
+        "reason": "QCL-083 proves Quest/runtime-owned OSC payload exchange",
+    }
+    report["measurements"].update(
+        {
+            "osc_quest_processing_ms_p95": 0.3,
+            "osc_estimated_one_way_ms_p95": 7.1,
+            "osc_clock_offset_estimate_ms_median": -12.5,
+            "osc_clock_offset_jitter_ms_p95": 1.2,
+        }
+    )
+    report["osc_payload_probe"] = {
+        "status": "pass",
+        "source": "quest-runtime",
+        "endpoint_source": "app_owned_android_osc_server",
+        "address": "/rusty/qcl083",
+        "device_endpoint": "192.168.2.56:18783",
+        "messages_requested": 16,
+        "messages_acknowledged": 16,
+        "loss_percent": 0.0,
+        "round_trip_ms_p95": 8,
+        "android": {
+            "remote_evidence": "/sdcard/Android/data/io.github.mesmerprism.rustyhostess.t/files/hostess-t/evidence/qcl083-osc/latest.json",
+            "evidence_available": True,
+            "evidence": {
+                "status": "pass",
+                "authority": "app_owned_runtime_osc_udp_server",
+                "messages_received": 16,
+                "messages_acknowledged": 16,
+                "osc_server": {"socket_opened": True, "socket_closed": True},
+            },
+        },
+    }
+    return report
 
 
 def requirement(descriptor: dict[str, Any], suffix: str) -> dict[str, Any]:
