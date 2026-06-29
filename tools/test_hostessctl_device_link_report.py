@@ -164,6 +164,61 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertEqual(descriptor["test_slots"][0]["probe_id"], "QCL-083")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl081_quest_runtime_blocked_report_emits_lsl_descriptor(self) -> None:
+        descriptor = build_stream_capability_descriptor_from_connectivity_probe(
+            qcl081_quest_runtime_blocked_fixture()
+        )
+        validation = validate_stream_capability_descriptor(descriptor)
+
+        self.assertEqual(descriptor["$schema"], QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA)
+        self.assertEqual(descriptor["status"], "blocked")
+        self.assertEqual(descriptor["transport_kind"], "lsl")
+        self.assertEqual(descriptor["payload_plane"], "lsl_sample")
+        self.assertEqual(descriptor["timing"]["rtt_strategy"], "lsl_time_correction_reference")
+        self.assertTrue(descriptor["timing"]["rtt_supported"])
+        self.assertEqual(descriptor["transport_evidence"]["endpoint_source"], "quest-runtime")
+        self.assertEqual(descriptor["runtime_evidence"]["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.lsl_quest_pylsl_missing",
+            descriptor["runtime_evidence"]["issue_codes"],
+        )
+        self.assertEqual(descriptor["measurements"]["lsl_samples_received"], 0)
+        self.assertEqual(
+            requirement(descriptor, "quest_or_broker_lsl_producer")["status"],
+            "blocked",
+        )
+        self.assertEqual(requirement(descriptor, "qcl081_live_promotion")["status"], "blocked")
+        self.assertTrue(
+            any(
+                row["condition_id"] == "condition.qcl081.quest_or_broker_lsl_producer"
+                for row in descriptor["required_conditions"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+        self.assertIn("qcl081_live_promotion", " ".join(validation["warnings"]))
+
+    def test_qcl081_quest_runtime_report_promotes_measured_lsl_capability(self) -> None:
+        descriptor = build_stream_capability_descriptor_from_connectivity_probe(
+            qcl081_quest_runtime_promoted_fixture()
+        )
+        validation = validate_stream_capability_descriptor(descriptor)
+
+        self.assertEqual(descriptor["status"], "usable")
+        self.assertEqual(descriptor["transport_kind"], "lsl")
+        self.assertEqual(descriptor["semantic_family"], "study_stream")
+        self.assertEqual(descriptor["runtime_evidence"]["source"], "quest-runtime")
+        self.assertEqual(descriptor["runtime_evidence"]["status"], "pass")
+        self.assertEqual(descriptor["runtime_evidence"]["samples_received"], 16)
+        self.assertEqual(descriptor["runtime_evidence"]["loss_percent"], 0.0)
+        self.assertEqual(descriptor["measurements"]["lsl_samples_received"], 16)
+        self.assertEqual(
+            requirement(descriptor, "quest_or_broker_lsl_producer")["status"],
+            "satisfied",
+        )
+        self.assertEqual(requirement(descriptor, "qcl081_live_promotion")["status"], "satisfied")
+        self.assertEqual(descriptor["test_slots"][0]["probe_id"], "QCL-081")
+        self.assertEqual(validation["status"], "pass")
+
     def test_stream_capability_cli_writes_descriptor_and_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -184,6 +239,31 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
 
         self.assertEqual(status, 0)
         self.assertEqual(descriptor["$schema"], QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA)
+        self.assertEqual(descriptor["source_probe"]["artifact_path"], str(source))
+        self.assertTrue(descriptor["source_probe"]["artifact_sha256"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_stream_capability_cli_writes_qcl081_blocked_descriptor_and_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            source = root / "qcl081.json"
+            out = root / "qcl081.stream-capability.json"
+            source.write_text(json.dumps(qcl081_quest_runtime_blocked_fixture()), encoding="utf-8")
+
+            status = run_stream_capability_descriptor(
+                argparse.Namespace(
+                    input=str(source),
+                    out=str(out),
+                    validation_out=None,
+                    fail_on_error=True,
+                )
+            )
+            descriptor = read_json(out)
+            validation = read_json(out.with_name("qcl081.stream-capability.validation-report.json"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(descriptor["transport_kind"], "lsl")
+        self.assertEqual(descriptor["status"], "blocked")
         self.assertEqual(descriptor["source_probe"]["artifact_path"], str(source))
         self.assertTrue(descriptor["source_probe"]["artifact_sha256"])
         self.assertEqual(validation["status"], "pass")
@@ -325,6 +405,171 @@ def qcl080_app_owned_fixture() -> dict[str, Any]:
     )
 
 
+def qcl081_loopback_fixture() -> dict[str, Any]:
+    return read_json(
+        REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-081-lsl-loopback-pass.json"
+    )
+
+
+def qcl081_quest_runtime_blocked_fixture() -> dict[str, Any]:
+    report = qcl081_loopback_fixture()
+    report["run_id"] = "qcl081-quest-runtime-blocked"
+    report["status"] = "blocked"
+    report["device"] = {
+        "adb_state": "device",
+        "model": "Quest 3S",
+        "serial_redacted": False,
+        "wifi_ipv4": "192.168.2.56",
+        "wifi_prefix_length": 24,
+    }
+    report["topology"].update(
+        {
+            "owner": "external_wifi",
+            "network_provider": "router_or_existing_wifi",
+            "requires_existing_wifi": True,
+            "requires_adb": True,
+            "experimental": True,
+        }
+    )
+    report["transport"].update(
+        {
+            "endpoint_source": "quest-runtime",
+            "local_endpoint": "192.168.2.54",
+            "remote_endpoint": "192.168.2.56",
+        }
+    )
+    set_qcl081_check(
+        report,
+        "protocol.lsl_discovery",
+        status="blocked",
+        evidence="Termux Python is available, but pylsl/liblsl is not importable on the Quest",
+        observed={
+            "source": "quest-runtime",
+            "stream_name": "RustyQCL081",
+            "stream_type": "Markers",
+            "discovery_ms": None,
+        },
+        issue_codes=["hostess.issue.connectivity_probe.lsl_quest_pylsl_missing"],
+    )
+    set_qcl081_check(
+        report,
+        "protocol.lsl_sample_continuity",
+        status="blocked",
+        evidence="sample continuity blocked by discovery/dependency failure",
+        observed={
+            "samples_requested": 16,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "monotonic_sequences": False,
+            "received_sequences": [],
+        },
+        issue_codes=["hostess.issue.connectivity_probe.lsl_quest_pylsl_missing"],
+    )
+    report["measurements"].update(
+        {
+            "lsl_discovery_ms": None,
+            "lsl_samples_requested": 16,
+            "lsl_samples_received": 0,
+            "lsl_sample_loss_percent": 100.0,
+        }
+    )
+    report["issues"] = [
+        {
+            "issue_code": "hostess.issue.connectivity_probe.lsl_quest_pylsl_missing",
+            "severity": "error",
+            "message": "LSL discovery or sample continuity did not satisfy the requested probe",
+        }
+    ]
+    report["promotion"] = {
+        "allowed": False,
+        "target": "quest.device_link LSL stream capability descriptor",
+        "reason": "QCL-081 did not prove a Quest-owned LSL producer; Quest-side liblsl/pylsl runtime remains the blocking dependency",
+    }
+    report["lsl_payload_probe"] = {
+        "status": "blocked",
+        "source": "quest-runtime",
+        "stream_name": "RustyQCL081",
+        "stream_type": "Markers",
+        "samples_requested": 16,
+        "samples_received": 0,
+        "loss_percent": 100.0,
+        "discovery_ms": None,
+        "monotonic_sequences": False,
+        "received_sequences": [],
+        "issue_codes": ["hostess.issue.connectivity_probe.lsl_quest_pylsl_missing"],
+        "notes": "Termux Python is available, but pylsl/liblsl is not importable on the Quest",
+        "quest_runtime_preflight": {
+            "termux_python": {"returncode": 0, "stdout": "3.13.13", "stderr": ""},
+            "pylsl_import": {"returncode": 1, "stdout": "", "stderr": "No module named pylsl"},
+        },
+    }
+    return report
+
+
+def qcl081_quest_runtime_promoted_fixture() -> dict[str, Any]:
+    report = qcl081_quest_runtime_blocked_fixture()
+    report["run_id"] = "qcl081-quest-runtime-promoted"
+    report["status"] = "pass"
+    set_qcl081_check(
+        report,
+        "protocol.lsl_discovery",
+        status="pass",
+        evidence="stream RustyQCL081 discovered in 42ms",
+        observed={
+            "source": "quest-runtime",
+            "stream_name": "RustyQCL081",
+            "stream_type": "Markers",
+            "discovery_ms": 42,
+        },
+        issue_codes=[],
+    )
+    set_qcl081_check(
+        report,
+        "protocol.lsl_sample_continuity",
+        status="pass",
+        evidence="16/16 samples received, loss=0.0%",
+        observed={
+            "samples_requested": 16,
+            "samples_received": 16,
+            "loss_percent": 0.0,
+            "monotonic_sequences": True,
+            "received_sequences": list(range(16)),
+        },
+        issue_codes=[],
+    )
+    report["measurements"].update(
+        {
+            "lsl_discovery_ms": 42,
+            "lsl_samples_requested": 16,
+            "lsl_samples_received": 16,
+            "lsl_sample_loss_percent": 0.0,
+        }
+    )
+    report["issues"] = []
+    report["promotion"] = {
+        "allowed": True,
+        "target": "quest.device_link LSL stream capability descriptor",
+        "reason": "QCL-081 proves Quest-runtime LSL discovery and sample continuity",
+    }
+    report["lsl_payload_probe"].update(
+        {
+            "status": "pass",
+            "samples_received": 16,
+            "loss_percent": 0.0,
+            "discovery_ms": 42,
+            "monotonic_sequences": True,
+            "received_sequences": list(range(16)),
+            "issue_codes": [],
+            "notes": "Quest-runtime LSL outlet emitted clocked samples",
+            "quest_runtime_preflight": {
+                "termux_python": {"returncode": 0, "stdout": "3.13.13", "stderr": ""},
+                "pylsl_import": {"returncode": 0, "stdout": "1.17.6", "stderr": ""},
+            },
+        }
+    )
+    return report
+
+
 def qcl083_quest_runtime_fixture() -> dict[str, Any]:
     report = read_json(
         REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-083-osc-loopback-pass.json"
@@ -378,6 +623,26 @@ def qcl083_quest_runtime_fixture() -> dict[str, Any]:
         },
     }
     return report
+
+
+def set_qcl081_check(
+    report: dict[str, Any],
+    name: str,
+    *,
+    status: str,
+    evidence: str,
+    observed: dict[str, Any],
+    issue_codes: list[str],
+) -> None:
+    for check in report["checks"]:
+        if check.get("name") != name:
+            continue
+        check["status"] = status
+        check["evidence"] = evidence
+        check["observed"] = observed
+        check["issue_codes"] = issue_codes
+        return
+    raise AssertionError(f"missing check {name}")
 
 
 def requirement(descriptor: dict[str, Any], suffix: str) -> dict[str, Any]:

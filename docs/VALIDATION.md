@@ -110,6 +110,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-081 
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-083 --mode fixture --fixture-profile qcl-083-osc-loopback-pass --out target\connectivity-probe\qcl-083-osc-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-084 --mode fixture --fixture-profile qcl-084-zeromq-loopback-pass --out target\connectivity-probe\qcl-084-zeromq-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-080-app-owned-udp-freshness-pass.json --out target\connectivity-probe\qcl-080-app-owned.stream-capability.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-081-lsl-loopback-pass.json --out target\connectivity-probe\qcl-081-lsl-loopback.stream-capability.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --suite-run target\connectivity-probe\device-link-suite-run.json --out target\connectivity-probe\device-link-protocol-matrix.json --fail-on-error
 ```
 
@@ -134,6 +135,11 @@ state. It rolls up suite/probe/device-link artifacts and marks each protocol as
 `rejected` with explicit missing gates. Fixture and host-loopback LSL/OSC/ZeroMQ
 rows must remain candidates until Quest-runtime or broker-owned live QCL
 evidence exists.
+The QCL-081 stream-capability route is still useful before promotion: blocked
+Quest-runtime preflight artifacts validate as descriptors with explicit LSL
+discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
+show the same missing Quest-side `pylsl/liblsl` evidence that CLI automation
+sees.
 
 QCL-084 is the generic ZeroMQ data-protocol slot. Its primary proof is the
 pure-Rust `rusty-manifold-zmq` PUB/SUB adapter consuming

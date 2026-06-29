@@ -207,6 +207,10 @@ device-link authority. The same module also derives measured
 probe artifacts; QCL-080 app-owned UDP evidence becomes a reusable capability
 row only when the runtime marker, UDP freshness counters, product-scoped WPF
 listener firewall verification, and promotion decision are all preserved.
+QCL-081 LSL artifacts emit their own descriptor instead of falling through to
+UDP: host-loopback evidence stays candidate, blocked Quest-runtime preflight
+keeps the missing `pylsl/liblsl` producer gate visible, and usable LSL requires
+Quest-runtime, study-adapter, or broker-owned sample-continuity evidence.
 The same device-link adapter owns the planned downloadable
 `rusty.quest.device_link.install_environment_test_suite.v1` descriptor. That
 suite is the frontend-neutral map for host install checks, network adapter and

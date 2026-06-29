@@ -172,6 +172,8 @@ def build_stream_capability_descriptor_from_connectivity_probe(
 ) -> dict[str, Any]:
     """Build a measured stream-capability descriptor from a QCL probe report."""
 
+    if str(report.get("probe_id") or "") == "QCL-081":
+        return build_qcl081_stream_capability_descriptor(report, source_path=source_path)
     if str(report.get("probe_id") or "") == "QCL-083":
         return build_qcl083_stream_capability_descriptor(report, source_path=source_path)
     return build_qcl080_stream_capability_descriptor(report, source_path=source_path)
@@ -326,6 +328,140 @@ def build_qcl080_stream_capability_descriptor(
             "applied command feedback",
             "high-rate camera or media payloads",
             "production host listener claims until the signed Hostess/WPF firewall rule is proven",
+        ],
+    }
+
+
+def build_qcl081_stream_capability_descriptor(
+    report: dict[str, Any],
+    *,
+    source_path: Path | None = None,
+) -> dict[str, Any]:
+    """Build the measured QCL-081 LSL clocked-sample descriptor."""
+
+    transport = object_value(report.get("transport"))
+    topology = object_value(report.get("topology"))
+    device = object_value(report.get("device"))
+    measurements = object_value(report.get("measurements"))
+    promotion = object_value(report.get("promotion"))
+    runtime_evidence = qcl081_runtime_evidence(report)
+    requirements = qcl081_stream_capability_requirements(
+        report,
+        transport=transport,
+        runtime_evidence=runtime_evidence,
+        measurements=measurements,
+    )
+    status = qcl081_stream_capability_status(
+        report,
+        transport=transport,
+        runtime_evidence=runtime_evidence,
+        measurements=measurements,
+        requirements=requirements,
+    )
+
+    return {
+        "$schema": QUEST_DEVICE_LINK_STREAM_CAPABILITY_SCHEMA,
+        "schema_version": 1,
+        "capability_id": f"capability.qcl081.lsl_clocked_samples.{safe_id(report.get('run_id'))}",
+        "bridge_route_id": "bridge_route.quest_device_link.qcl081.lsl_clocked_samples",
+        "stream_id": "stream.protocol_fit.lsl.clocked_samples",
+        "semantic_family": "study_stream",
+        "transport_kind": "lsl",
+        "payload_plane": "lsl_sample",
+        "rate_class": "sample_clocked",
+        "reliability": "lsl_ordered_stream_with_sample_continuity",
+        "direction": str(topology.get("endpoint_direction") or "lsl_multicast_discovery_plus_tcp_samples"),
+        "clock_policy": "lsl_time_correction_reference",
+        "queue_policy": "bounded_recent_samples_with_sequence_continuity_check",
+        "max_rate_hz": 500,
+        "high_rate_json_payload": False,
+        "status": status,
+        "required_conditions": qcl081_required_conditions(
+            requirements,
+            report=report,
+            transport=transport,
+            runtime_evidence=runtime_evidence,
+        ),
+        "timing": timing_profile(
+            rtt_strategy="lsl_time_correction_reference",
+            clock_alignment="lsl_clock_offset_and_sample_timestamps",
+            metrics=[
+                "lsl_discovery_ms",
+                "lsl_samples_requested",
+                "lsl_samples_received",
+                "lsl_sample_loss_percent",
+            ],
+            rtt_supported=True,
+            fallback_timing_source="quest_or_broker_owned_lsl_outlet_required",
+        ),
+        "test_slots": [
+            test_slot(
+                "QCL-081",
+                "qcl-081-lsl-loopback-pass",
+                "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source quest-runtime --out target\\connectivity-probe\\qcl081-live-quest-runtime.json",
+                "LSL discovery, sample continuity, and Quest/broker-owned producer evidence",
+                metrics=[
+                    "lsl_discovery_ms",
+                    "lsl_samples_received",
+                    "lsl_sample_loss_percent",
+                ],
+            )
+        ],
+        "source_probe": {
+            "schema": report.get("schema"),
+            "probe_id": report.get("probe_id"),
+            "run_id": report.get("run_id"),
+            "observed_at_utc": report.get("observed_at_utc"),
+            "status": report.get("status"),
+            "classification": report.get("classification"),
+            "promotion_allowed": promotion.get("allowed"),
+            "promotion_target": promotion.get("target"),
+            "promotion_reason": promotion.get("reason"),
+            "artifact_path": str(source_path) if source_path else "",
+            "artifact_sha256": sha256_file(source_path) if source_path else "",
+        },
+        "topology_evidence": {
+            "owner": topology.get("owner"),
+            "network_provider": topology.get("network_provider"),
+            "requires_existing_wifi": topology.get("requires_existing_wifi"),
+            "requires_adb_for_setup_or_observation": topology.get("requires_adb"),
+            "requires_termux": topology.get("requires_termux"),
+            "experimental": topology.get("experimental"),
+        },
+        "transport_evidence": {
+            "route": transport.get("route"),
+            "protocol_role": transport.get("protocol_role"),
+            "endpoint_source": transport.get("endpoint_source"),
+            "payload_class": transport.get("payload_class"),
+            "local_endpoint": transport.get("local_endpoint"),
+            "remote_endpoint": transport.get("remote_endpoint"),
+        },
+        "runtime_evidence": runtime_evidence,
+        "device_identity": {
+            "model": device.get("model"),
+            "adb_state": device.get("adb_state"),
+            "wifi_ipv4": device.get("wifi_ipv4"),
+            "wifi_prefix_length": device.get("wifi_prefix_length"),
+            "serial_redacted": device.get("serial_redacted", True),
+        },
+        "measurements": {
+            "lsl_discovery_ms": float_or_none(measurements.get("lsl_discovery_ms")),
+            "lsl_samples_requested": int_or_none(measurements.get("lsl_samples_requested")),
+            "lsl_samples_received": int_or_none(measurements.get("lsl_samples_received")),
+            "lsl_sample_loss_percent": float_or_none(measurements.get("lsl_sample_loss_percent")),
+            "reconnect_attempts": int_or_none(measurements.get("reconnect_attempts")),
+        },
+        "requirements": requirements,
+        "warnings": qcl081_stream_capability_warnings(report, requirements),
+        "recommended_for": [
+            "clocked study and biosignal sample streams",
+            "parallel timing references for UDP, OSC, ZeroMQ, or media routes",
+            "operator diagnostics where discovery and sample continuity are explicit",
+        ],
+        "not_for": [
+            "command authority",
+            "bulk media payloads",
+            "Quest-runtime promotion until a Quest-owned, study-adapter-owned, or broker-owned LSL producer is proven",
         ],
     }
 
@@ -517,6 +653,18 @@ def validate_stream_capability_descriptor(descriptor: dict[str, Any]) -> dict[st
             messages_received = int_or_none(measurements.get("osc_messages_received"))
             if messages_received is None or messages_received < 1:
                 errors.append("usable QCL-083 capabilities require received OSC ACK evidence")
+        elif probe_id == "QCL-081":
+            if source_probe.get("promotion_allowed") is not True:
+                errors.append("usable QCL-081 capabilities require a promoted QCL-081 source probe")
+            if not qcl081_promotable_lsl_owner(transport.get("endpoint_source")):
+                errors.append(
+                    "usable QCL-081 capabilities require Quest-runtime, study-adapter, or broker-owned LSL evidence"
+                )
+            if runtime.get("status") != "pass":
+                errors.append("usable QCL-081 capabilities require passing runtime LSL evidence")
+            samples_received = int_or_none(measurements.get("lsl_samples_received"))
+            if samples_received is None or samples_received < 1:
+                errors.append("usable QCL-081 capabilities require received LSL samples")
         else:
             errors.append("usable stream capabilities require a supported promoted source probe")
 
@@ -1714,6 +1862,294 @@ def qcl080_required_conditions(
             evidence_refs=["transport.endpoint_source"],
         ),
     ]
+
+
+def qcl081_runtime_evidence(report: dict[str, Any]) -> dict[str, Any]:
+    probe = object_value(report.get("lsl_payload_probe"))
+    transport = object_value(report.get("transport"))
+    measurements = object_value(report.get("measurements"))
+    discovery_check = report_check(report, "protocol.lsl_discovery")
+    continuity_check = report_check(report, "protocol.lsl_sample_continuity")
+    discovery_observed = object_value((discovery_check or {}).get("observed"))
+    continuity_observed = object_value((continuity_check or {}).get("observed"))
+    preflight = object_value(probe.get("quest_runtime_preflight"))
+    termux_python = object_value(preflight.get("termux_python"))
+    pylsl_import = object_value(preflight.get("pylsl_import"))
+    issue_codes = string_list(probe.get("issue_codes"))
+    if not issue_codes:
+        issue_codes = string_list((discovery_check or {}).get("issue_codes")) + string_list(
+            (continuity_check or {}).get("issue_codes")
+        )
+    status = str(
+        probe.get("status")
+        or (
+            "pass"
+            if object_value(discovery_check).get("status") == "pass"
+            and object_value(continuity_check).get("status") == "pass"
+            else report.get("status") or "unknown"
+        )
+    )
+    return {
+        "status": status,
+        "source": probe.get("source") or discovery_observed.get("source") or transport.get("endpoint_source"),
+        "stream_name": probe.get("stream_name") or discovery_observed.get("stream_name"),
+        "stream_type": probe.get("stream_type") or discovery_observed.get("stream_type"),
+        "samples_requested": int_or_none(
+            probe.get("samples_requested")
+            or continuity_observed.get("samples_requested")
+            or measurements.get("lsl_samples_requested")
+        ),
+        "samples_received": int_or_none(
+            probe.get("samples_received")
+            or continuity_observed.get("samples_received")
+            or measurements.get("lsl_samples_received")
+        ),
+        "loss_percent": float_or_none(
+            probe.get("loss_percent")
+            or continuity_observed.get("loss_percent")
+            or measurements.get("lsl_sample_loss_percent")
+        ),
+        "discovery_ms": float_or_none(
+            probe.get("discovery_ms")
+            or discovery_observed.get("discovery_ms")
+            or measurements.get("lsl_discovery_ms")
+        ),
+        "monotonic_sequences": (
+            probe.get("monotonic_sequences")
+            if "monotonic_sequences" in probe
+            else continuity_observed.get("monotonic_sequences")
+        ),
+        "received_sequences": list_value(probe.get("received_sequences")),
+        "issue_codes": issue_codes,
+        "notes": probe.get("notes") or evidence_text(discovery_check),
+        "quest_termux_python_returncode": int_or_none(termux_python.get("returncode")),
+        "quest_termux_python_available": termux_python.get("returncode") == 0,
+        "quest_pylsl_import_returncode": int_or_none(pylsl_import.get("returncode")),
+        "quest_pylsl_import_available": pylsl_import.get("returncode") == 0,
+        "high_rate_json_payload": False,
+    }
+
+
+def qcl081_stream_capability_requirements(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    measurements: dict[str, Any],
+) -> list[dict[str, Any]]:
+    discovery_check = report_check(report, "protocol.lsl_discovery")
+    continuity_check = report_check(report, "protocol.lsl_sample_continuity")
+    discovery_ms = float_or_none(measurements.get("lsl_discovery_ms"))
+    samples_requested = int_or_none(measurements.get("lsl_samples_requested"))
+    samples_received = int_or_none(measurements.get("lsl_samples_received"))
+    loss_percent = float_or_none(measurements.get("lsl_sample_loss_percent"))
+    continuity_ok = (
+        samples_requested is not None
+        and samples_requested > 0
+        and samples_received is not None
+        and samples_received >= samples_requested
+        and (loss_percent is None or loss_percent <= 0.0)
+        and runtime_evidence.get("monotonic_sequences") is not False
+    )
+    owner_source = str(transport.get("endpoint_source") or "")
+    owner_ok = (
+        qcl081_promotable_lsl_owner(owner_source)
+        and runtime_evidence.get("status") == "pass"
+        and samples_received is not None
+        and samples_received > 0
+    )
+    discovery_status = str(object_value(discovery_check).get("status") or "")
+    continuity_status = str(object_value(continuity_check).get("status") or "")
+    blocked_by_runtime = (
+        runtime_evidence.get("status") == "blocked"
+        or discovery_status == "blocked"
+        or continuity_status == "blocked"
+    )
+    return [
+        {
+            "requirement_id": "requirement.quest_device_link.qcl081.lsl_discovery",
+            "status": "satisfied"
+            if discovery_status == "pass" and discovery_ms is not None
+            else "blocked"
+            if discovery_status == "blocked"
+            else "missing",
+            "evidence": evidence_text(discovery_check),
+            "observed_discovery_ms": discovery_ms,
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl081.sample_continuity",
+            "status": "satisfied"
+            if continuity_status == "pass" and continuity_ok
+            else "blocked"
+            if continuity_status == "blocked"
+            else "missing",
+            "observed_samples_requested": samples_requested,
+            "observed_samples_received": samples_received,
+            "observed_loss_percent": loss_percent,
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl081.quest_or_broker_lsl_producer",
+            "status": "satisfied"
+            if owner_ok
+            else "blocked"
+            if blocked_by_runtime and qcl081_promotable_lsl_owner(owner_source)
+            else "missing",
+            "observed_endpoint_source": owner_source,
+            "issue_codes": string_list(runtime_evidence.get("issue_codes")),
+            "notes": str(runtime_evidence.get("notes") or ""),
+            "required": True,
+        },
+        {
+            "requirement_id": "requirement.quest_device_link.qcl081_live_promotion",
+            "status": "satisfied"
+            if object_value(report.get("promotion")).get("allowed") is True
+            else "blocked"
+            if report.get("status") == "blocked"
+            else "missing",
+            "source_status": report.get("status"),
+            "required": True,
+        },
+    ]
+
+
+def qcl081_stream_capability_status(
+    report: dict[str, Any],
+    *,
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+    measurements: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> str:
+    if report.get("schema") != "rusty.quest.connectivity_topology_probe.v1":
+        return "rejected"
+    if report.get("probe_id") != "QCL-081" or transport.get("family") != "lsl":
+        return "rejected"
+    if report.get("status") in {"fail", "blocked"}:
+        return "blocked"
+    if transport.get("endpoint_source") == "host-loopback":
+        return "candidate"
+    if not qcl081_promotable_lsl_owner(transport.get("endpoint_source")):
+        return "candidate"
+    if runtime_evidence.get("status") != "pass":
+        return "blocked"
+    samples_received = int_or_none(measurements.get("lsl_samples_received"))
+    if samples_received is None or samples_received < 1:
+        return "blocked"
+    if object_value(report.get("promotion")).get("allowed") is not True:
+        return "candidate"
+    has_requirement_warning = any(
+        str(requirement.get("status") or "") in {"missing", "blocked", "unknown"}
+        for requirement in requirements
+        if isinstance(requirement, dict)
+    )
+    has_report_warning = report.get("status") == "warn" or any(
+        object_value(issue).get("severity") == "warning" for issue in list_value(report.get("issues"))
+    )
+    if has_requirement_warning or has_report_warning:
+        return "usable_with_warnings"
+    return "usable"
+
+
+def qcl081_stream_capability_warnings(
+    report: dict[str, Any],
+    requirements: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    warnings: list[dict[str, Any]] = []
+    for issue in list_value(report.get("issues")):
+        if not isinstance(issue, dict):
+            continue
+        warnings.append(
+            {
+                "issue_code": str(issue.get("issue_code") or ""),
+                "severity": str(issue.get("severity") or "warning"),
+                "message": str(issue.get("message") or issue.get("issue_code") or ""),
+            }
+        )
+    for requirement in requirements:
+        if not isinstance(requirement, dict):
+            continue
+        if str(requirement.get("status") or "") not in {"missing", "blocked", "unknown"}:
+            continue
+        warnings.append(
+            {
+                "issue_code": "hostess.issue.device_link.stream_capability.qcl081_requirement_missing",
+                "severity": "warning",
+                "message": f"{requirement.get('requirement_id')} is {requirement.get('status')}",
+            }
+        )
+    return warnings
+
+
+def qcl081_required_conditions(
+    requirements: list[dict[str, Any]],
+    *,
+    report: dict[str, Any],
+    transport: dict[str, Any],
+    runtime_evidence: dict[str, Any],
+) -> list[dict[str, Any]]:
+    statuses = {
+        requirement_suffix(row): requirement_condition_status(str(row.get("status") or "unknown"))
+        for row in requirements
+        if isinstance(row, dict)
+    }
+    endpoint_source = transport.get("endpoint_source")
+    return [
+        condition(
+            "condition.qcl081.lsl_discovery",
+            "protocol",
+            statuses.get("lsl_discovery", "unknown"),
+            remediation="Run QCL-081 and require LSL stream discovery on the target topology.",
+            evidence_refs=["protocol.lsl_discovery", "lsl_discovery_ms"],
+        ),
+        condition(
+            "condition.qcl081.sample_continuity",
+            "protocol",
+            statuses.get("sample_continuity", "unknown"),
+            remediation="Run QCL-081 with the requested sample count and zero unexpected loss.",
+            evidence_refs=["protocol.lsl_sample_continuity", "lsl_samples_received"],
+        ),
+        condition(
+            "condition.qcl081.quest_or_broker_lsl_producer",
+            "runtime",
+            statuses.get("quest_or_broker_lsl_producer", "unknown"),
+            remediation=(
+                "Package a Quest-owned/study-adapter LSL outlet or use a broker-owned "
+                "LSL producer before promoting this capability."
+            ),
+            evidence_refs=["lsl_payload_probe", "transport.endpoint_source"],
+            notes=str(runtime_evidence.get("notes") or ""),
+        ),
+        condition(
+            "condition.qcl081.live_promotion",
+            "protocol",
+            statuses.get("qcl081_live_promotion", "unknown"),
+            remediation="Run QCL-081 live on the target topology and keep the promotion decision with the artifact.",
+            evidence_refs=["promotion.allowed"],
+            notes=str(object_value(report.get("promotion")).get("reason") or ""),
+        ),
+        condition(
+            "condition.qcl081.endpoint_source",
+            "runtime",
+            "satisfied"
+            if qcl081_promotable_lsl_owner(endpoint_source)
+            else "candidate"
+            if endpoint_source in {"host-loopback", "external"}
+            else "blocked",
+            remediation="Promote only Quest-runtime, study-adapter, or broker-owned LSL producer evidence.",
+            evidence_refs=["transport.endpoint_source"],
+        ),
+    ]
+
+
+def qcl081_promotable_lsl_owner(source: Any) -> bool:
+    return str(source or "") in {
+        "quest-runtime",
+        "study-adapter",
+        "broker-owned",
+        "native-rust-broker",
+    }
 
 
 def qcl083_runtime_evidence(report: dict[str, Any]) -> dict[str, Any]:
