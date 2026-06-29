@@ -7,10 +7,8 @@ import ipaddress
 import json
 import re
 import socket
-import struct
 import subprocess
 import sys
-import tempfile
 import threading
 import time
 from datetime import UTC, datetime
@@ -18,16 +16,88 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.runtime import run_captured as default_run_captured
+from tools.hostessctl.connectivity_bluetooth import (
+    qcl051_ble_gatt_payload_checks,
+    qcl050_rfcomm_payload_checks,
+    live_bluetooth_status,
+    bluetooth_protocol_check,
+    bluetooth_bytes_exchanged,
+    bluetooth_measurements,
+    bluetooth_transport_for_probe,
+    collect_quest_bluetooth_status,
+    collect_windows_bluetooth_status,
+    qcl051_payload_sessions,
+    qcl051_session_android,
+    qcl051_session_cleanup_pass,
+    qcl051_session_protocol_pass,
+    qcl051_session_windows,
+    quest_bluetooth_adapter_status,
+    quest_bluetooth_adapter_summary,
+    run_qcl050_android_rfcomm_probe,
+    run_qcl051_android_ble_gatt_probe,
+    topology_for_bluetooth_probe,
+    windows_bluetooth_adapter_status,
+    windows_bluetooth_adapter_summary,
+    windows_bluetooth_service_status,
+    windows_bluetooth_service_summary,
+)
+from tools.hostessctl.connectivity_udp import (
+    DEFAULT_QCL080_UDP_PORT,
+    DEFAULT_UDP_MARKER,
+    device_to_host_udp_freshness,
+    latest_qcl080_app_marker,
+    qcl080_app_owned_marker_observed,
+    qcl080_makepad_runtime_properties,
+    runtime_qcl080_udp_sender_check_from_result,
+    udp_endpoint_source,
+)
 from tools.hostessctl.platform_defaults import (
     ANDROID_PACKAGE,
-    ANDROID_QCL050_RFCOMM_ACTION,
-    ANDROID_QCL051_BLE_GATT_ACTION,
     ANDROID_QCL083_OSC_ACTION,
-    ANDROID_REMOTE_QCL050_RFCOMM_EVIDENCE,
-    ANDROID_REMOTE_QCL051_BLE_GATT_EVIDENCE,
     ANDROID_REMOTE_QCL083_OSC_EVIDENCE,
-    MAKEPAD_ANDROID_PACKAGE,
-    MAKEPAD_ANDROID_XR_ACTIVITY,
+)
+from tools.hostessctl.connectivity_data_protocols import (
+    zeromq_checks_from_probe,
+    osc_checks_from_probe,
+    lsl_checks_from_probe,
+    build_osc_message,
+    lsl_discovery_sample_continuity,
+    lsl_manifold_broker_probe,
+    lsl_quest_runtime_preflight,
+    osc_loopback_probe,
+    parse_osc_message,
+    parse_probe_json_stdout,
+    resolve_manifold_root,
+    zeromq_loopback_probe,
+)
+from tools.hostessctl.connectivity_probe_common import (
+    issue_row,
+    check_status,
+    check_skipped,
+    check_row,
+    check_passed,
+    empty_measurements,
+    wait_for_json_file,
+    strip_powershell_clixml_noise,
+    sanitize_filename,
+    redact_command_for_report,
+    read_json_file,
+    read_android_json_with_retry,
+    powershell_executable,
+    collect_android_activity_launch_precondition,
+    adb_command,
+    completed_observed,
+    dedupe_issue_codes,
+    float_value,
+    int_value,
+    list_value,
+    median,
+    object_value,
+    parse_json_string,
+    percentile,
+    round_float,
+    shell_word,
+    trim_text,
 )
 
 
@@ -48,29 +118,8 @@ VALID_PROBE_IDS = {
 }
 DEFAULT_TCP_MARKER = "rusty-qcl-tcp-echo"
 DEFAULT_QCL010_TCP_ECHO_PORT = 18766
-DEFAULT_UDP_MARKER = "rusty-qcl-udp"
-DEFAULT_QCL080_UDP_PORT = 18767
 DEFAULT_QCL083_OSC_PORT = 18783
 DEFAULT_QCL084_ZEROMQ_PORT = 18784
-QCL080_APP_MARKER_PREFIX = "RUSTY_HOSTESS_MAKEPAD_QCL080_UDP_SENDER"
-QCL080_APP_MARKER_SCHEMA = "rusty.hostess.makepad.qcl080_udp_sender.v1"
-QCL080_APP_PROPERTY_PREFIX = "debug.rustyquest.makepad.qcl080.udp"
-QCL051_SERVICE_UUID = "7b2a0001-7c4d-4f4c-9b16-515100515100"
-QCL051_CONTROL_UUID = "7b2a0002-7c4d-4f4c-9b16-515100515100"
-QCL051_STATUS_UUID = "7b2a0003-7c4d-4f4c-9b16-515100515100"
-QCL050_RFCOMM_UUID = "7b2a0050-7c4d-4f4c-9b16-515100515100"
-QCL051_HELPER_PROJECT = (
-    Path(__file__).resolve().parents[1]
-    / "connectivity_probe"
-    / "qcl051_ble_gatt_client"
-    / "qcl051-ble-gatt-client.csproj"
-)
-QCL050_HELPER_PROJECT = (
-    Path(__file__).resolve().parents[1]
-    / "connectivity_probe"
-    / "qcl050_rfcomm_client"
-    / "qcl050-rfcomm-client.csproj"
-)
 DEFAULT_WPF_FIREWALL_PROGRAM = (
     Path(__file__).resolve().parents[2]
     / "apps"
@@ -1244,6 +1293,9 @@ def live_zeromq_report(
     )
     report["zeromq_payload_probe"] = zeromq_result
     return report
+
+
+
 
 
 def protocol_topology_checks(
@@ -2511,94 +2563,10 @@ def qcl080_fixture_listener_firewall(*, firewall_blocked: bool) -> dict[str, Any
     }
 
 
-def qcl080_app_owned_marker_observed(
-    *,
-    status: str,
-    packets_sent: int,
-    packets_requested: int = 12,
-    host: str = "192.0.2.10",
-    port: int = DEFAULT_QCL080_UDP_PORT,
-    marker: str = DEFAULT_UDP_MARKER,
-    run_id: str = "fixture-qcl080-app-owned",
-) -> dict[str, Any]:
-    fields = {
-        "schema": QCL080_APP_MARKER_SCHEMA,
-        "phase": "startup",
-        "status": status,
-        "enabled": "true",
-        "host": host,
-        "port": str(port),
-        "marker": marker,
-        "packetsRequested": str(packets_requested),
-        "packetsSent": str(packets_sent),
-        "intervalMs": "50",
-        "elapsedMs": "700",
-        "runId": run_id,
-        "issue": "none" if status == "sent" else "fixture_issue",
-        "senderSource": "makepad-runtime",
-        "socketOwner": "app-owned",
-        "highRateJsonPayload": "false",
-        "settingsControlPayload": "false",
-    }
-    return {
-        "line": QCL080_APP_MARKER_PREFIX
-        + " "
-        + " ".join(f"{key}={value}" for key, value in fields.items()),
-        "fields": fields,
-    }
 
 
-def runtime_qcl080_udp_sender_check_from_result(
-    udp_result: dict[str, Any] | None,
-) -> dict[str, Any] | None:
-    observed = object_value((udp_result or {}).get("observed"))
-    if observed.get("generator") != "app_owned_runtime_udp_sender":
-        return None
-    marker = object_value(observed.get("runtime_marker"))
-    fields = object_value(marker.get("fields"))
-    if not fields:
-        return check_row(
-            "runtime.qcl080_udp_sender",
-            "fail",
-            "Makepad runtime marker was not observed",
-            observed=marker,
-            issue_codes=["hostess.issue.connectivity_probe.qcl080_runtime_marker_missing"],
-        )
-    status = str(fields.get("status") or "")
-    try:
-        packets_requested = int(fields.get("packetsRequested") or 0)
-        packets_sent = int(fields.get("packetsSent") or 0)
-    except (TypeError, ValueError):
-        packets_requested = 0
-        packets_sent = 0
-    passed = (
-        fields.get("schema") == QCL080_APP_MARKER_SCHEMA
-        and status == "sent"
-        and packets_requested > 0
-        and packets_sent >= packets_requested
-        and fields.get("senderSource") == "makepad-runtime"
-        and fields.get("socketOwner") == "app-owned"
-    )
-    if passed:
-        return check_row(
-            "runtime.qcl080_udp_sender",
-            "pass",
-            f"Makepad runtime marker status=sent packetsSent={packets_sent}/{packets_requested}",
-            observed=marker,
-        )
-    issue_codes = ["hostess.issue.connectivity_probe.qcl080_runtime_marker_rejected"]
-    return check_row(
-        "runtime.qcl080_udp_sender",
-        "warn" if packets_sent > 0 else "fail",
-        f"Makepad runtime marker status={status or 'missing'} packetsSent={packets_sent}/{packets_requested}",
-        observed=marker,
-        issue_codes=issue_codes,
-    )
 
 
-def udp_endpoint_source(udp_result: dict[str, Any] | None) -> str:
-    observed = object_value((udp_result or {}).get("observed"))
-    return str(observed.get("generator") or "not_available")
 
 
 def validate_connectivity_probe_report(report: dict[str, Any]) -> dict[str, Any]:
@@ -2869,398 +2837,18 @@ def collect_windows_mobile_hotspot(run_captured_func: Any) -> dict[str, Any]:
     return parsed if isinstance(parsed, dict) else {"available": False, "state": "UnexpectedShape"}
 
 
-def powershell_executable() -> str:
-    windows_powershell = Path(
-        "C:/Windows/System32/WindowsPowerShell/v1.0/powershell.exe"
-    )
-    return str(windows_powershell) if windows_powershell.exists() else "powershell"
 
 
-def strip_powershell_clixml_noise(text: str) -> str:
-    marker = text.find("#< CLIXML")
-    if marker >= 0:
-        text = text[:marker]
-    lines = [line for line in text.splitlines() if not line.startswith("#< CLIXML")]
-    return "\n".join(lines).strip()
 
 
-def collect_windows_bluetooth_status(run_captured_func: Any) -> dict[str, Any]:
-    command = [
-        powershell_executable(),
-        "-NoProfile",
-        "-ExecutionPolicy",
-        "Bypass",
-        "-Command",
-        (
-            "try { "
-            "$adapter = Get-PnpDevice -Class Bluetooth -ErrorAction SilentlyContinue | "
-            "  Where-Object { $_.FriendlyName -match 'Bluetooth Adapter|Bluetooth Radio|Realtek|Intel|Qualcomm' } | "
-            "  Select-Object -First 1 Status,FriendlyName; "
-            "$services = @(Get-Service bthserv,BluetoothUserService* -ErrorAction SilentlyContinue | "
-            "  Select-Object Name,Status,StartType); "
-            "$bthserv = $services | Where-Object { $_.Name -eq 'bthserv' } | Select-Object -First 1; "
-            "$userRunning = @($services | Where-Object { $_.Name -like 'BluetoothUserService*' -and $_.Status.ToString() -eq 'Running' }).Count -gt 0; "
-            "[pscustomobject]@{ "
-            "  available=($null -ne $adapter); "
-            "  adapter_status=$(if ($null -ne $adapter) { $adapter.Status } else { '' }); "
-            "  adapter_name=$(if ($null -ne $adapter) { $adapter.FriendlyName } else { '' }); "
-            "  bthserv_status=$(if ($null -ne $bthserv) { $bthserv.Status.ToString() } else { '' }); "
-            "  user_service_running=$userRunning; "
-            "  service_count=$services.Count; "
-            "  address_redacted=$true "
-            "} | ConvertTo-Json -Compress "
-            "} catch { "
-            "  [pscustomobject]@{ available=$false; state='Error'; error=$_.Exception.Message; error_type=$_.Exception.GetType().FullName; address_redacted=$true } | ConvertTo-Json -Compress "
-            "}"
-        ),
-    ]
-    result = run_captured_func(command, allow_failure=True)
-    if result.returncode != 0:
-        return {
-            "available": False,
-            "state": "CommandFailed",
-            "error": result.stderr.strip(),
-            "returncode": result.returncode,
-            "address_redacted": True,
-        }
-    stdout = strip_powershell_clixml_noise(result.stdout)
-    try:
-        parsed = json.loads(stdout.strip() or "{}")
-    except json.JSONDecodeError:
-        return {"available": False, "state": "ParseError", "raw_stdout": stdout, "address_redacted": True}
-    if not isinstance(parsed, dict):
-        return {"available": False, "state": "UnexpectedShape", "address_redacted": True}
-    parsed["address_redacted"] = True
-    return parsed
 
 
-def collect_quest_bluetooth_status(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
-    dumpsys = run_captured_func(
-        adb_command(args, "shell", "dumpsys", "bluetooth_manager"),
-        allow_failure=True,
-    )
-    commands = run_captured_func(
-        adb_command(args, "shell", "cmd", "bluetooth_manager"),
-        allow_failure=True,
-    )
-    parsed = parse_quest_bluetooth_dumpsys(dumpsys.stdout)
-    parsed.update(
-        {
-            "available": dumpsys.returncode == 0,
-            "address_redacted": True,
-            "dumpsys_returncode": dumpsys.returncode,
-            "cmd_returncode": commands.returncode,
-            "shell_commands": parse_bluetooth_manager_commands(commands.stdout + "\n" + commands.stderr),
-            "raw_summary": trim_text(redact_bluetooth_addresses(dumpsys.stdout), limit=500),
-        }
-    )
-    return parsed
 
 
-def run_qcl050_android_rfcomm_probe(
-    args: argparse.Namespace,
-    run_captured_func: Any,
-    run_timeout_func: Any | None = None,
-) -> dict[str, Any]:
-    run_id = str(getattr(args, "run_id", "") or "qcl050-android-rfcomm")
-    package_name = str(getattr(args, "hostess_android_package", "") or ANDROID_PACKAGE)
-    message_count = max(1, int(getattr(args, "bluetooth_message_count", 3) or 3))
-    timeout_seconds = max(3.0, float(getattr(args, "bluetooth_timeout_seconds", 20.0) or 20.0))
-    remote_path = qcl050_remote_evidence_path(package_name)
-    helper_out = Path("target") / "connectivity-probe" / f"{sanitize_filename(run_id)}.windows-rfcomm-client.json"
-    helper_out.parent.mkdir(parents=True, exist_ok=True)
-
-    launch_precondition = collect_android_activity_launch_precondition(args, run_captured_func)
-    if launch_precondition.get("blocked"):
-        return {
-            "schema": "rusty.hostess.qcl050_rfcomm_payload_probe_join.v1",
-            "status": "blocked",
-            "run_id": run_id,
-            "endpoint_source": "app_owned_android_rfcomm_server",
-            "issue_codes": ["hostess.issue.connectivity_probe.rfcomm_runtime_not_launchable"],
-            "android": {
-                "launch_precondition": launch_precondition,
-                "remote_evidence": remote_path,
-                "evidence": {},
-                "evidence_available": False,
-            },
-            "windows": {
-                "helper_command": [],
-                "helper_report": str(helper_out),
-                "run": {"returncode": None, "stdout": "", "stderr": ""},
-                "evidence": {},
-                "evidence_available": False,
-            },
-        }
-
-    run_captured_func(
-        [
-            str(getattr(args, "adb")),
-            "-s",
-            str(getattr(args, "serial")),
-            "shell",
-            "pm",
-            "grant",
-            package_name,
-            "android.permission.BLUETOOTH_CONNECT",
-        ],
-        allow_failure=True,
-    )
-    run_captured_func(
-        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "rm", "-f", remote_path],
-        allow_failure=True,
-    )
-    run_captured_func(
-        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "am", "force-stop", package_name],
-        allow_failure=True,
-    )
-    android_start = run_captured_func(
-        [
-            str(getattr(args, "adb")),
-            "-s",
-            str(getattr(args, "serial")),
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_QCL050_RFCOMM_ACTION,
-            "-n",
-            f"{package_name}/.MainActivity",
-            "--es",
-            "run_id",
-            run_id,
-            "--ei",
-            "message_count",
-            str(message_count),
-            "--el",
-            "timeout_ms",
-            str(int(timeout_seconds * 1000)),
-        ],
-        allow_failure=True,
-    )
-    helper_command = qcl050_helper_command(args, helper_out=helper_out, run_id=run_id)
-    if run_timeout_func is not None:
-        helper_run = run_timeout_func(helper_command, timeout_seconds=timeout_seconds + 15.0)
-    else:
-        helper_run = run_captured_func(helper_command, allow_failure=True)
-    helper_report = wait_for_json_file(helper_out, timeout_seconds=2.0)
-    android_report = read_android_json_with_retry(
-        args,
-        remote_path,
-        run_captured_func,
-        timeout_seconds=timeout_seconds,
-    )
-
-    helper_status = str(helper_report.get("status") or "")
-    android_status = str(android_report.get("status") or "")
-    if helper_status == "blocked":
-        status = "blocked"
-    elif helper_run.returncode == 0 and helper_status == "pass" and android_status == "pass":
-        status = "pass"
-    else:
-        status = "fail"
-    issue_codes: list[str] = []
-    for source in [helper_report, android_report]:
-        for issue_code in source.get("issue_codes", []) or []:
-            if issue_code not in issue_codes:
-                issue_codes.append(str(issue_code))
-        for issue in source.get("issues", []) or []:
-            if isinstance(issue, dict) and issue.get("issue_code") and issue.get("issue_code") not in issue_codes:
-                issue_codes.append(str(issue.get("issue_code")))
-    return {
-        "schema": "rusty.hostess.qcl050_rfcomm_payload_probe_join.v1",
-        "status": status,
-        "run_id": run_id,
-        "endpoint_source": "app_owned_android_rfcomm_server",
-        "issue_codes": issue_codes,
-        "android": {
-            "start": completed_observed(android_start),
-            "remote_evidence": remote_path,
-            "evidence": android_report,
-            "evidence_available": bool(android_report),
-        },
-        "windows": {
-            "helper_command": redact_command_for_report(helper_command),
-            "helper_report": str(helper_out),
-            "run": completed_observed(helper_run),
-            "evidence": helper_report,
-            "evidence_available": bool(helper_report),
-        },
-    }
 
 
-def run_qcl051_android_ble_gatt_probe(
-    args: argparse.Namespace,
-    run_captured_func: Any,
-    run_timeout_func: Any | None = None,
-) -> dict[str, Any]:
-    run_id = str(getattr(args, "run_id", "") or "qcl051-android-ble-gatt")
-    reconnect_count = max(0, int(getattr(args, "bluetooth_reconnect_count", 0) or 0))
-    sessions: list[dict[str, Any]] = []
-    for session_index in range(reconnect_count + 1):
-        session_run_id = run_id if session_index == 0 else f"{run_id}.reconnect-{session_index}"
-        session = run_qcl051_android_ble_gatt_session(
-            args,
-            run_captured_func,
-            run_timeout_func,
-            run_id=session_run_id,
-        )
-        session["session_index"] = session_index
-        session["session_role"] = "primary" if session_index == 0 else "reconnect"
-        sessions.append(session)
-        if session.get("status") != "pass":
-            break
-        if session_index < reconnect_count:
-            time.sleep(0.75)
-
-    primary = sessions[0] if sessions else {}
-    completed_reconnects = sum(1 for session in sessions[1:] if session.get("status") == "pass")
-    if any(session.get("status") == "blocked" for session in sessions):
-        status = "blocked"
-    elif sessions and all(session.get("status") == "pass" for session in sessions) and completed_reconnects >= reconnect_count:
-        status = "pass"
-    else:
-        status = "fail"
-    issue_codes: list[str] = []
-    for session in sessions:
-        for issue_code in session.get("issue_codes", []) or []:
-            if issue_code not in issue_codes:
-                issue_codes.append(str(issue_code))
-    reconnect_cleanup_pass = reconnect_count > 0 and completed_reconnects >= reconnect_count and all(
-        qcl051_session_cleanup_pass(session) for session in sessions
-    )
-    return {
-        "schema": "rusty.hostess.qcl051_ble_gatt_payload_probe_join.v1",
-        "status": status,
-        "run_id": run_id,
-        "endpoint_source": "app_owned_android_ble_gatt_server",
-        "session_count": len(sessions),
-        "sessions": sessions,
-        "reconnect_attempts_requested": reconnect_count,
-        "reconnect_attempts_completed": completed_reconnects,
-        "reconnect_cleanup_pass": reconnect_cleanup_pass,
-        "issue_codes": issue_codes,
-        "android": primary.get("android", {}),
-        "windows": primary.get("windows", {}),
-    }
 
 
-def run_qcl051_android_ble_gatt_session(
-    args: argparse.Namespace,
-    run_captured_func: Any,
-    run_timeout_func: Any | None = None,
-    *,
-    run_id: str,
-) -> dict[str, Any]:
-    package_name = str(getattr(args, "hostess_android_package", "") or ANDROID_PACKAGE)
-    message_count = max(1, int(getattr(args, "bluetooth_message_count", 3) or 3))
-    timeout_seconds = max(3.0, float(getattr(args, "bluetooth_timeout_seconds", 20.0) or 20.0))
-    remote_path = qcl051_remote_evidence_path(package_name)
-    helper_out = Path("target") / "connectivity-probe" / f"{sanitize_filename(run_id)}.windows-ble-gatt-client.json"
-    helper_out.parent.mkdir(parents=True, exist_ok=True)
-
-    launch_precondition = collect_android_activity_launch_precondition(args, run_captured_func)
-    if launch_precondition.get("blocked"):
-        return {
-            "schema": "rusty.hostess.qcl051_ble_gatt_payload_probe_join.v1",
-            "status": "blocked",
-            "run_id": run_id,
-            "endpoint_source": "app_owned_android_ble_gatt_server",
-            "issue_codes": ["hostess.issue.connectivity_probe.ble_gatt_runtime_not_launchable"],
-            "android": {
-                "launch_precondition": launch_precondition,
-                "remote_evidence": remote_path,
-                "evidence": {},
-                "evidence_available": False,
-            },
-            "windows": {
-                "helper_command": [],
-                "helper_report": str(helper_out),
-                "run": {"returncode": None, "stdout": "", "stderr": ""},
-                "evidence": {},
-                "evidence_available": False,
-            },
-        }
-
-    for permission in [
-        "android.permission.BLUETOOTH_CONNECT",
-        "android.permission.BLUETOOTH_ADVERTISE",
-    ]:
-        run_captured_func(
-            [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "pm", "grant", package_name, permission],
-            allow_failure=True,
-        )
-    run_captured_func(
-        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "rm", "-f", remote_path],
-        allow_failure=True,
-    )
-    run_captured_func(
-        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "am", "force-stop", package_name],
-        allow_failure=True,
-    )
-    android_start = run_captured_func(
-        [
-            str(getattr(args, "adb")),
-            "-s",
-            str(getattr(args, "serial")),
-            "shell",
-            "am",
-            "start",
-            "-a",
-            ANDROID_QCL051_BLE_GATT_ACTION,
-            "-n",
-            f"{package_name}/.MainActivity",
-            "--es",
-            "run_id",
-            run_id,
-            "--ei",
-            "message_count",
-            str(message_count),
-            "--el",
-            "timeout_ms",
-            str(int(timeout_seconds * 1000)),
-        ],
-        allow_failure=True,
-    )
-    helper_command = qcl051_helper_command(args, helper_out=helper_out, run_id=run_id)
-    if run_timeout_func is not None:
-        helper_run = run_timeout_func(helper_command, timeout_seconds=timeout_seconds + 15.0)
-    else:
-        helper_run = run_captured_func(helper_command, allow_failure=True)
-    helper_report = wait_for_json_file(helper_out, timeout_seconds=2.0)
-    android_report = read_android_json_with_retry(
-        args,
-        remote_path,
-        run_captured_func,
-        timeout_seconds=timeout_seconds,
-    )
-
-    status = (
-        "pass"
-        if helper_run.returncode == 0
-        and helper_report.get("status") == "pass"
-        and android_report.get("status") == "pass"
-        else "fail"
-    )
-    return {
-        "schema": "rusty.hostess.qcl051_ble_gatt_payload_probe_join.v1",
-        "status": status,
-        "run_id": run_id,
-        "endpoint_source": "app_owned_android_ble_gatt_server",
-        "android": {
-            "start": completed_observed(android_start),
-            "remote_evidence": remote_path,
-            "evidence": android_report,
-            "evidence_available": bool(android_report),
-        },
-        "windows": {
-            "helper_command": redact_command_for_report(helper_command),
-            "helper_report": str(helper_out),
-            "run": completed_observed(helper_run),
-            "evidence": helper_report,
-            "evidence_available": bool(helper_report),
-        },
-    }
 
 
 def run_qcl083_android_osc_probe(
@@ -3824,105 +3412,20 @@ def resolve_qcl084_probe_binary(args: argparse.Namespace, *, target: str) -> Pat
     return candidates[0]
 
 
-def parse_probe_json_stdout(stdout: str) -> dict[str, Any]:
-    for line in reversed((stdout or "").splitlines()):
-        line = line.strip()
-        if not line:
-            continue
-        try:
-            parsed = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(parsed, dict):
-            return parsed
-    return {}
 
 
 def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
 
-def collect_android_activity_launch_precondition(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
-    result = run_captured_func(
-        [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "dumpsys", "activity", "activities"],
-        allow_failure=True,
-    )
-    summary = trim_text(result.stdout, limit=1200)
-    blocked = (
-        "com.oculus.os.vrlockscreen/.SensorLockActivity" in result.stdout
-        or "com.oculus.os.clearactivity/.ClearActivity" in result.stdout
-    )
-    return {
-        "status": "blocked" if blocked else "pass",
-        "blocked": blocked,
-        "returncode": result.returncode,
-        "summary": summary,
-        "issue_code": "hostess.issue.connectivity_probe.ble_gatt_runtime_not_launchable" if blocked else "",
-    }
 
 
-def qcl051_helper_command(args: argparse.Namespace, *, helper_out: Path, run_id: str) -> list[str]:
-    helper = str(getattr(args, "bluetooth_helper", "") or "").strip()
-    base_args = [
-        "--run-id",
-        run_id,
-        "--service-uuid",
-        QCL051_SERVICE_UUID,
-        "--control-uuid",
-        QCL051_CONTROL_UUID,
-        "--status-uuid",
-        QCL051_STATUS_UUID,
-        "--message-count",
-        str(max(1, int(getattr(args, "bluetooth_message_count", 3) or 3))),
-        "--timeout-seconds",
-        str(max(3.0, float(getattr(args, "bluetooth_timeout_seconds", 20.0) or 20.0))),
-        "--out",
-        str(helper_out),
-    ]
-    if helper:
-        helper_path = Path(helper)
-        if helper_path.suffix.lower() == ".csproj":
-            return ["dotnet", "run", "--project", str(helper_path), "--"] + base_args
-        if helper_path.suffix.lower() == ".dll":
-            return ["dotnet", str(helper_path)] + base_args
-        return [helper] + base_args
-    return ["dotnet", "run", "--project", str(QCL051_HELPER_PROJECT), "--"] + base_args
 
 
-def qcl050_helper_command(args: argparse.Namespace, *, helper_out: Path, run_id: str) -> list[str]:
-    helper = str(getattr(args, "bluetooth_helper", "") or "").strip()
-    base_args = [
-        "--run-id",
-        run_id,
-        "--service-uuid",
-        QCL050_RFCOMM_UUID,
-        "--message-count",
-        str(max(1, int(getattr(args, "bluetooth_message_count", 3) or 3))),
-        "--timeout-seconds",
-        str(max(3.0, float(getattr(args, "bluetooth_timeout_seconds", 20.0) or 20.0))),
-        "--out",
-        str(helper_out),
-    ]
-    if helper:
-        helper_path = Path(helper)
-        if helper_path.suffix.lower() == ".csproj":
-            return ["dotnet", "run", "--project", str(helper_path), "--"] + base_args
-        if helper_path.suffix.lower() == ".dll":
-            return ["dotnet", str(helper_path)] + base_args
-        return [helper] + base_args
-    return ["dotnet", "run", "--project", str(QCL050_HELPER_PROJECT), "--"] + base_args
 
 
-def qcl050_remote_evidence_path(package_name: str) -> str:
-    if package_name == ANDROID_PACKAGE:
-        return ANDROID_REMOTE_QCL050_RFCOMM_EVIDENCE
-    return f"/sdcard/Android/data/{package_name}/files/hostess-t/evidence/qcl050-rfcomm/latest.json"
 
 
-def qcl051_remote_evidence_path(package_name: str) -> str:
-    if package_name == ANDROID_PACKAGE:
-        return ANDROID_REMOTE_QCL051_BLE_GATT_EVIDENCE
-    return f"/sdcard/Android/data/{package_name}/files/hostess-t/evidence/qcl051-ble-gatt/latest.json"
 
 
 def qcl083_remote_evidence_path(package_name: str) -> str:
@@ -3931,409 +3434,34 @@ def qcl083_remote_evidence_path(package_name: str) -> str:
     return f"/sdcard/Android/data/{package_name}/files/hostess-t/evidence/qcl083-osc/latest.json"
 
 
-def read_android_json_with_retry(
-    args: argparse.Namespace,
-    remote_path: str,
-    run_captured_func: Any,
-    *,
-    timeout_seconds: float,
-) -> dict[str, Any]:
-    deadline = time.time() + timeout_seconds
-    last_stdout = ""
-    while time.time() < deadline:
-        result = run_captured_func(
-            [str(getattr(args, "adb")), "-s", str(getattr(args, "serial")), "shell", "cat", remote_path],
-            allow_failure=True,
-        )
-        last_stdout = result.stdout
-        if result.returncode == 0 and result.stdout.strip():
-            try:
-                return json.loads(strip_powershell_clixml_noise(result.stdout).strip())
-            except json.JSONDecodeError:
-                pass
-        time.sleep(0.25)
-    if last_stdout.strip():
-        try:
-            return json.loads(strip_powershell_clixml_noise(last_stdout).strip())
-        except json.JSONDecodeError:
-            return {}
-    return {}
 
 
-def sanitize_filename(value: str) -> str:
-    return re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip("-") or "qcl051"
 
 
-def redact_command_for_report(command: list[str]) -> list[str]:
-    return list(command)
 
 
-def qcl051_payload_sessions(payload_result: dict[str, Any] | None) -> list[dict[str, Any]]:
-    if not payload_result:
-        return []
-    sessions = payload_result.get("sessions")
-    if isinstance(sessions, list) and sessions:
-        return [session for session in sessions if isinstance(session, dict)]
-    return [payload_result]
 
 
-def qcl051_session_android(session: dict[str, Any]) -> dict[str, Any]:
-    evidence = session.get("android", {}).get("evidence", {}) if isinstance(session.get("android", {}), dict) else {}
-    return evidence if isinstance(evidence, dict) else {}
 
 
-def qcl051_session_windows(session: dict[str, Any]) -> dict[str, Any]:
-    evidence = session.get("windows", {}).get("evidence", {}) if isinstance(session.get("windows", {}), dict) else {}
-    return evidence if isinstance(evidence, dict) else {}
 
 
-def qcl051_session_protocol_pass(session: dict[str, Any]) -> bool:
-    android = qcl051_session_android(session)
-    windows = qcl051_session_windows(session)
-    expected = int(android.get("messages_expected") or windows.get("messages_requested") or 0)
-    return (
-        session.get("status") == "pass"
-        and android.get("status") == "pass"
-        and windows.get("status") == "pass"
-        and expected > 0
-        and int(android.get("messages_received") or 0) >= expected
-        and int(windows.get("messages_completed") or 0) >= expected
-    )
 
 
-def qcl051_session_cleanup_pass(session: dict[str, Any]) -> bool:
-    android = qcl051_session_android(session)
-    return bool(android.get("advertising", {}).get("stopped")) and bool(android.get("gatt_server", {}).get("closed"))
 
 
-def qcl050_rfcomm_payload_checks(payload_result: dict[str, Any]) -> list[dict[str, Any]]:
-    if payload_result.get("status") == "blocked" and payload_result.get("android", {}).get("launch_precondition"):
-        launch_precondition = payload_result.get("android", {}).get("launch_precondition", {})
-        return [
-            check_row(
-                "bluetooth.activity_launch_state",
-                "blocked",
-                "Quest app launch is blocked by VR lockscreen or system UI",
-                observed=launch_precondition,
-                issue_codes=["hostess.issue.connectivity_probe.rfcomm_runtime_not_launchable"],
-            ),
-            check_row(
-                "bluetooth.pairing_bond_state",
-                "skipped",
-                "pairing behavior not tested because the Quest app-owned RFCOMM server could not launch",
-                issue_codes=["hostess.issue.connectivity_probe.bluetooth_pairing_not_tested"],
-            ),
-            check_row(
-                "protocol.rfcomm_control",
-                "blocked",
-                "RFCOMM socket exchange was not attempted because the Quest app-owned server could not launch",
-                observed=payload_result,
-                issue_codes=["hostess.issue.connectivity_probe.rfcomm_runtime_not_launchable"],
-            ),
-            check_row(
-                "protocol.bluetooth_payload_exchange",
-                "blocked",
-                "bounded Bluetooth payload exchange was not attempted because the Quest app-owned server could not launch",
-                issue_codes=["hostess.issue.connectivity_probe.bluetooth_payload_not_tested"],
-            ),
-        ]
-
-    android = payload_result.get("android", {}).get("evidence", {}) if payload_result else {}
-    windows = payload_result.get("windows", {}).get("evidence", {}) if payload_result else {}
-    android_permissions = android.get("permissions", {}) if isinstance(android, dict) else {}
-    selected_device = windows.get("selected_device", {}) if isinstance(windows, dict) else {}
-    android_status = str(android.get("status") or "") if isinstance(android, dict) else ""
-    windows_status = str(windows.get("status") or "") if isinstance(windows, dict) else ""
-    messages_received = int(android.get("messages_received") or 0) if isinstance(android, dict) else 0
-    messages_completed = int(windows.get("messages_completed") or 0) if isinstance(windows, dict) else 0
-    messages_expected = int(android.get("messages_expected") or windows.get("messages_requested") or 0)
-    protocol_pass = (
-        payload_result.get("status") == "pass"
-        and android_status == "pass"
-        and windows_status == "pass"
-        and messages_expected > 0
-        and messages_received >= messages_expected
-        and messages_completed >= messages_expected
-    )
-    service_blocked = payload_result.get("status") == "blocked" or windows_status == "blocked"
-    permission_pass = bool(android_permissions.get("bluetooth_connect"))
-    rfcomm_server = android.get("rfcomm_server", {}) if isinstance(android, dict) else {}
-    cleanup_pass = bool(rfcomm_server.get("server_socket_closed"))
-    blocked_issue_codes = list(payload_result.get("issue_codes", []) or []) or [
-        "hostess.issue.connectivity_probe.rfcomm_service_not_found_or_unpaired"
-    ]
-    return [
-        check_row(
-            "bluetooth.permission_state",
-            "pass" if permission_pass else "blocked",
-            "Android Bluetooth Classic permission granted" if permission_pass else "Android Bluetooth Classic permission missing or evidence unavailable",
-            observed=android_permissions,
-            issue_codes=[] if permission_pass else ["hostess.issue.connectivity_probe.rfcomm_permission_missing"],
-        ),
-        check_row(
-            "bluetooth.pairing_bond_state",
-            "pass" if protocol_pass else "blocked" if service_blocked else "skipped",
-            (
-                "RFCOMM service opened and selected-device pairing metadata was recorded"
-                if protocol_pass
-                else "Windows could not discover/open the RFCOMM service; pairing or SDP visibility is likely required"
-                if service_blocked
-                else "pairing behavior not proven"
-            ),
-            observed={"requires_pairing": True, "selected_device": selected_device},
-            issue_codes=[] if protocol_pass else blocked_issue_codes if service_blocked else ["hostess.issue.connectivity_probe.bluetooth_pairing_not_tested"],
-        ),
-        check_row(
-            "protocol.rfcomm_control",
-            "pass" if protocol_pass else "blocked" if service_blocked else "fail",
-            (
-                f"RFCOMM service discovered and {messages_completed}/{messages_expected} bounded payloads exchanged"
-                if protocol_pass
-                else "RFCOMM service was not discoverable/openable from Windows"
-                if service_blocked
-                else "RFCOMM service discovery or payload exchange failed"
-            ),
-            observed={"android": android, "windows": windows},
-            issue_codes=[] if protocol_pass else blocked_issue_codes if service_blocked else ["hostess.issue.connectivity_probe.rfcomm_payload_failed"],
-        ),
-        check_row(
-            "protocol.bluetooth_payload_exchange",
-            "pass" if protocol_pass else "blocked" if service_blocked else "fail",
-            (
-                f"bounded RFCOMM payload exchange completed; bytes={bluetooth_bytes_exchanged(payload_result)}"
-                if protocol_pass
-                else "bounded Bluetooth payload exchange did not complete"
-            ),
-            issue_codes=[] if protocol_pass else blocked_issue_codes if service_blocked else ["hostess.issue.connectivity_probe.bluetooth_payload_not_tested"],
-        ),
-        check_row(
-            "bluetooth.cleanup_state",
-            "pass" if cleanup_pass else "warn",
-            "Android RFCOMM server socket cleanup completed" if cleanup_pass else "Android RFCOMM cleanup evidence incomplete",
-            observed=rfcomm_server,
-            issue_codes=[] if cleanup_pass else ["hostess.issue.connectivity_probe.rfcomm_cleanup_incomplete"],
-        ),
-        check_row(
-            "bluetooth.reconnect_cleanup",
-            "skipped",
-            "disconnect/reconnect rehearsal has not been run for QCL-050 yet",
-            issue_codes=["hostess.issue.connectivity_probe.bluetooth_reconnect_not_tested"],
-        ),
-    ]
 
 
-def qcl051_ble_gatt_payload_checks(payload_result: dict[str, Any]) -> list[dict[str, Any]]:
-    if payload_result.get("status") == "blocked":
-        launch_precondition = payload_result.get("android", {}).get("launch_precondition", {})
-        return [
-            check_row(
-                "bluetooth.activity_launch_state",
-                "blocked",
-                "Quest app launch is blocked by VR lockscreen or system UI",
-                observed=launch_precondition,
-                issue_codes=["hostess.issue.connectivity_probe.ble_gatt_runtime_not_launchable"],
-            ),
-            check_row(
-                "bluetooth.pairing_bond_state",
-                "skipped",
-                "pairing behavior not tested because the Quest app-owned BLE server could not launch",
-                issue_codes=["hostess.issue.connectivity_probe.bluetooth_pairing_not_tested"],
-            ),
-            check_row(
-                "protocol.ble_gatt_status",
-                "blocked",
-                "BLE/GATT service discovery was not attempted because the Quest app-owned server could not launch",
-                observed=payload_result,
-                issue_codes=["hostess.issue.connectivity_probe.ble_gatt_runtime_not_launchable"],
-            ),
-            check_row(
-                "protocol.bluetooth_payload_exchange",
-                "blocked",
-                "bounded Bluetooth payload exchange was not attempted because the Quest app-owned server could not launch",
-                issue_codes=["hostess.issue.connectivity_probe.bluetooth_payload_not_tested"],
-            ),
-            check_row(
-                "bluetooth.cleanup_state",
-                "skipped",
-                "no BLE advertiser or GATT server was started",
-                issue_codes=[],
-            ),
-            check_row(
-                "bluetooth.reconnect_cleanup",
-                "skipped",
-                "disconnect/reconnect rehearsal has not been run for QCL-051 yet",
-                issue_codes=["hostess.issue.connectivity_probe.bluetooth_reconnect_not_tested"],
-            ),
-        ]
-    sessions = qcl051_payload_sessions(payload_result)
-    android_reports = [qcl051_session_android(session) for session in sessions]
-    windows_reports = [qcl051_session_windows(session) for session in sessions]
-    android_permissions = [
-        report.get("permissions", {}) for report in android_reports if isinstance(report.get("permissions", {}), dict)
-    ]
-    messages_received = sum(int(report.get("messages_received") or 0) for report in android_reports)
-    messages_completed = sum(int(report.get("messages_completed") or 0) for report in windows_reports)
-    messages_expected = sum(
-        int(android.get("messages_expected") or windows.get("messages_requested") or 0)
-        for android, windows in zip(android_reports, windows_reports)
-    )
-    protocol_pass = (
-        payload_result.get("status") == "pass"
-        and bool(sessions)
-        and all(qcl051_session_protocol_pass(session) for session in sessions)
-        and messages_expected > 0
-        and messages_received >= messages_expected
-        and messages_completed >= messages_expected
-    )
-    permission_pass = bool(android_permissions) and all(
-        bool(permission.get("bluetooth_connect")) and bool(permission.get("bluetooth_advertise"))
-        for permission in android_permissions
-    )
-    cleanup_pass = bool(sessions) and all(qcl051_session_cleanup_pass(session) for session in sessions)
-    reconnect_requested = int(payload_result.get("reconnect_attempts_requested") or 0)
-    reconnect_completed = int(payload_result.get("reconnect_attempts_completed") or 0)
-    reconnect_cleanup_pass = (
-        reconnect_requested > 0
-        and reconnect_completed >= reconnect_requested
-        and cleanup_pass
-        and bool(payload_result.get("reconnect_cleanup_pass"))
-    )
-    selected_devices = [
-        report.get("selected_device", {}) for report in windows_reports if isinstance(report.get("selected_device", {}), dict)
-    ]
-    cleanup_observed: dict[str, Any] = {}
-    cleanup_observed["session_count"] = len(sessions)
-    cleanup_observed["reconnect_attempts_requested"] = reconnect_requested
-    cleanup_observed["reconnect_attempts_completed"] = reconnect_completed
-    cleanup_observed["sessions"] = [
-        {
-            "session_index": session.get("session_index"),
-            "session_role": session.get("session_role"),
-            "status": session.get("status"),
-            "advertising": qcl051_session_android(session).get("advertising", {}),
-            "gatt_server": qcl051_session_android(session).get("gatt_server", {}),
-        }
-        for session in sessions
-    ]
-    return [
-        check_row(
-            "bluetooth.permission_state",
-            "pass" if permission_pass else "blocked",
-            "Android BLE permissions granted" if permission_pass else "Android BLE permissions missing or evidence unavailable",
-            observed={"sessions": android_permissions},
-            issue_codes=[] if permission_pass else ["hostess.issue.connectivity_probe.ble_gatt_permission_missing"],
-        ),
-        check_row(
-            "bluetooth.pairing_bond_state",
-            "pass" if protocol_pass else "skipped",
-            "BLE/GATT payload exchange completed without paired-device dependency" if protocol_pass else "pairing behavior not proven",
-            observed={
-                "requires_pairing": False,
-                "selected_devices": selected_devices,
-            },
-            issue_codes=[] if protocol_pass else ["hostess.issue.connectivity_probe.bluetooth_pairing_not_tested"],
-        ),
-        check_row(
-            "protocol.ble_gatt_status",
-            "pass" if protocol_pass else "fail",
-            (
-                f"BLE/GATT service discovered and {messages_completed}/{messages_expected} bounded payloads exchanged across {len(sessions)} session(s)"
-                if protocol_pass
-                else "BLE/GATT service discovery or payload exchange failed"
-            ),
-            observed={"sessions": sessions},
-            issue_codes=[] if protocol_pass else ["hostess.issue.connectivity_probe.ble_gatt_payload_failed"],
-        ),
-        check_row(
-            "protocol.bluetooth_payload_exchange",
-            "pass" if protocol_pass else "fail",
-            (
-                f"bounded BLE/GATT write/read payload exchange completed; bytes={bluetooth_bytes_exchanged(payload_result)}"
-                if protocol_pass
-                else "bounded Bluetooth payload exchange did not complete"
-            ),
-            issue_codes=[] if protocol_pass else ["hostess.issue.connectivity_probe.bluetooth_payload_not_tested"],
-        ),
-        check_row(
-            "bluetooth.cleanup_state",
-            "pass" if cleanup_pass else "warn",
-            "Android BLE advertiser and GATT server closed" if cleanup_pass else "Android BLE cleanup evidence incomplete",
-            observed=cleanup_observed,
-            issue_codes=[] if cleanup_pass else ["hostess.issue.connectivity_probe.ble_gatt_cleanup_incomplete"],
-        ),
-        check_row(
-            "bluetooth.reconnect_cleanup",
-            "pass" if reconnect_cleanup_pass else "skipped",
-            (
-                f"disconnect, cleanup, and rediscovery passed for {reconnect_completed}/{reconnect_requested} reconnect attempt(s)"
-                if reconnect_cleanup_pass
-                else "disconnect/reconnect rehearsal has not been run for QCL-051 yet"
-            ),
-            observed=cleanup_observed,
-            issue_codes=[] if reconnect_cleanup_pass else ["hostess.issue.connectivity_probe.bluetooth_reconnect_not_tested"],
-        ),
-    ]
 
 
-def bluetooth_bytes_exchanged(payload_result: dict[str, Any] | None) -> int:
-    if not payload_result:
-        return 0
-    total = 0
-    for session in qcl051_payload_sessions(payload_result):
-        android = qcl051_session_android(session)
-        windows = qcl051_session_windows(session)
-        total += int(android.get("bytes_received") or 0) + int(windows.get("bytes_read") or 0)
-    return total
 
 
-def bluetooth_measurements(payload_result: dict[str, Any] | None) -> dict[str, Any]:
-    measurements = empty_measurements()
-    measurements["bluetooth_bytes_exchanged"] = bluetooth_bytes_exchanged(payload_result)
-    measurements["bluetooth_rtt_ms_p95"] = None
-    if payload_result:
-        p95_values: list[float] = []
-        for session in qcl051_payload_sessions(payload_result):
-            windows = qcl051_session_windows(session)
-            helper_measurements = windows.get("measurements", {}) if isinstance(windows, dict) else {}
-            p95 = helper_measurements.get("round_trip_ms_p95")
-            if p95 is not None:
-                try:
-                    p95_values.append(float(p95))
-                except (TypeError, ValueError):
-                    pass
-        measurements["bluetooth_rtt_ms_p95"] = max(p95_values) if p95_values else None
-        measurements["reconnect_attempts"] = int(payload_result.get("reconnect_attempts_completed") or 0)
-    return measurements
 
 
-def parse_quest_bluetooth_dumpsys(text: str) -> dict[str, Any]:
-    enabled_match = re.search(r"(?im)^\s*enabled:\s*(true|false)\s*$", text)
-    state_match = re.search(r"(?im)^\s*state:\s*([A-Z_]+)\s*$", text)
-    name_match = re.search(r"(?im)^\s*name:\s*(.+?)\s*$", text)
-    connection_match = re.search(r"(?im)^\s*ConnectionState:\s*([A-Z_]+)\s*$", text)
-    address_present = bool(re.search(r"(?im)^\s*address:\s*[0-9A-F:]{11,}\s*$", text))
-    bonded_count = len(re.findall(r"(?m)^\s+XX:XX:XX:XX:[0-9A-F]{2}:[0-9A-F]{2}\b", text))
-    return {
-        "enabled": enabled_match.group(1).lower() == "true" if enabled_match else None,
-        "state": state_match.group(1) if state_match else "",
-        "name": name_match.group(1).strip() if name_match else "",
-        "connection_state": connection_match.group(1) if connection_match else "",
-        "address_present": address_present,
-        "bonded_device_count": bonded_count,
-    }
 
 
-def parse_bluetooth_manager_commands(text: str) -> list[str]:
-    commands: list[str] = []
-    for line in text.splitlines():
-        stripped = line.strip()
-        if stripped in {"enable", "disable"} or stripped.startswith("wait-for-state"):
-            commands.append(stripped.split()[0])
-    return commands
 
 
-def redact_bluetooth_addresses(text: str) -> str:
-    return re.sub(r"\b[0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}\b", "XX:XX:XX:XX:XX:XX", text)
 
 
 def collect_windows_network_profile(run_captured_func: Any, *, listener: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -4504,70 +3632,16 @@ def windows_mobile_hotspot_summary(hotspot: dict[str, Any]) -> str:
     )
 
 
-def windows_bluetooth_adapter_status(bluetooth: dict[str, Any]) -> tuple[str, list[str]]:
-    if not bluetooth:
-        return "blocked", ["hostess.issue.connectivity_probe.host_bluetooth_state_unavailable"]
-    if bluetooth.get("available") is not True:
-        return "blocked", ["hostess.issue.connectivity_probe.host_bluetooth_unavailable"]
-    adapter_status = str(bluetooth.get("adapter_status") or "").strip().lower()
-    if adapter_status == "ok":
-        return "pass", []
-    return "blocked", ["hostess.issue.connectivity_probe.host_bluetooth_adapter_not_ok"]
 
 
-def windows_bluetooth_service_status(bluetooth: dict[str, Any]) -> tuple[str, list[str]]:
-    if not bluetooth:
-        return "blocked", ["hostess.issue.connectivity_probe.host_bluetooth_service_unavailable"]
-    bthserv_status = str(bluetooth.get("bthserv_status") or "").strip().lower()
-    if bthserv_status == "running":
-        return "pass", []
-    return "blocked", ["hostess.issue.connectivity_probe.host_bluetooth_service_not_running"]
 
 
-def windows_bluetooth_adapter_summary(bluetooth: dict[str, Any]) -> str:
-    if not bluetooth:
-        return "Windows Bluetooth adapter state not available"
-    if bluetooth.get("available") is not True:
-        return f"Windows Bluetooth unavailable: {bluetooth.get('state') or bluetooth.get('error') or 'unknown'}"
-    return (
-        f"Windows Bluetooth adapter {bluetooth.get('adapter_status') or 'unknown'}; "
-        f"name={bluetooth.get('adapter_name') or 'unknown'}; address_redacted=true"
-    )
 
 
-def windows_bluetooth_service_summary(bluetooth: dict[str, Any]) -> str:
-    if not bluetooth:
-        return "Windows Bluetooth service state not available"
-    return (
-        f"bthserv={bluetooth.get('bthserv_status') or 'unknown'}; "
-        f"user_service_running={bool(bluetooth.get('user_service_running'))}; "
-        f"service_count={bluetooth.get('service_count')}"
-    )
 
 
-def quest_bluetooth_adapter_status(bluetooth: dict[str, Any]) -> tuple[str, list[str]]:
-    if not bluetooth or bluetooth.get("available") is not True:
-        return "blocked", ["hostess.issue.connectivity_probe.quest_bluetooth_state_unavailable"]
-    enabled = bluetooth.get("enabled")
-    state = str(bluetooth.get("state") or "").strip().upper()
-    if enabled is True and state == "ON":
-        return "pass", []
-    if enabled is False or state == "OFF":
-        return "blocked", ["hostess.issue.connectivity_probe.quest_bluetooth_off"]
-    return "warn", ["hostess.issue.connectivity_probe.quest_bluetooth_state_unexpected"]
 
 
-def quest_bluetooth_adapter_summary(bluetooth: dict[str, Any]) -> str:
-    if not bluetooth:
-        return "Quest Bluetooth state not available"
-    if bluetooth.get("available") is not True:
-        return f"Quest Bluetooth unavailable: returncode={bluetooth.get('dumpsys_returncode')}"
-    return (
-        f"Quest Bluetooth enabled={bluetooth.get('enabled')}; "
-        f"state={bluetooth.get('state') or 'unknown'}; "
-        f"name={bluetooth.get('name') or 'unknown'}; "
-        f"bonded_count={bluetooth.get('bonded_device_count')}; address_redacted=true"
-    )
 
 
 def tcp_echo_listener_from_result(args: argparse.Namespace, tcp_result: dict[str, Any] | None) -> dict[str, Any]:
@@ -4854,1983 +3928,92 @@ def device_to_host_tcp_echo(args: argparse.Namespace, host_ip: str, run_timeout_
     )
 
 
-def selected_udp_sender_source(args: argparse.Namespace, sender_host_path: str) -> str:
-    requested = str(getattr(args, "udp_sender_source", "") or "").strip()
-    if requested in {"makepad-runtime", "app-owned", "app_owned_runtime_udp_sender"}:
-        return "makepad-runtime"
-    if requested in {"adb-pushed-native", "native"}:
-        return "adb-pushed-native"
-    if requested in {"adb-shell", "shell"}:
-        return "adb-shell"
-    if sender_host_path:
-        return "adb-pushed-native"
-    return "adb-shell"
-
-
-def start_makepad_runtime_udp_sender(
-    args: argparse.Namespace,
-    *,
-    host_ip: str,
-    port: int,
-    marker: str,
-    packet_count: int,
-    interval_ms: float,
-    run_timeout_func: Any,
-) -> dict[str, Any]:
-    run_id = str(getattr(args, "run_id", "") or "").strip()
-    properties = qcl080_makepad_runtime_properties(
-        host_ip=host_ip,
-        port=port,
-        marker=marker,
-        packet_count=packet_count,
-        interval_ms=interval_ms,
-        run_id=run_id,
-    )
-    actions: list[dict[str, Any]] = []
-    for key, value in properties.items():
-        result = run_timeout_func(
-            adb_command(args, "shell", "setprop", key, value),
-            timeout_seconds=3.0,
-        )
-        actions.append(
-            {
-                "action": "set-qcl080-makepad-property",
-                "property": key,
-                "value": value,
-                **completed_observed(result),
-            }
-        )
-
-    package = str(getattr(args, "makepad_package", None) or MAKEPAD_ANDROID_PACKAGE)
-    activity = str(getattr(args, "makepad_activity", None) or MAKEPAD_ANDROID_XR_ACTIVITY)
-    if not getattr(args, "skip_makepad_force_stop", False):
-        force_stop = run_timeout_func(
-            adb_command(args, "shell", "am", "force-stop", package),
-            timeout_seconds=5.0,
-        )
-        actions.append({"action": "force-stop-makepad-package", "package": package, **completed_observed(force_stop)})
-    launch = run_timeout_func(
-        adb_command(args, "shell", "am", "start", "-n", activity),
-        timeout_seconds=float(getattr(args, "makepad_launch_timeout_seconds", 10.0) or 10.0),
-    )
-    actions.append({"action": "launch-makepad-activity", "activity": activity, **completed_observed(launch)})
-    return {
-        "properties": properties,
-        "actions": actions,
-        "package": package,
-        "activity": activity,
-        "launch": launch,
-    }
-
-
-def collect_makepad_runtime_udp_sender_marker(
-    args: argparse.Namespace,
-    *,
-    marker: str,
-    run_timeout_func: Any,
-) -> dict[str, Any]:
-    actions: list[dict[str, Any]] = []
-    run_id = str(getattr(args, "run_id", "") or "").strip()
-    logcat = run_timeout_func(
-        adb_command(
-            args,
-            "shell",
-            "logcat",
-            "-d",
-            "-v",
-            "time",
-            "-s",
-            "HostessMakepad:I",
-        ),
-        timeout_seconds=8.0,
-    )
-    actions.append({"action": "capture-hostess-makepad-logcat", **completed_observed(logcat)})
-    disable = run_timeout_func(
-        adb_command(args, "shell", "setprop", f"{QCL080_APP_PROPERTY_PREFIX}.enabled", "false"),
-        timeout_seconds=3.0,
-    )
-    actions.append(
-        {
-            "action": "disable-qcl080-makepad-property",
-            "property": f"{QCL080_APP_PROPERTY_PREFIX}.enabled",
-            **completed_observed(disable),
-        }
-    )
-    parsed = latest_qcl080_app_marker(logcat.stdout, marker=marker, run_id=run_id)
-    return {"runtime_marker": parsed, "actions": actions}
-
-
-def qcl080_makepad_runtime_properties(
-    *,
-    host_ip: str,
-    port: int,
-    marker: str,
-    packet_count: int,
-    interval_ms: float,
-    run_id: str,
-) -> dict[str, str]:
-    return {
-        f"{QCL080_APP_PROPERTY_PREFIX}.enabled": "true",
-        f"{QCL080_APP_PROPERTY_PREFIX}.host": host_ip,
-        f"{QCL080_APP_PROPERTY_PREFIX}.port": str(port),
-        f"{QCL080_APP_PROPERTY_PREFIX}.marker": marker,
-        f"{QCL080_APP_PROPERTY_PREFIX}.packet.count": str(packet_count),
-        f"{QCL080_APP_PROPERTY_PREFIX}.interval.ms": str(int(round(interval_ms))),
-        f"{QCL080_APP_PROPERTY_PREFIX}.run.id": run_id,
-    }
-
-
-def latest_qcl080_app_marker(text: str, *, marker: str, run_id: str) -> dict[str, Any]:
-    matches: list[dict[str, Any]] = []
-    for line in (text or "").splitlines():
-        if QCL080_APP_MARKER_PREFIX not in line:
-            continue
-        parsed = parse_marker_line(line, QCL080_APP_MARKER_PREFIX)
-        fields = object_value(parsed.get("fields"))
-        if fields.get("marker") != marker:
-            continue
-        if run_id and fields.get("runId") != run_id:
-            continue
-        matches.append(parsed)
-    if not matches:
-        return {
-            "line": "",
-            "fields": {},
-            "expected_marker": marker,
-            "expected_run_id": run_id,
-            "matched": False,
-        }
-    latest = matches[-1]
-    latest["matched"] = True
-    return latest
-
-
-def parse_marker_line(line: str, prefix: str) -> dict[str, Any]:
-    start = line.find(prefix)
-    marker_text = line[start:] if start >= 0 else line
-    fields: dict[str, str] = {}
-    for token in marker_text.split()[1:]:
-        if "=" not in token:
-            continue
-        key, value = token.split("=", 1)
-        fields[key] = value
-    return {"line": marker_text, "fields": fields}
-
-
-def device_to_host_udp_freshness(args: argparse.Namespace, host_ip: str, run_timeout_func: Any) -> dict[str, Any]:
-    marker = str(getattr(args, "udp_marker", DEFAULT_UDP_MARKER) or DEFAULT_UDP_MARKER)
-    timeout = float(getattr(args, "udp_timeout_seconds", 5.0))
-    bind_host = str(getattr(args, "udp_bind_host", "0.0.0.0") or "0.0.0.0")
-    requested_port = int(getattr(args, "udp_port", 0) or 0) or DEFAULT_QCL080_UDP_PORT
-    packet_count = max(1, int(getattr(args, "udp_packet_count", 12) or 12))
-    interval_ms = max(0.0, float(getattr(args, "udp_interval_ms", 50.0) or 50.0))
-    max_loss_percent = max(0.0, float(getattr(args, "udp_max_loss_percent", 10.0) or 10.0))
-    max_jitter_ms = max(0.0, float(getattr(args, "udp_max_jitter_ms", 250.0) or 250.0))
-    sender_host_path = str(getattr(args, "udp_sender_host_path", "") or "").strip()
-    sender_device_path = str(
-        getattr(args, "udp_sender_device_path", "/data/local/tmp/rusty-qcl080-udp-sender")
-        or "/data/local/tmp/rusty-qcl080-udp-sender"
-    ).strip()
-    sender_source = selected_udp_sender_source(args, sender_host_path)
-    listener_helper = str(getattr(args, "udp_listener_helper", "") or "").strip()
-    if listener_helper:
-        return device_to_host_udp_freshness_with_listener_helper(
-            args,
-            host_ip,
-            run_timeout_func,
-            marker=marker,
-            timeout=timeout,
-            bind_host=bind_host,
-            requested_port=requested_port,
-            packet_count=packet_count,
-            interval_ms=interval_ms,
-            max_loss_percent=max_loss_percent,
-            max_jitter_ms=max_jitter_ms,
-            sender_host_path=sender_host_path,
-            sender_device_path=sender_device_path,
-            sender_source=sender_source,
-            listener_helper=listener_helper,
-        )
-    received: dict[str, Any] = {"packets": [], "error": ""}
-    ready = threading.Event()
-
-    def server() -> None:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-                sock.bind((bind_host, requested_port))
-                sock.settimeout(0.2)
-                received["port"] = sock.getsockname()[1]
-                ready.set()
-                deadline = time.monotonic() + timeout + packet_count * 1.2
-                while time.monotonic() < deadline:
-                    try:
-                        data, addr = sock.recvfrom(2048)
-                    except TimeoutError:
-                        continue
-                    except socket.timeout:
-                        continue
-                    received["packets"].append(
-                        {
-                            "payload": data.decode("utf-8", "replace").strip(),
-                            "peer": f"{addr[0]}:{addr[1]}",
-                            "arrival_monotonic": time.monotonic(),
-                        }
-                    )
-                    if len(received["packets"]) >= packet_count:
-                        break
-        except Exception as exc:
-            received["error"] = str(exc)
-            ready.set()
-
-    thread = threading.Thread(target=server, daemon=True)
-    started = time.monotonic()
-    thread.start()
-    ready.wait(timeout=timeout)
-    port = int(received.get("port") or 0)
-    if not port:
-        return check_row(
-            "protocol.udp_freshness",
-            "blocked",
-            f"UDP freshness server did not start: {received.get('error') or 'unknown'}",
-            issue_codes=["hostess.issue.connectivity_probe.udp_server_failed"],
-        )
-
-    generator = "adb_shell_udp_generator"
-    push_result: subprocess.CompletedProcess[str] | None = None
-    chmod_result: subprocess.CompletedProcess[str] | None = None
-    runtime_sender: dict[str, Any] = {}
-    app_actions: list[dict[str, Any]] = []
-    if sender_source == "makepad-runtime":
-        generator = "app_owned_runtime_udp_sender"
-        runtime_sender = start_makepad_runtime_udp_sender(
-            args,
-            host_ip=host_ip,
-            port=port,
-            marker=marker,
-            packet_count=packet_count,
-            interval_ms=interval_ms,
-            run_timeout_func=run_timeout_func,
-        )
-        app_actions = list_value(runtime_sender.get("actions"))
-        result = runtime_sender.get("launch") or subprocess.CompletedProcess([], 1, "", "missing launch result")
-    elif sender_host_path:
-        generator = "adb_pushed_native_udp_sender"
-        push_result = run_timeout_func(
-            adb_command(args, "push", sender_host_path, sender_device_path),
-            timeout_seconds=15.0,
-        )
-        chmod_result = run_timeout_func(
-            adb_command(args, "shell", "chmod", "755", sender_device_path),
-            timeout_seconds=5.0,
-        )
-        result = run_timeout_func(
-            adb_command(
-                args,
-                "shell",
-                sender_device_path,
-                host_ip,
-                str(port),
-                marker,
-                str(packet_count),
-                str(int(round(interval_ms))),
-            ),
-            timeout_seconds=timeout + packet_count * max(0.02, interval_ms / 1000.0) + 3.0,
-        )
-    else:
-        interval_seconds = f"{interval_ms / 1000.0:.3f}".rstrip("0").rstrip(".")
-        payload_format = shell_word(marker + "|%04d\\n")
-        command_text = (
-            f"i=0; while [ $i -lt {packet_count} ]; do "
-            f"printf {payload_format} \"$i\" | "
-            f"(toybox nc -u -w 1 -q 1 {host_ip} {port} || nc -u -w 1 -q 1 {host_ip} {port}); "
-            "i=$((i+1)); "
-            f"sleep {interval_seconds}; "
-            "done"
-        )
-        result = run_timeout_func(
-            adb_command(args, "shell", command_text),
-            timeout_seconds=timeout + packet_count * (1.2 + max(0.05, interval_ms / 1000.0)) + 3.0,
-        )
-    thread.join(timeout=timeout + 1.0)
-    if sender_source == "makepad-runtime":
-        runtime_marker_result = collect_makepad_runtime_udp_sender_marker(
-            args,
-            marker=marker,
-            run_timeout_func=run_timeout_func,
-        )
-        runtime_sender["runtime_marker"] = object_value(runtime_marker_result.get("runtime_marker"))
-        app_actions.extend(list_value(runtime_marker_result.get("actions")))
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    packets = list(received.get("packets") or [])
-    sequences = udp_sequences_from_packets(packets, marker)
-    unique_sequences = sorted(set(sequences))
-    received_count = len(unique_sequences)
-    duplicate_count = max(0, len(sequences) - received_count)
-    loss_count = max(0, packet_count - received_count)
-    loss_percent = round((loss_count / packet_count) * 100.0, 2)
-    interarrival_ms = udp_interarrival_ms(packets)
-    interarrival_ms_p95 = percentile(interarrival_ms, 95)
-    loss_ok = loss_percent <= max_loss_percent
-    jitter_ok = interarrival_ms_p95 is None or interarrival_ms_p95 <= max_jitter_ms
-    if received_count == 0:
-        status = "fail"
-    elif loss_ok and jitter_ok:
-        status = "pass"
-    else:
-        status = "warn"
-    issue_codes: list[str] = []
-    if status == "fail":
-        issue_codes.append("hostess.issue.connectivity_probe.udp_freshness_failed")
-    elif status == "warn":
-        issue_codes.append("hostess.issue.connectivity_probe.udp_freshness_degraded")
-    evidence = (
-        f"{received_count}/{packet_count} packets, loss={loss_percent:.1f}%, "
-        f"p95_gap={interarrival_ms_p95 if interarrival_ms_p95 is not None else 'n/a'}ms"
-    )
-    return check_row(
-        "protocol.udp_freshness",
-        status,
-        evidence,
-        observed={
-            "host_ip": host_ip,
-            "port": port,
-            "marker": marker,
-            "packets_requested": packet_count,
-            "packets_received": received_count,
-            "datagrams_received": len(packets),
-            "unique_sequences": unique_sequences[:50],
-            "duplicates": duplicate_count,
-            "loss_percent": loss_percent,
-            "elapsed_ms": elapsed_ms,
-            "interarrival_ms": interarrival_ms[:50],
-            "interarrival_ms_p95": interarrival_ms_p95,
-            "generator": generator,
-            "sender_host_path": sender_host_path,
-            "sender_device_path": sender_device_path if sender_host_path else "",
-            "app_actions": app_actions,
-            "runtime_marker": object_value(runtime_sender.get("runtime_marker")),
-            "runtime_properties": object_value(runtime_sender.get("properties")),
-            "adb_push": completed_observed(push_result) if push_result else None,
-            "adb_chmod": completed_observed(chmod_result) if chmod_result else None,
-            "adb_client": completed_observed(result),
-            "server_error": received.get("error", ""),
-            "server_peer": packets[0]["peer"] if packets else "",
-        },
-        notes=(
-            "App-owned Makepad runtime UDP sender; Hostess ADB only configured and launched the runtime."
-            if sender_source == "makepad-runtime"
-            else "Diagnostic UDP generator uses ADB shell netcat; app-owned runtime UDP remains a separate promotion gate."
-        ),
-        issue_codes=issue_codes,
-    )
-
-
-def device_to_host_udp_freshness_with_listener_helper(
-    args: argparse.Namespace,
-    host_ip: str,
-    run_timeout_func: Any,
-    *,
-    marker: str,
-    timeout: float,
-    bind_host: str,
-    requested_port: int,
-    packet_count: int,
-    interval_ms: float,
-    max_loss_percent: float,
-    max_jitter_ms: float,
-    sender_host_path: str,
-    sender_device_path: str,
-    sender_source: str,
-    listener_helper: str,
-) -> dict[str, Any]:
-    run_token = safe_filename(str(getattr(args, "run_id", "") or f"{int(time.time() * 1000)}"))
-    helper_root = Path(tempfile.gettempdir()) / "rusty-hostess-qcl080"
-    helper_root.mkdir(parents=True, exist_ok=True)
-    ready_path = helper_root / f"{run_token}.listener-ready.json"
-    out_path = helper_root / f"{run_token}.listener-result.json"
-    for path in [ready_path, out_path]:
-        try:
-            path.unlink()
-        except FileNotFoundError:
-            pass
-
-    helper_command = [
-        listener_helper,
-        "--qcl080-udp-listener",
-        "--bind-host",
-        bind_host,
-        "--port",
-        str(requested_port),
-        "--marker",
-        marker,
-        "--packet-count",
-        str(packet_count),
-        "--timeout-seconds",
-        f"{timeout + packet_count * 1.2:.3f}",
-        "--ready-out",
-        str(ready_path),
-        "--out",
-        str(out_path),
-    ]
-    started = time.monotonic()
-    try:
-        listener_process = subprocess.Popen(
-            helper_command,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-    except OSError as exc:
-        return check_row(
-            "protocol.udp_freshness",
-            "blocked",
-            f"WPF UDP listener helper did not start: {exc}",
-            observed={"listener_helper": listener_helper, "error": str(exc)},
-            issue_codes=["hostess.issue.connectivity_probe.udp_listener_helper_failed"],
-        )
-
-    ready = wait_for_json_file(ready_path, timeout_seconds=timeout)
-    if not ready:
-        terminate_process(listener_process)
-        return check_row(
-            "protocol.udp_freshness",
-            "blocked",
-            "WPF UDP listener helper did not report readiness",
-            observed={
-                "listener_helper": listener_helper,
-                "ready_path": str(ready_path),
-                "result_path": str(out_path),
-            },
-            issue_codes=["hostess.issue.connectivity_probe.udp_listener_helper_not_ready"],
-        )
-
-    port = int(ready.get("port") or requested_port)
-    generator = "adb_shell_udp_generator"
-    push_result: subprocess.CompletedProcess[str] | None = None
-    chmod_result: subprocess.CompletedProcess[str] | None = None
-    runtime_sender: dict[str, Any] = {}
-    app_actions: list[dict[str, Any]] = []
-    if sender_source == "makepad-runtime":
-        generator = "app_owned_runtime_udp_sender"
-        runtime_sender = start_makepad_runtime_udp_sender(
-            args,
-            host_ip=host_ip,
-            port=port,
-            marker=marker,
-            packet_count=packet_count,
-            interval_ms=interval_ms,
-            run_timeout_func=run_timeout_func,
-        )
-        app_actions = list_value(runtime_sender.get("actions"))
-        result = runtime_sender.get("launch") or subprocess.CompletedProcess([], 1, "", "missing launch result")
-    elif sender_host_path:
-        generator = "adb_pushed_native_udp_sender"
-        push_result = run_timeout_func(
-            adb_command(args, "push", sender_host_path, sender_device_path),
-            timeout_seconds=15.0,
-        )
-        chmod_result = run_timeout_func(
-            adb_command(args, "shell", "chmod", "755", sender_device_path),
-            timeout_seconds=5.0,
-        )
-        result = run_timeout_func(
-            adb_command(
-                args,
-                "shell",
-                sender_device_path,
-                host_ip,
-                str(port),
-                marker,
-                str(packet_count),
-                str(int(round(interval_ms))),
-            ),
-            timeout_seconds=timeout + packet_count * max(0.02, interval_ms / 1000.0) + 3.0,
-        )
-    else:
-        interval_seconds = f"{interval_ms / 1000.0:.3f}".rstrip("0").rstrip(".")
-        payload_format = shell_word(marker + "|%04d\\n")
-        command_text = (
-            f"i=0; while [ $i -lt {packet_count} ]; do "
-            f"printf {payload_format} \"$i\" | "
-            f"(toybox nc -u -w 1 -q 1 {host_ip} {port} || nc -u -w 1 -q 1 {host_ip} {port}); "
-            "i=$((i+1)); "
-            f"sleep {interval_seconds}; "
-            "done"
-        )
-        result = run_timeout_func(
-            adb_command(args, "shell", command_text),
-            timeout_seconds=timeout + packet_count * (1.2 + max(0.05, interval_ms / 1000.0)) + 3.0,
-        )
-
-    helper_stdout = ""
-    helper_stderr = ""
-    try:
-        helper_stdout, helper_stderr = listener_process.communicate(
-            timeout=timeout + packet_count * 1.2 + 5.0,
-        )
-    except subprocess.TimeoutExpired:
-        terminate_process(listener_process)
-        helper_stdout, helper_stderr = listener_process.communicate(timeout=2.0)
-
-    if sender_source == "makepad-runtime":
-        runtime_marker_result = collect_makepad_runtime_udp_sender_marker(
-            args,
-            marker=marker,
-            run_timeout_func=run_timeout_func,
-        )
-        runtime_sender["runtime_marker"] = object_value(runtime_marker_result.get("runtime_marker"))
-        app_actions.extend(list_value(runtime_marker_result.get("actions")))
-
-    listener_report = read_json_file(out_path)
-    elapsed_ms = int((time.monotonic() - started) * 1000)
-    packets = packets_from_listener_report(listener_report)
-    sequences = udp_sequences_from_packets(packets, marker)
-    unique_sequences = sorted(set(sequences))
-    received_count = len(unique_sequences)
-    duplicate_count = max(0, len(sequences) - received_count)
-    loss_count = max(0, packet_count - received_count)
-    loss_percent = round((loss_count / packet_count) * 100.0, 2)
-    interarrival_ms = udp_interarrival_ms(packets)
-    interarrival_ms_p95 = percentile(interarrival_ms, 95)
-    loss_ok = loss_percent <= max_loss_percent
-    jitter_ok = interarrival_ms_p95 is None or interarrival_ms_p95 <= max_jitter_ms
-    if received_count == 0:
-        status = "fail"
-    elif loss_ok and jitter_ok:
-        status = "pass"
-    else:
-        status = "warn"
-    issue_codes: list[str] = []
-    if status == "fail":
-        issue_codes.append("hostess.issue.connectivity_probe.udp_freshness_failed")
-    elif status == "warn":
-        issue_codes.append("hostess.issue.connectivity_probe.udp_freshness_degraded")
-    evidence = (
-        f"{received_count}/{packet_count} packets, loss={loss_percent:.1f}%, "
-        f"p95_gap={interarrival_ms_p95 if interarrival_ms_p95 is not None else 'n/a'}ms"
-    )
-    return check_row(
-        "protocol.udp_freshness",
-        status,
-        evidence,
-        observed={
-            "host_ip": host_ip,
-            "port": port,
-            "marker": marker,
-            "packets_requested": packet_count,
-            "packets_received": received_count,
-            "datagrams_received": len(packets),
-            "unique_sequences": unique_sequences[:50],
-            "duplicates": duplicate_count,
-            "loss_percent": loss_percent,
-            "elapsed_ms": elapsed_ms,
-            "interarrival_ms": interarrival_ms[:50],
-            "interarrival_ms_p95": interarrival_ms_p95,
-            "generator": generator,
-            "listener_owner": "hostess_companion_wpf",
-            "listener_program": str(listener_report.get("program") or ready.get("program") or listener_helper),
-            "listener_helper": listener_helper,
-            "listener_ready": ready,
-            "listener_report": listener_report,
-            "listener_process": {
-                "returncode": listener_process.returncode,
-                "stdout": helper_stdout,
-                "stderr": helper_stderr,
-            },
-            "sender_host_path": sender_host_path,
-            "sender_device_path": sender_device_path if sender_host_path else "",
-            "app_actions": app_actions,
-            "runtime_marker": object_value(runtime_sender.get("runtime_marker")),
-            "runtime_properties": object_value(runtime_sender.get("properties")),
-            "adb_push": completed_observed(push_result) if push_result else None,
-            "adb_chmod": completed_observed(chmod_result) if chmod_result else None,
-            "adb_client": completed_observed(result),
-            "server_error": str(listener_report.get("error") or ""),
-            "server_peer": packets[0]["peer"] if packets else "",
-        },
-        notes=(
-            "App-owned Makepad runtime UDP sender with WPF-owned host UDP listener."
-            if sender_source == "makepad-runtime"
-            else "WPF-owned host UDP listener with diagnostic sender; app-owned runtime UDP remains a separate promotion gate."
-        ),
-        issue_codes=issue_codes,
-    )
-
-
-def wait_for_json_file(path: Path, *, timeout_seconds: float) -> dict[str, Any]:
-    deadline = time.monotonic() + timeout_seconds
-    while time.monotonic() < deadline:
-        data = read_json_file(path)
-        if data:
-            return data
-        time.sleep(0.05)
-    return {}
-
-
-def read_json_file(path: Path) -> dict[str, Any]:
-    if not path.exists():
-        return {}
-    try:
-        parsed = json.loads(path.read_text(encoding="utf-8-sig"))
-    except (OSError, json.JSONDecodeError):
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def terminate_process(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
-    process.terminate()
-    try:
-        process.wait(timeout=2.0)
-    except subprocess.TimeoutExpired:
-        process.kill()
-
-
-def packets_from_listener_report(report: dict[str, Any]) -> list[dict[str, Any]]:
-    packets: list[dict[str, Any]] = []
-    for row in list_value(report.get("packets")):
-        if not isinstance(row, dict):
-            continue
-        arrival = float(row.get("arrival_elapsed_ms") or 0.0) / 1000.0
-        packets.append(
-            {
-                "payload": str(row.get("payload") or ""),
-                "peer": str(row.get("peer") or ""),
-                "arrival_monotonic": arrival,
-            }
-        )
-    return packets
-
-
-def safe_filename(value: str) -> str:
-    chars = [char if char.isalnum() or char in {".", "_", "-"} else "-" for char in value]
-    token = "".join(chars).strip("._-")
-    return token or "run"
-
-
-def udp_sequences_from_packets(packets: list[dict[str, Any]], marker: str) -> list[int]:
-    sequences: list[int] = []
-    prefix = marker + "|"
-    for packet in packets:
-        payload = str(packet.get("payload") or "")
-        if not payload.startswith(prefix):
-            continue
-        sequence_text = payload[len(prefix):].split("|", 1)[0].strip()
-        try:
-            sequences.append(int(sequence_text))
-        except ValueError:
-            continue
-    return sequences
-
-
-def udp_interarrival_ms(packets: list[dict[str, Any]]) -> list[int]:
-    arrivals = [
-        float(packet["arrival_monotonic"])
-        for packet in packets
-        if isinstance(packet.get("arrival_monotonic"), (float, int))
-    ]
-    arrivals.sort()
-    return [int(round((right - left) * 1000.0)) for left, right in zip(arrivals, arrivals[1:])]
-
-
-def lsl_discovery_sample_continuity(args: argparse.Namespace) -> dict[str, Any]:
-    source = str(getattr(args, "lsl_source", "host-loopback") or "host-loopback")
-    stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
-    stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
-    sample_count = max(1, int(getattr(args, "lsl_sample_count", 16) or 16))
-    timeout = max(0.5, float(getattr(args, "lsl_timeout_seconds", 5.0) or 5.0))
-    if source != "host-loopback":
-        return {
-            "status": "blocked",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.quest_lsl_source_not_configured"],
-            "notes": "QCL-081 external/Quest LSL source is not implemented in hostessctl yet",
-        }
-    try:
-        from pylsl import StreamInfo, StreamInlet, StreamOutlet, resolve_byprop
-    except Exception as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.pylsl_unavailable"],
-            "notes": f"pylsl unavailable: {exc}",
-        }
-
-    source_id = f"rusty-qcl081-{int(time.time() * 1000)}"
-    info = StreamInfo(stream_name, stream_type, 1, 0, "float32", source_id)
-    outlet = StreamOutlet(info)
-    time.sleep(0.15)
-    discovery_started = time.monotonic()
-    streams = resolve_byprop("name", stream_name, minimum=1, timeout=timeout)
-    discovery_ms = int(round((time.monotonic() - discovery_started) * 1000.0))
-    if not streams:
-        return {
-            "status": "fail",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": discovery_ms,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.lsl_discovery_failed"],
-            "notes": "no LSL stream was discovered",
-        }
-    inlet = StreamInlet(streams[0])
-    try:
-        inlet.open_stream(timeout=timeout)
-    except Exception:
-        pass
-    producer_done = threading.Event()
-
-    def producer() -> None:
-        time.sleep(0.1)
-        for sequence in range(sample_count):
-            outlet.push_sample([float(sequence)])
-            time.sleep(0.01)
-        producer_done.set()
-
-    producer_thread = threading.Thread(target=producer, daemon=True)
-    producer_thread.start()
-    received: list[int] = []
-    deadline = time.monotonic() + timeout
-    while len(received) < sample_count and (time.monotonic() < deadline or not producer_done.is_set()):
-        sample, _timestamp = inlet.pull_sample(timeout=0.2)
-        if not sample:
-            continue
-        try:
-            received.append(int(round(float(sample[0]))))
-        except (TypeError, ValueError, IndexError):
-            continue
-    producer_thread.join(timeout=1.0)
-    received_count = len(received)
-    loss_percent = round(((sample_count - received_count) / sample_count) * 100.0, 2)
-    monotonic = received == list(range(received_count))
-    if received_count == sample_count and monotonic:
-        status = "pass"
-        issue_codes: list[str] = []
-    elif received_count > 0:
-        status = "warn"
-        issue_codes = ["hostess.issue.connectivity_probe.lsl_sample_continuity_degraded"]
-    else:
-        status = "fail"
-        issue_codes = ["hostess.issue.connectivity_probe.lsl_sample_continuity_failed"]
-    return {
-        "status": status,
-        "source": source,
-        "stream_name": stream_name,
-        "stream_type": stream_type,
-        "samples_requested": sample_count,
-        "samples_received": received_count,
-        "loss_percent": loss_percent,
-        "discovery_ms": discovery_ms,
-        "monotonic_sequences": monotonic,
-        "received_sequences": received[:50],
-        "issue_codes": issue_codes,
-        "notes": "host-local LSL loopback; not a Quest-to-PC topology proof",
-    }
-
-
-def lsl_manifold_broker_probe(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
-    source = "manifold-lsl-broker"
-    stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
-    stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
-    sample_count = max(1, int(getattr(args, "lsl_sample_count", 16) or 16))
-    timeout = max(0.5, float(getattr(args, "lsl_timeout_seconds", 5.0) or 5.0))
-    root = resolve_lsl_manifold_root(args)
-    if root is None:
-        return {
-            "status": "blocked",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_root_missing"],
-            "notes": "Rusty Manifold root with tools/qcl081_lsl_clocked_samples.py was not found",
-        }
-
-    command = [
-        sys.executable,
-        str(root / "tools" / "qcl081_lsl_clocked_samples.py"),
-        "--json",
-        "--source",
-        source,
-        "--stream-name",
-        stream_name,
-        "--stream-type",
-        stream_type,
-        "--sample-count",
-        str(sample_count),
-        "--timeout-seconds",
-        str(timeout),
-    ]
-    try:
-        completed = run_captured_func(command, allow_failure=True, cwd=root)
-    except Exception as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_broker_failed"],
-            "notes": f"Manifold LSL broker-owned probe could not be launched: {exc}",
-        }
-
-    parsed = parse_probe_json_stdout(completed.stdout)
-    if not parsed:
-        return {
-            "status": "blocked",
-            "source": source,
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_report_missing"],
-            "notes": (completed.stderr or completed.stdout or "Manifold LSL broker-owned report missing").strip()[:800],
-        }
-
-    issue_codes = [str(code) for code in parsed.get("issue_codes", []) or []]
-    route_evidence = object_value(parsed.get("bridge_route_evidence"))
-    authority = object_value(parsed.get("authority"))
-    requested = int_value(parsed.get("samples_requested")) or sample_count
-    received = int_value(parsed.get("samples_received")) or 0
-    loss_percent = float_value(parsed.get("loss_percent"), default=100.0)
-    status = str(parsed.get("status") or "blocked")
-    broker_owned = (
-        str(parsed.get("evidence_tier") or "") == "broker_owned"
-        and str(authority.get("owner") or "") == "rusty.manifold.transport"
-        and str(route_evidence.get("status") or "") == "pass"
-    )
-    if completed.returncode != 0 and status == "pass":
-        status = "blocked"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_failed")
-    if status == "pass" and not broker_owned:
-        status = "warn"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_owned_evidence_missing")
-    if status == "pass" and (
-        received < requested
-        or loss_percent > 0.0
-        or parsed.get("monotonic_sequences") is False
-    ):
-        status = "warn"
-        issue_codes.append("hostess.issue.connectivity_probe.lsl_sample_continuity_degraded")
-    if status not in {"pass", "warn", "fail", "blocked"}:
-        status = "blocked"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_status_invalid")
-
-    return {
-        "status": status,
-        "source": source,
-        "stream_name": parsed.get("stream_name") or stream_name,
-        "stream_type": parsed.get("stream_type") or stream_type,
-        "source_id": parsed.get("source_id"),
-        "samples_requested": requested,
-        "samples_received": received,
-        "loss_percent": loss_percent,
-        "discovery_ms": parsed.get("discovery_ms"),
-        "monotonic_sequences": parsed.get("monotonic_sequences"),
-        "received_sequences": parsed.get("received_sequences", []),
-        "evidence_tier": parsed.get("evidence_tier"),
-        "authority_owner": authority.get("owner"),
-        "route_id": parsed.get("route_id"),
-        "bridge_route_evidence": route_evidence,
-        "library_version": parsed.get("library_version"),
-        "issue_codes": dedupe_issue_codes(issue_codes),
-        "notes": (
-            "Manifold-owned LSL route evidence from rusty-manifold; "
-            "Hostess only wraps the emitted broker-owned report"
-        ),
-    }
-
-
-def lsl_quest_runtime_preflight(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
-    stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
-    stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
-    sample_count = max(1, int(getattr(args, "lsl_sample_count", 16) or 16))
-    if not getattr(args, "adb", None) or not getattr(args, "serial", None):
-        return {
-            "status": "blocked",
-            "source": "quest-runtime",
-            "stream_name": stream_name,
-            "stream_type": stream_type,
-            "samples_requested": sample_count,
-            "samples_received": 0,
-            "loss_percent": 100.0,
-            "discovery_ms": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.lsl_android_adb_missing"],
-            "notes": "QCL-081 Quest runtime LSL preflight requires --adb and --serial",
-        }
-
-    python_command = (
-        "run-as com.termux /data/data/com.termux/files/usr/bin/python3.13 "
-        "-c 'import sys; print(sys.version)'"
-    )
-    pylsl_command = (
-        "run-as com.termux /data/data/com.termux/files/usr/bin/python3.13 "
-        "-c 'import pylsl; print(pylsl.__version__)'"
-    )
-    python_result = run_captured_func(adb_command(args, "shell", python_command), allow_failure=True)
-    pylsl_result = run_captured_func(adb_command(args, "shell", pylsl_command), allow_failure=True)
-    issue_codes: list[str] = []
-    if python_result.returncode != 0:
-        issue_codes.append("hostess.issue.connectivity_probe.lsl_termux_python_missing")
-    if pylsl_result.returncode != 0:
-        issue_codes.append("hostess.issue.connectivity_probe.lsl_quest_pylsl_missing")
-    if not issue_codes:
-        issue_codes.append("hostess.issue.connectivity_probe.quest_lsl_source_not_configured")
-    notes = (
-        "Termux Python is available, but pylsl/liblsl is not importable on the Quest"
-        if python_result.returncode == 0 and pylsl_result.returncode != 0
-        else "Quest-side LSL producer runtime is not launchable from the current Termux environment"
-        if python_result.returncode != 0
-        else "Quest-side pylsl import is available, but Hostess has no Quest LSL outlet launcher yet"
-    )
-    return {
-        "status": "blocked",
-        "source": "quest-runtime",
-        "stream_name": stream_name,
-        "stream_type": stream_type,
-        "samples_requested": sample_count,
-        "samples_received": 0,
-        "loss_percent": 100.0,
-        "discovery_ms": None,
-        "monotonic_sequences": False,
-        "received_sequences": [],
-        "issue_codes": issue_codes,
-        "notes": notes,
-        "quest_runtime_preflight": {
-            "termux_python": completed_observed(python_result),
-            "pylsl_import": completed_observed(pylsl_result),
-        },
-    }
-
-
-def lsl_checks_from_probe(result: dict[str, Any]) -> list[dict[str, Any]]:
-    status = str(result.get("status") or "blocked")
-    issue_codes = [str(code) for code in result.get("issue_codes", [])]
-    discovery_ms = result.get("discovery_ms")
-    discovery_status = "pass" if discovery_ms is not None and status != "blocked" else status
-    if status == "blocked":
-        discovery_status = "blocked"
-    elif discovery_ms is None:
-        discovery_status = "fail"
-    sample_status = status if discovery_status == "pass" else "blocked"
-    return [
-        check_row(
-            "protocol.lsl_discovery",
-            discovery_status,
-            (
-                f"stream {result.get('stream_name', 'unknown')} discovered in {discovery_ms}ms"
-                if discovery_status == "pass"
-                else str(result.get("notes") or "LSL discovery failed")
-            ),
-            observed={
-                "source": result.get("source"),
-                "stream_name": result.get("stream_name"),
-                "stream_type": result.get("stream_type"),
-                "discovery_ms": discovery_ms,
-            },
-            issue_codes=[] if discovery_status == "pass" else issue_codes,
-        ),
-        check_row(
-            "protocol.lsl_sample_continuity",
-            sample_status,
-            (
-                f"{result.get('samples_received', 0)}/{result.get('samples_requested', 0)} samples, loss={result.get('loss_percent', 100.0)}%"
-                if sample_status in {"pass", "warn", "fail"}
-                else "sample continuity blocked by discovery/dependency failure"
-            ),
-            observed={
-                "samples_requested": result.get("samples_requested"),
-                "samples_received": result.get("samples_received"),
-                "loss_percent": result.get("loss_percent"),
-                "monotonic_sequences": result.get("monotonic_sequences"),
-                "received_sequences": result.get("received_sequences", []),
-            },
-            issue_codes=[] if sample_status == "pass" else issue_codes,
-        ),
-    ]
-
-
-def osc_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
-    source = str(getattr(args, "osc_source", "host-loopback") or "host-loopback")
-    address = str(getattr(args, "osc_address", "/rusty/qcl083") or "/rusty/qcl083")
-    message_count = max(1, int(getattr(args, "osc_message_count", 16) or 16))
-    timeout = max(0.5, float(getattr(args, "osc_timeout_seconds", 5.0) or 5.0))
-    max_loss_percent = max(0.0, float(getattr(args, "osc_max_loss_percent", 0.0) or 0.0))
-    if source != "host-loopback":
-        return {
-            "status": "blocked",
-            "source": source,
-            "address": address,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "loss_percent": 100.0,
-            "round_trip_ms_p95": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.quest_osc_source_not_configured"],
-            "notes": "QCL-083 external/Quest OSC source is not implemented in hostessctl yet",
-        }
-
-    received_sequences: list[int] = []
-    acknowledged_sequences: list[int] = []
-    rtts: list[int] = []
-    server_ready = threading.Event()
-    server_done = threading.Event()
-    server_error: list[str] = []
-
-    def server() -> None:
-        try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as server_socket:
-                server_socket.bind(("127.0.0.1", int(getattr(args, "osc_port", 0) or 0)))
-                server_socket.settimeout(0.2)
-                server_port_holder.append(server_socket.getsockname()[1])
-                server_ready.set()
-                deadline = time.monotonic() + timeout
-                while len(received_sequences) < message_count and time.monotonic() < deadline:
-                    try:
-                        payload, addr = server_socket.recvfrom(8192)
-                    except socket.timeout:
-                        continue
-                    parsed = parse_osc_message(payload)
-                    sequence = int(parsed.get("sequence", -1))
-                    if parsed.get("address") == address and sequence >= 0:
-                        received_sequences.append(sequence)
-                        server_socket.sendto(build_osc_message("/rusty/qcl083/ack", sequence, "ack"), addr)
-        except OSError as exc:
-            server_error.append(str(exc))
-        finally:
-            server_done.set()
-
-    server_port_holder: list[int] = []
-    thread = threading.Thread(target=server, daemon=True)
-    thread.start()
-    if not server_ready.wait(timeout=1.0) or not server_port_holder:
-        return {
-            "status": "blocked",
-            "source": source,
-            "address": address,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "loss_percent": 100.0,
-            "round_trip_ms_p95": None,
-            "monotonic_sequences": False,
-            "issue_codes": ["hostess.issue.connectivity_probe.osc_listener_not_ready"],
-            "notes": "OSC loopback listener did not become ready",
-        }
-
-    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client_socket:
-        client_socket.bind(("127.0.0.1", 0))
-        client_socket.settimeout(min(0.5, timeout))
-        for sequence in range(message_count):
-            started = time.monotonic()
-            client_socket.sendto(
-                build_osc_message(address, sequence, f"runId={getattr(args, 'run_id', '') or 'qcl083'}"),
-                ("127.0.0.1", server_port_holder[0]),
-            )
-            try:
-                ack, _addr = client_socket.recvfrom(8192)
-            except socket.timeout:
-                continue
-            parsed_ack = parse_osc_message(ack)
-            if parsed_ack.get("address") == "/rusty/qcl083/ack" and int(parsed_ack.get("sequence", -1)) == sequence:
-                acknowledged_sequences.append(sequence)
-                rtts.append(int(round((time.monotonic() - started) * 1000.0)))
-            time.sleep(0.005)
-    server_done.wait(timeout=1.0)
-
-    received_count = len(received_sequences)
-    acknowledged_count = len(acknowledged_sequences)
-    loss_percent = round(((message_count - acknowledged_count) / message_count) * 100.0, 2)
-    monotonic = received_sequences == list(range(received_count))
-    if server_error:
-        status = "blocked"
-        issue_codes = ["hostess.issue.connectivity_probe.osc_listener_failed"]
-    elif acknowledged_count == message_count and monotonic and loss_percent <= max_loss_percent:
-        status = "pass"
-        issue_codes = []
-    elif acknowledged_count > 0:
-        status = "warn"
-        issue_codes = ["hostess.issue.connectivity_probe.osc_exchange_degraded"]
-    else:
-        status = "fail"
-        issue_codes = ["hostess.issue.connectivity_probe.osc_exchange_failed"]
-    return {
-        "status": status,
-        "source": source,
-        "address": address,
-        "messages_requested": message_count,
-        "messages_received": received_count,
-        "messages_acknowledged": acknowledged_count,
-        "loss_percent": loss_percent,
-        "round_trip_ms_p95": percentile(rtts, 95),
-        "round_trip_ms_max": max(rtts) if rtts else None,
-        "monotonic_sequences": monotonic,
-        "received_sequences": received_sequences[:50],
-        "acknowledged_sequences": acknowledged_sequences[:50],
-        "issue_codes": issue_codes,
-        "notes": "host-local OSC UDP loopback; not a Quest-to-PC topology proof",
-    }
-
-
-def build_osc_message(address: str, sequence: int, marker: str) -> bytes:
-    return osc_string(address) + osc_string(",is") + struct.pack(">i", int(sequence)) + osc_string(marker)
-
-
-def osc_string(value: str) -> bytes:
-    raw = value.encode("utf-8") + b"\0"
-    padding = (4 - (len(raw) % 4)) % 4
-    return raw + (b"\0" * padding)
-
-
-def read_osc_string(payload: bytes, offset: int) -> tuple[str, int]:
-    end = payload.index(b"\0", offset)
-    value = payload[offset:end].decode("utf-8", errors="replace")
-    next_offset = end + 1
-    while next_offset % 4 != 0:
-        next_offset += 1
-    return value, next_offset
-
-
-def parse_osc_message(payload: bytes) -> dict[str, Any]:
-    try:
-        address, offset = read_osc_string(payload, 0)
-        type_tags, offset = read_osc_string(payload, offset)
-        if not type_tags.startswith(",i") or len(payload) < offset + 4:
-            return {"valid": False, "address": address, "type_tags": type_tags}
-        sequence = struct.unpack(">i", payload[offset : offset + 4])[0]
-        offset += 4
-        marker = ""
-        if "s" in type_tags[2:]:
-            marker, _offset = read_osc_string(payload, offset)
-        return {
-            "valid": True,
-            "address": address,
-            "type_tags": type_tags,
-            "sequence": sequence,
-            "marker": marker,
-        }
-    except (ValueError, IndexError, struct.error):
-        return {"valid": False}
-
-
-def osc_checks_from_probe(result: dict[str, Any]) -> list[dict[str, Any]]:
-    status = str(result.get("status") or "blocked")
-    issue_codes = [str(code) for code in result.get("issue_codes", [])]
-    shape_status = "pass" if status in {"pass", "warn", "fail"} else "blocked"
-    exchange_status = status if shape_status == "pass" else "blocked"
-    return [
-        check_row(
-            "protocol.osc_message_shape",
-            shape_status,
-            (
-                f"OSC address {result.get('address')} parsed with int/string payload shape"
-                if shape_status == "pass"
-                else str(result.get("notes") or "OSC packet shape not proven")
-            ),
-            observed={"source": result.get("source"), "address": result.get("address")},
-            issue_codes=[] if shape_status == "pass" else issue_codes,
-        ),
-        check_row(
-            "protocol.osc_payload_exchange",
-            exchange_status,
-            (
-                f"{result.get('messages_acknowledged', 0)}/{result.get('messages_requested', 0)} OSC messages acknowledged, loss={result.get('loss_percent', 100.0)}%"
-                if exchange_status in {"pass", "warn", "fail"}
-                else "OSC payload exchange blocked by dependency/source failure"
-            ),
-            observed={
-                "messages_requested": result.get("messages_requested"),
-                "messages_received": result.get("messages_received"),
-                "messages_acknowledged": result.get("messages_acknowledged"),
-                "loss_percent": result.get("loss_percent"),
-                "round_trip_ms_p95": result.get("round_trip_ms_p95"),
-                "monotonic_sequences": result.get("monotonic_sequences"),
-                "received_sequences": result.get("received_sequences", []),
-            },
-            issue_codes=[] if exchange_status == "pass" else issue_codes,
-        ),
-    ]
-
-
-def zeromq_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
-    source = str(getattr(args, "zeromq_source", "host-loopback") or "host-loopback")
-    pattern = str(getattr(args, "zeromq_pattern", "req-rep") or "req-rep")
-    message_count = max(1, int(getattr(args, "zeromq_message_count", 16) or 16))
-    timeout = max(0.5, float(getattr(args, "zeromq_timeout_seconds", 5.0) or 5.0))
-    if source == "native-rust-broker":
-        return zeromq_manifold_broker_probe(args)
-    if source == "manifold-zmq-loopback":
-        return zeromq_manifold_loopback_probe(args)
-    if source == "rusty-xr-zmq-loopback":
-        return zeromq_rusty_xr_loopback_probe(args)
-    if source == "goofi-sidecar":
-        return zeromq_goofi_sidecar_probe(args)
-    if source != "host-loopback":
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.native_zeromq_source_not_configured"],
-            "notes": "QCL-084 native Rust/Quest ZeroMQ source is not implemented in hostessctl yet",
-        }
-    try:
-        import zmq  # type: ignore[import-not-found]
-    except Exception as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.pyzmq_unavailable"],
-            "notes": f"pyzmq unavailable: {exc}",
-        }
-
-    if pattern != "req-rep":
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_pattern_not_implemented"],
-            "notes": f"ZeroMQ pattern {pattern} is not implemented in hostessctl host loopback",
-        }
-
-    context = zmq.Context()
-    endpoint = "tcp://127.0.0.1"
-    received_sequences: list[int] = []
-    acknowledged_sequences: list[int] = []
-    rtts: list[int] = []
-    server_ready = threading.Event()
-    server_done = threading.Event()
-    server_error: list[str] = []
-
-    def server() -> None:
-        socket_rep = context.socket(zmq.REP)
-        try:
-            port = socket_rep.bind_to_random_port(endpoint)
-            server_port_holder.append(port)
-            server_ready.set()
-            deadline = time.monotonic() + timeout
-            while len(received_sequences) < message_count and time.monotonic() < deadline:
-                if socket_rep.poll(100) == 0:
-                    continue
-                message = socket_rep.recv_json()
-                sequence = int(message.get("sequence", -1))
-                received_sequences.append(sequence)
-                socket_rep.send_json({"status": "ack", "sequence": sequence})
-        except Exception as exc:
-            server_error.append(str(exc))
-        finally:
-            socket_rep.close(linger=0)
-            server_done.set()
-
-    server_port_holder: list[int] = []
-    thread = threading.Thread(target=server, daemon=True)
-    thread.start()
-    if not server_ready.wait(timeout=1.0) or not server_port_holder:
-        context.term()
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_listener_not_ready"],
-            "notes": "ZeroMQ loopback listener did not become ready",
-        }
-
-    socket_req = context.socket(zmq.REQ)
-    try:
-        socket_req.connect(f"{endpoint}:{server_port_holder[0]}")
-        for sequence in range(message_count):
-            started = time.monotonic()
-            socket_req.send_json({"run_id": getattr(args, "run_id", "") or "qcl084", "sequence": sequence})
-            if socket_req.poll(int(timeout * 1000.0)) == 0:
-                break
-            reply = socket_req.recv_json()
-            if reply.get("status") == "ack" and int(reply.get("sequence", -1)) == sequence:
-                acknowledged_sequences.append(sequence)
-                rtts.append(int(round((time.monotonic() - started) * 1000.0)))
-    finally:
-        socket_req.close(linger=0)
-        server_done.wait(timeout=1.0)
-        context.term()
-
-    if server_error:
-        status = "blocked"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_listener_failed"]
-    elif len(acknowledged_sequences) == message_count:
-        status = "pass"
-        issue_codes = []
-    elif acknowledged_sequences:
-        status = "warn"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_degraded"]
-    else:
-        status = "fail"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_failed"]
-    return {
-        "status": status,
-        "source": source,
-        "pattern": pattern,
-        "messages_requested": message_count,
-        "messages_received": len(received_sequences),
-        "messages_acknowledged": len(acknowledged_sequences),
-        "round_trip_ms_p95": percentile(rtts, 95),
-        "round_trip_ms_max": max(rtts) if rtts else None,
-        "received_sequences": received_sequences[:50],
-        "acknowledged_sequences": acknowledged_sequences[:50],
-        "issue_codes": issue_codes,
-        "notes": "host-local ZeroMQ loopback; not a native Rust broker/Quest topology proof",
-    }
-
-
-def zeromq_manifold_broker_probe(args: argparse.Namespace) -> dict[str, Any]:
-    source = "native-rust-broker"
-    pattern = str(getattr(args, "zeromq_pattern", "pub-sub") or "pub-sub")
-    message_count = max(1, int(getattr(args, "zeromq_message_count", 16) or 16))
-    if pattern != "pub-sub":
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_pattern_not_implemented"],
-            "notes": "native Rust broker-owned QCL-084 currently validates PUB/SUB only",
-        }
-
-    root = resolve_manifold_root(args)
-    if root is None:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_root_missing"],
-            "notes": "Rusty Manifold root with crates/rusty-manifold-zmq was not found",
-        }
-
-    timeout = max(10.0, float(getattr(args, "zeromq_cargo_timeout_seconds", 120.0) or 120.0))
-    command = [
-        "cargo",
-        "run",
-        "-q",
-        "-p",
-        "rusty-manifold-zmq",
-        "--example",
-        "zmq_pub_sub_loopback",
-        "--features",
-        "runtime",
-        "--",
-        "--json",
-        "--source",
-        source,
-        "--message-count",
-        str(message_count),
-    ]
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(root),
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_broker_timeout"],
-            "notes": f"native Rust broker-owned ZeroMQ probe timed out after {timeout}s: {exc}",
-        }
-
-    parsed = parse_probe_json_stdout(completed.stdout)
-    if not parsed:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": message_count,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_broker_report_missing"],
-            "notes": (completed.stderr or completed.stdout or "native Rust broker-owned ZeroMQ report missing").strip()[:800],
-        }
-
-    issue_codes = [str(code) for code in parsed.get("issue_codes", []) or []]
-    route_evidence = object_value(parsed.get("bridge_route_evidence"))
-    authority = object_value(parsed.get("authority"))
-    broker_owned = (
-        str(parsed.get("evidence_tier") or "") == "broker_owned"
-        and str(authority.get("owner") or "") == "rusty.manifold.transport"
-        and str(route_evidence.get("status") or "") == "pass"
-    )
-    requested = int(parsed.get("messages_requested") or message_count)
-    received = int(parsed.get("messages_received") or 0)
-    acknowledged = int(parsed.get("messages_acknowledged") or received)
-    dropped = int(parsed.get("dropped_count") or 0)
-    decode_errors = int(parsed.get("decode_error_count") or 0)
-    status = str(parsed.get("status") or "blocked")
-    if completed.returncode != 0 and status == "pass":
-        status = "blocked"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_failed")
-    if status == "pass" and not broker_owned:
-        status = "warn"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_owned_evidence_missing")
-    if status == "pass" and (acknowledged < requested or dropped or decode_errors):
-        status = "warn"
-        issue_codes.append("hostess.issue.connectivity_probe.zeromq_exchange_degraded")
-    if status not in {"pass", "warn", "fail", "blocked"}:
-        status = "blocked"
-        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_status_invalid")
-
-    return {
-        "status": status,
-        "source": source,
-        "pattern": pattern,
-        "endpoint": parsed.get("endpoint") or "tcp://127.0.0.1:<dynamic>",
-        "messages_requested": requested,
-        "messages_received": received,
-        "messages_acknowledged": acknowledged,
-        "round_trip_ms_p95": parsed.get("round_trip_ms_p95"),
-        "received_sequences": parsed.get("received_sequences", []),
-        "dropped_count": dropped,
-        "decode_error_count": decode_errors,
-        "evidence_tier": parsed.get("evidence_tier"),
-        "authority_owner": authority.get("owner"),
-        "bridge_route_evidence": route_evidence,
-        "issue_codes": dedupe_issue_codes(issue_codes),
-        "notes": (
-            "native Rust Manifold-owned ZeroMQ PUB/SUB route evidence from rusty-manifold-zmq; "
-            "Hostess only wraps the emitted broker-owned report"
-        ),
-    }
-
-
-def zeromq_manifold_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
-    source = "manifold-zmq-loopback"
-    pattern = str(getattr(args, "zeromq_pattern", "pub-sub") or "pub-sub")
-    if pattern != "pub-sub":
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_pattern_not_implemented"],
-            "notes": "rusty-manifold-zmq loopback currently validates PUB/SUB only",
-        }
-
-    root = resolve_manifold_root(args)
-    if root is None:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_root_missing"],
-            "notes": "Rusty Manifold root with crates/rusty-manifold-zmq was not found",
-        }
-
-    timeout = max(10.0, float(getattr(args, "zeromq_cargo_timeout_seconds", 120.0) or 120.0))
-    command = [
-        "cargo",
-        "run",
-        "-q",
-        "-p",
-        "rusty-manifold-zmq",
-        "--example",
-        "zmq_pub_sub_loopback",
-        "--features",
-        "runtime",
-    ]
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(root),
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_loopback_timeout"],
-            "notes": f"rusty-manifold-zmq loopback timed out after {timeout}s: {exc}",
-        }
-
-    parsed = parse_native_zmq_loopback_stdout(completed.stdout)
-    if completed.returncode != 0:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": parsed.get("messages_requested") or 0,
-            "messages_received": parsed.get("messages_received") or 0,
-            "messages_acknowledged": parsed.get("messages_acknowledged") or 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_loopback_failed"],
-            "notes": (completed.stderr or completed.stdout or "rusty-manifold-zmq loopback failed").strip()[:800],
-        }
-
-    requested = int(parsed.get("messages_requested") or parsed.get("messages_received") or 0)
-    received = int(parsed.get("messages_received") or 0)
-    dropped = int(parsed.get("dropped_count") or 0)
-    decode_errors = int(parsed.get("decode_error_count") or 0)
-    if requested > 0 and received >= requested and dropped == 0 and decode_errors == 0:
-        status = "pass"
-        issue_codes: list[str] = []
-    elif received > 0:
-        status = "warn"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_degraded"]
-    else:
-        status = "fail"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_failed"]
-    return {
-        "status": status,
-        "source": source,
-        "pattern": pattern,
-        "endpoint": parsed.get("endpoint") or "tcp://127.0.0.1:<dynamic>",
-        "messages_requested": requested,
-        "messages_received": received,
-        "messages_acknowledged": received,
-        "round_trip_ms_p95": None,
-        "received_sequences": parsed.get("received_sequences", []),
-        "dropped_count": dropped,
-        "decode_error_count": decode_errors,
-        "issue_codes": issue_codes,
-        "notes": (
-            "native Rust rusty-manifold-zmq PUB/SUB loopback; no native libzmq dependency; "
-            "Goofi is an example source profile, not the protocol authority"
-        ),
-    }
-
-
-def zeromq_rusty_xr_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
-    source = "rusty-xr-zmq-loopback"
-    pattern = str(getattr(args, "zeromq_pattern", "pub-sub") or "pub-sub")
-    if pattern != "pub-sub":
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_pattern_not_implemented"],
-            "notes": "rusty-xr-zmq loopback currently validates PUB/SUB only",
-        }
-
-    root = resolve_rusty_xr_root(args)
-    if root is None:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.rusty_xr_zmq_root_missing"],
-            "notes": "Rusty-XR root with crates/rusty-xr-zmq was not found",
-        }
-
-    timeout = max(10.0, float(getattr(args, "zeromq_cargo_timeout_seconds", 120.0) or 120.0))
-    command = [
-        "cargo",
-        "run",
-        "-q",
-        "-p",
-        "rusty-xr-zmq",
-        "--example",
-        "zmq_pub_sub_loopback",
-        "--features",
-        "runtime",
-    ]
-    try:
-        completed = subprocess.run(
-            command,
-            cwd=str(root),
-            text=True,
-            capture_output=True,
-            timeout=timeout,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.rusty_xr_zmq_loopback_timeout"],
-            "notes": f"rusty-xr-zmq loopback timed out after {timeout}s: {exc}",
-        }
-
-    parsed = parse_native_zmq_loopback_stdout(completed.stdout)
-    if completed.returncode != 0:
-        return {
-            "status": "blocked",
-            "source": source,
-            "pattern": pattern,
-            "messages_requested": parsed.get("messages_requested") or 0,
-            "messages_received": parsed.get("messages_received") or 0,
-            "messages_acknowledged": parsed.get("messages_acknowledged") or 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.rusty_xr_zmq_loopback_failed"],
-            "notes": (completed.stderr or completed.stdout or "rusty-xr-zmq loopback failed").strip()[:800],
-        }
-
-    requested = int(parsed.get("messages_requested") or parsed.get("messages_received") or 0)
-    received = int(parsed.get("messages_received") or 0)
-    dropped = int(parsed.get("dropped_count") or 0)
-    decode_errors = int(parsed.get("decode_error_count") or 0)
-    if requested > 0 and received >= requested and dropped == 0 and decode_errors == 0:
-        status = "pass"
-        issue_codes: list[str] = []
-    elif received > 0:
-        status = "warn"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_degraded"]
-    else:
-        status = "fail"
-        issue_codes = ["hostess.issue.connectivity_probe.zeromq_exchange_failed"]
-    return {
-        "status": status,
-        "source": source,
-        "pattern": pattern,
-        "endpoint": parsed.get("endpoint") or "tcp://127.0.0.1:<dynamic>",
-        "messages_requested": requested,
-        "messages_received": received,
-        "messages_acknowledged": received,
-        "round_trip_ms_p95": None,
-        "received_sequences": parsed.get("received_sequences", []),
-        "dropped_count": dropped,
-        "decode_error_count": decode_errors,
-        "issue_codes": issue_codes,
-        "notes": "native Rust rusty-xr-zmq PUB/SUB loopback; no native libzmq dependency",
-    }
-
-
-def resolve_rusty_xr_root(args: argparse.Namespace) -> Path | None:
-    explicit = str(getattr(args, "zeromq_rusty_xr_root", "") or "").strip()
-    candidates = []
-    if explicit:
-        candidates.append(Path(explicit))
-    repo_root = Path(__file__).resolve().parents[2]
-    candidates.extend(
-        [
-            repo_root.parent / "Rusty-XR",
-            Path("S:/Work/repos/active/Rusty-XR"),
-        ]
-    )
-    for candidate in candidates:
-        if (candidate / "crates" / "rusty-xr-zmq" / "Cargo.toml").is_file():
-            return candidate
-    return None
-
-
-def resolve_manifold_root(args: argparse.Namespace) -> Path | None:
-    explicit = str(getattr(args, "zeromq_manifold_root", "") or "").strip()
-    candidates = []
-    if explicit:
-        candidates.append(Path(explicit))
-    repo_root = Path(__file__).resolve().parents[2]
-    candidates.extend(
-        [
-            repo_root.parent / "rusty-manifold",
-            Path("S:/Work/repos/active/rusty-manifold"),
-        ]
-    )
-    for candidate in candidates:
-        if (candidate / "crates" / "rusty-manifold-zmq" / "Cargo.toml").is_file():
-            return candidate
-    return None
-
-
-def resolve_lsl_manifold_root(args: argparse.Namespace) -> Path | None:
-    explicit = str(getattr(args, "lsl_manifold_root", "") or "").strip()
-    candidates = []
-    if explicit:
-        candidates.append(Path(explicit))
-    repo_root = Path(__file__).resolve().parents[2]
-    candidates.extend(
-        [
-            repo_root.parent / "rusty-manifold",
-            Path("S:/Work/repos/active/rusty-manifold"),
-        ]
-    )
-    for candidate in candidates:
-        if (candidate / "tools" / "qcl081_lsl_clocked_samples.py").is_file():
-            return candidate
-    return None
-
-
-def parse_native_zmq_loopback_stdout(stdout: str) -> dict[str, Any]:
-    parsed: dict[str, Any] = {
-        "messages_requested": None,
-        "messages_received": None,
-        "messages_acknowledged": None,
-        "dropped_count": None,
-        "decode_error_count": None,
-        "received_sequences": [],
-    }
-    for line in stdout.splitlines():
-        if line.startswith("ZeroMQ loopback endpoint:"):
-            parsed["endpoint"] = line.split(":", 1)[1].strip()
-        counters = re.search(
-            r"received=(?P<received>\d+)\s+drained=(?P<drained>\d+)\s+dropped=(?P<dropped>\d+)\s+decode_errors=(?P<decode>\d+)",
-            line,
-        )
-        if counters:
-            parsed["messages_requested"] = int(counters.group("received"))
-            parsed["messages_received"] = int(counters.group("received"))
-            parsed["messages_acknowledged"] = int(counters.group("drained"))
-            parsed["dropped_count"] = int(counters.group("dropped"))
-            parsed["decode_error_count"] = int(counters.group("decode"))
-            continue
-        sequence = re.match(r"^(?P<sequence>\d+)\s+", line)
-        if sequence:
-            parsed["received_sequences"].append(int(sequence.group("sequence")))
-    return parsed
-
-
-def parse_rusty_xr_zmq_loopback_stdout(stdout: str) -> dict[str, Any]:
-    return parse_native_zmq_loopback_stdout(stdout)
-
-
-def zeromq_goofi_sidecar_probe(args: argparse.Namespace) -> dict[str, Any]:
-    root = resolve_goofi_bridge_root(args)
-    if root is None:
-        return {
-            "status": "blocked",
-            "source": "goofi-sidecar",
-            "pattern": "pub-sub",
-            "messages_requested": 0,
-            "messages_received": 0,
-            "messages_acknowledged": 0,
-            "round_trip_ms_p95": None,
-            "issue_codes": ["hostess.issue.connectivity_probe.goofi_zmq_bridge_root_missing"],
-            "notes": "Goofi/Gonzo ZeroMQ sidecar root was not found",
-        }
-    flight_logs = [
-        root / "logs" / "goofi-node-witness.flight-log.json",
-        root / "logs" / "goofi-manager-patch-witness.flight-log.json",
-        root / "logs" / "goofi-gui-patch-witness.flight-log.json",
-        root / "logs" / "goofi-fake-witness.flight-log.json",
-    ]
-    existing_logs = sorted(
-        [path for path in flight_logs if path.is_file()],
-        key=lambda path: path.stat().st_mtime,
-        reverse=True,
-    )
-    for flight_log in existing_logs:
-            try:
-                payload = json.loads(flight_log.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                continue
-            count = int(payload.get("message_count") or 0)
-            parse_errors = int(payload.get("parse_error_count") or 0)
-            status = "pass" if count > 0 and parse_errors == 0 else "fail"
-            return {
-                "status": status,
-                "source": "goofi-sidecar",
-                "pattern": "pub-sub",
-                "endpoint": payload.get("endpoint"),
-                "topic": payload.get("topic"),
-                "messages_requested": count,
-                "messages_received": count,
-                "messages_acknowledged": count,
-                "round_trip_ms_p95": None,
-                "received_sequences": list(range(min(count, 50))),
-                "issue_codes": [] if status == "pass" else ["hostess.issue.connectivity_probe.goofi_zmq_parse_errors"],
-                "notes": f"existing Goofi ZeroMQ sidecar flight log: {flight_log}",
-            }
-    return {
-        "status": "blocked",
-        "source": "goofi-sidecar",
-        "pattern": "pub-sub",
-        "messages_requested": 0,
-        "messages_received": 0,
-        "messages_acknowledged": 0,
-        "round_trip_ms_p95": None,
-        "issue_codes": ["hostess.issue.connectivity_probe.goofi_zmq_flight_log_missing"],
-        "notes": "Goofi sidecar root exists but no supported flight log was found",
-    }
-
-
-def resolve_goofi_bridge_root(args: argparse.Namespace) -> Path | None:
-    explicit = str(getattr(args, "zeromq_goofi_bridge_root", "") or "").strip()
-    candidates = []
-    if explicit:
-        candidates.append(Path(explicit))
-    candidates.append(Path("S:/Work/repos/active/Rusty-XR-Private-Planning/prototypes/gonzo-zmq-bridge"))
-    for candidate in candidates:
-        if (candidate / "Cargo.toml").is_file() and (candidate / "tools" / "goofi_pair_to_gargoyle_pub.py").is_file():
-            return candidate
-    return None
-
-
-def zeromq_checks_from_probe(result: dict[str, Any]) -> list[dict[str, Any]]:
-    status = str(result.get("status") or "blocked")
-    issue_codes = [str(code) for code in result.get("issue_codes", [])]
-    dependency_status = "pass" if status in {"pass", "warn", "fail"} else "blocked"
-    exchange_status = status if dependency_status == "pass" else "blocked"
-    return [
-        check_row(
-            "protocol.zeromq_dependency",
-            dependency_status,
-            (
-                f"ZeroMQ dependency available for pattern {result.get('pattern')}"
-                if dependency_status == "pass"
-                else str(result.get("notes") or "ZeroMQ dependency/source unavailable")
-            ),
-            observed={"source": result.get("source"), "pattern": result.get("pattern")},
-            issue_codes=[] if dependency_status == "pass" else issue_codes,
-        ),
-        check_row(
-            "protocol.zeromq_payload_exchange",
-            exchange_status,
-            (
-                f"{result.get('messages_acknowledged', 0)}/{result.get('messages_requested', 0)} ZeroMQ messages acknowledged"
-                if exchange_status in {"pass", "warn", "fail"}
-                else "ZeroMQ payload exchange blocked by dependency/source failure"
-            ),
-            observed={
-                "messages_requested": result.get("messages_requested"),
-                "messages_received": result.get("messages_received"),
-                "messages_acknowledged": result.get("messages_acknowledged"),
-                "round_trip_ms_p95": result.get("round_trip_ms_p95"),
-                "received_sequences": result.get("received_sequences", []),
-            },
-            issue_codes=[] if exchange_status == "pass" else issue_codes,
-        ),
-    ]
-
-
-def percentile(values: list[int | float], percentile_value: int) -> int | float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    index = int(round(((percentile_value / 100.0) * (len(ordered) - 1))))
-    return ordered[max(0, min(index, len(ordered) - 1))]
-
-
-def median(values: list[int | float]) -> float | None:
-    if not values:
-        return None
-    ordered = sorted(values)
-    midpoint = len(ordered) // 2
-    if len(ordered) % 2 == 1:
-        return float(ordered[midpoint])
-    return float((ordered[midpoint - 1] + ordered[midpoint]) / 2.0)
-
-
-def round_float(value: int | float | None, digits: int = 3) -> float | None:
-    if value is None:
-        return None
-    return round(float(value), digits)
-
-
-def parse_json_string(value: str) -> dict[str, Any]:
-    try:
-        parsed = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
-def int_value(value: Any) -> int | None:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def float_value(value: Any, *, default: float) -> float:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return default
-
-
-def dedupe_issue_codes(values: list[str]) -> list[str]:
-    result: list[str] = []
-    for value in values:
-        if value and value not in result:
-            result.append(value)
-    return result
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 def udp_listener_from_result(args: argparse.Namespace, udp_result: dict[str, Any] | None) -> dict[str, Any]:
@@ -6951,75 +4134,12 @@ def live_qcl084_status(checks: list[dict[str, Any]], *, source: str, device_ip: 
     return "blocked"
 
 
-def live_bluetooth_status(checks: list[dict[str, Any]]) -> str:
-    required = [
-        check_status(checks, "host.bluetooth_adapter"),
-        check_status(checks, "host.bluetooth_service"),
-        check_status(checks, "device.bluetooth_adapter"),
-    ]
-    if any(status in {"blocked", "fail"} for status in required):
-        return "blocked"
-    statuses = [str(check.get("status") or "") for check in checks]
-    if any(status == "fail" for status in statuses):
-        return "fail"
-    if any(status == "blocked" for status in statuses):
-        return "blocked"
-    if any(status in {"warn", "skipped"} for status in statuses):
-        return "warn"
-    if all(status == "pass" for status in statuses):
-        return "pass"
-    return "warn"
 
 
-def bluetooth_protocol_check(probe_id: str, *, status: str) -> dict[str, Any]:
-    if probe_id == "QCL-050":
-        return check_row(
-            "protocol.rfcomm_control",
-            status,
-            "Bluetooth Classic RFCOMM service/socket payload exchange not implemented in passive readiness probe",
-            issue_codes=["hostess.issue.connectivity_probe.rfcomm_payload_not_tested"],
-        )
-    return check_row(
-        "protocol.ble_gatt_status",
-        status,
-        "BLE/GATT advertise/scan/characteristic exchange not implemented in passive readiness probe",
-        issue_codes=["hostess.issue.connectivity_probe.ble_gatt_payload_not_tested"],
-    )
 
 
-def topology_for_bluetooth_probe(probe_id: str) -> dict[str, Any]:
-    return {
-        "owner": "bluetooth",
-        "network_provider": "bluetooth_classic_rfcomm" if probe_id == "QCL-050" else "bluetooth_le_gatt",
-        "endpoint_direction": "bidirectional_low_rate_control",
-        "requires_existing_wifi": False,
-        "requires_adb": True,
-        "requires_pairing": probe_id == "QCL-050",
-        "requires_termux": False,
-        "experimental": True,
-    }
 
 
-def bluetooth_transport_for_probe(probe_id: str) -> dict[str, Any]:
-    if probe_id == "QCL-050":
-        return {
-            "family": "bluetooth_rfcomm",
-            "route": "qcl050_rfcomm_control",
-            "local_endpoint": "windows-rfcomm-helper",
-            "remote_endpoint": "quest-bluetooth-app",
-            "protocol_role": "fallback_control_probe",
-            "payload_class": "bounded_low_rate_control",
-            "endpoint_source": "passive_readiness",
-        }
-    return {
-        "family": "ble_gatt",
-        "route": "qcl051_ble_gatt_status",
-        "local_endpoint": "windows-ble-helper",
-        "remote_endpoint": "quest-bluetooth-app",
-        "protocol_role": "fallback_discovery_status_probe",
-        "payload_class": "tiny_status_control",
-        "endpoint_source": "app_owned_android_ble_gatt_server",
-    }
 
 
 def topology_for_probe(probe_id: str) -> dict[str, Any]:
@@ -7167,36 +4287,6 @@ def measurements_from_zeromq_probe(zeromq_result: dict[str, Any] | None) -> dict
     return measurements
 
 
-def empty_measurements() -> dict[str, Any]:
-    return {
-        "tcp_connect_ms": None,
-        "websocket_echo_ms": None,
-        "udp_packets_sent": None,
-        "udp_packets_received": None,
-        "udp_loss_percent": None,
-        "lsl_discovery_ms": None,
-        "lsl_samples_requested": None,
-        "lsl_samples_received": None,
-        "lsl_sample_loss_percent": None,
-        "osc_messages_requested": None,
-        "osc_messages_received": None,
-        "osc_loss_percent": None,
-        "osc_rtt_ms_p95": None,
-        "osc_quest_processing_ms_p95": None,
-        "osc_estimated_one_way_ms_p95": None,
-        "osc_clock_offset_estimate_ms_median": None,
-        "osc_clock_offset_jitter_ms_p95": None,
-        "zeromq_messages_requested": None,
-        "zeromq_messages_received": None,
-        "zeromq_rtt_ms_p95": None,
-        "zeromq_server_processing_ms_p95": None,
-        "zeromq_estimated_one_way_ms_p95": None,
-        "zeromq_clock_offset_estimate_ms_median": None,
-        "zeromq_clock_offset_jitter_ms_p95": None,
-        "throughput_mbps": None,
-        "jitter_ms_p95": None,
-        "reconnect_attempts": None,
-    }
 
 
 def base_report(args: argparse.Namespace, *, observed_at: datetime, probe_id: str | None = None) -> dict[str, Any]:
@@ -7246,46 +4336,16 @@ def ensure_probe_run_id(args: argparse.Namespace, observed_at: datetime, probe_i
     return run_id
 
 
-def check_row(
-    name: str,
-    status: str,
-    evidence: str,
-    *,
-    observed: dict[str, Any] | None = None,
-    notes: str = "",
-    issue_codes: list[str] | None = None,
-) -> dict[str, Any]:
-    return {
-        "name": name,
-        "status": status,
-        "evidence": evidence,
-        "observed": observed or {},
-        "notes": notes,
-        "issue_codes": issue_codes or [],
-    }
 
 
-def issue_row(issue_code: str, severity: str, message: str) -> dict[str, str]:
-    return {"issue_code": issue_code, "severity": severity, "message": message}
 
 
-def check_status(checks: list[dict[str, Any]], name: str) -> str:
-    for check in checks:
-        if check.get("name") == name:
-            return str(check.get("status") or "")
-    return ""
 
 
-def check_passed(report: dict[str, Any], name: str) -> bool:
-    return check_status(list_value(report.get("checks")), name) == "pass"
 
 
-def check_skipped(report: dict[str, Any], name: str) -> bool:
-    return check_status(list_value(report.get("checks")), name) == "skipped"
 
 
-def adb_command(args: argparse.Namespace, *parts: str) -> list[str]:
-    return [str(getattr(args, "adb", "adb")), "-s", str(getattr(args, "serial", "")), *parts]
 
 
 def adb_text(args: argparse.Namespace, run_captured_func: Any, *parts: str) -> str:
@@ -7319,15 +4379,8 @@ def ping_summary(result: subprocess.CompletedProcess[str]) -> str:
     return text.splitlines()[-1].strip()
 
 
-def completed_observed(result: subprocess.CompletedProcess[str]) -> dict[str, Any]:
-    return {"returncode": result.returncode, "stdout": trim_text(result.stdout), "stderr": trim_text(result.stderr)}
 
 
-def trim_text(text: str, limit: int = 800) -> str:
-    cleaned = (text or "").strip()
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[:limit] + "...<truncated>"
 
 
 def default_run_captured_timeout(command: list[str], *, timeout_seconds: float) -> subprocess.CompletedProcess[str]:
@@ -7350,20 +4403,10 @@ def default_run_captured_timeout(command: list[str], *, timeout_seconds: float) 
         )
 
 
-def object_value(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
 
 
-def list_value(value: Any) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in value if isinstance(item, dict)]
 
 
-def shell_word(value: str) -> str:
-    if re.fullmatch(r"[A-Za-z0-9._:-]+", value):
-        return value
-    return "'" + value.replace("'", "'\\''") + "'"
 
 
 def utc_now() -> datetime:

@@ -245,7 +245,15 @@ evidence packaging; Rusty Quest/Manifold remain the future contract and
 command/stream authority. The live QCL-010 route uses serial-scoped ADB to
 observe headset Wi-Fi identity, then tests LAN reachability separately so ADB
 is not mistaken for the data path.
-The same lab module owns Bluetooth QCL-050/QCL-051 readiness and payload
+The probe module is now a facade over focused helpers:
+`connectivity_probe_common.py` owns shared check rows, issue rows, JSON/ADB/
+PowerShell cleanup, Android readback, and measurement helpers;
+`connectivity_udp.py` owns QCL-080 UDP freshness sender/listener mechanics and
+Makepad runtime UDP sender evidence; `connectivity_bluetooth.py` owns QCL-050
+RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, and transport
+helpers; and `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC,
+and QCL-084 ZeroMQ adapter mechanics plus protocol-specific evidence rows.
+The Bluetooth helper owns QCL-050/QCL-051 readiness and payload
 evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
 server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
 WinRT BLE/GATT client. QCL-050 uses the same app-owned pattern with an Android

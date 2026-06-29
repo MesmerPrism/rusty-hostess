@@ -537,6 +537,39 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertTrue(parsed["matched"])
         self.assertEqual(parsed["fields"]["runId"], "current")
 
+    def test_connectivity_probe_keeps_protocol_helpers_split(self) -> None:
+        probe_source = (REPO_ROOT / "tools" / "hostessctl" / "connectivity_probe.py").read_text(
+            encoding="utf-8"
+        )
+        bluetooth_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_bluetooth.py"
+        ).read_text(encoding="utf-8")
+        protocol_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_data_protocols.py"
+        ).read_text(encoding="utf-8")
+        common_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_probe_common.py"
+        ).read_text(encoding="utf-8")
+        udp_source = (REPO_ROOT / "tools" / "hostessctl" / "connectivity_udp.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("from tools.hostessctl.connectivity_bluetooth import", probe_source)
+        self.assertIn("from tools.hostessctl.connectivity_data_protocols import", probe_source)
+        self.assertIn("from tools.hostessctl.connectivity_probe_common import", probe_source)
+        self.assertIn("from tools.hostessctl.connectivity_udp import", probe_source)
+        self.assertNotIn("def device_to_host_udp_freshness", probe_source)
+        self.assertNotIn("def lsl_discovery_sample_continuity", probe_source)
+        self.assertNotIn("def osc_loopback_probe", probe_source)
+        self.assertNotIn("def run_qcl050_android_rfcomm_probe", probe_source)
+        self.assertNotIn("def zeromq_loopback_probe", probe_source)
+        self.assertIn("def run_qcl050_android_rfcomm_probe", bluetooth_source)
+        self.assertIn("def lsl_discovery_sample_continuity", protocol_source)
+        self.assertIn("def osc_loopback_probe", protocol_source)
+        self.assertIn("def zeromq_loopback_probe", protocol_source)
+        self.assertIn("def check_row", common_source)
+        self.assertIn("def device_to_host_udp_freshness", udp_source)
+
     def test_live_lsl_report_classifies_host_loopback_as_warning(self) -> None:
         report = live_lsl_report(
             probe_args(mode="live", probe_id="QCL-081", host_ip="192.0.2.10"),
