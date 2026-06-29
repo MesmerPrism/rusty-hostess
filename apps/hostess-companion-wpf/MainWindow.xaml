@@ -394,6 +394,21 @@
               <DataGridCheckBoxColumn Header="Redact" Binding="{Binding RedactionRequired}" Width="70"/>
             </DataGrid.Columns>
           </DataGrid>
+
+          <DataGrid ItemsSource="{Binding Workspaces}"
+                    SelectedItem="{Binding SelectedWorkspace}"
+                    AutoGenerateColumns="False"
+                    Visibility="{Binding IsWorkspacesSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Workspace" Binding="{Binding Title}" Width="220"/>
+              <DataGridTextColumn Header="Modules" Binding="{Binding ModuleCount}" Width="80"/>
+              <DataGridTextColumn Header="Required" Binding="{Binding RequiredCount}" Width="80"/>
+              <DataGridTextColumn Header="Prominent" Binding="{Binding ProminentCount}" Width="90"/>
+              <DataGridTextColumn Header="Frontends" Binding="{Binding SupportedFrontends}" Width="140"/>
+              <DataGridTextColumn Header="Sensitivity" Binding="{Binding Sensitivity}" Width="130"/>
+              <DataGridTextColumn Header="Source" Binding="{Binding SourcePath}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
         </Grid>
 
         <TextBlock Grid.Row="3"

@@ -50,9 +50,11 @@ Page-owned viewmodels keep the row projection families separated:
 `ReadinessPageViewModel`, `DevicesPageViewModel`,
 `ConnectivityPageViewModel`, `SessionPageViewModel`,
 `TransportsPageViewModel`, `CommandsPageViewModel`, and
-`EvidencePageViewModel` own their rows and selected-detail state, while
-`MainWindowViewModel` remains the XAML-compatible coordinator and service
-requester.
+`EvidencePageViewModel` own their rows and selected-detail state.
+`WorkspacesPageViewModel` renders catalog workspace descriptors so operators can
+see which modules a workspace composes without letting WPF redefine module or
+transport semantics. `MainWindowViewModel` remains the XAML-compatible
+coordinator and service requester.
 `OperatorActionCatalog` maps each visible WPF command to its Hostess
 CLI-equivalent route, evidence artifact, authority owner, and test coverage.
 Session browsing follows the same rule through `companion-session history`,

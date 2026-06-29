@@ -200,6 +200,7 @@ static void PageViewModelsOwnWpfRowsAndSelections()
     AssertPageProperty("TransportsPage", typeof(TransportsPageViewModel));
     AssertPageProperty("CommandsPage", typeof(CommandsPageViewModel));
     AssertPageProperty("EvidencePage", typeof(EvidencePageViewModel));
+    AssertPageProperty("WorkspacesPage", typeof(WorkspacesPageViewModel));
 
     var staleMainWindowFields = new HashSet<string>(StringComparer.Ordinal)
     {
@@ -212,6 +213,7 @@ static void PageViewModelsOwnWpfRowsAndSelections()
         "selectedTransport",
         "selectedCommandStage",
         "selectedEvidenceArtifact",
+        "selectedWorkspace",
     };
     var mainWindowFields = typeof(MainWindowViewModel)
         .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
@@ -234,6 +236,7 @@ static void PageViewModelsOwnWpfRowsAndSelections()
     Assert(ReferenceEquals(vm.Transports, vm.TransportsPage.Rows), "transport rows must be page-owned");
     Assert(ReferenceEquals(vm.CommandStages, vm.CommandsPage.Rows), "command rows must be page-owned");
     Assert(ReferenceEquals(vm.EvidenceArtifacts, vm.EvidencePage.Rows), "evidence rows must be page-owned");
+    Assert(ReferenceEquals(vm.Workspaces, vm.WorkspacesPage.Rows), "workspace rows must be page-owned");
 
     var connectivityRow = new ConnectivityCheckViewModel(new ConnectivityCheck
     {
@@ -253,6 +256,29 @@ static void PageViewModelsOwnWpfRowsAndSelections()
         "detail panel must project the selected page row title");
     Assert(vm.SelectedDetailText.Contains("product-owned firewall rule verified", StringComparison.Ordinal),
         "detail panel must project the selected page row detail text");
+
+    var workspaceRow = new WorkspaceViewModel(
+        new CompanionWorkspaceDescriptor
+        {
+            WorkspaceId = "workspace.fixture",
+            Title = "Fixture workspace",
+            SupportedFrontends = ["wpf"],
+            Modules = [new WorkspaceModuleSelection { ModuleId = "module.fixture", Required = true, Prominent = true }],
+        },
+        new Dictionary<string, CompanionModuleDescriptor>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["module.fixture"] = new CompanionModuleDescriptor { ModuleId = "module.fixture", Title = "Fixture module" },
+        });
+    vm.Workspaces.Add(workspaceRow);
+    vm.SelectedNavigationItem = vm.NavigationItems.Single(item => item.Key == "workspaces");
+    vm.SelectedWorkspace = workspaceRow;
+
+    Assert(ReferenceEquals(vm.WorkspacesPage.SelectedRow, workspaceRow),
+        "facade workspace selection must write through to the workspaces page");
+    Assert(vm.SelectedDetailTitle == "Fixture workspace",
+        "detail panel must project the selected workspace title");
+    Assert(vm.SelectedDetailText.Contains("module.fixture", StringComparison.Ordinal),
+        "detail panel must project selected workspace module composition");
 }
 
 static void PageViewModelsProjectBackendReports()
@@ -346,8 +372,7 @@ static void PageViewModelsProjectBackendReports()
     Assert(commandsPage.Rows.Any(row => row.Stage == "hostess.issue.fixture" && row.Status == "fail"),
         "commands page must project command issues as failure rows");
 
-    var evidencePage = new EvidencePageViewModel();
-    evidencePage.ApplyCatalog(new CompanionCatalog
+    var catalog = new CompanionCatalog
     {
         Modules =
         [
@@ -367,9 +392,49 @@ static void PageViewModelsProjectBackendReports()
                 ],
             },
         ],
-    });
+        Workspaces =
+        [
+            new CompanionWorkspaceDescriptor
+            {
+                WorkspaceId = "workspace.fixture",
+                Title = "Fixture workspace",
+                SupportedFrontends = ["wpf"],
+                Modules =
+                [
+                    new WorkspaceModuleSelection
+                    {
+                        ModuleId = "module.fixture",
+                        Required = true,
+                        Prominent = true,
+                    },
+                    new WorkspaceModuleSelection
+                    {
+                        ModuleId = "module.background",
+                        Required = false,
+                        Prominent = false,
+                    },
+                ],
+                Sensitivity = ["private"],
+                SourcePath = "descriptors/workspaces/fixture.json",
+            },
+        ],
+    };
+
+    var evidencePage = new EvidencePageViewModel();
+    evidencePage.ApplyCatalog(catalog);
     Assert(evidencePage.Rows.Single().ArtifactId == "artifact.fixture",
         "evidence page must project module evidence artifact bindings");
+
+    var workspacesPage = new WorkspacesPageViewModel();
+    workspacesPage.ApplyCatalog(catalog);
+    var workspace = workspacesPage.Rows.Single();
+    Assert(workspace.WorkspaceId == "workspace.fixture", "workspaces page must project catalog workspace descriptors");
+    Assert(workspace.RequiredCount == 1 && workspace.OptionalCount == 1,
+        "workspace row must preserve required and optional module counts");
+    Assert(workspace.ModuleSummary.Contains("module.fixture (Fixture module)", StringComparison.Ordinal),
+        "workspace detail must resolve known module titles from the catalog");
+    Assert(workspace.ModuleSummary.Contains("module.background (unresolved descriptor)", StringComparison.Ordinal),
+        "workspace detail must keep unresolved module ids visible instead of inventing module semantics");
 
     var sessionPage = new SessionPageViewModel();
     sessionPage.ApplySession(

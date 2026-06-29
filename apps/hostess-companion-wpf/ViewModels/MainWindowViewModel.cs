@@ -48,6 +48,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         NavigationItems.Add(new NavigationItemViewModel("transports", "Transports"));
         NavigationItems.Add(new NavigationItemViewModel("commands", "Commands"));
         NavigationItems.Add(new NavigationItemViewModel("evidence", "Evidence"));
+        NavigationItems.Add(new NavigationItemViewModel("workspaces", "Workspaces"));
         selectedNavigationItem = NavigationItems[0];
         ConnectDetailNotifications(ReadinessPage, nameof(SelectedCheck));
         ConnectDetailNotifications(DevicesPage, nameof(SelectedDeviceCheck));
@@ -55,6 +56,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         ConnectDetailNotifications(TransportsPage, nameof(SelectedTransport));
         ConnectDetailNotifications(CommandsPage, nameof(SelectedCommandStage));
         ConnectDetailNotifications(EvidencePage, nameof(SelectedEvidenceArtifact));
+        ConnectDetailNotifications(WorkspacesPage, nameof(SelectedWorkspace));
         ConnectSessionNotifications();
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsBusy);
         RunSessionCommand = new AsyncRelayCommand(RunSessionAsync, () => !IsBusy);
@@ -87,6 +89,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public EvidencePageViewModel EvidencePage { get; } = new();
 
+    public WorkspacesPageViewModel WorkspacesPage { get; } = new();
+
     public ObservableCollection<CheckViewModel> Checks => ReadinessPage.Rows;
 
     public ObservableCollection<CheckViewModel> DeviceChecks => DevicesPage.Rows;
@@ -104,6 +108,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public ObservableCollection<CommandStageViewModel> CommandStages => CommandsPage.Rows;
 
     public ObservableCollection<EvidenceArtifactViewModel> EvidenceArtifacts => EvidencePage.Rows;
+
+    public ObservableCollection<WorkspaceViewModel> Workspaces => WorkspacesPage.Rows;
 
     public IReadOnlyList<OperatorActionDescriptor> OperatorActions => OperatorActionCatalog.All;
 
@@ -276,6 +282,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 OnPropertyChanged(nameof(IsTransportsSelected));
                 OnPropertyChanged(nameof(IsCommandsSelected));
                 OnPropertyChanged(nameof(IsEvidenceSelected));
+                OnPropertyChanged(nameof(IsWorkspacesSelected));
                 OnDetailChanged();
             }
         }
@@ -335,6 +342,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         set => EvidencePage.SelectedRow = value;
     }
 
+    public WorkspaceViewModel? SelectedWorkspace
+    {
+        get => WorkspacesPage.SelectedRow;
+        set => WorkspacesPage.SelectedRow = value;
+    }
+
     public string PageTitle => SelectedNavigationKey switch
     {
         "session" => "Session",
@@ -343,6 +356,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "transports" => "Transports",
         "commands" => "Commands",
         "evidence" => "Evidence",
+        "workspaces" => "Workspaces",
         _ => "Readiness",
     };
 
@@ -359,6 +373,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public bool IsCommandsSelected => SelectedNavigationKey == "commands";
 
     public bool IsEvidenceSelected => SelectedNavigationKey == "evidence";
+
+    public bool IsWorkspacesSelected => SelectedNavigationKey == "workspaces";
 
     public string ReportStatusLabel => $"Readiness: {reportStatus}";
 
@@ -386,6 +402,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "transports" => TransportsPage.SelectedDetailTitle,
         "commands" => CommandsPage.SelectedDetailTitle,
         "evidence" => EvidencePage.SelectedDetailTitle,
+        "workspaces" => WorkspacesPage.SelectedDetailTitle,
         _ => ReadinessPage.SelectedDetailTitle,
     };
 
@@ -397,6 +414,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "transports" => TransportsPage.SelectedDetailStatusLine,
         "commands" => CommandsPage.SelectedDetailStatusLine,
         "evidence" => EvidencePage.SelectedDetailStatusLine,
+        "workspaces" => WorkspacesPage.SelectedDetailStatusLine,
         _ => ReadinessPage.SelectedDetailStatusLine,
     };
 
@@ -408,6 +426,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "transports" => TransportsPage.SelectedDetailBrush,
         "commands" => CommandsPage.SelectedDetailBrush,
         "evidence" => EvidencePage.SelectedDetailBrush,
+        "workspaces" => WorkspacesPage.SelectedDetailBrush,
         _ => ReadinessPage.SelectedDetailBrush,
     };
 
@@ -419,6 +438,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "transports" => TransportsPage.SelectedDetailText,
         "commands" => CommandsPage.SelectedDetailText,
         "evidence" => EvidencePage.SelectedDetailText,
+        "workspaces" => WorkspacesPage.SelectedDetailText,
         _ => ReadinessPage.SelectedDetailText,
     };
 
@@ -456,6 +476,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
             TransportsPage.ClearRows();
             CommandsPage.ClearRows();
             EvidencePage.ClearRows();
+            WorkspacesPage.ClearRows();
             SummaryLabel = "Companion refresh failed.";
             OnPropertyChanged(nameof(ReportStatusLabel));
             OnPropertyChanged(nameof(ReportStatusBrush));
@@ -764,6 +785,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         catalogStatus = string.IsNullOrWhiteSpace(catalog.Status) ? "unknown" : catalog.Status;
         TransportsPage.ApplyCatalog(catalog);
         EvidencePage.ApplyCatalog(catalog);
+        WorkspacesPage.ApplyCatalog(catalog);
         OnPropertyChanged(nameof(CatalogStatusLabel));
         OnPropertyChanged(nameof(CatalogStatusBrush));
     }

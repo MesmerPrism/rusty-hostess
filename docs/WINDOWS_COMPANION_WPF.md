@@ -16,6 +16,7 @@ Hostess/Manifold evidence routes.
 - Connectivity view for scoped Windows Firewall planning, QCL-010 TCP
   verification, and QCL-080 UDP stream-capability verification.
 - Evidence view derived from companion module evidence bindings.
+- Workspaces view derived from Rusty GUI companion workspace descriptors.
 - Hostess `companion-readiness` refresh command.
 - Hostess `companion-catalog` descriptor refresh command.
 - Hostess `companion-session run` command for the reusable session
@@ -45,6 +46,8 @@ live in focused page viewmodels:
   capability rows.
 - `CommandsPageViewModel`: command stage and command issue rows.
 - `EvidencePageViewModel`: module evidence artifact rows.
+- `WorkspacesPageViewModel`: workspace composition rows from catalog
+  descriptors.
 
 The legacy collection and selection properties on `MainWindowViewModel` remain
 as pass-through bindings for XAML stability. New page behavior should be added
@@ -63,6 +66,9 @@ collect parameters, show progress, and project evidence, but acceptance comes
 from the route's structured report, sidecar, receipt, or validation artifact.
 Automated tests should exercise the CLI/API route or its fixture output, then
 verify that WPF viewmodels render the same evidence a human operator sees.
+Read-only WPF report views follow the same rule: they render CLI/API reports,
+descriptors, sidecars, receipts, or fixture outputs, and their projection tests
+must prove the operator-facing rows map back to that evidence.
 The durable action map lives in
 `apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs`; the WPF test
 suite reflects over `MainWindowViewModel` commands and fails when a command is
@@ -82,6 +88,13 @@ python tools\hostessctl\hostessctl.py companion-catalog --out <catalog.json>
 
 The shell reads `rusty.hostess.companion.readiness_report.v1` and
 `rusty.hostess.companion.catalog.v1`.
+
+The Workspaces page renders the `workspaces` section of
+`rusty.hostess.companion.catalog.v1`. It shows workspace ids, module counts,
+required/prominent composition, supported frontends, sensitivity, and source
+paths. Workspace descriptors compose existing modules; WPF does not fork module
+implementation, redefine transport semantics, or treat unresolved module ids as
+accepted capability.
 
 The Session page calls:
 

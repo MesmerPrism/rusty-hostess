@@ -62,6 +62,10 @@ requirements; see `docs/LICENSING.md`.
   authority checks, and evidence artifacts. UI handlers collect parameters,
   invoke the route, and project structured evidence; they do not own hidden
   business logic or acceptance rules.
+- Every operator report view must render a CLI/API report, descriptor, sidecar,
+  receipt, or fixture output that automated tests can exercise before the UI
+  feature is accepted for human operators.
+
 ## Validation
 
 Run the narrow checks before committing:

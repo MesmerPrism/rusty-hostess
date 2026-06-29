@@ -60,7 +60,8 @@ dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests
 
 The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
-evidence promotion, and connectivity suite row grouping.
+evidence promotion, connectivity suite row grouping, and catalog-backed
+workspace composition rows.
 
 Every new WPF operator action needs UI-equivalent CLI coverage before it is
 accepted as an operator capability. The minimum validation shape is: a
@@ -69,6 +70,10 @@ renders, fixture or fake-mode coverage for that route, and a WPF projection
 test proving the viewmodel surface maps the same evidence into human-facing
 rows. WPF button handlers must not be the only executable path for setup,
 commands, probes, firewall changes, or evidence export.
+Every new WPF report view needs the same evidence-backed shape even when it is
+read-only: a CLI/API report, descriptor, sidecar, receipt, or fixture output
+must exist first, and projection tests must prove the page rows are derived from
+that artifact.
 The WPF test suite also reflects over `MainWindowViewModel` command properties
 and compares them with `OperatorActionCatalog`, so a new command fails tests
 until its CLI-equivalent route, evidence artifact, and test coverage are named.
