@@ -1,0 +1,105 @@
+{
+  "schema": "rusty.hostess.companion.catalog.v1",
+  "status": "pass",
+  "generated_at_utc": "2026-06-29T00:00:00Z",
+  "modules": [
+    {
+      "schema": "rusty.gui.companion.module_descriptor.v1",
+      "module_id": "companion.command.bridge_probe",
+      "title": "Bridge Probe",
+      "family": "command_probe",
+      "owner_lane": "hostess",
+      "authority_role": "requester",
+      "supported_frontends": [
+        "wpf",
+        "makepad",
+        "cli"
+      ],
+      "required_tools": [],
+      "required_device_states": [],
+      "required_transports": [
+        {
+          "id": "transport.manifold_websocket",
+          "family": "websocket",
+          "required": true
+        }
+      ],
+      "readable_reports": [
+        {
+          "id": "report.hostess.bridge_probe",
+          "schema": "rusty.hostess.bridge_probe.report.v1",
+          "owner_lane": "hostess"
+        }
+      ],
+      "command_requests": [
+        {
+          "id": "request.hostess.bridge_probe.set_marker",
+          "command_id": "hostess.makepad.bridge_probe.set_marker",
+          "owner_lane": "hostess",
+          "requires_confirmation": false
+        }
+      ],
+      "evidence_artifacts": [
+        {
+          "id": "evidence.hostess.bridge_probe",
+          "schema": "rusty.hostess.bridge_probe.report.v1",
+          "owner_lane": "hostess",
+          "redaction_required": false
+        }
+      ],
+      "action_policy": {
+        "auto_run_checks": false,
+        "state_changes_require_confirmation": true,
+        "destructive_actions_allowed": false
+      },
+      "sensitivity": [
+        "public_safe"
+      ]
+    }
+  ],
+  "workspaces": [
+    {
+      "schema": "rusty.gui.companion.workspace_descriptor.v1",
+      "workspace_id": "workspace.hostess_makepad.validation",
+      "title": "Hostess Makepad Validation",
+      "frontends": [
+        "wpf",
+        "makepad",
+        "cli"
+      ],
+      "modules": [
+        {
+          "module_id": "companion.command.bridge_probe",
+          "required": true
+        }
+      ],
+      "sensitivity": [
+        "public_safe",
+        "local_machine"
+      ]
+    }
+  ],
+  "transports": [
+    {
+      "schema": "rusty.gui.transport_capability_descriptor.v1",
+      "transport_id": "transport.manifold_websocket",
+      "title": "Manifold WebSocket",
+      "family": "websocket",
+      "plane": "control",
+      "delivery": "ordered_ack_required",
+      "supported_frontends": [
+        "wpf",
+        "makepad",
+        "cli"
+      ],
+      "required_evidence_stages": [
+        "sent",
+        "transport_ok",
+        "authority_accepted",
+        "runtime_accepted",
+        "applied"
+      ]
+    }
+  ],
+  "issues": []
+}

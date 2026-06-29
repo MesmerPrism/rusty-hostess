@@ -36,6 +36,26 @@ class HostessCtlCompanionCatalogTests(unittest.TestCase):
         self.assertEqual(validation["workspace_count"], 1)
         self.assertEqual(validation["transport_count"], 1)
 
+    def test_makepad_catalog_loads_frontend_parity_descriptors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            paths = write_catalog_fixture_set(Path(tmpdir))
+            args = catalog_args(
+                out=str(Path(tmpdir) / "catalog.json"),
+                frontend="makepad",
+                hostess_descriptor=str(paths["module"]),
+                gui_descriptors_root=str(paths["root"]),
+            )
+
+            report = build_companion_catalog_report(args, clock_ms_func=FixedClock())
+            validation = validate_companion_catalog_report(report)
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["scope"]["frontend"], "makepad")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual([row["module_id"] for row in report["modules"]], ["companion.readiness.preconditions"])
+        self.assertEqual([row["transport_id"] for row in report["transports"]], ["transport.adb_usb"])
+        self.assertEqual(report["workspaces"][0]["workspace_id"], "workspace.hostess_makepad.validation")
+
     def test_dispatch_command_writes_catalog_and_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             paths = write_catalog_fixture_set(Path(tmpdir))
@@ -119,6 +139,81 @@ class HostessCtlCompanionCatalogTests(unittest.TestCase):
         self.assertTrue(
             any("references unknown module companion.unknown.module" in error for error in validation["errors"])
         )
+
+    def test_makepad_workspace_cannot_select_wpf_only_module(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor_root = root / "descriptors"
+            descriptor_root.mkdir()
+            module_path = root / "module.json"
+            wpf_only_module = minimal_module()
+            wpf_only_module["supported_frontends"] = ["wpf", "cli"]
+            workspace = minimal_workspace()
+            write_json(module_path, wpf_only_module)
+            write_json(descriptor_root / "transport.json", minimal_transport())
+            write_json(descriptor_root / "workspace.json", workspace)
+
+            report = build_companion_catalog_report(
+                catalog_args(
+                    out=str(root / "catalog.json"),
+                    frontend="makepad",
+                    hostess_descriptor=str(module_path),
+                    gui_descriptors_root=str(descriptor_root),
+                ),
+                clock_ms_func=FixedClock(),
+            )
+            validation = validate_companion_catalog_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(report["scope"]["frontend"], "makepad")
+        self.assertFalse(report["modules"])
+        issue = next(
+            issue
+            for issue in report["issues"]
+            if issue["code"] == "hostess.issue.companion_catalog.workspace_unknown_module"
+        )
+        self.assertEqual(issue["workspace_id"], "workspace.hostess_makepad.validation")
+        self.assertEqual(issue["module_id"], "companion.readiness.preconditions")
+        self.assertEqual(validation["status"], "fail")
+
+    def test_module_unknown_transport_is_report_issue_and_validation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor_root = root / "descriptors"
+            descriptor_root.mkdir()
+            module_path = root / "module.json"
+            module = minimal_module()
+            module["required_transports"] = [
+                {
+                    "id": "transport.missing",
+                    "family": "websocket",
+                    "required": True,
+                }
+            ]
+            write_json(module_path, module)
+            write_json(descriptor_root / "transport.json", minimal_transport())
+            write_json(descriptor_root / "workspace.json", minimal_workspace())
+
+            report = build_companion_catalog_report(
+                catalog_args(
+                    out=str(root / "catalog.json"),
+                    hostess_descriptor=str(module_path),
+                    gui_descriptors_root=str(descriptor_root),
+                ),
+                clock_ms_func=FixedClock(),
+            )
+            validation = validate_companion_catalog_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        issue = next(
+            issue
+            for issue in report["issues"]
+            if issue["code"] == "hostess.issue.companion_catalog.module_unknown_transport"
+        )
+        self.assertEqual(issue["module_id"], "companion.readiness.preconditions")
+        self.assertEqual(issue["transport_id"], "transport.missing")
+        self.assertEqual(validation["status"], "fail")
+        self.assertTrue(any("unknown transport transport.missing" in error for error in validation["errors"]))
 
     def test_fail_on_error_still_blocks_invalid_catalog_in_validation_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -236,7 +331,7 @@ def minimal_transport() -> dict[str, object]:
         "authority_role": "adapter",
         "route_ids": ["bridge_route.device.adb.transport_only"],
         "required_evidence_stages": ["sent", "transport_ok"],
-        "supported_frontends": ["wpf", "cli"],
+        "supported_frontends": ["wpf", "makepad", "cli"],
         "strengths": ["serial-scoped validation"],
         "costs": ["transport success is not runtime proof"],
         "suitable_for": ["setup"],

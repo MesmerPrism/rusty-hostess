@@ -62,6 +62,10 @@ dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests
 integrity. The catalog report also carries semantic issue rows for workspace
 composition failures, such as unknown module references, so WPF can render the
 same invalid-descriptor evidence for operators without owning validation logic.
+The repo-local `check_all.ps1` runs that descriptor smoke for both `wpf` and
+`makepad` frontends when the sibling Rusty GUI descriptor folder is present, so
+Makepad-facing workspaces cannot claim frontend parity while selecting
+WPF-only modules or transports.
 
 The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
@@ -309,6 +313,7 @@ used diagnostic sender/listener ownership.
 For Makepad app-shell edits, run:
 
 ```powershell
+cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml companion_frontend
 cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests

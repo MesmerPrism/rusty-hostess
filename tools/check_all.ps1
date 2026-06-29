@@ -95,17 +95,19 @@ try {
     }
     $GuiDescriptorRootCandidate = Join-Path $RepoRoot "..\rusty-gui\fixtures\descriptors"
     if (Test-Path $GuiDescriptorRootCandidate) {
-        $CatalogOut = Join-Path $RepoRoot "target\companion-catalog\check-all-catalog.json"
-        New-Item -ItemType Directory -Force -Path (Split-Path $CatalogOut) | Out-Null
-        Invoke-Checked "companion catalog descriptor smoke" "python" @(
-            "tools\hostessctl\hostessctl.py",
-            "companion-catalog",
-            "--out",
-            $CatalogOut,
-            "--frontend",
-            "wpf",
-            "--fail-on-error"
-        )
+        foreach ($Frontend in @("wpf", "makepad")) {
+            $CatalogOut = Join-Path $RepoRoot "target\companion-catalog\check-all-catalog-$Frontend.json"
+            New-Item -ItemType Directory -Force -Path (Split-Path $CatalogOut) | Out-Null
+            Invoke-Checked "companion catalog descriptor smoke ($Frontend)" "python" @(
+                "tools\hostessctl\hostessctl.py",
+                "companion-catalog",
+                "--out",
+                $CatalogOut,
+                "--frontend",
+                $Frontend,
+                "--fail-on-error"
+            )
+        }
     }
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
         Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
@@ -160,6 +162,7 @@ try {
         }
     }
     if (Test-Path "apps\hostess-t-makepad\Cargo.toml") {
+        Invoke-Checked "Makepad companion frontend projection tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "companion_frontend")
         Invoke-Checked "Makepad app cargo check" "cargo" @("check", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml")
         Invoke-Checked "Makepad app Hostess contract serde tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "hostess_contracts")
         Invoke-Checked "Makepad app shell regression tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "main_tests")

@@ -109,6 +109,10 @@ generic code or sanitized sample fixtures.
   `makepad_effective_settings\` child modules own focused settings families;
   `revision.rs` owns revision sidecar identity and scoped invalidation keys,
   while `tests.rs` owns the effective-settings regression fixtures.
+- Keep `apps\hostess-t-makepad\src\companion_frontend.rs` as the Makepad-side
+  requester/inspector projection over companion catalog and Quest device-link
+  reports. It may produce compact rows and marker lines for operator panels;
+  it must not own validation, setup, transport, or command authority.
 
 ## Quest Makepad APK Route
 

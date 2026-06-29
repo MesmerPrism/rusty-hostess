@@ -556,6 +556,25 @@ def write_descriptor_root(root: Path) -> Path:
         ),
         encoding="utf-8",
     )
+    (descriptor_root / "transport-capability-adb.json").write_text(
+        json.dumps(
+            {
+                "schema": "rusty.gui.companion.transport_capability.v1",
+                "transport_id": "transport.adb_usb",
+                "title": "ADB USB",
+                "family": "adb",
+                "plane": "setup",
+                "delivery": "ordered_reliable",
+                "payload_rate": "file_artifact",
+                "authority_role": "adapter",
+                "route_ids": ["bridge_route.device.adb.transport_only"],
+                "required_evidence_stages": ["sent", "transport_ok"],
+                "supported_frontends": ["wpf", "makepad", "cli"],
+                "sensitivity": ["public_safe"],
+            }
+        ),
+        encoding="utf-8",
+    )
     return descriptor_root
 
 

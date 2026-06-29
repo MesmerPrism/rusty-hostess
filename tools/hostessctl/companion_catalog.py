@@ -127,6 +127,11 @@ def validate_companion_catalog_report(report: dict[str, Any]) -> dict[str, Any]:
         add_error("catalog must contain at least one transport capability descriptor")
 
     module_ids = set()
+    transport_ids = {
+        str(row.get("transport_id") or "")
+        for row in transports
+        if isinstance(row.get("transport_id"), str) and str(row.get("transport_id")).strip()
+    }
     for row in modules:
         module_id = str(row.get("module_id") or "")
         if not module_id:
@@ -144,6 +149,16 @@ def validate_companion_catalog_report(report: dict[str, Any]) -> dict[str, Any]:
             add_error(f"module {module_id or '<unknown>'} may not claim authority")
         if row.get("owner_lane") == "gui" and row.get("command_requests"):
             add_error(f"module {module_id or '<unknown>'} uses GUI as command authority")
+        for required_transport in row.get("required_transports", []):
+            if not isinstance(required_transport, dict):
+                continue
+            transport_id = str(required_transport.get("id") or "")
+            if not transport_id:
+                add_error(f"module {module_id or '<unknown>'} has a transport requirement without id")
+            elif transport_id not in transport_ids:
+                add_error(
+                    f"module {module_id or '<unknown>'} references unknown transport {transport_id}"
+                )
 
     for row in workspaces:
         workspace_id = str(row.get("workspace_id") or "")
@@ -229,6 +244,11 @@ def append_catalog_semantic_issues(
         for row in modules
         if isinstance(row.get("module_id"), str) and str(row.get("module_id")).strip()
     }
+    transport_ids = {
+        str(row.get("transport_id") or "")
+        for row in transports
+        if isinstance(row.get("transport_id"), str) and str(row.get("transport_id")).strip()
+    }
     for row in modules:
         module_id = str(row.get("module_id") or "")
         if not str(row.get("title") or "").strip():
@@ -276,6 +296,29 @@ def append_catalog_semantic_issues(
                     module_id=module_id,
                 )
             )
+        for required_transport in row.get("required_transports", []):
+            if not isinstance(required_transport, dict):
+                continue
+            transport_id = str(required_transport.get("id") or "")
+            if not transport_id:
+                issues.append(
+                    catalog_issue(
+                        "error",
+                        "hostess.issue.companion_catalog.module_transport_missing_id",
+                        f"module {module_id or '<unknown>'} has a transport requirement without id",
+                        module_id=module_id,
+                    )
+                )
+            elif transport_id not in transport_ids:
+                issues.append(
+                    catalog_issue(
+                        "error",
+                        "hostess.issue.companion_catalog.module_unknown_transport",
+                        f"module {module_id or '<unknown>'} references unknown transport {transport_id}",
+                        module_id=module_id,
+                        transport_id=transport_id,
+                    )
+                )
 
     for row in workspaces:
         workspace_id = str(row.get("workspace_id") or "")

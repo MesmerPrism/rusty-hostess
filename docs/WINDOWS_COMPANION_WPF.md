@@ -99,6 +99,18 @@ paths. It also renders catalog-emitted workspace validation issues such as
 unknown module references. Workspace descriptors compose existing modules; WPF
 does not fork module implementation, redefine transport semantics, or treat
 unresolved module ids as accepted capability.
+The same catalog route is also the Makepad parity gate:
+
+```powershell
+python tools\hostessctl\hostessctl.py companion-catalog `
+  --frontend makepad `
+  --out target\companion-catalog\makepad-catalog.json `
+  --fail-on-error
+```
+
+Makepad-facing panels should consume that report or the same underlying
+descriptors. They should not copy WPF setup logic or introduce Makepad-only
+command/readiness semantics.
 
 The Session page calls:
 

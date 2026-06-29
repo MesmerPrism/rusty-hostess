@@ -13,6 +13,8 @@ mod broker_h264_runtime;
 mod camera_pair;
 mod camera_projection_flow;
 mod camera_texture_path;
+#[allow(dead_code)]
+mod companion_frontend;
 mod frame_orientation;
 #[allow(dead_code, unused_imports)]
 mod hostess_camera_model;

@@ -1,6 +1,29 @@
 use super::*;
 
 #[test]
+fn makepad_companion_frontend_projects_shared_reports() {
+    let catalog = include_str!("../../../fixtures/companion/makepad-catalog-pass.json");
+    let device_link = include_str!("../../../fixtures/companion/device-link-pass.json");
+    let projection =
+        companion_frontend::build_makepad_companion_rows(catalog, device_link).unwrap();
+
+    assert_eq!(projection.status, "pass");
+    assert!(projection.rows.iter().any(|row| {
+        row.row_family == "catalog_workspace"
+            && row.row_id == "workspace.hostess_makepad.validation"
+    }));
+    assert!(projection
+        .rows
+        .iter()
+        .any(|row| row.row_family == "runtime_subscriber"));
+    let marker =
+        companion_frontend::makepad_companion_projection_marker_line("main_tests", &projection);
+    assert!(marker.contains("RUSTY_HOSTESS_MAKEPAD_COMPANION_FRONTEND"));
+    assert!(marker.contains("authority=requester_inspector"));
+    assert!(marker.contains("highRateJsonPayload=false"));
+}
+
+#[test]
 fn breath_feedback_config_marker_exposes_resolved_subscriber_config() {
     let mut config = ManifoldBreathFeedbackConfig::default();
     config.enabled = true;

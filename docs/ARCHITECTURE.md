@@ -31,6 +31,12 @@ append-only `TelemetryStreamEvent` JSONL and maintains rolling buffers per
 datastream. It is the first scalable Rusty GUI example for Hostess T. It
 observes run state and can request commands only through the same
 Hostess/Manifold command routes as `hostessctl`.
+`apps/hostess-t-makepad/src/companion_frontend.rs` owns the source/fixture-only
+Makepad projection of Hostess companion catalog and Quest device-link reports.
+It reduces `rusty.hostess.companion.catalog.v1` and
+`rusty.quest.device_link.v1` evidence into compact rows and marker lines for a
+future Makepad panel; it does not own validation, setup, transport, or command
+authority.
 
 The Windows companion shell lives in `apps/hostess-companion-wpf`. It is a WPF
 operational shell over Hostess readiness reports, Rusty GUI companion
@@ -176,6 +182,11 @@ shared catalog for module lists, transport costs, and evidence artifact panels.
 The same report carries descriptor semantic issues, including workspace
 references to unknown modules, so operator frontends can render invalid catalog
 evidence without becoming the validator.
+The repo-wide check runs the catalog smoke for both `wpf` and `makepad`
+frontends. This keeps the Hostess Makepad validation workspace honest: if a
+workspace claims Makepad support, its selected modules and required transport
+descriptors must survive the same Hostess catalog filtering and validation as
+WPF.
 Windows companion session orchestration lives in
 `tools/hostessctl/companion_session.py`. It emits
 `rusty.hostess.companion.session.v1` by composing readiness, descriptor

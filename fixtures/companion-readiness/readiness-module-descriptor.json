@@ -43,7 +43,7 @@
       "required": true
     },
     {
-      "id": "transport.websocket_broker",
+      "id": "transport.manifold_websocket",
       "family": "websocket",
       "required": false
     }
