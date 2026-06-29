@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from tools.hostessctl.companion_session import (
+from tools.hostessctl.companion_session_defaults import (
     DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
     DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS,
     DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,

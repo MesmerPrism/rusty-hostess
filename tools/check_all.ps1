@@ -32,6 +32,7 @@ try {
         "tools\hostessctl\companion_catalog.py",
         "tools\hostessctl\companion_readiness.py",
         "tools\hostessctl\companion_session.py",
+        "tools\hostessctl\companion_session_defaults.py",
         "tools\hostessctl\connectivity_probe.py",
         "tools\hostessctl\connectivity_suite.py",
         "tools\hostessctl\device_link_report.py",

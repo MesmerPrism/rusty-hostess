@@ -33,6 +33,20 @@ class HostessCtlCliParserTests(unittest.TestCase):
             makepad_provider_activity="test.provider/.Provider",
         )
 
+    def test_cli_parser_keeps_session_route_implementation_out_of_imports(self) -> None:
+        parser_source = (
+            Path(__file__).resolve().parent / "hostessctl" / "cli_parser.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertNotIn(
+            "from tools.hostessctl.companion_session import",
+            parser_source,
+        )
+        self.assertIn(
+            "from tools.hostessctl.companion_session_defaults import",
+            parser_source,
+        )
+
     def write_native_breathing_room_profile(self, path: Path) -> dict[str, str]:
         properties = {
             "debug.rustyquest.native_renderer.render.mode": "custom-stereo-projection",

@@ -82,9 +82,11 @@ The desktop CLI can render equivalent evidence pages from completed run
 artifacts. Rendered PNGs must include dimensions, nonblank content evidence,
 and a JSON sidecar before they are accepted as visual evidence.
 Argument parser construction lives in `tools/hostessctl/cli_parser.py`; it
-receives platform defaults from `tools/hostessctl/hostessctl.py` and does not
-import command implementations. The CLI root stays the platform default,
-dispatch, and compatibility-wrapper facade.
+receives platform defaults from `tools/hostessctl/hostessctl.py` and imports
+only argument-surface constants such as
+`tools/hostessctl/companion_session_defaults.py`, not command
+implementations. The CLI root stays the platform default, dispatch, and
+compatibility-wrapper facade.
 Shared process helpers live in `tools/hostessctl/runtime.py`, and package
 names, Android actions, remote artifact paths, Makepad defaults, and broker
 identity helpers live in `tools/hostessctl/platform_defaults.py`.
@@ -196,6 +198,10 @@ This route is the frontend-neutral session backend for WPF, Makepad, CLI, and
 future companion shells; frontends render phases/actions/issues and may request
 the run, but they do not decide broker authority, runtime acceptance, fallback
 recovery, or evidence validity.
+Its receipt/process wait defaults live in
+`tools/hostessctl/companion_session_defaults.py` so the parser, CLI docs, and
+WPF invocation can share the same argument surface without coupling the parser
+to the session orchestration module.
 Quest device-link report adaptation lives in
 `tools/hostessctl/device_link_report.py`. It summarizes Hostess readiness and
 bridge execution sidecars into the Quest-owned `rusty.quest.device_link.v1`
