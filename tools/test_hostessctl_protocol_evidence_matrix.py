@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -135,6 +136,53 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(qcl084["missing_gates"], [])
         self.assertIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
 
+    def test_latest_artifact_dir_loads_newest_requested_probe_reports(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            stale_qcl081_path = root / "qcl081-stale.json"
+            latest_qcl081_path = root / "qcl081-latest.json"
+            qcl084_path = root / "qcl084-latest.json"
+            matrix_sidecar_path = root / "qcl081.protocol-matrix.json"
+
+            stale_qcl081 = promoted_qcl081_report()
+            stale_qcl081["run_id"] = "qcl081-stale"
+            stale_qcl081["promotion"]["allowed"] = False
+            stale_qcl081_path.write_text(json.dumps(stale_qcl081), encoding="utf-8")
+            latest_qcl081_path.write_text(json.dumps(promoted_qcl081_report()), encoding="utf-8")
+            qcl084_path.write_text(json.dumps(promoted_qcl084_report()), encoding="utf-8")
+            matrix_sidecar_path.write_text(
+                json.dumps({"$schema": PROTOCOL_EVIDENCE_MATRIX_SCHEMA, "probe_id": "QCL-081"}),
+                encoding="utf-8",
+            )
+            os.utime(stale_qcl081_path, (1, 1))
+            os.utime(latest_qcl081_path, (2, 2))
+            os.utime(qcl084_path, (3, 3))
+            os.utime(matrix_sidecar_path, (4, 4))
+
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="latest-artifacts",
+                    input=[],
+                    suite_run=[],
+                    latest_artifact_dir=[str(root)],
+                    latest_probe_id=["QCL-081", "QCL-084"],
+                    fail_on_error=True,
+                )
+            )
+
+        input_paths = [item["path"] for item in matrix["inputs"]]
+        self.assertIn(str(latest_qcl081_path), input_paths)
+        self.assertIn(str(qcl084_path), input_paths)
+        self.assertNotIn(str(stale_qcl081_path), input_paths)
+        self.assertNotIn(str(matrix_sidecar_path), input_paths)
+        self.assertEqual(row(matrix, "QCL-081")["source"]["artifact_path"], str(latest_qcl081_path))
+        self.assertEqual(row(matrix, "QCL-081")["status"], "usable")
+        self.assertEqual(row(matrix, "QCL-084")["status"], "usable")
+        self.assertNotIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
+        self.assertNotIn("QCL-084", matrix["summary"]["pending_required_probe_ids"])
+
     def test_device_link_report_promotes_command_baseline(self) -> None:
         matrix = build_protocol_evidence_matrix(
             argparse.Namespace(
@@ -209,6 +257,12 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
                 "target/connectivity-suite.json",
                 "--input",
                 "target/qcl080.stream-capability.json",
+                "--latest-artifact-dir",
+                "target/connectivity-probe",
+                "--latest-probe-id",
+                "QCL-081",
+                "--latest-probe-id",
+                "QCL-084",
                 "--out",
                 "target/protocol-matrix.json",
                 "--matrix-id",
@@ -221,6 +275,8 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(args.connectivity_probe_command, "protocol-matrix")
         self.assertEqual(args.suite_run, ["target/connectivity-suite.json"])
         self.assertEqual(args.input, ["target/qcl080.stream-capability.json"])
+        self.assertEqual(args.latest_artifact_dir, ["target/connectivity-probe"])
+        self.assertEqual(args.latest_probe_id, ["QCL-081", "QCL-084"])
         self.assertEqual(args.matrix_id, "local-matrix")
         self.assertTrue(args.fail_on_error)
 

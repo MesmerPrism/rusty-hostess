@@ -10,6 +10,7 @@ var tests = new (string Name, Action Test)[]
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
     ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
+    ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
@@ -184,6 +185,46 @@ static void ProtocolMatrixRowsExposePromotionGates()
     Assert(ConnectivityRows.StatusFromRows(rows) == "warn", "protocol matrix warnings must remain visible");
 }
 
+static void ProtocolMatrixRowsExposeLatestPromotedEvidence()
+{
+    var matrix = new ConnectivityProtocolEvidenceMatrix
+    {
+        Status = "pass",
+        MatrixId = "matrix-latest",
+        ReportPath = "target/protocol-matrix-latest.json",
+        Summary = JsonSerializer.SerializeToElement(new
+        {
+            all_required_data_protocols_promoted = true,
+            pending_required_probe_ids = Array.Empty<string>(),
+        }),
+        Rows =
+        [
+            PromotedProtocolRow("capability.biosignal.lsl_clocked_samples", "QCL-081", "lsl", "broker_owned"),
+            PromotedProtocolRow("capability.protocol.osc_low_rate_messages", "QCL-083", "osc", "quest_runtime"),
+            PromotedProtocolRow("capability.protocol.zeromq_native_rust", "QCL-084", "zeromq", "broker_owned"),
+        ],
+    };
+
+    var rows = ConnectivityRows.ForProtocolEvidenceMatrix(matrix);
+
+    Assert(rows.Any(row => row.Name == "QCL-081.lsl"
+        && row.Status == "usable"
+        && row.Evidence.Contains("tier=broker_owned", StringComparison.Ordinal)
+        && row.Evidence.Contains("promotion=promoted", StringComparison.Ordinal)),
+        "missing promoted QCL-081 evidence row");
+    Assert(rows.Any(row => row.Name == "QCL-083.osc"
+        && row.Status == "usable"
+        && row.Evidence.Contains("tier=quest_runtime", StringComparison.Ordinal)),
+        "missing promoted QCL-083 evidence row");
+    Assert(rows.Any(row => row.Name == "QCL-084.zeromq"
+        && row.Status == "usable"
+        && row.Evidence.Contains("tier=broker_owned", StringComparison.Ordinal)),
+        "missing promoted QCL-084 evidence row");
+    Assert(rows.Any(row => row.Name == "gate.qcl081.promotion_allowed" && row.Status == "pass"),
+        "missing satisfied promoted gate row");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "promoted protocol matrix should project pass");
+}
+
 static void FirewallRowsExposeProductVerification()
 {
     var listener = JsonSerializer.SerializeToElement(new
@@ -257,8 +298,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(
         OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "RunProtocolMatrixCommand"
-            && action.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal)),
-        "protocol matrix must stay backed by the connectivity-probe protocol-matrix CLI route");
+            && action.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--latest-artifact-dir", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal)),
+        "protocol matrix must stay backed by the latest-artifact CLI route");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();
@@ -271,6 +314,39 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
         "firewall controls must advertise the emitted windows firewall evidence schema");
 }
+
+static ConnectivityProtocolEvidenceRow PromotedProtocolRow(
+    string capabilityId,
+    string probeId,
+    string transportKind,
+    string evidenceTier) =>
+    new()
+    {
+        CapabilityId = capabilityId,
+        ProbeId = probeId,
+        TransportKind = transportKind,
+        SemanticFamily = "generic_data_protocol",
+        AuthorityOwner = evidenceTier == "quest_runtime"
+            ? "rusty.quest.device_link"
+            : "rusty.manifold.transport",
+        RequiredForFoldIn = true,
+        Status = "usable",
+        PromotionState = "promoted",
+        PromotionAllowed = true,
+        EvidenceTier = evidenceTier,
+        PromotionGate = "Quest-runtime or broker-owned evidence required",
+        MissingGates = [],
+        GateResults =
+        [
+            new ConnectivityProtocolEvidenceGate
+            {
+                GateId = $"gate.{probeId.ToLowerInvariant().Replace("-", string.Empty)}.promotion_allowed",
+                Status = "satisfied",
+                Evidence = "promotion.allowed=True",
+            },
+        ],
+        Measurements = JsonSerializer.SerializeToElement(new { packets = 16 }),
+    };
 
 static void PageViewModelsOwnWpfRowsAndSelections()
 {

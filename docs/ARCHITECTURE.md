@@ -281,7 +281,9 @@ device-link, and stream-capability artifacts and classifies each protocol by
 evidence tier, promotion state, and missing gate. WPF renders this matrix as a
 requester/inspector; promotion rules stay in the CLI/report module so fixture
 and host-loopback LSL/OSC/ZeroMQ evidence cannot accidentally become UI-only
-acceptance proof.
+acceptance proof. The same route owns latest-artifact selection for promoted
+QCL-081, QCL-083, and QCL-084 rows, keeping WPF and automated CLI smoke tests
+on one artifact-selection policy.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

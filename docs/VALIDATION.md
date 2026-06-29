@@ -135,6 +135,28 @@ state. It rolls up suite/probe/device-link artifacts and marks each protocol as
 `rejected` with explicit missing gates. Fixture and host-loopback LSL/OSC/ZeroMQ
 rows must remain candidates until Quest-runtime or broker-owned live QCL
 evidence exists.
+
+Operator views that need the current promoted data-protocol rows should use the
+same CLI artifact resolver as WPF:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
+  --suite-run target\connectivity-probe\device-link-suite-run.json `
+  --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-081 `
+  --latest-probe-id QCL-083 `
+  --latest-probe-id QCL-084 `
+  --out target\connectivity-probe\device-link-protocol-matrix.json `
+  --fail-on-error
+```
+
+`--latest-artifact-dir` selects the newest valid
+`rusty.quest.connectivity_topology_probe.v1` report per requested probe id and
+ignores protocol-matrix, validation, and stream-capability sidecars. The WPF
+Protocol Matrix action runs the fixture suite for baseline coverage and then
+calls this route so CLI automation and human operators inspect the same
+promotion rows.
+
 The QCL-081 stream-capability route is still useful before promotion: blocked
 Quest-runtime preflight artifacts validate as descriptors with explicit LSL
 discovery, sample-continuity, producer-owner, and promotion gates, so WPF can

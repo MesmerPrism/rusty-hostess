@@ -88,7 +88,7 @@ public static class OperatorActionCatalog
             "wpf.connectivity.protocol_matrix",
             "Build protocol matrix",
             "RunProtocolMatrixCommand",
-            "connectivity-probe run-suite; connectivity-probe protocol-matrix",
+            "connectivity-probe run-suite; connectivity-probe protocol-matrix --suite-run --latest-artifact-dir --latest-probe-id",
             "rusty.quest.device_link.protocol_evidence_matrix.v1",
             "Hostess / Rusty Quest / Manifold",
             "tools.test_hostessctl_protocol_evidence_matrix; HostessCompanion.Wpf.Tests"),

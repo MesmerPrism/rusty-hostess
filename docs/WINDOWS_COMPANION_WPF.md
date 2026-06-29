@@ -258,6 +258,24 @@ phase rows, per-QCL slot rows, metrics, and artifact paths. Fixture suite
 success proves the diagnostic harness is coherent; live protocol promotion
 still comes from the individual QCL reports and stream capability descriptors.
 
+The Protocol Matrix action keeps that split explicit. WPF first requests the
+fixture suite, then shells to the CLI roll-up with the shared latest-artifact
+resolver:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
+  --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
+  --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-081 `
+  --latest-probe-id QCL-083 `
+  --latest-probe-id QCL-084 `
+  --out target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json
+```
+
+The resolver selects the newest valid QCL report for each requested probe id
+and leaves all promotion decisions in `hostessctl`; WPF only renders the
+resulting rows, gates, descriptors, and source artifact paths.
+
 ## Build
 
 ```powershell

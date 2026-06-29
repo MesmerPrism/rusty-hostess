@@ -241,9 +241,9 @@ def collect_input_artifacts(args: argparse.Namespace) -> dict[str, Any]:
     device_link_reports: list[dict[str, Any]] = []
 
     pending_paths: list[Path] = []
-    for raw in list_value(getattr(args, "input", None)):
+    for raw in argument_values(getattr(args, "input", None)):
         pending_paths.append(Path(str(raw)))
-    for raw in list_value(getattr(args, "suite_run", None)):
+    for raw in argument_values(getattr(args, "suite_run", None)):
         suite_path = Path(str(raw))
         suite = read_json(suite_path)
         inputs.append(input_ref(suite_path, suite, role="suite_run"))
@@ -254,6 +254,7 @@ def collect_input_artifacts(args: argparse.Namespace) -> dict[str, Any]:
             )
             if path:
                 pending_paths.append(path)
+    pending_paths.extend(latest_artifact_paths(args))
 
     seen_paths: set[str] = set()
     for path in pending_paths:
@@ -285,6 +286,53 @@ def collect_input_artifacts(args: argparse.Namespace) -> dict[str, Any]:
         "stream_descriptors": stream_descriptors,
         "device_link_reports": device_link_reports,
     }
+
+
+def latest_artifact_paths(args: argparse.Namespace) -> list[Path]:
+    artifact_dirs = [
+        Path(raw)
+        for raw in argument_values(getattr(args, "latest_artifact_dir", None))
+        if raw.strip()
+    ]
+    if not artifact_dirs:
+        return []
+
+    probe_ids = [
+        raw.strip()
+        for raw in argument_values(getattr(args, "latest_probe_id", None))
+        if raw.strip()
+    ]
+    if not probe_ids:
+        probe_ids = [str(profile["probe_id"]) for profile in CAPABILITY_PROFILES]
+
+    selected: list[Path] = []
+    for artifact_dir in artifact_dirs:
+        selected.extend(latest_probe_reports_in_dir(artifact_dir, probe_ids))
+    return selected
+
+
+def latest_probe_reports_in_dir(artifact_dir: Path, probe_ids: list[str]) -> list[Path]:
+    if not artifact_dir.exists() or not artifact_dir.is_dir():
+        return []
+
+    requested = set(probe_ids)
+    latest: dict[str, tuple[int, str, Path]] = {}
+    for path in artifact_dir.glob("*.json"):
+        payload = read_json(path)
+        if classify_payload(payload) != "connectivity_probe_report":
+            continue
+        probe_id = str(payload.get("probe_id") or "")
+        if probe_id not in requested:
+            continue
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        candidate = (mtime_ns, path.name, path)
+        if probe_id not in latest or candidate > latest[probe_id]:
+            latest[probe_id] = candidate
+
+    return [latest[probe_id][2] for probe_id in probe_ids if probe_id in latest]
 
 
 def build_matrix_row(profile: dict[str, Any], artifacts: dict[str, Any]) -> dict[str, Any]:
@@ -899,6 +947,14 @@ def string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item) for item in value if str(item)]
+
+
+def argument_values(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item) for item in value if str(item)]
+    return [str(value)]
 
 
 def utc_now() -> datetime:
