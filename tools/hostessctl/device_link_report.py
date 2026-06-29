@@ -660,6 +660,13 @@ def validate_stream_capability_descriptor(descriptor: dict[str, Any]) -> dict[st
                 errors.append(
                     "usable QCL-081 capabilities require Quest-runtime, study-adapter, or broker-owned LSL evidence"
                 )
+            if transport.get("endpoint_source") == "manifold-lsl-broker":
+                if runtime.get("evidence_tier") != "broker_owned":
+                    errors.append("usable QCL-081 Manifold LSL broker capabilities require broker_owned evidence")
+                if runtime.get("authority_owner") != "rusty.manifold.transport":
+                    errors.append("usable QCL-081 Manifold LSL broker capabilities require Manifold transport authority")
+                if runtime.get("bridge_route_evidence_status") != "pass":
+                    errors.append("usable QCL-081 Manifold LSL broker capabilities require passing route evidence")
             if runtime.get("status") != "pass":
                 errors.append("usable QCL-081 capabilities require passing runtime LSL evidence")
             samples_received = int_or_none(measurements.get("lsl_samples_received"))
@@ -1875,6 +1882,7 @@ def qcl081_runtime_evidence(report: dict[str, Any]) -> dict[str, Any]:
     preflight = object_value(probe.get("quest_runtime_preflight"))
     termux_python = object_value(preflight.get("termux_python"))
     pylsl_import = object_value(preflight.get("pylsl_import"))
+    bridge_route_evidence = object_value(probe.get("bridge_route_evidence"))
     issue_codes = string_list(probe.get("issue_codes"))
     if not issue_codes:
         issue_codes = string_list((discovery_check or {}).get("issue_codes")) + string_list(
@@ -1920,6 +1928,10 @@ def qcl081_runtime_evidence(report: dict[str, Any]) -> dict[str, Any]:
             else continuity_observed.get("monotonic_sequences")
         ),
         "received_sequences": list_value(probe.get("received_sequences")),
+        "evidence_tier": probe.get("evidence_tier"),
+        "authority_owner": probe.get("authority_owner"),
+        "route_id": probe.get("route_id"),
+        "bridge_route_evidence_status": bridge_route_evidence.get("status"),
         "issue_codes": issue_codes,
         "notes": probe.get("notes") or evidence_text(discovery_check),
         "quest_termux_python_returncode": int_or_none(termux_python.get("returncode")),
@@ -1952,8 +1964,17 @@ def qcl081_stream_capability_requirements(
         and runtime_evidence.get("monotonic_sequences") is not False
     )
     owner_source = str(transport.get("endpoint_source") or "")
+    broker_authority_ok = (
+        owner_source != "manifold-lsl-broker"
+        or (
+            runtime_evidence.get("evidence_tier") == "broker_owned"
+            and runtime_evidence.get("authority_owner") == "rusty.manifold.transport"
+            and runtime_evidence.get("bridge_route_evidence_status") == "pass"
+        )
+    )
     owner_ok = (
         qcl081_promotable_lsl_owner(owner_source)
+        and broker_authority_ok
         and runtime_evidence.get("status") == "pass"
         and samples_received is not None
         and samples_received > 0
@@ -1997,6 +2018,8 @@ def qcl081_stream_capability_requirements(
             if blocked_by_runtime and qcl081_promotable_lsl_owner(owner_source)
             else "missing",
             "observed_endpoint_source": owner_source,
+            "observed_evidence_tier": runtime_evidence.get("evidence_tier"),
+            "observed_authority_owner": runtime_evidence.get("authority_owner"),
             "issue_codes": string_list(runtime_evidence.get("issue_codes")),
             "notes": str(runtime_evidence.get("notes") or ""),
             "required": True,
@@ -2149,6 +2172,7 @@ def qcl081_promotable_lsl_owner(source: Any) -> bool:
         "study-adapter",
         "broker-owned",
         "native-rust-broker",
+        "manifold-lsl-broker",
     }
 
 

@@ -219,6 +219,26 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertEqual(descriptor["test_slots"][0]["probe_id"], "QCL-081")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl081_manifold_broker_report_promotes_measured_lsl_capability(self) -> None:
+        descriptor = build_stream_capability_descriptor_from_connectivity_probe(
+            qcl081_manifold_broker_promoted_fixture()
+        )
+        validation = validate_stream_capability_descriptor(descriptor)
+
+        self.assertEqual(descriptor["status"], "usable")
+        self.assertEqual(descriptor["transport_kind"], "lsl")
+        self.assertEqual(descriptor["runtime_evidence"]["source"], "manifold-lsl-broker")
+        self.assertEqual(descriptor["runtime_evidence"]["status"], "pass")
+        self.assertEqual(descriptor["runtime_evidence"]["evidence_tier"], "broker_owned")
+        self.assertEqual(descriptor["runtime_evidence"]["authority_owner"], "rusty.manifold.transport")
+        self.assertEqual(descriptor["runtime_evidence"]["bridge_route_evidence_status"], "pass")
+        self.assertEqual(
+            requirement(descriptor, "quest_or_broker_lsl_producer")["status"],
+            "satisfied",
+        )
+        self.assertEqual(requirement(descriptor, "qcl081_live_promotion")["status"], "satisfied")
+        self.assertEqual(validation["status"], "pass")
+
     def test_stream_capability_cli_writes_descriptor_and_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -567,6 +587,42 @@ def qcl081_quest_runtime_promoted_fixture() -> dict[str, Any]:
             },
         }
     )
+    return report
+
+
+def qcl081_manifold_broker_promoted_fixture() -> dict[str, Any]:
+    report = qcl081_quest_runtime_promoted_fixture()
+    report["run_id"] = "qcl081-manifold-lsl-broker-promoted"
+    report["transport"]["endpoint_source"] = "manifold-lsl-broker"
+    report["transport"]["local_endpoint"] = "manifold-lsl-broker"
+    report["transport"]["remote_endpoint"] = "manifold-lsl-broker"
+    report["host"]["adb_provider"] = ""
+    report["promotion"]["reason"] = "QCL-081 proves Manifold-owned LSL producer/sample continuity"
+    report["lsl_payload_probe"].update(
+        {
+            "source": "manifold-lsl-broker",
+            "source_id": "rusty-manifold-qcl081-fixture",
+            "evidence_tier": "broker_owned",
+            "authority_owner": "rusty.manifold.transport",
+            "route_id": "bridge_route.clock.lsl.roundtrip_echo",
+            "bridge_route_evidence": {
+                "$schema": "rusty.manifold.bridge.route_evidence.v1",
+                "route_id": "bridge_route.clock.lsl.roundtrip_echo",
+                "status": "pass",
+                "stage_reports": [
+                    {"stage": "sent", "status": "pass", "issue_codes": []},
+                    {"stage": "transport_ok", "status": "pass", "issue_codes": []},
+                    {"stage": "observed", "status": "pass", "issue_codes": []},
+                ],
+                "issues": [],
+            },
+            "notes": "Manifold-owned LSL route evidence from rusty-manifold",
+            "quest_runtime_preflight": {},
+        }
+    )
+    for check in report["checks"]:
+        if check.get("check_id") == "protocol.lsl_discovery":
+            check["observed"]["source"] = "manifold-lsl-broker"
     return report
 
 

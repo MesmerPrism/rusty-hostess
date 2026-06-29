@@ -661,13 +661,14 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--makepad-launch-timeout-seconds", type=float, default=10.0)
     connectivity_probe_run.add_argument(
         "--lsl-source",
-        choices=["host-loopback", "quest-runtime", "external"],
+        choices=["host-loopback", "quest-runtime", "manifold-lsl-broker", "external"],
         default="host-loopback",
     )
     connectivity_probe_run.add_argument("--lsl-stream-name", default="RustyQCL081")
     connectivity_probe_run.add_argument("--lsl-stream-type", default="Markers")
     connectivity_probe_run.add_argument("--lsl-sample-count", type=int, default=16)
     connectivity_probe_run.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument("--lsl-manifold-root", default="")
     connectivity_probe_run.add_argument(
         "--osc-source",
         choices=["host-loopback", "quest-runtime", "external"],
@@ -829,11 +830,16 @@ def build_hostessctl_parser(
     )
     connectivity_probe_run_suite.add_argument("--skip-makepad-force-stop", action="store_true")
     connectivity_probe_run_suite.add_argument("--makepad-launch-timeout-seconds", type=float, default=10.0)
-    connectivity_probe_run_suite.add_argument("--lsl-source", choices=["host-loopback", "quest-runtime", "external"], default="host-loopback")
+    connectivity_probe_run_suite.add_argument(
+        "--lsl-source",
+        choices=["host-loopback", "quest-runtime", "manifold-lsl-broker", "external"],
+        default="host-loopback",
+    )
     connectivity_probe_run_suite.add_argument("--lsl-stream-name", default="RustyQCL081")
     connectivity_probe_run_suite.add_argument("--lsl-stream-type", default="Markers")
     connectivity_probe_run_suite.add_argument("--lsl-sample-count", type=int, default=16)
     connectivity_probe_run_suite.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--lsl-manifold-root", default="")
     connectivity_probe_run_suite.add_argument("--osc-source", choices=["host-loopback", "quest-runtime", "external"], default="host-loopback")
     connectivity_probe_run_suite.add_argument("--osc-address", default="/rusty/qcl083")
     connectivity_probe_run_suite.add_argument("--osc-port", type=int, default=0)

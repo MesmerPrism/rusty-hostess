@@ -85,6 +85,31 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(qcl080["missing_gates"], [])
         self.assertIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
 
+    def test_manifold_broker_lsl_promotes_qcl081(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl081_path = root / "qcl081-manifold-lsl-broker.json"
+            qcl081_path.write_text(json.dumps(promoted_qcl081_report()), encoding="utf-8")
+
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl081-promoted",
+                    input=[str(qcl081_path)],
+                    suite_run=[],
+                    fail_on_error=True,
+                )
+            )
+
+        qcl081 = row(matrix, "QCL-081")
+        self.assertEqual(qcl081["status"], "usable")
+        self.assertEqual(qcl081["promotion_state"], "promoted")
+        self.assertEqual(qcl081["evidence_tier"], "broker_owned")
+        self.assertTrue(qcl081["promotion_allowed"])
+        self.assertEqual(qcl081["missing_gates"], [])
+        self.assertIn("QCL-084", matrix["summary"]["pending_required_probe_ids"])
+
     def test_native_rust_broker_zero_mq_promotes_qcl084(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -257,6 +282,48 @@ def promoted_qcl084_report() -> dict[str, Any]:
         "bridge_route_evidence": {
             "$schema": "rusty.manifold.bridge.route_evidence.v1",
             "route_id": "bridge_route.stream.zeromq.pub_sub",
+            "status": "pass",
+            "stage_reports": [
+                {"stage": "sent", "status": "pass", "issue_codes": []},
+                {"stage": "transport_ok", "status": "pass", "issue_codes": []},
+                {"stage": "observed", "status": "pass", "issue_codes": []},
+            ],
+            "issues": [],
+        },
+        "issue_codes": [],
+    }
+    return report
+
+
+def promoted_qcl081_report() -> dict[str, Any]:
+    report = read_json(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-081-lsl-loopback-pass.json")
+    report["run_id"] = "qcl081-manifold-lsl-broker-promoted"
+    report["status"] = "pass"
+    report["transport"]["endpoint_source"] = "manifold-lsl-broker"
+    report["transport"]["local_endpoint"] = "manifold-lsl-broker"
+    report["transport"]["remote_endpoint"] = "manifold-lsl-broker"
+    report["host"]["adb_provider"] = ""
+    report["host"]["toolchain_profile"] = "hostessctl.connectivity_probe.qcl081"
+    report["promotion"]["allowed"] = True
+    report["promotion"]["reason"] = "QCL-081 proves Manifold-owned LSL producer/sample continuity"
+    report["lsl_payload_probe"] = {
+        "status": "pass",
+        "source": "manifold-lsl-broker",
+        "stream_name": "RustyQCL081",
+        "stream_type": "Markers",
+        "source_id": "rusty-manifold-qcl081-fixture",
+        "samples_requested": 16,
+        "samples_received": 16,
+        "loss_percent": 0.0,
+        "discovery_ms": 42,
+        "monotonic_sequences": True,
+        "received_sequences": list(range(16)),
+        "evidence_tier": "broker_owned",
+        "authority_owner": "rusty.manifold.transport",
+        "route_id": "bridge_route.clock.lsl.roundtrip_echo",
+        "bridge_route_evidence": {
+            "$schema": "rusty.manifold.bridge.route_evidence.v1",
+            "route_id": "bridge_route.clock.lsl.roundtrip_echo",
             "status": "pass",
             "stage_reports": [
                 {"stage": "sent", "status": "pass", "issue_codes": []},

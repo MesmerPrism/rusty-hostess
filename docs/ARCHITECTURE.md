@@ -253,6 +253,14 @@ vocabulary for permissions, service discovery, control writes, handoff timeout,
 and cleanup, but PMD physical sensor ownership remains with Manifold/PMB
 routes rather than QCL-051.
 The same lab module owns protocol-fit reports for LSL, OSC, and ZeroMQ.
+QCL-081 treats Manifold-owned LSL broker evidence the same way QCL-084 treats
+the Manifold ZeroMQ broker path: Hostess shells to the Manifold JSON report
+tool, requires `evidence_tier=broker_owned`,
+`authority.owner=rusty.manifold.transport`, passing bridge-route evidence,
+complete sample continuity, and monotonic received sequences, then wraps that
+report as Hostess connectivity evidence for WPF and protocol-matrix rendering.
+Quest-runtime LSL promotion remains separate and blocked until the Quest side
+can emit its own `pylsl/liblsl` sample-continuity evidence.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ

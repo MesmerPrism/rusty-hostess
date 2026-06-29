@@ -937,6 +937,8 @@ def live_lsl_report(
     source = str(getattr(args, "lsl_source", "host-loopback") or "host-loopback")
     if source == "quest-runtime" and lsl_probe_func is None:
         lsl_result = lsl_quest_runtime_preflight(args, run_captured_func)
+    elif source == "manifold-lsl-broker" and lsl_probe_func is None:
+        lsl_result = lsl_manifold_broker_probe(args, run_captured_func)
     else:
         lsl_probe = lsl_probe_func or lsl_discovery_sample_continuity
         lsl_result = lsl_probe(args)
@@ -964,6 +966,17 @@ def live_lsl_report(
             "error",
             "LSL discovery and sample continuity were not proven",
         )
+
+    lsl_route_evidence = object_value(lsl_result.get("bridge_route_evidence"))
+    lsl_broker_owned = (
+        source == "manifold-lsl-broker"
+        and str(lsl_result.get("evidence_tier") or "") == "broker_owned"
+        and str(lsl_result.get("authority_owner") or "") == "rusty.manifold.transport"
+        and str(lsl_route_evidence.get("status") or "") == "pass"
+    )
+    promotion_allowed = status == "pass" and (
+        source == "quest-runtime" or lsl_broker_owned
+    )
 
     report = base_report(args, observed_at=observed_at)
     report.update(
@@ -1001,11 +1014,13 @@ def live_lsl_report(
             "measurements": measurements_from_lsl_probe(lsl_result),
             "issues": issues,
             "promotion": {
-                "allowed": status == "pass" and source != "host-loopback",
+                "allowed": promotion_allowed,
                 "target": "quest.device_link LSL stream capability descriptor",
                 "reason": (
-                    "QCL-081 proves Quest/external LSL discovery and sample continuity"
-                    if status == "pass" and source != "host-loopback"
+                    "QCL-081 proves Quest-runtime LSL discovery and sample continuity"
+                    if promotion_allowed and source == "quest-runtime"
+                    else "QCL-081 proves Manifold-owned LSL producer/sample continuity"
+                    if promotion_allowed and source == "manifold-lsl-broker"
                     else "QCL-081 host loopback is a dependency/protocol check; Quest-owned LSL producer remains separate evidence"
                     if source == "host-loopback"
                     else "QCL-081 did not prove a Quest-owned LSL producer; Quest-side liblsl/pylsl runtime remains the blocking dependency"
@@ -5619,6 +5634,130 @@ def lsl_discovery_sample_continuity(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def lsl_manifold_broker_probe(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
+    source = "manifold-lsl-broker"
+    stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
+    stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
+    sample_count = max(1, int(getattr(args, "lsl_sample_count", 16) or 16))
+    timeout = max(0.5, float(getattr(args, "lsl_timeout_seconds", 5.0) or 5.0))
+    root = resolve_lsl_manifold_root(args)
+    if root is None:
+        return {
+            "status": "blocked",
+            "source": source,
+            "stream_name": stream_name,
+            "stream_type": stream_type,
+            "samples_requested": sample_count,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "discovery_ms": None,
+            "monotonic_sequences": False,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_root_missing"],
+            "notes": "Rusty Manifold root with tools/qcl081_lsl_clocked_samples.py was not found",
+        }
+
+    command = [
+        sys.executable,
+        str(root / "tools" / "qcl081_lsl_clocked_samples.py"),
+        "--json",
+        "--source",
+        source,
+        "--stream-name",
+        stream_name,
+        "--stream-type",
+        stream_type,
+        "--sample-count",
+        str(sample_count),
+        "--timeout-seconds",
+        str(timeout),
+    ]
+    try:
+        completed = run_captured_func(command, allow_failure=True, cwd=root)
+    except Exception as exc:
+        return {
+            "status": "blocked",
+            "source": source,
+            "stream_name": stream_name,
+            "stream_type": stream_type,
+            "samples_requested": sample_count,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "discovery_ms": None,
+            "monotonic_sequences": False,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_broker_failed"],
+            "notes": f"Manifold LSL broker-owned probe could not be launched: {exc}",
+        }
+
+    parsed = parse_probe_json_stdout(completed.stdout)
+    if not parsed:
+        return {
+            "status": "blocked",
+            "source": source,
+            "stream_name": stream_name,
+            "stream_type": stream_type,
+            "samples_requested": sample_count,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "discovery_ms": None,
+            "monotonic_sequences": False,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_lsl_report_missing"],
+            "notes": (completed.stderr or completed.stdout or "Manifold LSL broker-owned report missing").strip()[:800],
+        }
+
+    issue_codes = [str(code) for code in parsed.get("issue_codes", []) or []]
+    route_evidence = object_value(parsed.get("bridge_route_evidence"))
+    authority = object_value(parsed.get("authority"))
+    requested = int_value(parsed.get("samples_requested")) or sample_count
+    received = int_value(parsed.get("samples_received")) or 0
+    loss_percent = float_value(parsed.get("loss_percent"), default=100.0)
+    status = str(parsed.get("status") or "blocked")
+    broker_owned = (
+        str(parsed.get("evidence_tier") or "") == "broker_owned"
+        and str(authority.get("owner") or "") == "rusty.manifold.transport"
+        and str(route_evidence.get("status") or "") == "pass"
+    )
+    if completed.returncode != 0 and status == "pass":
+        status = "blocked"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_failed")
+    if status == "pass" and not broker_owned:
+        status = "warn"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_owned_evidence_missing")
+    if status == "pass" and (
+        received < requested
+        or loss_percent > 0.0
+        or parsed.get("monotonic_sequences") is False
+    ):
+        status = "warn"
+        issue_codes.append("hostess.issue.connectivity_probe.lsl_sample_continuity_degraded")
+    if status not in {"pass", "warn", "fail", "blocked"}:
+        status = "blocked"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_lsl_broker_status_invalid")
+
+    return {
+        "status": status,
+        "source": source,
+        "stream_name": parsed.get("stream_name") or stream_name,
+        "stream_type": parsed.get("stream_type") or stream_type,
+        "source_id": parsed.get("source_id"),
+        "samples_requested": requested,
+        "samples_received": received,
+        "loss_percent": loss_percent,
+        "discovery_ms": parsed.get("discovery_ms"),
+        "monotonic_sequences": parsed.get("monotonic_sequences"),
+        "received_sequences": parsed.get("received_sequences", []),
+        "evidence_tier": parsed.get("evidence_tier"),
+        "authority_owner": authority.get("owner"),
+        "route_id": parsed.get("route_id"),
+        "bridge_route_evidence": route_evidence,
+        "library_version": parsed.get("library_version"),
+        "issue_codes": dedupe_issue_codes(issue_codes),
+        "notes": (
+            "Manifold-owned LSL route evidence from rusty-manifold; "
+            "Hostess only wraps the emitted broker-owned report"
+        ),
+    }
+
+
 def lsl_quest_runtime_preflight(args: argparse.Namespace, run_captured_func: Any) -> dict[str, Any]:
     stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
     stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
@@ -6466,6 +6605,24 @@ def resolve_manifold_root(args: argparse.Namespace) -> Path | None:
     return None
 
 
+def resolve_lsl_manifold_root(args: argparse.Namespace) -> Path | None:
+    explicit = str(getattr(args, "lsl_manifold_root", "") or "").strip()
+    candidates = []
+    if explicit:
+        candidates.append(Path(explicit))
+    repo_root = Path(__file__).resolve().parents[2]
+    candidates.extend(
+        [
+            repo_root.parent / "rusty-manifold",
+            Path("S:/Work/repos/active/rusty-manifold"),
+        ]
+    )
+    for candidate in candidates:
+        if (candidate / "tools" / "qcl081_lsl_clocked_samples.py").is_file():
+            return candidate
+    return None
+
+
 def parse_native_zmq_loopback_stdout(stdout: str) -> dict[str, Any]:
     parsed: dict[str, Any] = {
         "messages_requested": None,
@@ -6647,6 +6804,13 @@ def int_value(value: Any) -> int | None:
         return None
 
 
+def float_value(value: Any, *, default: float) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def dedupe_issue_codes(values: list[str]) -> list[str]:
     result: list[str] = []
     for value in values:
@@ -6730,6 +6894,8 @@ def live_qcl081_status(checks: list[dict[str, Any]], *, source: str, device_ip: 
     if continuity_status == "warn":
         return "warn"
     if continuity_status == "pass":
+        if source == "manifold-lsl-broker":
+            return "pass"
         if source == "host-loopback" or not device_ip:
             return "warn"
         return "pass"

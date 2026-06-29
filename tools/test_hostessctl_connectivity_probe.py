@@ -555,6 +555,55 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertFalse(report["promotion"]["allowed"])
         self.assertEqual(validation["status"], "pass")
 
+    def test_live_lsl_report_promotes_manifold_lsl_broker_evidence(self) -> None:
+        report = live_lsl_report(
+            probe_args(
+                mode="live",
+                probe_id="QCL-081",
+                host_ip="",
+                lsl_source="manifold-lsl-broker",
+            ),
+            run_captured_func=FakeRunner(),
+            run_timeout_func=FakeTimeoutRunner(),
+            clock_func=fixed_datetime,
+            host_ipv4_func=lambda: [],
+            lsl_probe_func=fake_manifold_lsl_broker_pass,
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-081")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["transport"]["endpoint_source"], "manifold-lsl-broker")
+        self.assertEqual(check(report, "protocol.lsl_discovery")["status"], "pass")
+        self.assertEqual(check(report, "protocol.lsl_sample_continuity")["status"], "pass")
+        self.assertEqual(report["lsl_payload_probe"]["evidence_tier"], "broker_owned")
+        self.assertEqual(report["lsl_payload_probe"]["authority_owner"], "rusty.manifold.transport")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_live_lsl_report_does_not_promote_external_source(self) -> None:
+        report = live_lsl_report(
+            probe_args(
+                mode="live",
+                probe_id="QCL-081",
+                adb="adb.exe",
+                serial="serial-1",
+                host_ip="192.0.2.10",
+                lsl_source="external",
+            ),
+            run_captured_func=FakeRunner(),
+            run_timeout_func=FakeTimeoutRunner(),
+            clock_func=fixed_datetime,
+            host_ipv4_func=lambda: [{"ip": "192.0.2.10", "prefix_length": 24, "interface": "fixture"}],
+            lsl_probe_func=fake_external_lsl_pass,
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["transport"]["endpoint_source"], "external")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
     def test_live_osc_report_classifies_host_loopback_as_warning(self) -> None:
         report = live_osc_report(
             probe_args(mode="live", probe_id="QCL-083", host_ip="192.0.2.10"),
@@ -838,7 +887,9 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
                 "--udp-sender-source",
                 "makepad-runtime",
                 "--lsl-source",
-                "host-loopback",
+                "manifold-lsl-broker",
+                "--lsl-manifold-root",
+                "S:/Work/repos/active/rusty-manifold",
                 "--lsl-sample-count",
                 "8",
                 "--osc-source",
@@ -873,7 +924,8 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertEqual(args.udp_packet_count, 4)
         self.assertEqual(args.udp_sender_source, "makepad-runtime")
         self.assertEqual(args.udp_listener_helper, "")
-        self.assertEqual(args.lsl_source, "host-loopback")
+        self.assertEqual(args.lsl_source, "manifold-lsl-broker")
+        self.assertEqual(args.lsl_manifold_root, "S:/Work/repos/active/rusty-manifold")
         self.assertEqual(args.lsl_sample_count, 8)
         self.assertEqual(args.osc_source, "host-loopback")
         self.assertEqual(args.osc_message_count, 6)
@@ -1182,6 +1234,55 @@ def fake_lsl_loopback_pass(args: argparse.Namespace) -> dict[str, Any]:
     }
 
 
+def fake_manifold_lsl_broker_pass(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "status": "pass",
+        "source": "manifold-lsl-broker",
+        "stream_name": "RustyQCL081",
+        "stream_type": "Markers",
+        "source_id": "rusty-manifold-qcl081-fixture",
+        "samples_requested": 16,
+        "samples_received": 16,
+        "loss_percent": 0.0,
+        "discovery_ms": 42,
+        "monotonic_sequences": True,
+        "received_sequences": list(range(16)),
+        "evidence_tier": "broker_owned",
+        "authority_owner": "rusty.manifold.transport",
+        "route_id": "bridge_route.clock.lsl.roundtrip_echo",
+        "bridge_route_evidence": {
+            "$schema": "rusty.manifold.bridge.route_evidence.v1",
+            "route_id": "bridge_route.clock.lsl.roundtrip_echo",
+            "status": "pass",
+            "stage_reports": [
+                {"stage": "sent", "status": "pass", "issue_codes": []},
+                {"stage": "transport_ok", "status": "pass", "issue_codes": []},
+                {"stage": "observed", "status": "pass", "issue_codes": []},
+            ],
+            "issues": [],
+        },
+        "issue_codes": [],
+        "notes": "Manifold-owned LSL route evidence",
+    }
+
+
+def fake_external_lsl_pass(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "status": "pass",
+        "source": "external",
+        "stream_name": "RustyQCL081",
+        "stream_type": "Markers",
+        "samples_requested": 16,
+        "samples_received": 16,
+        "loss_percent": 0.0,
+        "discovery_ms": 42,
+        "monotonic_sequences": True,
+        "received_sequences": list(range(16)),
+        "issue_codes": [],
+        "notes": "External LSL stream without Quest-runtime or broker-owned authority",
+    }
+
+
 def fake_osc_loopback_pass(args: argparse.Namespace) -> dict[str, Any]:
     return {
         "status": "pass",
@@ -1276,6 +1377,7 @@ class FakeRunner:
         command: list[str],
         *,
         allow_failure: bool = False,
+        cwd: Path | None = None,
     ) -> subprocess.CompletedProcess[str]:
         text = " ".join(command)
         if "get-state" in text:
@@ -1586,6 +1688,7 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "lsl_stream_type": "Markers",
         "lsl_sample_count": 16,
         "lsl_timeout_seconds": 1.0,
+        "lsl_manifold_root": "",
         "osc_source": "host-loopback",
         "osc_address": "/rusty/qcl083",
         "osc_port": 0,

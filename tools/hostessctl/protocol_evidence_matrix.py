@@ -76,8 +76,9 @@ CAPABILITY_PROFILES: list[dict[str, Any]] = [
         "allowed_tiers": ["quest_runtime", "broker_owned"],
         "next_cli": (
             "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
-            "--mode live --probe-id QCL-081 --lsl-source quest-runtime "
-            "--out target\\connectivity-probe\\qcl081-live-quest-runtime.json"
+            "--mode live --probe-id QCL-081 --lsl-source manifold-lsl-broker "
+            "--lsl-manifold-root S:\\Work\\repos\\active\\rusty-manifold "
+            "--out target\\connectivity-probe\\qcl081-live-manifold-lsl-broker.json"
         ),
         "promotion_gate": (
             "QCL-081 host-loopback proves only dependency/protocol fit; promotion "
@@ -595,7 +596,7 @@ def evidence_tier(report: dict[str, Any]) -> str:
         return "quest_runtime"
     if endpoint_source == "quest-runtime":
         return "quest_runtime"
-    if endpoint_source == "native-rust-broker":
+    if endpoint_source in {"native-rust-broker", "manifold-lsl-broker"}:
         return "broker_owned"
     if probe_id in {"QCL-050", "QCL-051"} and promotion_allowed:
         return "quest_runtime"

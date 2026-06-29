@@ -141,6 +141,21 @@ discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
 show the same missing Quest-side `pylsl/liblsl` evidence that CLI automation
 sees.
 
+QCL-081 also has a broker-owned Manifold LSL evidence path for host-side
+fold-in validation. Hostess shells to the Manifold JSON report, requires
+`evidence_tier=broker_owned`, `authority.owner=rusty.manifold.transport`, and
+passing bridge-route evidence before promotion:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source manifold-lsl-broker --lsl-manifold-root S:\Work\repos\active\rusty-manifold --out target\connectivity-probe\qcl081-live-manifold-lsl-broker.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input target\connectivity-probe\qcl081-live-manifold-lsl-broker.json --out target\connectivity-probe\qcl081-live-manifold-lsl-broker.stream-capability.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --input target\connectivity-probe\qcl081-live-manifold-lsl-broker.json --out target\connectivity-probe\qcl081-live-manifold-lsl-broker.protocol-matrix.json --fail-on-error
+```
+
+This does not replace Quest-runtime evidence. `quest-runtime` remains blocked
+until a Quest-side LSL producer or product study adapter can emit runtime-owned
+sample continuity.
+
 QCL-084 is the generic ZeroMQ data-protocol slot. Its primary proof is the
 pure-Rust `rusty-manifold-zmq` PUB/SUB adapter consuming
 `rusty.manifold.bridge.route_descriptor.v1` route profiles from the Manifold
