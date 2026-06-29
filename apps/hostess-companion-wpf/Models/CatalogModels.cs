@@ -72,6 +72,15 @@ public sealed class CatalogIssue
 
     [JsonPropertyName("message")]
     public string Message { get; set; } = "";
+
+    [JsonPropertyName("module_id")]
+    public string ModuleId { get; set; } = "";
+
+    [JsonPropertyName("workspace_id")]
+    public string WorkspaceId { get; set; } = "";
+
+    [JsonPropertyName("transport_id")]
+    public string TransportId { get; set; } = "";
 }
 
 public sealed class CompanionModuleDescriptor

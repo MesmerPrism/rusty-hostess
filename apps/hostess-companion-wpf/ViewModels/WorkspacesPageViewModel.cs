@@ -14,6 +14,15 @@ public sealed class WorkspacesPageViewModel : OperatorPageViewModel<WorkspaceVie
         var modulesById = catalog.Modules
             .GroupBy(module => module.ModuleId, StringComparer.OrdinalIgnoreCase)
             .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase);
-        ReplaceRows(catalog.Workspaces.Select(workspace => new WorkspaceViewModel(workspace, modulesById)));
+        var issuesByWorkspace = catalog.Issues
+            .Where(issue => !string.IsNullOrWhiteSpace(issue.WorkspaceId))
+            .GroupBy(issue => issue.WorkspaceId, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(group => group.Key, group => group.ToList(), StringComparer.OrdinalIgnoreCase);
+        ReplaceRows(
+            catalog.Workspaces.Select(workspace =>
+            {
+                issuesByWorkspace.TryGetValue(workspace.WorkspaceId, out var issues);
+                return new WorkspaceViewModel(workspace, modulesById, issues);
+            }));
     }
 }

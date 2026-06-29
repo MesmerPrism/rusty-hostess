@@ -78,6 +78,76 @@ class HostessCtlCompanionCatalogTests(unittest.TestCase):
         self.assertEqual(validation["status"], "fail")
         self.assertTrue(any("may not claim authority" in error for error in validation["errors"]))
 
+    def test_workspace_unknown_module_is_report_issue_and_validation_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor_root = root / "descriptors"
+            descriptor_root.mkdir()
+            module_path = root / "module.json"
+            workspace = minimal_workspace()
+            workspace["workspace_id"] = "workspace.broken.unknown_module"
+            workspace["modules"] = [
+                {
+                    "module_id": "companion.unknown.module",
+                    "required": True,
+                    "prominent": True,
+                }
+            ]
+            write_json(module_path, minimal_module())
+            write_json(descriptor_root / "transport.json", minimal_transport())
+            write_json(descriptor_root / "workspace.json", workspace)
+
+            report = build_companion_catalog_report(
+                catalog_args(
+                    out=str(root / "catalog.json"),
+                    hostess_descriptor=str(module_path),
+                    gui_descriptors_root=str(descriptor_root),
+                ),
+                clock_ms_func=FixedClock(),
+            )
+            validation = validate_companion_catalog_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        issue = next(
+            issue
+            for issue in report["issues"]
+            if issue["code"] == "hostess.issue.companion_catalog.workspace_unknown_module"
+        )
+        self.assertEqual(issue["workspace_id"], "workspace.broken.unknown_module")
+        self.assertEqual(issue["module_id"], "companion.unknown.module")
+        self.assertEqual(validation["status"], "fail")
+        self.assertTrue(
+            any("references unknown module companion.unknown.module" in error for error in validation["errors"])
+        )
+
+    def test_fail_on_error_still_blocks_invalid_catalog_in_validation_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor_root = root / "descriptors"
+            descriptor_root.mkdir()
+            module_path = root / "module.json"
+            workspace = minimal_workspace()
+            workspace["modules"] = [
+                {
+                    "module_id": "companion.unknown.module",
+                    "required": True,
+                    "prominent": True,
+                }
+            ]
+            write_json(module_path, minimal_module())
+            write_json(descriptor_root / "transport.json", minimal_transport())
+            write_json(descriptor_root / "workspace.json", workspace)
+            status = hostessctl.dispatch_command(
+                catalog_args(
+                    out=str(root / "catalog.json"),
+                    hostess_descriptor=str(module_path),
+                    gui_descriptors_root=str(descriptor_root),
+                    fail_on_error=True,
+                )
+            )
+
+        self.assertEqual(status, 2)
+
     def test_parser_accepts_companion_catalog_command(self) -> None:
         args = build_parser().parse_args(
             [

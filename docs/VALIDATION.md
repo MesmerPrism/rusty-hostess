@@ -58,10 +58,15 @@ python tools\hostessctl\hostessctl.py companion-session run --out target\compani
 dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
 
+`companion-catalog --fail-on-error` is the automation gate for descriptor
+integrity. The catalog report also carries semantic issue rows for workspace
+composition failures, such as unknown module references, so WPF can render the
+same invalid-descriptor evidence for operators without owning validation logic.
+
 The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
 evidence promotion, connectivity suite row grouping, and catalog-backed
-workspace composition rows.
+workspace composition and validation-issue rows.
 
 Every new WPF operator action needs UI-equivalent CLI coverage before it is
 accepted as an operator capability. The minimum validation shape is: a

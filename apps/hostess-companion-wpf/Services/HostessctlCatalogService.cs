@@ -36,7 +36,6 @@ public sealed class HostessctlCatalogService
         startInfo.ArgumentList.Add(reportPath.FullName);
         startInfo.ArgumentList.Add("--frontend");
         startInfo.ArgumentList.Add("wpf");
-        startInfo.ArgumentList.Add("--fail-on-error");
 
         using var process = Process.Start(startInfo)
             ?? throw new InvalidOperationException("Failed to start hostessctl catalog process.");

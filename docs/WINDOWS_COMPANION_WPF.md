@@ -88,13 +88,17 @@ python tools\hostessctl\hostessctl.py companion-catalog --out <catalog.json>
 
 The shell reads `rusty.hostess.companion.readiness_report.v1` and
 `rusty.hostess.companion.catalog.v1`.
+The WPF refresh path intentionally does not pass `--fail-on-error` for the
+catalog call, so invalid descriptor evidence can still be rendered for human
+inspection. CI and release validation still use `--fail-on-error`.
 
 The Workspaces page renders the `workspaces` section of
 `rusty.hostess.companion.catalog.v1`. It shows workspace ids, module counts,
 required/prominent composition, supported frontends, sensitivity, and source
-paths. Workspace descriptors compose existing modules; WPF does not fork module
-implementation, redefine transport semantics, or treat unresolved module ids as
-accepted capability.
+paths. It also renders catalog-emitted workspace validation issues such as
+unknown module references. Workspace descriptors compose existing modules; WPF
+does not fork module implementation, redefine transport semantics, or treat
+unresolved module ids as accepted capability.
 
 The Session page calls:
 

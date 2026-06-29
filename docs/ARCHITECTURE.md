@@ -173,6 +173,9 @@ Windows companion descriptor discovery lives in
 workspace, and transport descriptors, validates that GUI/WPF do not claim
 command or route authority, and gives WPF, Makepad, CLI, and future frontends a
 shared catalog for module lists, transport costs, and evidence artifact panels.
+The same report carries descriptor semantic issues, including workspace
+references to unknown modules, so operator frontends can render invalid catalog
+evidence without becoming the validator.
 Windows companion session orchestration lives in
 `tools/hostessctl/companion_session.py`. It emits
 `rusty.hostess.companion.session.v1` by composing readiness, descriptor

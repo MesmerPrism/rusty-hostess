@@ -401,6 +401,8 @@
                     Visibility="{Binding IsWorkspacesSelected, Converter={StaticResource BooleanToVisibility}}">
             <DataGrid.Columns>
               <DataGridTextColumn Header="Workspace" Binding="{Binding Title}" Width="220"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding ValidationStatus}" Width="80"/>
+              <DataGridTextColumn Header="Issues" Binding="{Binding IssueCount}" Width="70"/>
               <DataGridTextColumn Header="Modules" Binding="{Binding ModuleCount}" Width="80"/>
               <DataGridTextColumn Header="Required" Binding="{Binding RequiredCount}" Width="80"/>
               <DataGridTextColumn Header="Prominent" Binding="{Binding ProminentCount}" Width="90"/>

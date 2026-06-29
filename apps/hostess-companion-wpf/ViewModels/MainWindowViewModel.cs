@@ -462,7 +462,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 $"{report.Profile}: {report.Summary.Pass} pass, {report.Summary.Warn} warn, " +
                 $"{report.Summary.Fail} fail, {report.Summary.Skipped} skipped, " +
                 $"{report.Summary.Blocking} blocking. " +
-                $"Catalog: {catalog.Summary.Modules} modules, {catalog.Summary.Transports} transports, " +
+                $"Catalog: {catalog.Summary.Modules} modules, {catalog.Summary.Workspaces} workspaces, " +
+                $"{catalog.Summary.Transports} transports, {catalog.Summary.Issues} issues, " +
                 $"{EvidenceArtifacts.Count} evidence artifacts.";
         }
         catch (Exception ex)

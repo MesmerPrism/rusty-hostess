@@ -80,6 +80,7 @@ def build_companion_catalog_report(
     modules = sorted(descriptors["modules"].values(), key=lambda row: row["module_id"])
     workspaces = sorted(descriptors["workspaces"].values(), key=lambda row: row["workspace_id"])
     transports = sorted(descriptors["transports"].values(), key=lambda row: row["transport_id"])
+    append_catalog_semantic_issues(modules, workspaces, transports, issues)
     summary = {
         "modules": len(modules),
         "workspaces": len(workspaces),
@@ -111,52 +112,92 @@ def validate_companion_catalog_report(report: dict[str, Any]) -> dict[str, Any]:
     workspaces = [row for row in report.get("workspaces", []) if isinstance(row, dict)]
     transports = [row for row in report.get("transports", []) if isinstance(row, dict)]
     errors: list[str] = []
+    seen_errors: set[str] = set()
+
+    def add_error(message: str) -> None:
+        if message not in seen_errors:
+            seen_errors.add(message)
+            errors.append(message)
+
     if report.get("$schema") != HOSTESS_COMPANION_CATALOG_SCHEMA:
-        errors.append("unsupported companion catalog schema")
+        add_error("unsupported companion catalog schema")
     if not modules:
-        errors.append("catalog must contain at least one module descriptor")
+        add_error("catalog must contain at least one module descriptor")
     if not transports:
-        errors.append("catalog must contain at least one transport capability descriptor")
+        add_error("catalog must contain at least one transport capability descriptor")
 
     module_ids = set()
     for row in modules:
         module_id = str(row.get("module_id") or "")
         if not module_id:
-            errors.append("module descriptor missing module_id")
+            add_error("module descriptor missing module_id")
         module_ids.add(module_id)
         if row.get("schema") != GUI_COMPANION_MODULE_DESCRIPTOR_SCHEMA:
-            errors.append(f"module {module_id or '<unknown>'} has unsupported schema")
+            add_error(f"module {module_id or '<unknown>'} has unsupported schema")
+        if not str(row.get("title") or "").strip():
+            add_error(f"module {module_id or '<unknown>'} must declare a title")
+        if not row.get("supported_frontends"):
+            add_error(f"module {module_id or '<unknown>'} must list at least one supported frontend")
+        if not row.get("sensitivity"):
+            add_error(f"module {module_id or '<unknown>'} must declare at least one sensitivity tag")
         if row.get("authority_role") == "authority":
-            errors.append(f"module {module_id or '<unknown>'} may not claim authority")
+            add_error(f"module {module_id or '<unknown>'} may not claim authority")
         if row.get("owner_lane") == "gui" and row.get("command_requests"):
-            errors.append(f"module {module_id or '<unknown>'} uses GUI as command authority")
+            add_error(f"module {module_id or '<unknown>'} uses GUI as command authority")
 
     for row in workspaces:
         workspace_id = str(row.get("workspace_id") or "")
         if row.get("schema") != GUI_COMPANION_WORKSPACE_DESCRIPTOR_SCHEMA:
-            errors.append(f"workspace {workspace_id or '<unknown>'} has unsupported schema")
-        for selection in row.get("modules", []):
+            add_error(f"workspace {workspace_id or '<unknown>'} has unsupported schema")
+        if not workspace_id:
+            add_error("workspace descriptor missing workspace_id")
+        if not str(row.get("title") or "").strip():
+            add_error(f"workspace {workspace_id or '<unknown>'} must declare a title")
+        if not row.get("supported_frontends"):
+            add_error(f"workspace {workspace_id or '<unknown>'} must list at least one supported frontend")
+        if not row.get("sensitivity"):
+            add_error(f"workspace {workspace_id or '<unknown>'} must declare at least one sensitivity tag")
+        selections = row.get("modules", [])
+        if not isinstance(selections, list) or not selections:
+            add_error(f"workspace {workspace_id or '<unknown>'} must select at least one module")
+        for selection in (selections if isinstance(selections, list) else []):
             if isinstance(selection, dict):
                 module_id = str(selection.get("module_id") or "")
-                if module_id not in module_ids:
-                    errors.append(
+                if not module_id:
+                    add_error(f"workspace {workspace_id or '<unknown>'} has a module selection without module_id")
+                elif module_id not in module_ids:
+                    add_error(
                         f"workspace {workspace_id or '<unknown>'} references unknown module {module_id}"
                     )
 
     for row in transports:
         transport_id = str(row.get("transport_id") or "")
         if not transport_id:
-            errors.append("transport descriptor missing transport_id")
+            add_error("transport descriptor missing transport_id")
         if row.get("schema") != GUI_COMPANION_TRANSPORT_CAPABILITY_SCHEMA:
-            errors.append(f"transport {transport_id or '<unknown>'} has unsupported schema")
+            add_error(f"transport {transport_id or '<unknown>'} has unsupported schema")
+        if not str(row.get("title") or "").strip():
+            add_error(f"transport {transport_id or '<unknown>'} must declare a title")
         if row.get("authority_role") == "authority":
-            errors.append(f"transport {transport_id or '<unknown>'} may not claim authority")
+            add_error(f"transport {transport_id or '<unknown>'} may not claim authority")
+        if not row.get("route_ids"):
+            add_error(f"transport {transport_id or '<unknown>'} must list at least one external route id")
+        if not row.get("required_evidence_stages"):
+            add_error(f"transport {transport_id or '<unknown>'} must list required evidence stages")
+        if not row.get("supported_frontends"):
+            add_error(f"transport {transport_id or '<unknown>'} must list at least one supported frontend")
+        if not row.get("sensitivity"):
+            add_error(f"transport {transport_id or '<unknown>'} must declare at least one sensitivity tag")
         for route_id in row.get("route_ids", []):
             if str(route_id).startswith("rusty.gui."):
-                errors.append(f"transport {transport_id or '<unknown>'} uses GUI as route authority")
+                add_error(f"transport {transport_id or '<unknown>'} uses GUI as route authority")
         if row.get("family") == "media_data_plane" and row.get("payload_rate") == "low_rate_json":
-            errors.append(
+            add_error(
                 f"transport {transport_id or '<unknown>'} collapses media data-plane payloads into JSON"
+            )
+        if row.get("plane") == "control" and row.get("payload_rate") == "high_rate_binary":
+            add_error(
+                f"transport {transport_id or '<unknown>'} cannot use high-rate binary payloads on the control plane"
             )
 
     issue_errors = [
@@ -164,7 +205,8 @@ def validate_companion_catalog_report(report: dict[str, Any]) -> dict[str, Any]:
         for issue in report.get("issues", [])
         if isinstance(issue, dict) and issue.get("severity") == "error"
     ]
-    errors.extend(issue_errors)
+    for message in issue_errors:
+        add_error(message)
     return {
         "$schema": HOSTESS_COMPANION_CATALOG_VALIDATION_SCHEMA,
         "status": "pass" if not errors else "fail",
@@ -174,6 +216,216 @@ def validate_companion_catalog_report(report: dict[str, Any]) -> dict[str, Any]:
         "transport_count": len(transports),
         "errors": errors,
     }
+
+
+def append_catalog_semantic_issues(
+    modules: list[dict[str, Any]],
+    workspaces: list[dict[str, Any]],
+    transports: list[dict[str, Any]],
+    issues: list[dict[str, Any]],
+) -> None:
+    module_ids = {
+        str(row.get("module_id") or "")
+        for row in modules
+        if isinstance(row.get("module_id"), str) and str(row.get("module_id")).strip()
+    }
+    for row in modules:
+        module_id = str(row.get("module_id") or "")
+        if not str(row.get("title") or "").strip():
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.module_missing_title",
+                    f"module {module_id or '<unknown>'} must declare a title",
+                    module_id=module_id,
+                )
+            )
+        if not row.get("supported_frontends"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.module_missing_frontends",
+                    f"module {module_id or '<unknown>'} must list at least one supported frontend",
+                    module_id=module_id,
+                )
+            )
+        if not row.get("sensitivity"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.module_missing_sensitivity",
+                    f"module {module_id or '<unknown>'} must declare at least one sensitivity tag",
+                    module_id=module_id,
+                )
+            )
+        if row.get("authority_role") == "authority":
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.module_claims_authority",
+                    f"module {module_id or '<unknown>'} may not claim authority",
+                    module_id=module_id,
+                )
+            )
+        if row.get("owner_lane") == "gui" and row.get("command_requests"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.module_gui_command_authority",
+                    f"module {module_id or '<unknown>'} uses GUI as command authority",
+                    module_id=module_id,
+                )
+            )
+
+    for row in workspaces:
+        workspace_id = str(row.get("workspace_id") or "")
+        if not str(row.get("title") or "").strip():
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.workspace_missing_title",
+                    f"workspace {workspace_id or '<unknown>'} must declare a title",
+                    workspace_id=workspace_id,
+                )
+            )
+        if not row.get("supported_frontends"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.workspace_missing_frontends",
+                    f"workspace {workspace_id or '<unknown>'} must list at least one supported frontend",
+                    workspace_id=workspace_id,
+                )
+            )
+        if not row.get("sensitivity"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.workspace_missing_sensitivity",
+                    f"workspace {workspace_id or '<unknown>'} must declare at least one sensitivity tag",
+                    workspace_id=workspace_id,
+                )
+            )
+        selections = row.get("modules", [])
+        if not isinstance(selections, list) or not selections:
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.workspace_missing_modules",
+                    f"workspace {workspace_id or '<unknown>'} must select at least one module",
+                    workspace_id=workspace_id,
+                )
+            )
+            continue
+        for selection in selections:
+            if not isinstance(selection, dict):
+                continue
+            module_id = str(selection.get("module_id") or "")
+            if not module_id:
+                issues.append(
+                    catalog_issue(
+                        "error",
+                        "hostess.issue.companion_catalog.workspace_module_missing_id",
+                        f"workspace {workspace_id or '<unknown>'} has a module selection without module_id",
+                        workspace_id=workspace_id,
+                    )
+                )
+            elif module_id not in module_ids:
+                issues.append(
+                    catalog_issue(
+                        "error",
+                        "hostess.issue.companion_catalog.workspace_unknown_module",
+                        f"workspace {workspace_id or '<unknown>'} references unknown module {module_id}",
+                        workspace_id=workspace_id,
+                        module_id=module_id,
+                    )
+                )
+
+    for row in transports:
+        transport_id = str(row.get("transport_id") or "")
+        if not str(row.get("title") or "").strip():
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_missing_title",
+                    f"transport {transport_id or '<unknown>'} must declare a title",
+                    transport_id=transport_id,
+                )
+            )
+        if row.get("authority_role") == "authority":
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_claims_authority",
+                    f"transport {transport_id or '<unknown>'} may not claim authority",
+                    transport_id=transport_id,
+                )
+            )
+        if not row.get("route_ids"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_missing_routes",
+                    f"transport {transport_id or '<unknown>'} must list at least one external route id",
+                    transport_id=transport_id,
+                )
+            )
+        for route_id in row.get("route_ids", []):
+            if str(route_id).startswith("rusty.gui."):
+                issues.append(
+                    catalog_issue(
+                        "error",
+                        "hostess.issue.companion_catalog.transport_gui_route_authority",
+                        f"transport {transport_id or '<unknown>'} uses GUI as route authority",
+                        transport_id=transport_id,
+                    )
+                )
+                break
+        if not row.get("required_evidence_stages"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_missing_evidence_stages",
+                    f"transport {transport_id or '<unknown>'} must list required evidence stages",
+                    transport_id=transport_id,
+                )
+            )
+        if not row.get("supported_frontends"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_missing_frontends",
+                    f"transport {transport_id or '<unknown>'} must list at least one supported frontend",
+                    transport_id=transport_id,
+                )
+            )
+        if not row.get("sensitivity"):
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_missing_sensitivity",
+                    f"transport {transport_id or '<unknown>'} must declare at least one sensitivity tag",
+                    transport_id=transport_id,
+                )
+            )
+        if row.get("family") == "media_data_plane" and row.get("payload_rate") == "low_rate_json":
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_media_low_rate_json",
+                    f"transport {transport_id or '<unknown>'} collapses media data-plane payloads into JSON",
+                    transport_id=transport_id,
+                )
+            )
+        if row.get("plane") == "control" and row.get("payload_rate") == "high_rate_binary":
+            issues.append(
+                catalog_issue(
+                    "error",
+                    "hostess.issue.companion_catalog.transport_high_rate_control_payload",
+                    f"transport {transport_id or '<unknown>'} cannot use high-rate binary payloads on the control plane",
+                    transport_id=transport_id,
+                )
+            )
 
 
 def load_catalog_descriptors(
@@ -282,12 +534,14 @@ def supports_frontend(descriptor: dict[str, Any], frontend: str) -> bool:
     return not isinstance(frontends, list) or frontend in frontends
 
 
-def catalog_issue(severity: str, code: str, message: str) -> dict[str, Any]:
-    return {
+def catalog_issue(severity: str, code: str, message: str, **fields: Any) -> dict[str, Any]:
+    issue = {
         "severity": severity,
         "code": code,
         "message": message,
     }
+    issue.update({key: value for key, value in fields.items() if value})
+    return issue
 
 
 def default_gui_descriptors_root(repo: Path) -> Path:

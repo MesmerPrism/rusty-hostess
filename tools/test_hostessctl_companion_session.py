@@ -551,6 +551,7 @@ def write_descriptor_root(root: Path) -> Path:
                     "applied",
                 ],
                 "supported_frontends": ["wpf", "makepad", "cli"],
+                "sensitivity": ["public_safe"],
             }
         ),
         encoding="utf-8",

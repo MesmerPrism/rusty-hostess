@@ -418,6 +418,17 @@ static void PageViewModelsProjectBackendReports()
                 SourcePath = "descriptors/workspaces/fixture.json",
             },
         ],
+        Issues =
+        [
+            new CatalogIssue
+            {
+                Severity = "error",
+                Code = "hostess.issue.companion_catalog.workspace_unknown_module",
+                Message = "workspace workspace.fixture references unknown module module.background",
+                WorkspaceId = "workspace.fixture",
+                ModuleId = "module.background",
+            },
+        ],
     };
 
     var evidencePage = new EvidencePageViewModel();
@@ -435,6 +446,10 @@ static void PageViewModelsProjectBackendReports()
         "workspace detail must resolve known module titles from the catalog");
     Assert(workspace.ModuleSummary.Contains("module.background (unresolved descriptor)", StringComparison.Ordinal),
         "workspace detail must keep unresolved module ids visible instead of inventing module semantics");
+    Assert(workspace.ValidationStatus == "fail" && workspace.IssueCount == 1,
+        "workspace row must project catalog-emitted validation issues");
+    Assert(workspace.DetailText.Contains("workspace_unknown_module", StringComparison.Ordinal),
+        "workspace detail must render the catalog issue code for operator inspection");
 
     var sessionPage = new SessionPageViewModel();
     sessionPage.ApplySession(
