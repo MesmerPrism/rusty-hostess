@@ -832,7 +832,7 @@ def projection_status(
     if any(issue_row.get("severity") == "error" for issue_row in issues):
         return "fail"
     statuses = {str(source.get("status") or "") for source in sources}
-    if "fail" in statuses or "unreadable" in statuses:
+    if "unreadable" in statuses:
         return "fail"
     if statuses - {"pass", "usable", "usable_with_warnings"}:
         return "warn"

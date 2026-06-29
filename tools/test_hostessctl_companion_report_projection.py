@@ -165,6 +165,41 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertFalse(promotion["details"]["allowed"])
         self.assertIn("gate.qcl-030.promotion_allowed", promotion["issue_codes"])
 
+    def test_projection_warns_for_failed_source_evidence(self) -> None:
+        report = build_companion_report_projection(
+            argparse.Namespace(
+                out="target/companion-report/damaged-source-projection.json",
+                validation_out=None,
+                projection_id="projection.failed-source",
+                frontend="wpf",
+                device_link=[],
+                connectivity_probe=[
+                    str(
+                        REPO_ROOT
+                        / "fixtures"
+                        / "damaged"
+                        / "connectivity-probe-media-high-rate-json-misuse.json"
+                    )
+                ],
+                protocol_matrix=[],
+                include_protocol_matrix_inputs=False,
+                suite_run=[],
+                fail_on_error=True,
+            ),
+            clock_func=fixed_clock,
+        )
+        validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(report["status"], "warn")
+        self.assertEqual(report["summary"]["source_status_counts"]["fail"], 1)
+        failed_check = find_row(report, "connectivity_probe.check.QCL-082.protocol.media_binary_transport")
+        self.assertEqual(failed_check["status"], "fail")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_high_rate_json_payload",
+            failed_check["issue_codes"],
+        )
+
     def test_cli_writes_projection_and_validation_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
