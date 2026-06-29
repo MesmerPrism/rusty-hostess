@@ -266,15 +266,24 @@ resolver:
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
   --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-080 `
   --latest-probe-id QCL-081 `
   --latest-probe-id QCL-083 `
   --latest-probe-id QCL-084 `
+  --latest-device-link-dir target\companion-session `
+  --latest-stream-capability-dir target\connectivity-probe `
+  --latest-stream-probe-id QCL-080 `
   --out target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json
 ```
 
-The resolver selects the newest valid QCL report for each requested probe id
-and leaves all promotion decisions in `hostessctl`; WPF only renders the
-resulting rows, gates, descriptors, and source artifact paths.
+The resolver selects the newest valid QCL report for each requested probe id,
+the newest device-link report from recent companion sessions, and the newest
+stream descriptor plus its source probe report for requested probe ids. This
+lets the Protocol Matrix action reuse a previous WPF Session run for QCL-000
+command authority and a previous QCL-080 stream-capability run for product UDP
+evidence without moving artifact scanning or promotion rules into WPF. If those
+live artifacts are missing, the fixture suite rows remain visible as candidates
+with missing gates.
 
 ## Build
 

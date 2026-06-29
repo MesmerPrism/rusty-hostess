@@ -143,19 +143,30 @@ same CLI artifact resolver as WPF:
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --suite-run target\connectivity-probe\device-link-suite-run.json `
   --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-080 `
   --latest-probe-id QCL-081 `
   --latest-probe-id QCL-083 `
   --latest-probe-id QCL-084 `
+  --latest-device-link-dir target\companion-session `
+  --latest-stream-capability-dir target\connectivity-probe `
+  --latest-stream-probe-id QCL-080 `
   --out target\connectivity-probe\device-link-protocol-matrix.json `
   --fail-on-error
 ```
 
 `--latest-artifact-dir` selects the newest valid
 `rusty.quest.connectivity_topology_probe.v1` report per requested probe id and
-ignores protocol-matrix, validation, and stream-capability sidecars. The WPF
-Protocol Matrix action runs the fixture suite for baseline coverage and then
-calls this route so CLI automation and human operators inspect the same
-promotion rows.
+ignores protocol-matrix, validation, and stream-capability sidecars.
+`--latest-device-link-dir` selects the newest
+`rusty.quest.device_link.v1` report, and `--latest-stream-capability-dir`
+selects the newest stream descriptor per requested probe id plus that
+descriptor's source probe report. The WPF Protocol Matrix action runs the
+fixture suite for baseline coverage and then calls this route so CLI
+automation and human operators inspect the same promotion rows.
+When a recent WPF session and QCL-080 stream-capability run exist, this route
+can reproduce the consolidated operator matrix: QCL-000 from live device-link,
+QCL-080 from live product UDP evidence, and QCL-081/QCL-083/QCL-084 from
+their latest promoted protocol artifacts.
 
 The QCL-081 stream-capability route is still useful before promotion: blocked
 Quest-runtime preflight artifacts validate as descriptors with explicit LSL

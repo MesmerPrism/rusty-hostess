@@ -300,8 +300,11 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "RunProtocolMatrixCommand"
             && action.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal)
             && action.CliRoute.Contains("--latest-artifact-dir", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal)),
-        "protocol matrix must stay backed by the latest-artifact CLI route");
+            && action.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)),
+        "protocol matrix must stay backed by the consolidated latest-artifact CLI route");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();

@@ -294,9 +294,6 @@ def latest_artifact_paths(args: argparse.Namespace) -> list[Path]:
         for raw in argument_values(getattr(args, "latest_artifact_dir", None))
         if raw.strip()
     ]
-    if not artifact_dirs:
-        return []
-
     probe_ids = [
         raw.strip()
         for raw in argument_values(getattr(args, "latest_probe_id", None))
@@ -308,6 +305,8 @@ def latest_artifact_paths(args: argparse.Namespace) -> list[Path]:
     selected: list[Path] = []
     for artifact_dir in artifact_dirs:
         selected.extend(latest_probe_reports_in_dir(artifact_dir, probe_ids))
+    selected.extend(latest_device_link_paths(args))
+    selected.extend(latest_stream_capability_paths(args))
     return selected
 
 
@@ -333,6 +332,104 @@ def latest_probe_reports_in_dir(artifact_dir: Path, probe_ids: list[str]) -> lis
             latest[probe_id] = candidate
 
     return [latest[probe_id][2] for probe_id in probe_ids if probe_id in latest]
+
+
+def latest_device_link_paths(args: argparse.Namespace) -> list[Path]:
+    selected: list[Path] = []
+    for raw in argument_values(getattr(args, "latest_device_link_dir", None)):
+        if raw.strip():
+            selected.extend(latest_payloads_in_dir(Path(raw), "device_link_report"))
+    return selected
+
+
+def latest_stream_capability_paths(args: argparse.Namespace) -> list[Path]:
+    artifact_dirs = [
+        Path(raw)
+        for raw in argument_values(getattr(args, "latest_stream_capability_dir", None))
+        if raw.strip()
+    ]
+    if not artifact_dirs:
+        return []
+
+    probe_ids = [
+        raw.strip()
+        for raw in argument_values(getattr(args, "latest_stream_probe_id", None))
+        if raw.strip()
+    ]
+    if not probe_ids:
+        probe_ids = [str(profile["probe_id"]) for profile in CAPABILITY_PROFILES]
+
+    selected: list[Path] = []
+    for artifact_dir in artifact_dirs:
+        selected.extend(latest_stream_capabilities_in_dir(artifact_dir, probe_ids))
+    return selected
+
+
+def latest_payloads_in_dir(artifact_dir: Path, role: str) -> list[Path]:
+    if not artifact_dir.exists() or not artifact_dir.is_dir():
+        return []
+    latest: tuple[int, str, Path] | None = None
+    for path in artifact_dir.rglob("*.json"):
+        payload = read_json(path)
+        if classify_payload(payload) != role:
+            continue
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        candidate = (mtime_ns, str(path), path)
+        if latest is None or candidate > latest:
+            latest = candidate
+    return [latest[2]] if latest else []
+
+
+def latest_stream_capabilities_in_dir(artifact_dir: Path, probe_ids: list[str]) -> list[Path]:
+    if not artifact_dir.exists() or not artifact_dir.is_dir():
+        return []
+
+    requested = set(probe_ids)
+    latest: dict[str, tuple[int, str, Path]] = {}
+    for path in artifact_dir.rglob("*.json"):
+        payload = read_json(path)
+        if classify_payload(payload) != "stream_capability_descriptor":
+            continue
+        source_probe = object_value(payload.get("source_probe"))
+        probe_id = str(source_probe.get("probe_id") or "")
+        if probe_id not in requested:
+            continue
+        try:
+            mtime_ns = path.stat().st_mtime_ns
+        except OSError:
+            mtime_ns = 0
+        candidate = (mtime_ns, str(path), path)
+        if probe_id not in latest or candidate > latest[probe_id]:
+            latest[probe_id] = candidate
+
+    selected: list[Path] = []
+    for probe_id in probe_ids:
+        if probe_id not in latest:
+            continue
+        descriptor_path = latest[probe_id][2]
+        descriptor = read_json(descriptor_path)
+        source_path = descriptor_source_probe_path(descriptor_path, descriptor)
+        if source_path:
+            selected.append(source_path)
+        selected.append(descriptor_path)
+    return selected
+
+
+def descriptor_source_probe_path(descriptor_path: Path, descriptor: dict[str, Any]) -> Path | None:
+    source_probe = object_value(descriptor.get("source_probe"))
+    raw_path = str(source_probe.get("artifact_path") or "")
+    if not raw_path:
+        return None
+    path = Path(raw_path)
+    if path.exists() or path.is_absolute():
+        return path
+    candidate = descriptor_path.parent / path.name
+    if candidate.exists():
+        return candidate
+    return path
 
 
 def build_matrix_row(profile: dict[str, Any], artifacts: dict[str, Any]) -> dict[str, Any]:
