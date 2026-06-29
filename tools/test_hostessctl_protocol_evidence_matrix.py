@@ -220,6 +220,8 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
 
             stale_device_link_path = session_root / "device-link-stale.json"
             latest_device_link_path = session_root / "device-link-latest.json"
+            qcl050_path = connectivity_root / "qcl050-latest.json"
+            qcl051_path = connectivity_root / "qcl051-latest.json"
             qcl080_path = connectivity_root / "qcl080-live.json"
             qcl080_descriptor_path = nested_root / "qcl080-live.stream-capability.json"
             stale_qcl080_descriptor_path = connectivity_root / "qcl080-stale.stream-capability.json"
@@ -258,17 +260,41 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
             stale_qcl080_descriptor["status"] = "blocked"
             stale_qcl080_descriptor_path.write_text(json.dumps(stale_qcl080_descriptor), encoding="utf-8")
 
+            qcl050_path.write_text(
+                json.dumps(
+                    read_json(
+                        REPO_ROOT
+                        / "fixtures"
+                        / "connectivity-probe"
+                        / "qcl-050-rfcomm-control-pass.json"
+                    )
+                ),
+                encoding="utf-8",
+            )
+            qcl051_path.write_text(
+                json.dumps(
+                    read_json(
+                        REPO_ROOT
+                        / "fixtures"
+                        / "connectivity-probe"
+                        / "qcl-051-ble-gatt-status-pass.json"
+                    )
+                ),
+                encoding="utf-8",
+            )
             qcl081_path.write_text(json.dumps(promoted_qcl081_report()), encoding="utf-8")
             qcl083_path.write_text(json.dumps(promoted_qcl083_report()), encoding="utf-8")
             qcl084_path.write_text(json.dumps(promoted_qcl084_report()), encoding="utf-8")
             os.utime(stale_device_link_path, (1, 1))
             os.utime(latest_device_link_path, (2, 2))
             os.utime(stale_qcl080_descriptor_path, (3, 3))
-            os.utime(qcl080_path, (4, 4))
-            os.utime(qcl080_descriptor_path, (5, 5))
-            os.utime(qcl081_path, (6, 6))
-            os.utime(qcl083_path, (7, 7))
-            os.utime(qcl084_path, (8, 8))
+            os.utime(qcl050_path, (4, 4))
+            os.utime(qcl051_path, (5, 5))
+            os.utime(qcl080_path, (6, 6))
+            os.utime(qcl080_descriptor_path, (7, 7))
+            os.utime(qcl081_path, (8, 8))
+            os.utime(qcl083_path, (9, 9))
+            os.utime(qcl084_path, (10, 10))
 
             matrix = build_protocol_evidence_matrix(
                 argparse.Namespace(
@@ -278,7 +304,14 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
                     input=[],
                     suite_run=[],
                     latest_artifact_dir=[str(connectivity_root)],
-                    latest_probe_id=["QCL-080", "QCL-081", "QCL-083", "QCL-084"],
+                    latest_probe_id=[
+                        "QCL-050",
+                        "QCL-051",
+                        "QCL-080",
+                        "QCL-081",
+                        "QCL-083",
+                        "QCL-084",
+                    ],
                     latest_device_link_dir=[str(session_root)],
                     latest_stream_capability_dir=[str(connectivity_root)],
                     latest_stream_probe_id=["QCL-080"],
@@ -289,10 +322,16 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         input_paths = [item["path"] for item in matrix["inputs"]]
         self.assertIn(str(latest_device_link_path), input_paths)
         self.assertNotIn(str(stale_device_link_path), input_paths)
+        self.assertIn(str(qcl050_path), input_paths)
+        self.assertIn(str(qcl051_path), input_paths)
         self.assertIn(str(qcl080_path), input_paths)
         self.assertIn(str(qcl080_descriptor_path), input_paths)
         self.assertNotIn(str(stale_qcl080_descriptor_path), input_paths)
         self.assertEqual(row(matrix, "QCL-000")["status"], "usable")
+        self.assertEqual(row(matrix, "QCL-050")["status"], "candidate")
+        self.assertEqual(row(matrix, "QCL-050")["evidence_tier"], "fixture")
+        self.assertEqual(row(matrix, "QCL-051")["status"], "candidate")
+        self.assertEqual(row(matrix, "QCL-051")["evidence_tier"], "fixture")
         self.assertEqual(row(matrix, "QCL-080")["status"], "usable")
         self.assertEqual(row(matrix, "QCL-080")["descriptor"]["artifact_path"], str(qcl080_descriptor_path))
         self.assertEqual(row(matrix, "QCL-081")["status"], "usable")

@@ -191,6 +191,8 @@ same CLI artifact resolver as WPF:
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --suite-run target\connectivity-probe\device-link-suite-run.json `
   --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-050 `
+  --latest-probe-id QCL-051 `
   --latest-probe-id QCL-080 `
   --latest-probe-id QCL-081 `
   --latest-probe-id QCL-082 `
@@ -214,8 +216,9 @@ fixture suite for baseline coverage and then calls this route so CLI
 automation and human operators inspect the same promotion rows.
 When a recent WPF session and QCL-080 stream-capability run exist, this route
 can reproduce the consolidated operator matrix: QCL-000 from live device-link,
-QCL-080 from live product UDP evidence, and QCL-081/QCL-082/QCL-083/QCL-084 from
-their latest promoted protocol artifacts.
+QCL-050/QCL-051 from Bluetooth probe evidence, QCL-080 from live product UDP
+evidence, and QCL-081/QCL-082/QCL-083/QCL-084 from their latest promoted
+protocol artifacts.
 
 The firewall plan artifact is also part of that CLI-equivalent path: for the
 WPF QCL-080 UDP rule it records the exact follow-on

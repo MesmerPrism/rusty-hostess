@@ -92,7 +92,7 @@ public static class OperatorActionCatalog
             "wpf.connectivity.protocol_matrix",
             "Build protocol matrix",
             "RunProtocolMatrixCommand",
-            "connectivity-probe run-suite; connectivity-probe protocol-matrix --suite-run --latest-artifact-dir --latest-probe-id --latest-device-link-dir --latest-stream-capability-dir --latest-stream-probe-id; companion-report projection --device-link --connectivity-probe --protocol-matrix --suite-run",
+            "connectivity-probe run-suite; connectivity-probe protocol-matrix --suite-run --latest-artifact-dir --latest-probe-id QCL-050|QCL-051|QCL-080|QCL-081|QCL-082|QCL-083|QCL-084 --latest-device-link-dir --latest-stream-capability-dir --latest-stream-probe-id QCL-080; companion-report projection --device-link --connectivity-probe --protocol-matrix --suite-run",
             "rusty.quest.device_link.protocol_evidence_matrix.v1; rusty.quest.connectivity_topology_probe.v1; rusty.hostess.companion.report_projection.v1",
             "Hostess / Rusty Quest / Manifold",
             "tools.test_hostessctl_protocol_evidence_matrix; tools.test_hostessctl_companion_report_projection; HostessCompanion.Wpf.Tests"),
