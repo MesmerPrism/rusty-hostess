@@ -583,23 +583,13 @@ public sealed class HostessctlConnectivityService
             $"{matrix.MatrixId}.wpf",
             "--protocol-matrix",
             matrix.ReportPath,
+            "--include-protocol-matrix-inputs",
             "--suite-run",
             suite.ReportPath,
             "--out",
             projectionPath.FullName,
             "--fail-on-error",
         };
-
-        foreach (var inputPath in MatrixDeviceLinkInputPaths(repoRoot, matrix))
-        {
-            arguments.Add("--device-link");
-            arguments.Add(inputPath);
-        }
-        foreach (var inputPath in MatrixConnectivityProbeInputPaths(repoRoot, matrix))
-        {
-            arguments.Add("--connectivity-probe");
-            arguments.Add(inputPath);
-        }
 
         await RunHostessctlAsync(repoRoot, arguments, projectionPath, cancellationToken)
             .ConfigureAwait(false);
@@ -610,74 +600,6 @@ public sealed class HostessctlConnectivityService
             .ConfigureAwait(false);
         report.ReportPath = projectionPath.FullName;
         return report;
-    }
-
-    private static IEnumerable<string> MatrixDeviceLinkInputPaths(
-        DirectoryInfo repoRoot,
-        ConnectivityProtocolEvidenceMatrix matrix)
-    {
-        foreach (var input in matrix.Inputs)
-        {
-            if (!string.Equals(input.Role, "device_link_report", StringComparison.OrdinalIgnoreCase)
-                || string.IsNullOrWhiteSpace(input.Path))
-            {
-                continue;
-            }
-            yield return ResolveArtifactPath(repoRoot, input.Path);
-        }
-    }
-
-    private static IEnumerable<string> MatrixConnectivityProbeInputPaths(
-        DirectoryInfo repoRoot,
-        ConnectivityProtocolEvidenceMatrix matrix)
-    {
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var row in matrix.Rows)
-        {
-            if (!TryGetSourceString(row.Source, "schema", out var schema)
-                || !string.Equals(
-                    schema,
-                    "rusty.quest.connectivity_topology_probe.v1",
-                    StringComparison.Ordinal))
-            {
-                continue;
-            }
-
-            if (!TryGetSourceString(row.Source, "artifact_path", out var path))
-            {
-                continue;
-            }
-
-            var resolvedPath = ResolveArtifactPath(repoRoot, path);
-            if (File.Exists(resolvedPath) && seen.Add(resolvedPath))
-            {
-                yield return resolvedPath;
-            }
-        }
-    }
-
-    private static bool TryGetSourceString(JsonElement source, string propertyName, out string value)
-    {
-        value = "";
-        if (source.ValueKind != JsonValueKind.Object
-            || !source.TryGetProperty(propertyName, out var property)
-            || property.ValueKind != JsonValueKind.String)
-        {
-            return false;
-        }
-
-        value = property.GetString() ?? "";
-        return !string.IsNullOrWhiteSpace(value);
-    }
-
-    private static string ResolveArtifactPath(DirectoryInfo repoRoot, string path)
-    {
-        if (Path.IsPathFullyQualified(path))
-        {
-            return path;
-        }
-        var normalized = path.Replace('/', Path.DirectorySeparatorChar);
-        return Path.Combine(repoRoot.FullName, normalized);
     }
 
     private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>

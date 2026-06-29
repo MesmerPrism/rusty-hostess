@@ -122,8 +122,10 @@ connectivity-probe rows can show topology and promotion gates, but use
 selection or protocol-promotion state.
 The WPF Protocol Matrix action follows that sequence: it asks
 `connectivity-probe protocol-matrix` for source selection and promotion state,
-then asks `companion-report projection` for the normalized operator rows that
-the Connectivity page renders.
+then asks `companion-report projection --include-protocol-matrix-inputs` for
+the normalized operator rows that the Connectivity page renders. The flag keeps
+device-link and connectivity-probe source selection inside the CLI route rather
+than the WPF service.
 
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host

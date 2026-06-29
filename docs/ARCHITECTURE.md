@@ -64,10 +64,13 @@ run probes, change firewall/device state, declare topology readiness, or
 re-evaluate protocol promotion gates.
 The WPF Protocol Matrix action first requests the Hostess protocol-matrix
 route, preserving that route's latest-artifact selection and promotion policy,
-then passes the selected device-link input plus suite and matrix artifacts into
-`companion-report projection`. Topology report views can pass explicit
-connectivity-probe artifacts through that same projection route. WPF renders
-the resulting projection rows through
+then passes the suite and matrix artifacts into
+`companion-report projection --include-protocol-matrix-inputs`. The CLI
+projection route derives selected device-link and connectivity-probe inputs
+from the matrix, so WPF does not parse matrix sources or own artifact
+selection. Topology report views can still pass explicit connectivity-probe
+artifacts through that same projection route. WPF renders the resulting
+projection rows through
 `ConnectivityRows.ForCompanionReportProjection` so the human page and CLI
 automation inspect the same normalized report artifact.
 Page-owned viewmodels keep the row projection families separated:

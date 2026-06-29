@@ -433,7 +433,7 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             && action.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal)
             && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)
             && action.CliRoute.Contains("companion-report projection", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--connectivity-probe", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--include-protocol-matrix-inputs", StringComparison.Ordinal)
             && action.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal)
             && action.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal)),
         "protocol matrix must render the shared companion-report projection artifact");

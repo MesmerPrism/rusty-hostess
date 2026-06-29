@@ -209,6 +209,79 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_projection_can_include_protocol_matrix_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            device_path = root / "device-link.json"
+            qcl050_path = root / "qcl050.json"
+            matrix_path = root / "matrix.json"
+            device_path.write_text(
+                (
+                    REPO_ROOT
+                    / "fixtures"
+                    / "companion"
+                    / "device-link-pass.json"
+                ).read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            qcl050_path.write_text(
+                (
+                    REPO_ROOT
+                    / "fixtures"
+                    / "connectivity-probe"
+                    / "qcl-050-rfcomm-control-pass.json"
+                ).read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(matrix_path),
+                    validation_out=None,
+                    matrix_id="projection-inputs",
+                    input=[str(device_path), str(qcl050_path)],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+            matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "projection",
+                    "--frontend",
+                    "wpf",
+                    "--projection-id",
+                    "projection.matrix-inputs",
+                    "--protocol-matrix",
+                    str(matrix_path),
+                    "--include-protocol-matrix-inputs",
+                    "--out",
+                    str(root / "projection.json"),
+                    "--fail-on-error",
+                ]
+            )
+            report = build_companion_report_projection(
+                args,
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        source_roles = [source["role"] for source in report["source_artifacts"]]
+        self.assertTrue(args.include_protocol_matrix_inputs)
+        self.assertEqual(validation["status"], "pass")
+        self.assertIn("device_link_report", source_roles)
+        self.assertIn("connectivity_probe_report", source_roles)
+        self.assertIn("protocol_evidence_matrix", source_roles)
+        self.assertTrue(
+            any(row["row_id"] == "connectivity_probe.transport.QCL-050" for row in report["rows"])
+        )
+
 
 def suite_run_fixture() -> dict[str, Any]:
     return {

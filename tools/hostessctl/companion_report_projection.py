@@ -16,6 +16,7 @@ from tools.hostessctl.device_link_report import QUEST_DEVICE_LINK_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import PROTOCOL_EVIDENCE_MATRIX_SCHEMA
 
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA = (
     "rusty.hostess.companion.report_projection.v1"
 )
@@ -116,15 +117,76 @@ def build_companion_report_projection(
 
 def selected_source_paths(args: argparse.Namespace) -> list[tuple[str, Path]]:
     paths: list[tuple[str, Path]] = []
+    seen: set[tuple[str, str]] = set()
+
+    def append_source(role: str, path: Path) -> None:
+        key = (role, source_path_key(path))
+        if key not in seen:
+            seen.add(key)
+            paths.append((role, path))
+
     for raw in argument_values(getattr(args, "device_link", None)):
-        paths.append(("device_link_report", Path(raw)))
+        append_source("device_link_report", Path(raw))
     for raw in argument_values(getattr(args, "connectivity_probe", None)):
-        paths.append(("connectivity_probe_report", Path(raw)))
-    for raw in argument_values(getattr(args, "protocol_matrix", None)):
-        paths.append(("protocol_evidence_matrix", Path(raw)))
+        append_source("connectivity_probe_report", Path(raw))
+    protocol_matrix_paths = [
+        Path(raw)
+        for raw in argument_values(getattr(args, "protocol_matrix", None))
+    ]
+    if getattr(args, "include_protocol_matrix_inputs", False):
+        for matrix_path in protocol_matrix_paths:
+            for role, path in protocol_matrix_input_source_paths(matrix_path):
+                append_source(role, path)
+    for path in protocol_matrix_paths:
+        append_source("protocol_evidence_matrix", path)
     for raw in argument_values(getattr(args, "suite_run", None)):
-        paths.append(("connectivity_suite_run", Path(raw)))
+        append_source("connectivity_suite_run", Path(raw))
     return paths
+
+
+def protocol_matrix_input_source_paths(matrix_path: Path) -> list[tuple[str, Path]]:
+    matrix = read_json(matrix_path)
+    if not matrix:
+        return []
+
+    paths: list[tuple[str, Path]] = []
+    for matrix_input in list_objects(matrix.get("inputs")):
+        role = str(matrix_input.get("role") or "")
+        raw_path = str(matrix_input.get("path") or "").strip()
+        if not raw_path:
+            continue
+        if role == "device_link_report":
+            paths.append(("device_link_report", resolve_matrix_source_path(matrix_path, raw_path)))
+        elif role == "connectivity_probe_report":
+            paths.append(("connectivity_probe_report", resolve_matrix_source_path(matrix_path, raw_path)))
+
+    for matrix_row in list_objects(matrix.get("rows")):
+        source = object_value(matrix_row.get("source"))
+        if str(source.get("schema") or "") != CONNECTIVITY_PROBE_SCHEMA:
+            continue
+        raw_path = str(source.get("artifact_path") or "").strip()
+        if raw_path:
+            paths.append(("connectivity_probe_report", resolve_matrix_source_path(matrix_path, raw_path)))
+    return paths
+
+
+def resolve_matrix_source_path(matrix_path: Path, raw_path: str) -> Path:
+    path = Path(raw_path)
+    if path.is_absolute():
+        return path
+    if path.exists():
+        return path
+    repo_path = REPO_ROOT / path
+    if repo_path.exists():
+        return repo_path
+    matrix_relative_path = matrix_path.parent / path
+    if matrix_relative_path.exists():
+        return matrix_relative_path
+    return path
+
+
+def source_path_key(path: Path) -> str:
+    return str(path.resolve()).casefold()
 
 
 def load_source_artifact(
