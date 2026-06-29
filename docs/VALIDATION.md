@@ -72,10 +72,11 @@ from a session report, Devices/Transports projection rows, command-stage
 evidence promotion, connectivity suite row grouping, companion-report
 projection rows, and catalog-backed workspace composition and validation-issue
 rows. Makepad companion frontend tests cover the same shared catalog and
-device-link reports plus the
-`rusty.quest.device_link.protocol_evidence_matrix.v1` report fixture so the
-headset-local frontend can render protocol promotion evidence without owning
-promotion gates.
+device-link reports, the
+`rusty.quest.device_link.protocol_evidence_matrix.v1` report fixture, and the
+shared `rusty.hostess.companion.report_projection.v1` fixture so the
+headset-local frontend can render the same normalized operator evidence without
+owning artifact selection or promotion gates.
 The WPF Session action also carries the live receipt wait envelope that CLI
 automation should use for headset smoke:
 `--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30
@@ -142,6 +143,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-050 
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-051 --mode fixture --fixture-profile qcl-051-ble-gatt-status-pass --out target\connectivity-probe\qcl-051-ble-gatt-status-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-080 --mode fixture --fixture-profile qcl-080-app-owned-udp-freshness-pass --out target\connectivity-probe\qcl-080-app-owned-udp-freshness-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-081 --mode fixture --fixture-profile qcl-081-lsl-loopback-pass --out target\connectivity-probe\qcl-081-lsl-loopback-pass.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-082 --mode fixture --fixture-profile qcl-082-media-binary-plane-pass --out target\connectivity-probe\qcl-082-media-binary-plane-pass.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-082 --mode fixture --fixture-profile qcl-082-media-high-rate-json-misuse --out target\connectivity-probe\qcl-082-media-high-rate-json-misuse.json
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-083 --mode fixture --fixture-profile qcl-083-osc-loopback-pass --out target\connectivity-probe\qcl-083-osc-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-084 --mode fixture --fixture-profile qcl-084-zeromq-loopback-pass --out target\connectivity-probe\qcl-084-zeromq-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-080-app-owned-udp-freshness-pass.json --out target\connectivity-probe\qcl-080-app-owned.stream-capability.json --fail-on-error
@@ -151,7 +154,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --suite
 
 The test-suite descriptor is the installer-facing index. It must cover host,
 toolchain, network adapter, firewall, device, protocol, and timing categories;
-QCL-000/QCL-010/QCL-011/QCL-050/QCL-051/QCL-080/QCL-081/QCL-083/QCL-084 slots;
+QCL-000/QCL-010/QCL-011/QCL-050/QCL-051/QCL-080/QCL-081/QCL-082/QCL-083/QCL-084 slots;
 and reusable capability rows for Manifold WebSocket, UDP, LSL, OSC, ZeroMQ,
 RFCOMM, BLE/GATT, and binary media/TCP.
 
@@ -180,6 +183,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --latest-artifact-dir target\connectivity-probe `
   --latest-probe-id QCL-080 `
   --latest-probe-id QCL-081 `
+  --latest-probe-id QCL-082 `
   --latest-probe-id QCL-083 `
   --latest-probe-id QCL-084 `
   --latest-device-link-dir target\companion-session `
@@ -200,7 +204,7 @@ fixture suite for baseline coverage and then calls this route so CLI
 automation and human operators inspect the same promotion rows.
 When a recent WPF session and QCL-080 stream-capability run exist, this route
 can reproduce the consolidated operator matrix: QCL-000 from live device-link,
-QCL-080 from live product UDP evidence, and QCL-081/QCL-083/QCL-084 from
+QCL-080 from live product UDP evidence, and QCL-081/QCL-082/QCL-083/QCL-084 from
 their latest promoted protocol artifacts.
 
 The firewall plan artifact is also part of that CLI-equivalent path: for the
@@ -215,6 +219,19 @@ Quest-runtime preflight artifacts validate as descriptors with explicit LSL
 discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
 show the same missing Quest-side `pylsl/liblsl` evidence that CLI automation
 sees.
+
+QCL-082 is the binary media-plane slot. The fixture pass report declares the
+TCP binary/H.264 packet shape, `RMANVID1` marker, timestamp policy, bounded
+queue, drop/close backpressure behavior, and frame/byte/drop/queue counters.
+The damaged fixture rejects high-rate JSON media payloads. Both are
+CLI/WPF-visible protocol-fit evidence only; promotion still needs live
+Quest-runtime or broker-owned binary transport evidence:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-binary-plane-pass --out target\connectivity-probe\qcl082-media-binary-plane-pass.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-high-rate-json-misuse --out target\connectivity-probe\qcl082-media-high-rate-json-misuse.json
+python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --input target\connectivity-probe\qcl082-media-binary-plane-pass.json --out target\connectivity-probe\qcl082-media-binary-plane-pass.protocol-matrix.json --fail-on-error
+```
 
 QCL-081 also has a broker-owned Manifold LSL evidence path for host-side
 fold-in validation. Hostess shells to the Manifold JSON report, requires
@@ -437,8 +454,10 @@ cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde ma
 
 The Makepad companion frontend fixture path is intentionally source-only:
 `fixtures\companion\protocol-matrix-promoted.json` is a backend protocol
-matrix report, and Makepad reduces it to rows/markers without re-running
-artifact selection or changing the matrix promotion policy.
+matrix report, and `fixtures\companion\companion-report-projection-pass.json`
+is the normalized CLI-owned report view. Makepad reduces either artifact to
+rows/markers without re-running artifact selection or changing the matrix
+promotion policy.
 
 For Windows companion shell edits, run:
 

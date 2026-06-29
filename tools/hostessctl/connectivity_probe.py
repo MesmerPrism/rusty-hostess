@@ -51,6 +51,7 @@ from tools.hostessctl.connectivity_udp import (
     runtime_qcl080_udp_sender_check_from_result,
     udp_endpoint_source,
 )
+from tools.hostessctl.connectivity_media import qcl082_fixture_body
 from tools.hostessctl.platform_defaults import (
     ANDROID_PACKAGE,
     ANDROID_QCL083_OSC_ACTION,
@@ -113,6 +114,7 @@ VALID_PROBE_IDS = {
     "QCL-051",
     "QCL-080",
     "QCL-081",
+    "QCL-082",
     "QCL-083",
     "QCL-084",
 }
@@ -1573,6 +1575,8 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
             profile = "qcl-080-udp-freshness-pass"
         elif probe_id == "QCL-081":
             profile = "qcl-081-lsl-loopback-pass"
+        elif probe_id == "QCL-082":
+            profile = "qcl-082-media-binary-plane-pass"
         elif probe_id == "QCL-083":
             profile = "qcl-083-osc-loopback-pass"
         elif probe_id == "QCL-084":
@@ -1634,6 +1638,14 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
     if profile == "qcl-081-lsl-discovery-blocked":
         report = base_report(args, observed_at=observed_at, probe_id="QCL-081")
         report.update(qcl081_fixture_body(status="fail", discovery_blocked=True))
+        return report
+    if profile == "qcl-082-media-binary-plane-pass":
+        report = base_report(args, observed_at=observed_at, probe_id="QCL-082")
+        report.update(qcl082_fixture_body(status="pass"))
+        return report
+    if profile == "qcl-082-media-high-rate-json-misuse":
+        report = base_report(args, observed_at=observed_at, probe_id="QCL-082")
+        report.update(qcl082_fixture_body(status="fail", high_rate_json_misuse=True))
         return report
     if profile == "qcl-083-osc-loopback-pass":
         report = base_report(args, observed_at=observed_at, probe_id="QCL-083")
@@ -2640,6 +2652,25 @@ def validate_connectivity_probe_report(report: dict[str, Any]) -> dict[str, Any]
             errors.append("QCL-081 pass requires lsl_discovery_ms measurement")
         if measurements.get("lsl_samples_received") is None:
             errors.append("QCL-081 pass requires lsl_samples_received measurement")
+    if report.get("probe_id") == "QCL-082" and report.get("status") == "pass":
+        for required_check in [
+            "protocol.media_binary_transport",
+            "protocol.media_packet_boundaries",
+            "protocol.media_timestamp_policy",
+            "protocol.media_backpressure_policy",
+            "protocol.media_high_rate_json_guard",
+        ]:
+            if not check_passed(report, required_check):
+                errors.append(f"QCL-082 pass requires {required_check}")
+        measurements = object_value(report.get("measurements"))
+        for required_measurement in [
+            "media_frames_received",
+            "media_bytes_received",
+            "media_dropped_frames",
+            "media_receiver_queue_depth_max",
+        ]:
+            if measurements.get(required_measurement) is None:
+                errors.append(f"QCL-082 pass requires {required_measurement} measurement")
     if report.get("probe_id") == "QCL-083" and report.get("status") == "pass":
         if not check_passed(report, "protocol.osc_message_shape"):
             errors.append("QCL-083 pass requires protocol.osc_message_shape")

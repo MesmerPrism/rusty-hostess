@@ -31,6 +31,7 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
                 input=[
                     str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-080-app-owned-udp-freshness-pass.json"),
                     str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-081-lsl-loopback-pass.json"),
+                    str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json"),
                     str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-083-osc-loopback-pass.json"),
                     str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-084-zeromq-loopback-pass.json"),
                 ],
@@ -45,10 +46,34 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(validation["status"], "pass")
         self.assertEqual(row(report, "QCL-080")["status"], "candidate")
         self.assertEqual(row(report, "QCL-081")["evidence_tier"], "fixture")
+        self.assertEqual(row(report, "QCL-082")["status"], "candidate")
+        self.assertEqual(row(report, "QCL-082")["evidence_tier"], "fixture")
+        self.assertNotIn("gate.qcl082.media_binary_probe_defined", row(report, "QCL-082")["missing_gates"])
         self.assertEqual(row(report, "QCL-083")["status"], "candidate")
         self.assertEqual(row(report, "QCL-084")["status"], "candidate")
         self.assertIn("gate.qcl084.quest_runtime_or_broker_owned", row(report, "QCL-084")["missing_gates"])
         self.assertFalse(report["summary"]["all_required_data_protocols_promoted"])
+
+    def test_damaged_qcl082_json_media_fixture_is_rejected(self) -> None:
+        report = build_protocol_evidence_matrix(
+            argparse.Namespace(
+                out="unused.json",
+                validation_out=None,
+                matrix_id="qcl082-damaged",
+                input=[
+                    str(REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-media-high-rate-json-misuse.json"),
+                ],
+                suite_run=[],
+                fail_on_error=True,
+            )
+        )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl082 = row(report, "QCL-082")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl082["status"], "rejected")
+        self.assertEqual(qcl082["promotion_state"], "rejected")
+        self.assertIn("gate.qcl082.media_high_rate_json_guard", qcl082["missing_gates"])
 
     def test_promoted_udp_descriptor_satisfies_qcl080_without_promoting_other_protocols(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

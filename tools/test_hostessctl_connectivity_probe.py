@@ -262,6 +262,41 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertEqual(check(report, "protocol.lsl_sample_continuity")["status"], "blocked")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_fixture_validates_media_binary_plane_pass(self) -> None:
+        report = fixture_report(
+            probe_args(probe_id="QCL-082", fixture_profile="qcl-082-media-binary-plane-pass"),
+            observed_at=fixed_datetime(),
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-082")
+        self.assertEqual(report["transport"]["family"], "tcp_binary")
+        self.assertEqual(report["transport"]["packet_magic"], "RMANVID1")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_backpressure_policy")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_high_rate_json_guard")["status"], "pass")
+        self.assertEqual(report["measurements"]["media_frames_received"], 24)
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_damaged_fixture_rejects_high_rate_json_media(self) -> None:
+        report = fixture_report(
+            probe_args(probe_id="QCL-082", fixture_profile="qcl-082-media-high-rate-json-misuse"),
+            observed_at=fixed_datetime(),
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_binary_transport")["status"], "fail")
+        self.assertEqual(check(report, "protocol.media_high_rate_json_guard")["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.media_high_rate_json_payload"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_qcl083_fixture_validates_osc_loopback_pass(self) -> None:
         report = fixture_report(
             probe_args(probe_id="QCL-083", fixture_profile="qcl-083-osc-loopback-pass"),
@@ -866,6 +901,7 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-080-udp-freshness-pass.json",
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-080-app-owned-udp-freshness-pass.json",
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-081-lsl-loopback-pass.json",
+            REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json",
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-083-osc-loopback-pass.json",
             REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-084-zeromq-loopback-pass.json",
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-router-firewall-blocked.json",
@@ -874,6 +910,7 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-ble-permission-denied.json",
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-udp-firewall-blocked.json",
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-lsl-discovery-blocked.json",
+            REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-media-high-rate-json-misuse.json",
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-osc-malformed-packet.json",
             REPO_ROOT / "fixtures" / "damaged" / "connectivity-probe-zeromq-dependency-missing.json",
         ]
@@ -996,6 +1033,33 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
 
         self.assertEqual(args.probe_id, "QCL-011")
         self.assertEqual(args.fixture_profile, "qcl-011-pc-hotspot-pass")
+
+    def test_parser_accepts_qcl082_media_binary_probe(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "run",
+                "--mode",
+                "fixture",
+                "--probe-id",
+                "QCL-082",
+                "--fixture-profile",
+                "qcl-082-media-binary-plane-pass",
+                "--out",
+                "target/qcl082.json",
+            ]
+        )
+
+        self.assertEqual(args.probe_id, "QCL-082")
+        self.assertEqual(args.fixture_profile, "qcl-082-media-binary-plane-pass")
 
     def test_parser_accepts_bluetooth_probe(self) -> None:
         args = build_hostessctl_parser(

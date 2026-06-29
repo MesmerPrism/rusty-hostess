@@ -34,6 +34,35 @@ fn makepad_companion_frontend_projects_shared_reports() {
 }
 
 #[test]
+fn makepad_companion_frontend_projects_companion_report_projection() {
+    let report_projection =
+        include_str!("../../../fixtures/companion/companion-report-projection-pass.json");
+    let projection =
+        companion_frontend::build_makepad_companion_rows_from_report_projection(report_projection)
+            .unwrap();
+
+    assert_eq!(projection.status, "pass");
+    assert_eq!(projection.catalog_rows, 0);
+    assert_eq!(projection.device_link_rows, 0);
+    assert_eq!(projection.protocol_matrix_rows, 0);
+    assert_eq!(projection.report_projection_rows, 6);
+    assert!(projection.rows.iter().any(|row| {
+        row.row_family == "companion_report_projection_row"
+            && row.row_id == "protocol_matrix.row.QCL-081.capability.biosignal.lsl_clocked_samples"
+            && row.detail.contains("tier=broker_owned")
+    }));
+    let marker =
+        companion_frontend::makepad_companion_projection_marker_line("main_tests", &projection);
+    assert!(marker.contains("RUSTY_HOSTESS_MAKEPAD_COMPANION_FRONTEND"));
+    assert!(marker.contains("authority=requester_inspector"));
+    assert!(marker.contains("reportProjectionRows=6"));
+    assert!(marker.contains("sourceArtifactRows=2"));
+    assert!(marker.contains("normalizedReportRows=3"));
+    assert!(marker.contains("backendEvidence=hostess_companion_report_projection"));
+    assert!(marker.contains("highRateJsonPayload=false"));
+}
+
+#[test]
 fn breath_feedback_config_marker_exposes_resolved_subscriber_config() {
     let mut config = ManifoldBreathFeedbackConfig::default();
     config.enabled = true;

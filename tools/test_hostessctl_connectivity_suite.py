@@ -32,7 +32,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(report["$schema"], CONNECTIVITY_SUITE_RUN_SCHEMA)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
-        self.assertEqual(len(report["slot_results"]), 9)
+        self.assertEqual(len(report["slot_results"]), 10)
         self.assertEqual(
             {
                 "QCL-000",
@@ -42,6 +42,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
                 "QCL-051",
                 "QCL-080",
                 "QCL-081",
+                "QCL-082",
                 "QCL-083",
                 "QCL-084",
             },
@@ -54,6 +55,9 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(qcl080["status"], "pass")
         self.assertTrue(qcl080["descriptor_path"])
         self.assertEqual(qcl080["descriptor_status"], "candidate")
+        qcl082 = slot(report, "QCL-082")
+        self.assertEqual(qcl082["status"], "pass")
+        self.assertFalse(qcl082["descriptor_path"])
         self.assertEqual(
             report["environment_snapshot"]["network"]["ipv4_candidates"][0]["ip"],
             "192.0.2.10",
@@ -74,7 +78,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
-        self.assertEqual(validation["slot_count"], 9)
+        self.assertEqual(validation["slot_count"], 10)
 
     def test_public_profile_single_connection_object_keeps_suite_warn(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -87,7 +91,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
             )
 
         self.assertEqual(report["status"], "warn")
-        self.assertEqual(report["summary"]["pass_count"], 9)
+        self.assertEqual(report["summary"]["pass_count"], 10)
         self.assertEqual(
             report["environment_snapshot"]["network"]["windows_profile"]["connections"][
                 "NetworkCategory"

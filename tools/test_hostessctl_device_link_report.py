@@ -78,6 +78,16 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertEqual(requirement(descriptor, "qcl080_live_promotion")["status"], "missing")
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_media_fixture_does_not_fall_through_to_udp_descriptor(self) -> None:
+        report = read_json(
+            REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-082-media-binary-plane-pass.json"
+        )
+
+        with self.assertRaises(SystemExit) as context:
+            build_stream_capability_descriptor_from_connectivity_probe(report)
+
+        self.assertIn("QCL-082", str(context.exception))
+
     def test_qcl080_product_wpf_firewall_rule_satisfies_requirement(self) -> None:
         report = qcl080_app_owned_fixture()
         report["promotion"]["allowed"] = True
@@ -368,6 +378,7 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
                 "QCL-051",
                 "QCL-080",
                 "QCL-081",
+                "QCL-082",
                 "QCL-083",
                 "QCL-084",
             }.issubset({row["probe_id"] for row in descriptor["test_slots"]})

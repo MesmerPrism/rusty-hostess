@@ -1,9 +1,9 @@
 //! Makepad-facing projection over shared companion reports.
 //!
 //! This module is deliberately source/fixture only. It parses the same Hostess
-//! catalog, Quest device-link, and protocol-matrix reports that WPF renders,
-//! then reduces them to compact rows a Makepad panel can display later without
-//! owning validation.
+//! catalog, Quest device-link, protocol-matrix, and companion-report projection
+//! artifacts that WPF renders, then reduces them to compact rows a Makepad panel
+//! can display later without owning validation.
 
 use serde_json::Value;
 
@@ -14,6 +14,8 @@ pub(crate) const MAKEPAD_COMPANION_FRONTEND_SCHEMA: &str =
 const HOSTESS_COMPANION_CATALOG_SCHEMA: &str = "rusty.hostess.companion.catalog.v1";
 const QUEST_DEVICE_LINK_SCHEMA: &str = "rusty.quest.device_link.v1";
 const PROTOCOL_EVIDENCE_MATRIX_SCHEMA: &str = "rusty.quest.device_link.protocol_evidence_matrix.v1";
+const HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA: &str =
+    "rusty.hostess.companion.report_projection.v1";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct MakepadCompanionRow {
@@ -33,6 +35,7 @@ pub(crate) struct MakepadCompanionProjection {
     pub(crate) catalog_rows: usize,
     pub(crate) device_link_rows: usize,
     pub(crate) protocol_matrix_rows: usize,
+    pub(crate) report_projection_rows: usize,
 }
 
 pub(crate) fn project_companion_catalog(text: &str) -> Result<Vec<MakepadCompanionRow>, String> {
@@ -339,6 +342,105 @@ pub(crate) fn project_protocol_matrix(text: &str) -> Result<Vec<MakepadCompanion
     Ok(rows)
 }
 
+pub(crate) fn project_companion_report_projection(
+    text: &str,
+) -> Result<Vec<MakepadCompanionRow>, String> {
+    let value = parse_report(text, HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA)?;
+    let mut rows = Vec::new();
+    let summary = value.get("summary").filter(|row| row.is_object());
+    rows.push(MakepadCompanionRow {
+        row_id: string_field(
+            &value,
+            "projection_id",
+            "companion_report_projection.summary",
+        ),
+        row_family: "companion_report_projection_summary".to_string(),
+        status: string_field(&value, "status", "unknown"),
+        title: "Companion report projection".to_string(),
+        detail: match summary {
+            Some(summary) => format!(
+                "frontend={} sources={} rows={} issues={} sections={}",
+                string_field(&value, "frontend", "unknown"),
+                numeric_field(summary, "source_count", "0"),
+                numeric_field(summary, "row_count", "0"),
+                numeric_field(summary, "issue_count", "0"),
+                projection_section_counts(summary)
+            ),
+            None => format!(
+                "frontend={} summary=missing",
+                string_field(&value, "frontend", "unknown")
+            ),
+        },
+        source_schema: HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA.to_string(),
+        source_report: "companion_report_projection".to_string(),
+    });
+
+    for source in array_field(&value, "source_artifacts") {
+        let source_id = string_field(source, "source_id", "source.unknown");
+        rows.push(MakepadCompanionRow {
+            row_id: format!("projection.source.{}", marker_value(&source_id)),
+            row_family: "companion_report_projection_source".to_string(),
+            status: string_field(source, "status", "unknown"),
+            title: string_field(source, "role", "source_artifact"),
+            detail: format!(
+                "requested={} schema={} path={} sha256={}",
+                string_field(source, "requested_role", "unknown"),
+                string_field(source, "schema", "unknown"),
+                string_field(source, "path", "unknown"),
+                string_field(source, "sha256", "unknown")
+            ),
+            source_schema: HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA.to_string(),
+            source_report: "companion_report_projection".to_string(),
+        });
+    }
+
+    for projection_row in array_field(&value, "rows") {
+        let row_id = string_field(projection_row, "row_id", "projection.row");
+        rows.push(MakepadCompanionRow {
+            row_id,
+            row_family: "companion_report_projection_row".to_string(),
+            status: string_field(projection_row, "status", "unknown"),
+            title: string_field(projection_row, "label", "Projection row"),
+            detail: format!(
+                "section={} kind={} owner={} tier={} source={} required={} evidence={} notes={} issues={} codes={}",
+                string_field(projection_row, "section", "unknown"),
+                string_field(projection_row, "kind", "unknown"),
+                string_field(projection_row, "authority_owner", "unknown"),
+                string_field(projection_row, "evidence_tier", "none"),
+                string_field(projection_row, "source_artifact", "unknown"),
+                bool_field(projection_row, "required"),
+                string_field(projection_row, "evidence", "none"),
+                string_field(projection_row, "notes", "none"),
+                numeric_field(projection_row, "issue_count", "0"),
+                joined_strings(projection_row, "issue_codes")
+            ),
+            source_schema: HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA.to_string(),
+            source_report: "companion_report_projection".to_string(),
+        });
+    }
+
+    for issue in array_field(&value, "issues") {
+        rows.push(MakepadCompanionRow {
+            row_id: first_string(
+                issue,
+                &["issue_code", "code", "id"],
+                "companion_report_projection.issue",
+            ),
+            row_family: "companion_report_projection_issue".to_string(),
+            status: first_string(issue, &["severity", "status"], "warning"),
+            title: first_string(
+                issue,
+                &["issue_code", "code", "title"],
+                "Companion report projection issue",
+            ),
+            detail: first_string(issue, &["message", "detail", "evidence"], "No issue detail"),
+            source_schema: HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA.to_string(),
+            source_report: "companion_report_projection".to_string(),
+        });
+    }
+    Ok(rows)
+}
+
 pub(crate) fn build_makepad_companion_rows(
     catalog_text: &str,
     device_link_text: &str,
@@ -371,6 +473,23 @@ pub(crate) fn build_makepad_companion_rows_with_protocol_matrix(
         catalog_rows,
         device_link_rows,
         protocol_matrix_rows,
+        report_projection_rows: 0,
+    })
+}
+
+pub(crate) fn build_makepad_companion_rows_from_report_projection(
+    report_projection_text: &str,
+) -> Result<MakepadCompanionProjection, String> {
+    let rows = project_companion_report_projection(report_projection_text)?;
+    let report_projection_rows = rows.len();
+    let status = aggregate_status(&rows).to_string();
+    Ok(MakepadCompanionProjection {
+        status,
+        rows,
+        catalog_rows: 0,
+        device_link_rows: 0,
+        protocol_matrix_rows: 0,
+        report_projection_rows,
     })
 }
 
@@ -379,7 +498,7 @@ pub(crate) fn makepad_companion_projection_marker_line(
     projection: &MakepadCompanionProjection,
 ) -> String {
     format!(
-        "{} schema={} phase={} status={} rowCount={} catalogRows={} deviceLinkRows={} protocolMatrixRows={} issueRows={} commandRows={} streamCapabilityRows={} protocolRows={} protocolGateRows={} authority=requester_inspector backendEvidence=hostess_companion_catalog_quest_device_link_and_protocol_matrix highRateJsonPayload=false settingsControlPayload=false",
+        "{} schema={} phase={} status={} rowCount={} catalogRows={} deviceLinkRows={} protocolMatrixRows={} reportProjectionRows={} issueRows={} commandRows={} streamCapabilityRows={} protocolRows={} protocolGateRows={} sourceArtifactRows={} normalizedReportRows={} authority=requester_inspector backendEvidence={} highRateJsonPayload=false settingsControlPayload=false",
         MAKEPAD_COMPANION_FRONTEND_MARKER,
         MAKEPAD_COMPANION_FRONTEND_SCHEMA,
         marker_value(phase),
@@ -388,6 +507,7 @@ pub(crate) fn makepad_companion_projection_marker_line(
         projection.catalog_rows,
         projection.device_link_rows,
         projection.protocol_matrix_rows,
+        projection.report_projection_rows,
         projection
             .rows
             .iter()
@@ -412,7 +532,18 @@ pub(crate) fn makepad_companion_projection_marker_line(
             .rows
             .iter()
             .filter(|row| row.row_family == "protocol_matrix_gate")
-            .count()
+            .count(),
+        projection
+            .rows
+            .iter()
+            .filter(|row| row.row_family == "companion_report_projection_source")
+            .count(),
+        projection
+            .rows
+            .iter()
+            .filter(|row| row.row_family == "companion_report_projection_row")
+            .count(),
+        backend_evidence_label(projection)
     )
 }
 
@@ -511,6 +642,29 @@ fn summary_detail(value: &Value) -> String {
     )
 }
 
+fn projection_section_counts(summary: &Value) -> String {
+    let Some(section_counts) = summary
+        .get("section_counts")
+        .and_then(Value::as_object)
+        .filter(|sections| !sections.is_empty())
+    else {
+        return "none".to_string();
+    };
+    let mut counts = section_counts
+        .iter()
+        .map(|(section, count)| {
+            let count = count
+                .as_i64()
+                .map(|number| number.to_string())
+                .or_else(|| count.as_u64().map(|number| number.to_string()))
+                .unwrap_or_else(|| "unknown".to_string());
+            format!("{section}:{count}")
+        })
+        .collect::<Vec<_>>();
+    counts.sort();
+    counts.join(",")
+}
+
 fn issue_status(issues: &[Value], key: &str, id: &str) -> String {
     let mut saw_warning = false;
     for issue in issues {
@@ -576,6 +730,16 @@ fn aggregate_status(rows: &[MakepadCompanionRow]) -> &'static str {
     }
 }
 
+fn backend_evidence_label(projection: &MakepadCompanionProjection) -> &'static str {
+    if projection.report_projection_rows > 0 {
+        "hostess_companion_report_projection"
+    } else if projection.protocol_matrix_rows > 0 {
+        "hostess_companion_catalog_quest_device_link_and_protocol_matrix"
+    } else {
+        "hostess_companion_catalog_and_quest_device_link"
+    }
+}
+
 fn is_fail_status(status: &str) -> bool {
     matches!(
         status,
@@ -615,6 +779,8 @@ mod tests {
     const DEVICE_LINK: &str = include_str!("../../../fixtures/companion/device-link-pass.json");
     const PROTOCOL_MATRIX: &str =
         include_str!("../../../fixtures/companion/protocol-matrix-promoted.json");
+    const REPORT_PROJECTION: &str =
+        include_str!("../../../fixtures/companion/companion-report-projection-pass.json");
 
     #[test]
     fn companion_frontend_projects_catalog_fixture() {
@@ -670,6 +836,28 @@ mod tests {
     }
 
     #[test]
+    fn companion_frontend_projects_report_projection_fixture() {
+        let rows = project_companion_report_projection(REPORT_PROJECTION).expect("report projects");
+
+        assert!(rows.iter().any(|row| {
+            row.row_family == "companion_report_projection_summary" && row.status == "pass"
+        }));
+        assert!(rows.iter().any(|row| {
+            row.row_family == "companion_report_projection_source"
+                && row.detail.contains("protocol-matrix-promoted.json")
+        }));
+        assert!(rows.iter().any(|row| {
+            row.row_family == "companion_report_projection_row"
+                && row.row_id
+                    == "protocol_matrix.row.QCL-081.capability.biosignal.lsl_clocked_samples"
+                && row.detail.contains("tier=broker_owned")
+        }));
+        assert!(rows
+            .iter()
+            .all(|row| row.source_report == "companion_report_projection"));
+    }
+
+    #[test]
     fn companion_frontend_marker_reports_shared_evidence_counts() {
         let projection = build_makepad_companion_rows_with_protocol_matrix(
             CATALOG,
@@ -688,10 +876,28 @@ mod tests {
         assert!(marker.contains("deviceLinkRows="));
         assert!(marker.contains("protocolMatrixRows="));
         assert!(marker.contains("protocolRows=5"));
+        assert!(marker.contains("reportProjectionRows=0"));
         assert!(marker.contains("authority=requester_inspector"));
         assert!(marker.contains(
             "backendEvidence=hostess_companion_catalog_quest_device_link_and_protocol_matrix"
         ));
         assert!(marker.contains("highRateJsonPayload=false"));
+    }
+
+    #[test]
+    fn companion_frontend_marker_reports_projection_artifact_counts() {
+        let projection = build_makepad_companion_rows_from_report_projection(REPORT_PROJECTION)
+            .expect("projection builds");
+        let marker = makepad_companion_projection_marker_line("fixture", &projection);
+
+        assert_eq!(projection.status, "pass");
+        assert!(projection.report_projection_rows > 0);
+        assert!(marker.contains(MAKEPAD_COMPANION_FRONTEND_MARKER));
+        assert!(marker.contains("reportProjectionRows=6"));
+        assert!(marker.contains("sourceArtifactRows=2"));
+        assert!(marker.contains("normalizedReportRows=3"));
+        assert!(marker.contains("backendEvidence=hostess_companion_report_projection"));
+        assert!(marker.contains("highRateJsonPayload=false"));
+        assert!(marker.contains("settingsControlPayload=false"));
     }
 }

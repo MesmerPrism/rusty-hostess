@@ -1,0 +1,169 @@
+{
+  "artifacts": [],
+  "checks": [
+    {
+      "evidence": "TCP binary media plane declared with RMANVID1 packet magic",
+      "issue_codes": [],
+      "name": "protocol.media_binary_transport",
+      "notes": "",
+      "observed": {
+        "codec": "h264_annex_b",
+        "command_plane_payload": false,
+        "packet_magic": "RMANVID1",
+        "payload_plane": "binary_media",
+        "transport_kind": "tcp_binary"
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "packet header carries magic, sequence, timestamp, flags, and payload length",
+      "issue_codes": [],
+      "name": "protocol.media_packet_boundaries",
+      "notes": "",
+      "observed": {
+        "header_magic": "RMANVID1",
+        "keyframe_flag_present": true,
+        "payload_length_bounded": true,
+        "sequence_monotonic": true
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "capture timestamp and receiver arrival timestamp are recorded per frame",
+      "issue_codes": [],
+      "name": "protocol.media_timestamp_policy",
+      "notes": "",
+      "observed": {
+        "capture_timestamp": "monotonic_ns",
+        "clock_alignment": "parallel_lsl_reference_or_media_ack_channel",
+        "receiver_arrival_timestamp": "monotonic_ns",
+        "timestamped_frame_count": 24
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "bounded receiver queue, newest-frame drop, and close-on-overrun policy declared",
+      "issue_codes": [],
+      "name": "protocol.media_backpressure_policy",
+      "notes": "",
+      "observed": {
+        "backpressure_signal": "receiver_queue_depth",
+        "close_policy": "close_after_sustained_overrun",
+        "drop_policy": "drop_oldest_non_keyframe",
+        "max_queue_depth_observed": 2,
+        "receiver_queue_capacity_frames": 4
+      },
+      "status": "pass"
+    },
+    {
+      "evidence": "JSON is limited to control receipts and small descriptors",
+      "issue_codes": [],
+      "name": "protocol.media_high_rate_json_guard",
+      "notes": "",
+      "observed": {
+        "json_allowed_for": [
+          "control_receipts",
+          "descriptors",
+          "validation_reports"
+        ],
+        "json_allowed_for_media_payload": false,
+        "observed_payload_plane": "binary_media"
+      },
+      "status": "pass"
+    }
+  ],
+  "classification": "protocol_fit_candidate",
+  "command_stages": {
+    "applied": "not_applicable",
+    "authority_accepted": "not_applicable",
+    "runtime_accepted": "not_applicable",
+    "sent": "not_applicable",
+    "transport_ok": "not_applicable"
+  },
+  "device": {
+    "adb_state": "not_applicable",
+    "foreground_package": "not_checked",
+    "model": "fixture",
+    "serial_redacted": true
+  },
+  "host": {
+    "os": "windows",
+    "toolchain_profile": "hostessctl.connectivity_probe.qcl082.fixture"
+  },
+  "issues": [],
+  "measurements": {
+    "jitter_ms_p95": null,
+    "lsl_discovery_ms": null,
+    "lsl_sample_loss_percent": null,
+    "lsl_samples_received": null,
+    "lsl_samples_requested": null,
+    "media_backpressure_events": 0,
+    "media_bytes_received": 1048576,
+    "media_decode_error_count": 0,
+    "media_dropped_frames": 0,
+    "media_frame_timestamp_gap_ms_p95": 34,
+    "media_frames_received": 24,
+    "media_frames_requested": 24,
+    "media_keyframes_received": 2,
+    "media_receiver_queue_depth_max": 2,
+    "osc_clock_offset_estimate_ms_median": null,
+    "osc_clock_offset_jitter_ms_p95": null,
+    "osc_estimated_one_way_ms_p95": null,
+    "osc_loss_percent": null,
+    "osc_messages_received": null,
+    "osc_messages_requested": null,
+    "osc_quest_processing_ms_p95": null,
+    "osc_rtt_ms_p95": null,
+    "reconnect_attempts": null,
+    "tcp_connect_ms": null,
+    "throughput_mbps": null,
+    "udp_loss_percent": null,
+    "udp_packets_received": null,
+    "udp_packets_sent": null,
+    "websocket_echo_ms": null,
+    "zeromq_clock_offset_estimate_ms_median": null,
+    "zeromq_clock_offset_jitter_ms_p95": null,
+    "zeromq_estimated_one_way_ms_p95": null,
+    "zeromq_messages_received": null,
+    "zeromq_messages_requested": null,
+    "zeromq_rtt_ms_p95": null,
+    "zeromq_server_processing_ms_p95": null
+  },
+  "observed_at_utc": "2026-06-29T13:45:45.551765Z",
+  "probe_id": "QCL-082",
+  "promotion": {
+    "allowed": false,
+    "reason": "fixture declares QCL-082 media-plane constraints; live Quest-runtime or broker-owned binary evidence remains required",
+    "target": "quest.device_link binary media stream capability descriptor"
+  },
+  "run_id": "20260629-134545-qcl-082",
+  "schema": "rusty.quest.connectivity_topology_probe.v1",
+  "schema_version": 1,
+  "status": "pass",
+  "termux_sidecar": {
+    "authority_role": "none",
+    "bind_scope": "not_applicable",
+    "in_scope": false,
+    "uid_gate": "not_checked"
+  },
+  "topology": {
+    "endpoint_direction": "quest_to_host_binary_media",
+    "experimental": true,
+    "network_provider": "loopback",
+    "owner": "host_local",
+    "requires_adb": false,
+    "requires_existing_wifi": false,
+    "requires_pairing": false,
+    "requires_termux": false
+  },
+  "transport": {
+    "endpoint_source": "media-binary-fixture",
+    "family": "tcp_binary",
+    "local_endpoint": "127.0.0.1:18782",
+    "packet_magic": "RMANVID1",
+    "payload_class": "h264_annex_b_binary_frames",
+    "protocol_role": "binary_media_plane_probe",
+    "remote_endpoint": "127.0.0.1",
+    "route": "qcl082_h264_tcp_binary_media_plane"
+  }
+}

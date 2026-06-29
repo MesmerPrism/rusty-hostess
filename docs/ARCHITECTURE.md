@@ -32,12 +32,13 @@ datastream. It is the first scalable Rusty GUI example for Hostess T. It
 observes run state and can request commands only through the same
 Hostess/Manifold command routes as `hostessctl`.
 `apps/hostess-t-makepad/src/companion_frontend.rs` owns the source/fixture-only
-Makepad projection of Hostess companion catalog, Quest device-link, and
-protocol evidence matrix reports. It reduces
-`rusty.hostess.companion.catalog.v1`, `rusty.quest.device_link.v1`, and
-`rusty.quest.device_link.protocol_evidence_matrix.v1` evidence into compact
-rows and marker lines for a future Makepad panel; it does not own validation,
-setup, transport, protocol promotion, or command authority.
+Makepad projection of Hostess companion catalog, Quest device-link, protocol
+evidence matrix, and companion-report projection reports. It reduces
+`rusty.hostess.companion.catalog.v1`, `rusty.quest.device_link.v1`,
+`rusty.quest.device_link.protocol_evidence_matrix.v1`, and
+`rusty.hostess.companion.report_projection.v1` evidence into compact rows and
+marker lines for a future Makepad panel; it does not own validation, setup,
+transport, artifact selection, protocol promotion, or command authority.
 
 The Windows companion shell lives in `apps/hostess-companion-wpf`. It is a WPF
 operational shell over Hostess readiness reports, Rusty GUI companion
@@ -273,8 +274,11 @@ PowerShell cleanup, Android readback, and measurement helpers;
 `connectivity_udp.py` owns QCL-080 UDP freshness sender/listener mechanics and
 Makepad runtime UDP sender evidence; `connectivity_bluetooth.py` owns QCL-050
 RFCOMM and QCL-051 BLE/GATT readiness, payload, reconnect, and transport
-helpers; and `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC,
-and QCL-084 ZeroMQ adapter mechanics plus protocol-specific evidence rows.
+helpers; `connectivity_media.py` owns QCL-082 binary media-plane fixture
+reports for H.264/TCP framing, timestamp, queue/drop/backpressure, and
+high-rate JSON rejection; and `connectivity_data_protocols.py` owns QCL-081
+LSL, QCL-083 OSC, and QCL-084 ZeroMQ adapter mechanics plus protocol-specific
+evidence rows.
 The Bluetooth helper owns QCL-050/QCL-051 readiness and payload
 evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
 server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
@@ -297,6 +301,13 @@ complete sample continuity, and monotonic received sequences, then wraps that
 report as Hostess connectivity evidence for WPF and protocol-matrix rendering.
 Quest-runtime LSL promotion remains separate and blocked until the Quest side
 can emit its own `pylsl/liblsl` sample-continuity evidence.
+QCL-082 is the media/binary data-plane slot. Its fixture route declares the
+source-neutral `tcp_binary` contract shape, `RMANVID1` packet marker,
+frame-timestamp policy, bounded receiver queue, drop/close backpressure rules,
+and the rule that high-rate media payloads must not ride JSON command/report
+streams. This is protocol-fit evidence only; promotion still requires a
+Quest-runtime or broker-owned binary transport/codec path with measured frame,
+byte, drop, and queue counters.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ
@@ -316,15 +327,18 @@ operator protocol promotion views. It consumes existing suite, probe,
 device-link, and stream-capability artifacts and classifies each protocol by
 evidence tier, promotion state, and missing gate. WPF renders this matrix as a
 requester/inspector; promotion rules stay in the CLI/report module so fixture
-and host-loopback LSL/OSC/ZeroMQ evidence cannot accidentally become UI-only
-acceptance proof. The same route owns latest-artifact selection for promoted
-QCL-000, QCL-080, QCL-081, QCL-083, and QCL-084 rows: device-link reports
+and host-loopback LSL/media/OSC/ZeroMQ evidence cannot accidentally become
+UI-only acceptance proof. The same route owns latest-artifact selection for
+promoted QCL-000, QCL-080, QCL-081, QCL-082, QCL-083, and QCL-084 rows:
+device-link reports
 provide command/session authority, stream-capability descriptors preserve
 QCL-080 product UDP evidence, and connectivity probe reports provide the
 protocol rows. WPF and automated CLI smoke tests therefore share one
-artifact-selection policy. Makepad companion projection consumes that finished
-matrix as another report artifact and only emits compact panel rows/markers; it
-does not re-evaluate gates or promotion state.
+artifact-selection policy. Makepad companion projection can either consume the
+finished protocol matrix as a lower-level report artifact or consume the
+`rusty.hostess.companion.report_projection.v1` artifact emitted by
+`hostessctl companion-report projection`; in both cases it only emits compact
+panel rows/markers and does not re-evaluate gates or promotion state.
 Projected-motion-breath evidence construction and validation live in
 `tools/hostessctl/pmb_evidence.py`. PMB route modules own desktop, Android,
 and Quest route orchestration, while PMB contract constants, replay/self-test

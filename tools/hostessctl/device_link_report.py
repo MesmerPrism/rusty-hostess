@@ -172,11 +172,14 @@ def build_stream_capability_descriptor_from_connectivity_probe(
 ) -> dict[str, Any]:
     """Build a measured stream-capability descriptor from a QCL probe report."""
 
-    if str(report.get("probe_id") or "") == "QCL-081":
+    probe_id = str(report.get("probe_id") or "")
+    if probe_id == "QCL-080":
+        return build_qcl080_stream_capability_descriptor(report, source_path=source_path)
+    if probe_id == "QCL-081":
         return build_qcl081_stream_capability_descriptor(report, source_path=source_path)
-    if str(report.get("probe_id") or "") == "QCL-083":
+    if probe_id == "QCL-083":
         return build_qcl083_stream_capability_descriptor(report, source_path=source_path)
-    return build_qcl080_stream_capability_descriptor(report, source_path=source_path)
+    raise SystemExit(f"stream capability descriptor is not implemented for {probe_id or 'unknown probe'}")
 
 
 def build_qcl080_stream_capability_descriptor(
@@ -760,7 +763,15 @@ def build_install_test_suite_descriptor(
             {
                 "group_id": "group.protocol_latency",
                 "label": "Protocols And RTT",
-                "covers": ["udp", "lsl", "osc", "zeromq", "bluetooth_rfcomm", "bluetooth_gatt"],
+                "covers": [
+                    "udp",
+                    "lsl",
+                    "media_tcp_binary",
+                    "osc",
+                    "zeromq",
+                    "bluetooth_rfcomm",
+                    "bluetooth_gatt",
+                ],
             },
         ],
         "promotion_policy": {
@@ -833,6 +844,7 @@ def validate_install_test_suite_descriptor(descriptor: dict[str, Any]) -> dict[s
         "QCL-051",
         "QCL-080",
         "QCL-081",
+        "QCL-082",
         "QCL-083",
         "QCL-084",
     }
@@ -2491,6 +2503,21 @@ def install_suite_test_slots() -> list[dict[str, Any]]:
             "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source host-loopback --out target\\connectivity-probe\\qcl081-live-host-loopback.json",
             metrics=["lsl_discovery_ms", "lsl_samples_received", "lsl_sample_loss_percent"],
             rtt_policy="lsl_time_correction_reference",
+        ),
+        suite_slot(
+            "suite.qcl082.media_tcp_binary",
+            "QCL-082",
+            "qcl-082-media-binary-plane-pass",
+            "protocol",
+            "Binary media-plane framing, timestamp, queue, drop, and backpressure guardrails",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-binary-plane-pass --out target\\connectivity-probe\\qcl082-media-binary-plane-pass.json --fail-on-error",
+            metrics=[
+                "media_frames_received",
+                "media_bytes_received",
+                "media_dropped_frames",
+                "media_receiver_queue_depth_max",
+            ],
+            rtt_policy="media_frame_timestamp_and_receiver_arrival",
         ),
         suite_slot(
             "suite.qcl083.osc_round_trip",

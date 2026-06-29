@@ -409,6 +409,8 @@ public sealed class HostessctlConnectivityService
                     "--latest-probe-id",
                     "QCL-081",
                     "--latest-probe-id",
+                    "QCL-082",
+                    "--latest-probe-id",
                     "QCL-083",
                     "--latest-probe-id",
                     "QCL-084",

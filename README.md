@@ -29,7 +29,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   append-only telemetry JSONL stream and maintain independent rolling plots per
   datastream. Snapshots are evidence/checkpoint artifacts, not the live data
   plane. Its companion frontend projection reduces shared catalog, device-link,
-  and protocol-matrix reports into compact rows without owning validation.
+  protocol-matrix, and companion-report projection artifacts into compact rows
+  without owning validation, artifact selection, or protocol promotion.
 - `apps/hostess-t-android`: Java-only Android APK built with Android
   command-line tools. The same APK can run mobile and headset profiles, and
   owns platform lifecycle, BLE acquisition, permissions, ADB command bridging,
@@ -170,6 +171,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/connectivity_udp.py`: QCL-080 UDP freshness sender/listener
   mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,
   and app-owned UDP runtime-marker parsing.
+- `tools/hostessctl/connectivity_media.py`: QCL-082 binary media-plane fixture
+  report helpers for H.264/TCP framing, timestamp, queue/drop/backpressure, and
+  high-rate JSON rejection evidence.
 - `tools/hostessctl/connectivity_bluetooth.py`: QCL-050/QCL-051 Bluetooth
   RFCOMM and BLE/GATT readiness, Android payload probes, Windows helper
   command construction, reconnect measurements, and Bluetooth transport rows.

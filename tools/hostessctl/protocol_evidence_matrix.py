@@ -165,7 +165,11 @@ CAPABILITY_PROFILES: list[dict[str, Any]] = [
         "authority_owner": "rusty.quest.device_link",
         "required_for_fold_in": False,
         "allowed_tiers": ["quest_runtime", "broker_owned"],
-        "next_cli": "not implemented: define QCL-082 binary/media-plane probe first",
+        "next_cli": (
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
+            "--mode fixture --probe-id QCL-082 --fixture-profile qcl-082-media-binary-plane-pass "
+            "--out target\\connectivity-probe\\qcl082-media-binary-plane-pass.json --fail-on-error"
+        ),
         "promotion_gate": (
             "Media stays planned until a binary transport/codec path declares "
             "queue, drop, timestamp, and backpressure policy."
@@ -656,13 +660,7 @@ def promotion_requirements(
     if probe_id == "QCL-080":
         requirements.extend(qcl080_product_requirements(report, descriptor))
     if probe_id == "QCL-082":
-        requirements.append(
-            gate_result(
-                "gate.qcl082.media_binary_probe_defined",
-                "missing",
-                "QCL-082 binary/media-plane probe is not implemented yet",
-            )
-        )
+        requirements.extend(qcl082_media_requirements(report))
     return requirements
 
 
@@ -689,6 +687,91 @@ def qcl080_product_requirements(
             ),
         )
     ]
+
+
+def qcl082_media_requirements(report: dict[str, Any]) -> list[dict[str, Any]]:
+    transport = object_value(report.get("transport"))
+    measurements = object_value(report.get("measurements"))
+    media_plane_defined = (
+        transport.get("family") == "tcp_binary"
+        and transport.get("payload_class") == "h264_annex_b_binary_frames"
+        and qcl082_check_passed(report, "protocol.media_binary_transport")
+    )
+    packet_policy = qcl082_check_passed(report, "protocol.media_packet_boundaries")
+    timestamp_policy = qcl082_check_passed(report, "protocol.media_timestamp_policy")
+    backpressure_policy = qcl082_check_passed(report, "protocol.media_backpressure_policy")
+    json_guard = qcl082_check_passed(report, "protocol.media_high_rate_json_guard")
+    measurement_keys = [
+        "media_frames_received",
+        "media_bytes_received",
+        "media_dropped_frames",
+        "media_receiver_queue_depth_max",
+    ]
+    measurements_present = all(measurements.get(key) is not None for key in measurement_keys)
+    return [
+        gate_result(
+            "gate.qcl082.media_binary_probe_defined",
+            "satisfied" if media_plane_defined else "missing",
+            (
+                "QCL-082 TCP binary media report loaded"
+                if media_plane_defined
+                else "QCL-082 TCP binary media report is missing or not binary"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.media_packet_boundaries",
+            "satisfied" if packet_policy else "missing",
+            (
+                "packet magic, sequence, timestamp, flags, and payload length declared"
+                if packet_policy
+                else "packet boundary policy missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.media_timestamp_policy",
+            "satisfied" if timestamp_policy else "missing",
+            (
+                "capture and receiver-arrival timestamps declared"
+                if timestamp_policy
+                else "media timestamp policy missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.media_backpressure_policy",
+            "satisfied" if backpressure_policy else "missing",
+            (
+                "bounded queue, drop, and close policy declared"
+                if backpressure_policy
+                else "media queue/drop/backpressure policy missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.media_high_rate_json_guard",
+            "satisfied" if json_guard else "missing",
+            (
+                "high-rate media payloads rejected from JSON streams"
+                if json_guard
+                else "high-rate JSON payload rejection missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl082.media_measurements_declared",
+            "satisfied" if measurements_present else "missing",
+            (
+                "frame, byte, drop, and queue measurements declared"
+                if measurements_present
+                else "frame, byte, drop, or queue measurements missing"
+            ),
+        ),
+    ]
+
+
+def qcl082_check_passed(report: dict[str, Any], name: str) -> bool:
+    for check in list_value(report.get("checks")):
+        row = object_value(check)
+        if row.get("name") == name:
+            return row.get("status") == "pass"
+    return False
 
 
 def protocol_row_status(

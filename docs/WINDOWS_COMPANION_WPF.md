@@ -283,6 +283,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --latest-artifact-dir target\connectivity-probe `
   --latest-probe-id QCL-080 `
   --latest-probe-id QCL-081 `
+  --latest-probe-id QCL-082 `
   --latest-probe-id QCL-083 `
   --latest-probe-id QCL-084 `
   --latest-device-link-dir target\companion-session `
@@ -296,9 +297,28 @@ the newest device-link report from recent companion sessions, and the newest
 stream descriptor plus its source probe report for requested probe ids. This
 lets the Protocol Matrix action reuse a previous WPF Session run for QCL-000
 command authority and a previous QCL-080 stream-capability run for product UDP
-evidence without moving artifact scanning or promotion rules into WPF. If those
-live artifacts are missing, the fixture suite rows remain visible as candidates
-with missing gates.
+evidence while also surfacing the QCL-082 media/binary fixture row without
+moving artifact scanning or promotion rules into WPF. If those live artifacts
+are missing, the fixture suite rows remain visible as candidates with missing
+gates.
+
+After the matrix route selects the evidence inputs, WPF asks Hostess for the
+shared read-only operator projection:
+
+```powershell
+python tools\hostessctl\hostessctl.py companion-report projection `
+  --frontend wpf `
+  --device-link target\companion-session\wpf-session.device-link.json `
+  --protocol-matrix target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json `
+  --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
+  --out target\companion-report\wpf-connectivity-suite.projection.json `
+  --fail-on-error
+```
+
+The WPF service derives the device-link input from the protocol-matrix source
+selection when it runs the full action. The rows shown in the Protocol Matrix
+page come from `rusty.hostess.companion.report_projection.v1`, so WPF,
+Makepad-facing tests, and CLI automation use the same row contract.
 
 ## Build
 
