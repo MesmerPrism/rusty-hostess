@@ -287,6 +287,29 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
             profiles=profiles,
             remote_address=remote_address,
         )
+    probe_id = "QCL-010" if protocol == "TCP" else "QCL-080"
+    connectivity_probe_args = [
+        "connectivity-probe",
+        "run",
+        "--mode",
+        "live",
+        "--probe-id",
+        probe_id,
+    ]
+    if protocol == "TCP":
+        connectivity_probe_args.extend(["--tcp-echo-port", str(port)])
+    else:
+        connectivity_probe_args.extend(
+            [
+                "--udp-port",
+                str(port),
+                "--udp-listener-helper",
+                program,
+                "--udp-sender-source",
+                "makepad-runtime",
+            ]
+        )
+
     return {
         "schema": CONNECTIVITY_FIREWALL_RULE_SCHEMA,
         "schema_version": 1,
@@ -310,17 +333,8 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
             ),
         },
         "probe_usage": {
-            "probe_id": "QCL-010" if protocol == "TCP" else "QCL-080",
-            "connectivity_probe_args": [
-                "connectivity-probe",
-                "run",
-                "--mode",
-                "live",
-                "--probe-id",
-                "QCL-010" if protocol == "TCP" else "QCL-080",
-                "--tcp-echo-port" if protocol == "TCP" else "--udp-port",
-                str(port),
-            ],
+            "probe_id": probe_id,
+            "connectivity_probe_args": connectivity_probe_args,
         },
         "powershell": {
             "requires_admin": True,

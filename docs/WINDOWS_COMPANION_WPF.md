@@ -212,6 +212,9 @@ Use `--action apply` or `--action remove` for elevated lifecycle changes.
 Verification records `product_rule_verified` separately from generic
 `allowed_on_active_profile`, so broad port-only rules and diagnostic Python
 rules do not satisfy product readiness.
+The plan report also carries the matching QCL-080 probe arguments, including
+the WPF listener executable as `--udp-listener-helper`, so a human operator and
+CLI automation follow the same product-owned listener route.
 
 For UDP, the page uses QCL-080 with the WPF executable itself in listener
 helper mode:

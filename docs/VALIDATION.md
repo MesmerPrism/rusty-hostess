@@ -168,6 +168,13 @@ can reproduce the consolidated operator matrix: QCL-000 from live device-link,
 QCL-080 from live product UDP evidence, and QCL-081/QCL-083/QCL-084 from
 their latest promoted protocol artifacts.
 
+The firewall plan artifact is also part of that CLI-equivalent path: for the
+WPF QCL-080 UDP rule it records the exact follow-on
+`connectivity-probe run --probe-id QCL-080 --udp-listener-helper
+<HostessCompanion.Wpf.exe> --udp-sender-source makepad-runtime` arguments, so
+operators and automation use the same product listener rule rather than a
+diagnostic Python allowance.
+
 The QCL-081 stream-capability route is still useful before promotion: blocked
 Quest-runtime preflight artifacts validate as descriptors with explicit LSL
 discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
@@ -351,6 +358,9 @@ being `Public`; the scoped product-shaped firewall rule itself was present.
 Current validation should also preserve the firewall verification report and
 expect `product_rule_verified=true`; a generic listener allow rule or Python
 diagnostic rule is only data-path evidence, not product readiness.
+The firewall plan report should name the same WPF executable in
+`probe_usage.connectivity_probe_args`, which keeps the subsequent QCL-080 run
+bound to the product listener.
 
 For QCL-080 over a non-router topology, pass the topology metadata explicitly
 so stream-capability descriptors do not inherit the default router label:

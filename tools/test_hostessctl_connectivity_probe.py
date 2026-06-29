@@ -1108,6 +1108,12 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertEqual(report["probe_usage"]["probe_id"], "QCL-080")
         self.assertIn("selected protocol/port", report["rule"]["scope_note"])
         self.assertIn("--udp-port", report["probe_usage"]["connectivity_probe_args"])
+        self.assertIn("--udp-listener-helper", report["probe_usage"]["connectivity_probe_args"])
+        self.assertIn(
+            "C:\\Tools\\HostessCompanion.exe",
+            report["probe_usage"]["connectivity_probe_args"],
+        )
+        self.assertIn("makepad-runtime", report["probe_usage"]["connectivity_probe_args"])
         self.assertIn("New-NetFirewallRule", report["powershell"]["script"])
         self.assertIn("-Protocol $protocol", report["powershell"]["script"])
 
@@ -1131,6 +1137,26 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertTrue(report["rule"]["program"].endswith("HostessCompanion.Wpf.exe"))
         self.assertIn("Get-NetFirewallRule", report["powershell"]["script"])
         self.assertNotIn("New-NetFirewallRule", report["powershell"]["script"])
+
+    def test_windows_firewall_rule_tcp_default_uses_wpf_product_name(self) -> None:
+        report = windows_firewall_rule_report(
+            probe_args(
+                connectivity_probe_command="windows-firewall-rule",
+                protocol="TCP",
+                port=18766,
+                profile="Private",
+                remote_address="LocalSubnet",
+                rule_name="",
+                action="plan",
+                apply=False,
+            ),
+            observed_at=fixed_datetime(),
+        )
+
+        self.assertEqual(report["rule"]["name"], "Rusty Hostess WPF QCL-010 TCP Echo 18766")
+        self.assertEqual(report["probe_usage"]["probe_id"], "QCL-010")
+        self.assertIn("--tcp-echo-port", report["probe_usage"]["connectivity_probe_args"])
+        self.assertNotIn("--udp-listener-helper", report["probe_usage"]["connectivity_probe_args"])
 
 
 def fake_tcp_echo_pass(args: argparse.Namespace, host_ip: str, run_timeout_func: Any) -> dict[str, Any]:

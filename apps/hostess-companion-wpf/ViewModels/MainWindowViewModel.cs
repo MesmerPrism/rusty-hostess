@@ -1002,8 +1002,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
             ? parsed
             : NormalizeConnectivityProtocol(protocol) == "UDP" ? 18767 : 18766;
         return NormalizeConnectivityProtocol(protocol) == "UDP"
-            ? $"Rusty Hostess QCL-080 UDP Freshness {port}"
-            : $"Rusty Hostess QCL-010 TCP Echo {port}";
+            ? $"Rusty Hostess WPF QCL-080 UDP Freshness {port}"
+            : $"Rusty Hostess WPF QCL-010 TCP Echo {port}";
     }
 
     private static string NormalizeConnectivityProtocol(string protocol) =>

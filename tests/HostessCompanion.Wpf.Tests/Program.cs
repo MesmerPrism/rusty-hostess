@@ -12,6 +12,7 @@ var tests = new (string Name, Action Test)[]
     ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
     ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
+    ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
     ("page viewmodels project backend reports", PageViewModelsProjectBackendReports),
@@ -263,6 +264,31 @@ static void FirewallRowsExposeProductVerification()
     Assert(rows.Any(row => row.Evidence.Contains("product_rule_verified=True", StringComparison.Ordinal)),
         "missing product verification evidence");
     Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "verified product rule should pass");
+}
+
+static void FirewallDefaultNamesStayProductScoped()
+{
+    var vm = new MainWindowViewModel(
+        new HostessctlReadinessService(),
+        new HostessctlCatalogService(),
+        new HostessctlCommandService(),
+        new HostessctlSessionService(),
+        new HostessctlConnectivityService());
+
+    Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-080 UDP Freshness 18767",
+        "initial UDP firewall rule name must be WPF product scoped");
+
+    vm.ConnectivityPort = "19000";
+    Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-080 UDP Freshness 19000",
+        "UDP port changes must preserve WPF product-scoped rule name");
+
+    vm.ConnectivityProtocol = "TCP";
+    Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-010 TCP Echo 19000",
+        "protocol changes must preserve WPF product-scoped rule name");
+
+    vm.ConnectivityPort = "18766";
+    Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-010 TCP Echo 18766",
+        "TCP port changes must preserve WPF product-scoped rule name");
 }
 
 static void OperatorActionsMapWpfCommandsToCliRoutes()
