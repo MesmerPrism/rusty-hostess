@@ -69,9 +69,10 @@ WPF-only modules or transports.
 
 The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
-evidence promotion, connectivity suite row grouping, and catalog-backed
-workspace composition and validation-issue rows. Makepad companion frontend
-tests cover the same shared catalog and device-link reports plus the
+evidence promotion, connectivity suite row grouping, companion-report
+projection rows, and catalog-backed workspace composition and validation-issue
+rows. Makepad companion frontend tests cover the same shared catalog and
+device-link reports plus the
 `rusty.quest.device_link.protocol_evidence_matrix.v1` report fixture so the
 headset-local frontend can render protocol promotion evidence without owning
 promotion gates.
@@ -116,6 +117,10 @@ That route emits `rusty.hostess.companion.report_projection.v1` and only copies
 source artifact rows into a frontend-neutral operator view. Use
 `connectivity-probe protocol-matrix` first when the view needs latest-artifact
 selection or protocol-promotion state.
+The WPF Protocol Matrix action follows that sequence: it asks
+`connectivity-probe protocol-matrix` for source selection and promotion state,
+then asks `companion-report projection` for the normalized operator rows that
+the Connectivity page renders.
 
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host

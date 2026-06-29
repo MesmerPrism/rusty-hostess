@@ -1,0 +1,136 @@
+{
+  "$schema": "rusty.hostess.companion.report_projection.v1",
+  "schema_version": 1,
+  "projection_id": "projection.fixture.wpf",
+  "frontend": "wpf",
+  "generated_at_utc": "2026-06-29T00:00:00Z",
+  "status": "pass",
+  "authority": {
+    "ui_role": "requester_and_inspector",
+    "projection_only": true,
+    "acceptance_owner": "source_artifacts",
+    "command_authority": "rusty.manifold.command",
+    "device_link_authority": "rusty.quest.device_link",
+    "protocol_promotion_authority": "rusty.quest.device_link.protocol_evidence_matrix"
+  },
+  "summary": {
+    "source_count": 2,
+    "row_count": 3,
+    "issue_count": 0,
+    "section_counts": {
+      "device": 1,
+      "protocol": 2
+    },
+    "row_status_counts": {
+      "pass": 2,
+      "usable": 1
+    },
+    "source_status_counts": {
+      "pass": 2
+    }
+  },
+  "source_artifacts": [
+    {
+      "source_id": "source.device_link_report.1",
+      "requested_role": "device_link_report",
+      "role": "device_link_report",
+      "path": "fixtures/companion/device-link-pass.json",
+      "schema": "rusty.quest.device_link.v1",
+      "status": "pass",
+      "sha256": "fixture-device-link-sha",
+      "summary": {
+        "link_id": "device_link.hostess.fixture",
+        "status": "pass",
+        "command_result_count": 1
+      }
+    },
+    {
+      "source_id": "source.protocol_evidence_matrix.2",
+      "requested_role": "protocol_evidence_matrix",
+      "role": "protocol_evidence_matrix",
+      "path": "fixtures/companion/protocol-matrix-promoted.json",
+      "schema": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "status": "pass",
+      "sha256": "fixture-protocol-matrix-sha",
+      "summary": {
+        "matrix_id": "protocol-matrix.fixture.promoted",
+        "status": "pass",
+        "row_count": 5,
+        "all_required_data_protocols_promoted": true
+      }
+    }
+  ],
+  "rows": [
+    {
+      "row_id": "device_link.identity",
+      "section": "device",
+      "kind": "device_identity",
+      "label": "Quest identity",
+      "status": "pass",
+      "authority_owner": "rusty.quest.device_link",
+      "evidence_tier": "",
+      "source_artifact": "source.device_link_report.1",
+      "source_path": "fixtures/companion/device-link-pass.json",
+      "source_schema": "rusty.quest.device_link.v1",
+      "required": false,
+      "evidence": "Quest 3S / usb / device",
+      "notes": "",
+      "issue_count": 0,
+      "issue_codes": [],
+      "metrics": {},
+      "details": {
+        "model": "Quest 3S",
+        "adb_state": "device",
+        "transport_kind": "usb"
+      }
+    },
+    {
+      "row_id": "protocol_matrix.summary",
+      "section": "protocol",
+      "kind": "protocol_matrix_summary",
+      "label": "Protocol evidence matrix",
+      "status": "pass",
+      "authority_owner": "rusty.quest.device_link.protocol_evidence_matrix",
+      "evidence_tier": "",
+      "source_artifact": "source.protocol_evidence_matrix.2",
+      "source_path": "fixtures/companion/protocol-matrix-promoted.json",
+      "source_schema": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "required": false,
+      "evidence": "protocol-matrix.fixture.promoted: 5 protocol capability rows",
+      "notes": "",
+      "issue_count": 0,
+      "issue_codes": [],
+      "metrics": {},
+      "details": {
+        "all_required_data_protocols_promoted": true
+      }
+    },
+    {
+      "row_id": "protocol_matrix.row.QCL-081.capability.biosignal.lsl_clocked_samples",
+      "section": "protocol",
+      "kind": "protocol_capability",
+      "label": "QCL-081 lsl",
+      "status": "usable",
+      "authority_owner": "rusty.manifold.transport",
+      "evidence_tier": "broker_owned",
+      "source_artifact": "source.protocol_evidence_matrix.2",
+      "source_path": "fixtures/companion/protocol-matrix-promoted.json",
+      "source_schema": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "required": false,
+      "evidence": "capability.biosignal.lsl_clocked_samples: tier=broker_owned, promotion=promoted, allowed=True",
+      "notes": "Quest-runtime or broker-owned evidence required",
+      "issue_count": 0,
+      "issue_codes": [],
+      "metrics": {
+        "lsl_samples_received": 16
+      },
+      "details": {
+        "capability_id": "capability.biosignal.lsl_clocked_samples",
+        "probe_id": "QCL-081",
+        "evidence_tier": "broker_owned",
+        "promotion_state": "promoted"
+      }
+    }
+  ],
+  "issues": []
+}

@@ -170,6 +170,9 @@ public sealed class ConnectivityProtocolEvidenceMatrix
     [JsonPropertyName("summary")]
     public JsonElement Summary { get; set; }
 
+    [JsonPropertyName("inputs")]
+    public List<ConnectivityProtocolEvidenceInput> Inputs { get; set; } = [];
+
     [JsonPropertyName("rows")]
     public List<ConnectivityProtocolEvidenceRow> Rows { get; set; } = [];
 
@@ -177,6 +180,30 @@ public sealed class ConnectivityProtocolEvidenceMatrix
     public List<CommandIssue> Issues { get; set; } = [];
 
     public string ReportPath { get; set; } = "";
+}
+
+public sealed class ConnectivityProtocolEvidenceInput
+{
+    [JsonPropertyName("role")]
+    public string Role { get; set; } = "";
+
+    [JsonPropertyName("schema")]
+    public string Schema { get; set; } = "";
+
+    [JsonPropertyName("path")]
+    public string Path { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+}
+
+public sealed class ConnectivityProtocolMatrixProjectionRun
+{
+    public ConnectivitySuiteRunReport Suite { get; set; } = new();
+
+    public ConnectivityProtocolEvidenceMatrix Matrix { get; set; } = new();
+
+    public CompanionReportProjection Projection { get; set; } = new();
 }
 
 public sealed class ConnectivityProtocolEvidenceRow

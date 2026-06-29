@@ -208,6 +208,77 @@ public static class ConnectivityRows
         return rows;
     }
 
+    public static IReadOnlyList<ConnectivityCheck> ForCompanionReportProjection(
+        CompanionReportProjection report)
+    {
+        var rows = new List<ConnectivityCheck>
+        {
+            new()
+            {
+                Name = "hostess.companion_report_projection",
+                Status = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status,
+                Evidence =
+                    $"{report.ProjectionId}: {report.Rows.Count} rows from " +
+                    $"{report.SourceArtifacts.Count} source artifacts",
+                Notes = report.ReportPath,
+                IssueCodes = report.Issues
+                    .Select(issue => issue.IssueCode)
+                    .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+                    .ToList(),
+                Observed = ExistingJsonElementOrFallback(
+                    report.Summary,
+                    "hostess.companion_report_projection"),
+            },
+        };
+
+        foreach (var source in report.SourceArtifacts)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = $"projection.source.{source.Role}.{source.SourceId}",
+                Status = string.IsNullOrWhiteSpace(source.Status) ? "unknown" : source.Status,
+                Evidence = $"{source.Schema}: {source.Path}",
+                Notes = string.IsNullOrWhiteSpace(source.Sha256)
+                    ? source.RequestedRole
+                    : $"sha256={source.Sha256}; requested={source.RequestedRole}",
+                IssueCodes = [],
+                Observed = ToObservedElement(source),
+            });
+        }
+
+        foreach (var projectionRow in report.Rows)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = string.IsNullOrWhiteSpace(projectionRow.RowId)
+                    ? projectionRow.Label
+                    : projectionRow.RowId,
+                Status = string.IsNullOrWhiteSpace(projectionRow.Status)
+                    ? "unknown"
+                    : projectionRow.Status,
+                Evidence = ProjectionEvidence(projectionRow),
+                Notes = ProjectionNotes(projectionRow),
+                IssueCodes = projectionRow.IssueCodes,
+                Observed = ProjectionObservedElement(projectionRow),
+            });
+        }
+
+        foreach (var issue in report.Issues)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = issue.IssueCode,
+                Status = issue.Severity == "error" ? "fail" : "warn",
+                Evidence = issue.Message,
+                Notes = issue.SourceArtifact,
+                IssueCodes = string.IsNullOrWhiteSpace(issue.IssueCode) ? [] : [issue.IssueCode],
+                Observed = ToObservedElement(issue),
+            });
+        }
+
+        return rows;
+    }
+
     public static IReadOnlyList<ConnectivityCheck> Failure(string checkName, Exception ex) =>
         [
             new ConnectivityCheck
@@ -333,6 +404,70 @@ public static class ConnectivityRows
             codes.Add("hostess.issue.protocol_evidence_matrix.required_protocol_not_promoted");
         }
         return codes;
+    }
+
+    private static string ProjectionEvidence(CompanionReportProjectionRow row)
+    {
+        var tier = string.IsNullOrWhiteSpace(row.EvidenceTier)
+            ? ""
+            : $"; tier={row.EvidenceTier}";
+        return $"{row.Label}: {row.Evidence}{tier}; authority={row.AuthorityOwner}";
+    }
+
+    private static string ProjectionNotes(CompanionReportProjectionRow row)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(row.Notes))
+        {
+            parts.Add(row.Notes);
+        }
+        if (!string.IsNullOrWhiteSpace(row.SourcePath))
+        {
+            parts.Add($"source={row.SourcePath}");
+        }
+        if (!string.IsNullOrWhiteSpace(row.SourceSchema))
+        {
+            parts.Add($"schema={row.SourceSchema}");
+        }
+        if (row.Required)
+        {
+            parts.Add("required");
+        }
+        if (row.IssueCount > 0)
+        {
+            parts.Add($"issues={row.IssueCount}");
+        }
+        return string.Join("; ", parts);
+    }
+
+    private static JsonElement ProjectionObservedElement(CompanionReportProjectionRow row)
+    {
+        var details = row.Details.ValueKind == JsonValueKind.Undefined
+            ? JsonSerializer.SerializeToElement(new { row.RowId, row.Section, row.Kind })
+            : row.Details.Clone();
+        var metrics = row.Metrics.ValueKind == JsonValueKind.Undefined
+            ? JsonSerializer.SerializeToElement(new { })
+            : row.Metrics.Clone();
+        return JsonSerializer.SerializeToElement(new
+        {
+            row.RowId,
+            row.Section,
+            row.Kind,
+            row.Label,
+            row.Status,
+            row.AuthorityOwner,
+            row.EvidenceTier,
+            row.SourceArtifact,
+            row.SourcePath,
+            row.SourceSchema,
+            row.Required,
+            row.Evidence,
+            row.Notes,
+            row.IssueCount,
+            row.IssueCodes,
+            Metrics = metrics,
+            Details = details,
+        });
     }
 
     private static JsonElement ToObservedElement<T>(T value)

@@ -757,16 +757,16 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         IsBusy = true;
         try
         {
-            var matrix = await connectivityService.RunProtocolEvidenceMatrixAsync(
+            var run = await connectivityService.RunProtocolMatrixProjectionAsync(
                     Serial,
                     ConnectivityProgram,
                     ConnectivityProtocol,
                     ConnectivityPort,
                     CancellationToken.None);
-            ApplyProtocolEvidenceMatrix(matrix);
+            ApplyCompanionReportProjection(run.Projection);
             SummaryLabel =
-                $"Protocol matrix {matrix.MatrixId}: {matrix.Status}. " +
-                $"{matrix.Rows.Count} capability rows.";
+                $"Protocol matrix {run.Matrix.MatrixId}: {run.Matrix.Status}. " +
+                $"Projection {run.Projection.ProjectionId}: {run.Projection.Rows.Count} rows.";
         }
         catch (Exception ex)
         {
@@ -895,6 +895,11 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private void ApplyProtocolEvidenceMatrix(ConnectivityProtocolEvidenceMatrix matrix)
     {
         ApplyConnectivityRows(ConnectivityRows.ForProtocolEvidenceMatrix(matrix), matrix.Status);
+    }
+
+    private void ApplyCompanionReportProjection(CompanionReportProjection report)
+    {
+        ApplyConnectivityRows(ConnectivityRows.ForCompanionReportProjection(report), report.Status);
     }
 
     private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)

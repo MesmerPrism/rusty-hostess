@@ -311,7 +311,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   frontend-neutral `rusty.hostess.companion.report_projection.v1` row artifact
   from explicit source reports. This is the CLI-equivalent path for read-only
   operator report views; source artifacts still own validity, latest-artifact
-  selection, and protocol promotion.
+  selection, and protocol promotion. The WPF Protocol Matrix action feeds the
+  matrix-selected device-link artifact plus suite-run and protocol-matrix
+  reports into this route, then renders the projection rows instead of
+  re-normalizing promotion evidence in the UI.
 - `tools/hostessctl/hostessctl.py connectivity-probe run`: emits a
   `rusty.quest.connectivity_topology_probe.v1` report for the Quest
   connectivity lab. Fixture mode covers QCL-000 USB ADB command-feedback and

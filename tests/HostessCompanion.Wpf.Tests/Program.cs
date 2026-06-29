@@ -12,6 +12,8 @@ var tests = new (string Name, Action Test)[]
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
     ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
     ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
+    ("companion report projection rows expose shared artifact", CompanionReportProjectionRowsExposeSharedArtifact),
+    ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
@@ -241,6 +243,52 @@ static void ProtocolMatrixRowsExposeLatestPromotedEvidence()
     Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "promoted protocol matrix should project pass");
 }
 
+static void CompanionReportProjectionRowsExposeSharedArtifact()
+{
+    var projection = ReadFixture<CompanionReportProjection>("companion-report-projection-pass.json");
+    projection.ReportPath = "target/companion-report/projection.fixture.wpf.json";
+
+    var rows = ConnectivityRows.ForCompanionReportProjection(projection);
+
+    Assert(rows[0].Name == "hostess.companion_report_projection", "missing projection summary row");
+    Assert(rows.Any(row => row.Name == "projection.source.device_link_report.source.device_link_report.1"
+        && row.Evidence.Contains("rusty.quest.device_link.v1", StringComparison.Ordinal)),
+        "missing device-link source artifact row");
+    Assert(rows.Any(row =>
+            row.Name == "protocol_matrix.row.QCL-081.capability.biosignal.lsl_clocked_samples"
+            && row.Status == "usable"
+            && row.Evidence.Contains("tier=broker_owned", StringComparison.Ordinal)
+            && row.Evidence.Contains("authority=rusty.manifold.transport", StringComparison.Ordinal)
+            && row.Notes.Contains("fixtures/companion/protocol-matrix-promoted.json", StringComparison.Ordinal)),
+        "missing shared projection row for broker-owned QCL-081");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "projection fixture should project pass");
+}
+
+static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
+{
+    var run = new HostessctlConnectivityService()
+        .RunProtocolMatrixProjectionAsync(
+            serial: "",
+            program: "",
+            protocol: "UDP",
+            portText: "18767",
+            cancellationToken: CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
+
+    Assert(run.Suite.ReportPath.EndsWith(".json", StringComparison.Ordinal),
+        "suite report path must be attached");
+    Assert(run.Matrix.ReportPath.EndsWith(".protocol-matrix.json", StringComparison.Ordinal),
+        "matrix report path must be attached");
+    Assert(File.Exists(run.Projection.ReportPath), "projection report must be written");
+    Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
+        "service must return the companion-report projection schema");
+    Assert(run.Projection.Rows.Any(row => row.RowId == "protocol_matrix.summary"),
+        "projection must include the protocol matrix summary row");
+    Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_suite_run"),
+        "projection must include the suite source artifact");
+}
+
 static void FirewallRowsExposeProductVerification()
 {
     var listener = JsonSerializer.SerializeToElement(new
@@ -353,8 +401,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             && action.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal)
             && action.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal)
             && action.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)),
-        "protocol matrix must stay backed by the consolidated latest-artifact CLI route");
+            && action.CliRoute.Contains("--latest-stream-probe-id", StringComparison.Ordinal)
+            && action.CliRoute.Contains("companion-report projection", StringComparison.Ordinal)
+            && action.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal)),
+        "protocol matrix must render the shared companion-report projection artifact");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();

@@ -60,6 +60,12 @@ protocol-matrix, and suite-run source artifacts. The route is a row-normalizing
 view contract for WPF, Makepad, CLI automation, and future frontends; it does
 not select latest artifacts, validate QCL source evidence, run probes, change
 firewall/device state, or re-evaluate protocol promotion gates.
+The WPF Protocol Matrix action first requests the Hostess protocol-matrix
+route, preserving that route's latest-artifact selection and promotion policy,
+then passes the selected device-link input plus suite and matrix artifacts into
+`companion-report projection`. WPF renders the resulting projection rows
+through `ConnectivityRows.ForCompanionReportProjection` so the human page and
+CLI automation inspect the same normalized report artifact.
 Page-owned viewmodels keep the row projection families separated:
 `ReadinessPageViewModel`, `DevicesPageViewModel`,
 `ConnectivityPageViewModel`, `SessionPageViewModel`,

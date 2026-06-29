@@ -363,6 +363,20 @@ public sealed class HostessctlConnectivityService
         string program,
         string protocol,
         string portText,
+        CancellationToken cancellationToken) =>
+        (await RunProtocolMatrixProjectionAsync(
+                serial,
+                program,
+                protocol,
+                portText,
+                cancellationToken)
+            .ConfigureAwait(false)).Matrix;
+
+    public async Task<ConnectivityProtocolMatrixProjectionRun> RunProtocolMatrixProjectionAsync(
+        string serial,
+        string program,
+        string protocol,
+        string portText,
         CancellationToken cancellationToken)
     {
         var suite = await RunFixtureSuiteAsync(
@@ -417,7 +431,18 @@ public sealed class HostessctlConnectivityService
                 cancellationToken)
             .ConfigureAwait(false);
         matrix.ReportPath = reportPath.FullName;
-        return matrix;
+        var projection = await RunCompanionReportProjectionAsync(
+                repoRoot,
+                suite,
+                matrix,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return new ConnectivityProtocolMatrixProjectionRun
+        {
+            Suite = suite,
+            Matrix = matrix,
+            Projection = projection,
+        };
     }
 
     public string DefaultRuleNameForPort(string portText, string protocol) =>
@@ -529,6 +554,78 @@ public sealed class HostessctlConnectivityService
             ?? throw new InvalidOperationException($"Connectivity report was empty: {reportPath.FullName}");
     }
 
+    private static async Task<CompanionReportProjection> RunCompanionReportProjectionAsync(
+        DirectoryInfo repoRoot,
+        ConnectivitySuiteRunReport suite,
+        ConnectivityProtocolEvidenceMatrix matrix,
+        CancellationToken cancellationToken)
+    {
+        var projectionPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "companion-report",
+            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.projection.json"));
+        Directory.CreateDirectory(projectionPath.Directory!.FullName);
+
+        var arguments = new List<string>
+        {
+            "companion-report",
+            "projection",
+            "--frontend",
+            "wpf",
+            "--projection-id",
+            $"{matrix.MatrixId}.wpf",
+            "--protocol-matrix",
+            matrix.ReportPath,
+            "--suite-run",
+            suite.ReportPath,
+            "--out",
+            projectionPath.FullName,
+            "--fail-on-error",
+        };
+
+        foreach (var inputPath in MatrixDeviceLinkInputPaths(repoRoot, matrix))
+        {
+            arguments.Add("--device-link");
+            arguments.Add(inputPath);
+        }
+
+        await RunHostessctlAsync(repoRoot, arguments, projectionPath, cancellationToken)
+            .ConfigureAwait(false);
+
+        var report = await ReadReportAsync<CompanionReportProjection>(
+                projectionPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        report.ReportPath = projectionPath.FullName;
+        return report;
+    }
+
+    private static IEnumerable<string> MatrixDeviceLinkInputPaths(
+        DirectoryInfo repoRoot,
+        ConnectivityProtocolEvidenceMatrix matrix)
+    {
+        foreach (var input in matrix.Inputs)
+        {
+            if (!string.Equals(input.Role, "device_link_report", StringComparison.OrdinalIgnoreCase)
+                || string.IsNullOrWhiteSpace(input.Path))
+            {
+                continue;
+            }
+            yield return ResolveArtifactPath(repoRoot, input.Path);
+        }
+    }
+
+    private static string ResolveArtifactPath(DirectoryInfo repoRoot, string path)
+    {
+        if (Path.IsPathFullyQualified(path))
+        {
+            return path;
+        }
+        var normalized = path.Replace('/', Path.DirectorySeparatorChar);
+        return Path.Combine(repoRoot.FullName, normalized);
+    }
+
     private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>
         new(Path.Combine(
             repoRoot.FullName,
@@ -593,6 +690,16 @@ public sealed class HostessctlConnectivityService
 
     private static string NormalizeProtocol(string protocol) =>
         string.Equals(protocol?.Trim(), "TCP", StringComparison.OrdinalIgnoreCase) ? "TCP" : "UDP";
+
+    private static string SafeFileToken(string preferred, string fallback)
+    {
+        var value = string.IsNullOrWhiteSpace(preferred) ? fallback : preferred;
+        var chars = value
+            .Select(ch => char.IsLetterOrDigit(ch) || ch is '.' or '_' or '-' ? ch : '-')
+            .ToArray();
+        var token = new string(chars).Trim('.', '_', '-');
+        return string.IsNullOrWhiteSpace(token) ? "companion-report" : token;
+    }
 
     private static string EncodePowerShell(string script) =>
         Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
