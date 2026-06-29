@@ -46,6 +46,13 @@ SESSION_PHASE_IDS = (
     "app_private_fallback",
     "evidence",
 )
+DEFAULT_COMPANION_SESSION_WAIT_SECONDS = 30.0
+DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS = 30.0
+DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS = 20.0
+DEFAULT_COMPANION_SESSION_SOCKET_WAIT_SECONDS = 20.0
+DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS = 8.0
+DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_COUNT = 8
+DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_WAIT_SECONDS = 2.0
 
 
 def run_companion_session(
@@ -1158,7 +1165,9 @@ def live_android_args(
         broker_local_port=int(getattr(args, "broker_local_port", None) or BROKER_LOCAL_FORWARD_PORT),
         broker_path=str(getattr(args, "broker_path", None) or MANIFOLD_BROKER_EVENTS_PATH),
         connect_timeout_seconds=float(getattr(args, "connect_timeout_seconds", 5.0)),
-        wait_seconds=float(getattr(args, "wait_seconds", 15.0)),
+        wait_seconds=float(
+            getattr(args, "wait_seconds", DEFAULT_COMPANION_SESSION_WAIT_SECONDS)
+        ),
         runtime_receipt_stream=str(
             getattr(args, "runtime_receipt_stream", None) or DEFAULT_RUNTIME_RECEIPT_STREAM
         ),
@@ -1167,15 +1176,47 @@ def live_android_args(
         makepad_activity=str(
             getattr(args, "makepad_activity", None) or MAKEPAD_ANDROID_XR_ACTIVITY
         ),
-        broker_process_wait_seconds=float(getattr(args, "broker_process_wait_seconds", 8.0)),
-        makepad_process_wait_seconds=float(getattr(args, "makepad_process_wait_seconds", 8.0)),
-        socket_wait_seconds=float(getattr(args, "socket_wait_seconds", 8.0)),
-        launch_settle_seconds=float(getattr(args, "launch_settle_seconds", 8.0)),
+        broker_process_wait_seconds=float(
+            getattr(
+                args,
+                "broker_process_wait_seconds",
+                DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,
+            )
+        ),
+        makepad_process_wait_seconds=float(
+            getattr(
+                args,
+                "makepad_process_wait_seconds",
+                DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,
+            )
+        ),
+        socket_wait_seconds=float(
+            getattr(
+                args,
+                "socket_wait_seconds",
+                DEFAULT_COMPANION_SESSION_SOCKET_WAIT_SECONDS,
+            )
+        ),
+        launch_settle_seconds=float(
+            getattr(
+                args,
+                "launch_settle_seconds",
+                DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS,
+            )
+        ),
         runtime_subscriber_retry_count=int(
-            getattr(args, "runtime_subscriber_retry_count", 1)
+            getattr(
+                args,
+                "runtime_subscriber_retry_count",
+                DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_COUNT,
+            )
         ),
         runtime_subscriber_retry_wait_seconds=float(
-            getattr(args, "runtime_subscriber_retry_wait_seconds", 5.0)
+            getattr(
+                args,
+                "runtime_subscriber_retry_wait_seconds",
+                DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_WAIT_SECONDS,
+            )
         ),
         no_launch_broker=bool(getattr(args, "no_launch_broker", False)),
         no_launch_makepad=bool(getattr(args, "no_launch_makepad", False)),
@@ -1207,7 +1248,13 @@ def android_fallback_args(
         broker_local_port=int(getattr(args, "broker_local_port", None) or BROKER_LOCAL_FORWARD_PORT),
         broker_path=str(getattr(args, "broker_path", None) or MANIFOLD_BROKER_EVENTS_PATH),
         connect_timeout_seconds=float(getattr(args, "connect_timeout_seconds", 5.0)),
-        authority_wait_seconds=float(getattr(args, "authority_wait_seconds", 5.0)),
+        authority_wait_seconds=float(
+            getattr(
+                args,
+                "authority_wait_seconds",
+                DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
+            )
+        ),
         adb_forward_broker=False,
         adb=str(getattr(args, "adb", "")),
         serial=str(getattr(args, "serial", "")),
@@ -1219,7 +1266,10 @@ def android_fallback_args(
             getattr(args, "fallback_remote_dir", None)
             or bridge_command_android_routes.DEFAULT_REMOTE_DIR
         ),
-        wait_seconds=float(getattr(args, "fallback_wait_seconds", None) or getattr(args, "wait_seconds", 20.0)),
+        wait_seconds=float(
+            getattr(args, "fallback_wait_seconds", None)
+            or getattr(args, "wait_seconds", DEFAULT_COMPANION_SESSION_WAIT_SECONDS)
+        ),
         no_launch=bool(getattr(args, "no_launch_makepad", False)),
     )
 

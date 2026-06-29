@@ -120,7 +120,16 @@ python tools\hostessctl\hostessctl.py companion-session run `
   --frontend wpf `
   --profile hostess-makepad-quest `
   --adb <adb.exe> `
-  --serial <quest-serial>
+  --serial <quest-serial> `
+  --wait-seconds 30 `
+  --fallback-wait-seconds 30 `
+  --authority-wait-seconds 30 `
+  --broker-process-wait-seconds 20 `
+  --makepad-process-wait-seconds 20 `
+  --socket-wait-seconds 20 `
+  --launch-settle-seconds 8 `
+  --runtime-subscriber-retry-count 8 `
+  --runtime-subscriber-retry-wait-seconds 2
 ```
 
 It renders the returned ordered phases, actions, issues, and artifact
@@ -131,6 +140,9 @@ includes the Quest-owned `rusty.quest.device_link.v1` report, which is the
 operator-facing summary for device identity, ADB forward state, broker
 readiness, runtime subscriber health, command results, and stream capability
 costs.
+For QCL-000 promotion, the broker-stream evidence must include
+`runtime_accepted` and `applied`; app-private fallback recovery is displayed
+for diagnosis but does not satisfy the device-link command authority gate.
 
 When a session report references a `rusty.quest.device_link.v1` artifact, WPF
 loads it through `HostessctlSessionService` and projects it into the operator

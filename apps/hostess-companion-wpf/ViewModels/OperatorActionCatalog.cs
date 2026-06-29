@@ -16,7 +16,11 @@ public static class OperatorActionCatalog
             "wpf.session.run",
             "Run companion session",
             "RunSessionCommand",
-            "companion-session run",
+            "companion-session run --frontend wpf --profile hostess-makepad-quest " +
+            "--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30 " +
+            "--broker-process-wait-seconds 20 --makepad-process-wait-seconds 20 " +
+            "--socket-wait-seconds 20 --launch-settle-seconds 8 " +
+            "--runtime-subscriber-retry-count 8 --runtime-subscriber-retry-wait-seconds 2",
             "rusty.hostess.companion.session.v1; rusty.quest.device_link.v1",
             "Hostess",
             "tools.test_hostessctl_companion_session; HostessCompanion.Wpf.Tests"),

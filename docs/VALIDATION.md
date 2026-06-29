@@ -71,6 +71,15 @@ The WPF projection tests cover `rusty.quest.device_link.v1` artifact loading
 from a session report, Devices/Transports projection rows, command-stage
 evidence promotion, connectivity suite row grouping, and catalog-backed
 workspace composition and validation-issue rows.
+The WPF Session action also carries the live receipt wait envelope that CLI
+automation should use for headset smoke:
+`--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30
+--broker-process-wait-seconds 20 --makepad-process-wait-seconds 20
+--socket-wait-seconds 20 --launch-settle-seconds 8
+--runtime-subscriber-retry-count 8
+--runtime-subscriber-retry-wait-seconds 2`. QCL-000 promotion requires the
+broker-stream `runtime_accepted` and `applied` stages; app-private fallback
+evidence remains a recovery diagnostic, not command authority.
 
 Every new WPF operator action needs UI-equivalent CLI coverage before it is
 accepted as an operator capability. The minimum validation shape is: a
@@ -413,7 +422,10 @@ execution sidecar. If that broker-stream route does not pass, the backend falls
 back to `run-bridge-command-android` without broker authority as an explicit
 app-private recovery shim. UI validation is the WPF build plus the companion
 session and bridge-command backend tests; live headset acceptance also requires
-a serial-scoped ADB target, broker socket, and runtime receipt.
+a serial-scoped ADB target, broker socket, and broker-stream runtime receipts
+through `runtime_accepted` and `applied`. Use the WPF Session receipt wait
+envelope documented above for live acceptance; fallback-only recovery should
+remain visible as a warning and must not promote QCL-000.
 
 For projected-motion-breath desktop replay:
 

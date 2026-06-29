@@ -4,6 +4,15 @@ from __future__ import annotations
 
 import argparse
 
+from tools.hostessctl.companion_session import (
+    DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
+    DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS,
+    DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,
+    DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_COUNT,
+    DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_WAIT_SECONDS,
+    DEFAULT_COMPANION_SESSION_SOCKET_WAIT_SECONDS,
+    DEFAULT_COMPANION_SESSION_WAIT_SECONDS,
+)
 from tools.hostessctl.pmb_support import (
     PMB_CONTROLLER_STATE_EXHALE_THRESHOLD,
     PMB_CONTROLLER_STATE_INHALE_THRESHOLD,
@@ -532,23 +541,51 @@ def build_hostessctl_parser(
     companion_session_run.add_argument("--fallback-input")
     companion_session_run.add_argument("--fallback-remote-dir", default="files/hostess-t/settings")
     companion_session_run.add_argument("--connect-timeout-seconds", type=float, default=5.0)
-    companion_session_run.add_argument("--wait-seconds", type=float, default=15.0)
+    companion_session_run.add_argument(
+        "--wait-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_WAIT_SECONDS,
+    )
     companion_session_run.add_argument("--fallback-wait-seconds", type=float)
-    companion_session_run.add_argument("--authority-wait-seconds", type=float, default=5.0)
+    companion_session_run.add_argument(
+        "--authority-wait-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
+    )
     companion_session_run.add_argument(
         "--runtime-receipt-stream",
         default="stream.hostess.makepad.bridge_command.receipt",
     )
     companion_session_run.add_argument("--no-runtime-receipt-subscribe", action="store_true")
-    companion_session_run.add_argument("--broker-process-wait-seconds", type=float, default=8.0)
-    companion_session_run.add_argument("--makepad-process-wait-seconds", type=float, default=8.0)
-    companion_session_run.add_argument("--socket-wait-seconds", type=float, default=8.0)
-    companion_session_run.add_argument("--launch-settle-seconds", type=float, default=8.0)
-    companion_session_run.add_argument("--runtime-subscriber-retry-count", type=int, default=1)
+    companion_session_run.add_argument(
+        "--broker-process-wait-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,
+    )
+    companion_session_run.add_argument(
+        "--makepad-process-wait-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_PROCESS_WAIT_SECONDS,
+    )
+    companion_session_run.add_argument(
+        "--socket-wait-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_SOCKET_WAIT_SECONDS,
+    )
+    companion_session_run.add_argument(
+        "--launch-settle-seconds",
+        type=float,
+        default=DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS,
+    )
+    companion_session_run.add_argument(
+        "--runtime-subscriber-retry-count",
+        type=int,
+        default=DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_COUNT,
+    )
     companion_session_run.add_argument(
         "--runtime-subscriber-retry-wait-seconds",
         type=float,
-        default=5.0,
+        default=DEFAULT_COMPANION_SESSION_RUNTIME_SUBSCRIBER_RETRY_WAIT_SECONDS,
     )
     companion_session_run.add_argument("--no-launch-broker", action="store_true")
     companion_session_run.add_argument("--no-launch-makepad", action="store_true")

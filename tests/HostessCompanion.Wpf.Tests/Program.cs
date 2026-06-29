@@ -8,6 +8,7 @@ var tests = new (string Name, Action Test)[]
 {
     ("device-link projection promotes devices and transports", DeviceLinkProjectionPromotesDevicesAndTransports),
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
+    ("session service exposes robust receipt wait arguments", SessionServiceExposesRobustReceiptWaitArguments),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),
     ("protocol matrix rows expose promotion gates", ProtocolMatrixRowsExposePromotionGates),
     ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
@@ -70,6 +71,20 @@ static void SessionServiceReadsDeviceLinkArtifact()
     Assert(report is not null, "expected device-link report");
     Assert(report!.Status == "pass", "expected pass report");
     Assert(report.Tunnels.Count == 1, "expected tunnel");
+}
+
+static void SessionServiceExposesRobustReceiptWaitArguments()
+{
+    var arguments = HostessctlSessionService.SessionReliabilityArguments;
+    AssertArgument(arguments, "--wait-seconds", "30");
+    AssertArgument(arguments, "--fallback-wait-seconds", "30");
+    AssertArgument(arguments, "--authority-wait-seconds", "30");
+    AssertArgument(arguments, "--broker-process-wait-seconds", "20");
+    AssertArgument(arguments, "--makepad-process-wait-seconds", "20");
+    AssertArgument(arguments, "--socket-wait-seconds", "20");
+    AssertArgument(arguments, "--launch-settle-seconds", "8");
+    AssertArgument(arguments, "--runtime-subscriber-retry-count", "8");
+    AssertArgument(arguments, "--runtime-subscriber-retry-wait-seconds", "2");
 }
 
 static void ConnectivitySuiteRowsExposeGroupsAndMetrics()
@@ -318,6 +333,15 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     }
     Assert(
         OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "RunSessionCommand"
+            && action.CliRoute.Contains("companion-session run", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--wait-seconds 30", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--fallback-wait-seconds 30", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--runtime-subscriber-retry-count 8", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--runtime-subscriber-retry-wait-seconds 2", StringComparison.Ordinal)),
+        "session run must advertise the robust runtime receipt CLI route");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "LoadSessionHistoryCommand"
             && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
@@ -376,6 +400,14 @@ static ConnectivityProtocolEvidenceRow PromotedProtocolRow(
         ],
         Measurements = JsonSerializer.SerializeToElement(new { packets = 16 }),
     };
+
+static void AssertArgument(IReadOnlyList<string> arguments, string name, string value)
+{
+    var index = arguments.ToList().IndexOf(name);
+    Assert(index >= 0, $"missing argument {name}");
+    Assert(index + 1 < arguments.Count, $"missing value for {name}");
+    Assert(arguments[index + 1] == value, $"expected {name} {value}, got {arguments[index + 1]}");
+}
 
 static void PageViewModelsOwnWpfRowsAndSelections()
 {

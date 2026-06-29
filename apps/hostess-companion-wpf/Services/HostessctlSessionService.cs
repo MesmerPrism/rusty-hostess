@@ -11,6 +11,28 @@ public sealed class HostessctlSessionService
     private const string SessionHistorySchema = "rusty.hostess.companion.session_history.v1";
     private const int ArtifactPreviewMaxChars = 20000;
 
+    public static IReadOnlyList<string> SessionReliabilityArguments { get; } =
+    [
+        "--wait-seconds",
+        "30",
+        "--fallback-wait-seconds",
+        "30",
+        "--authority-wait-seconds",
+        "30",
+        "--broker-process-wait-seconds",
+        "20",
+        "--makepad-process-wait-seconds",
+        "20",
+        "--socket-wait-seconds",
+        "20",
+        "--launch-settle-seconds",
+        "8",
+        "--runtime-subscriber-retry-count",
+        "8",
+        "--runtime-subscriber-retry-wait-seconds",
+        "2",
+    ];
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
@@ -98,8 +120,10 @@ public sealed class HostessctlSessionService
         startInfo.ArgumentList.Add(HostessctlAdbResolver.ResolveAdb());
         startInfo.ArgumentList.Add("--serial");
         startInfo.ArgumentList.Add(serial.Trim());
-        startInfo.ArgumentList.Add("--wait-seconds");
-        startInfo.ArgumentList.Add("20");
+        foreach (var argument in SessionReliabilityArguments)
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
         if (checkBroker)
         {
             startInfo.ArgumentList.Add("--check-broker");
