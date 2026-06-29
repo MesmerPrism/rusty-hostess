@@ -5937,6 +5937,8 @@ def zeromq_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
     pattern = str(getattr(args, "zeromq_pattern", "req-rep") or "req-rep")
     message_count = max(1, int(getattr(args, "zeromq_message_count", 16) or 16))
     timeout = max(0.5, float(getattr(args, "zeromq_timeout_seconds", 5.0) or 5.0))
+    if source == "native-rust-broker":
+        return zeromq_manifold_broker_probe(args)
     if source == "manifold-zmq-loopback":
         return zeromq_manifold_loopback_probe(args)
     if source == "rusty-xr-zmq-loopback":
@@ -6071,6 +6073,141 @@ def zeromq_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:
         "acknowledged_sequences": acknowledged_sequences[:50],
         "issue_codes": issue_codes,
         "notes": "host-local ZeroMQ loopback; not a native Rust broker/Quest topology proof",
+    }
+
+
+def zeromq_manifold_broker_probe(args: argparse.Namespace) -> dict[str, Any]:
+    source = "native-rust-broker"
+    pattern = str(getattr(args, "zeromq_pattern", "pub-sub") or "pub-sub")
+    message_count = max(1, int(getattr(args, "zeromq_message_count", 16) or 16))
+    if pattern != "pub-sub":
+        return {
+            "status": "blocked",
+            "source": source,
+            "pattern": pattern,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.zeromq_pattern_not_implemented"],
+            "notes": "native Rust broker-owned QCL-084 currently validates PUB/SUB only",
+        }
+
+    root = resolve_manifold_root(args)
+    if root is None:
+        return {
+            "status": "blocked",
+            "source": source,
+            "pattern": pattern,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_root_missing"],
+            "notes": "Rusty Manifold root with crates/rusty-manifold-zmq was not found",
+        }
+
+    timeout = max(10.0, float(getattr(args, "zeromq_cargo_timeout_seconds", 120.0) or 120.0))
+    command = [
+        "cargo",
+        "run",
+        "-q",
+        "-p",
+        "rusty-manifold-zmq",
+        "--example",
+        "zmq_pub_sub_loopback",
+        "--features",
+        "runtime",
+        "--",
+        "--json",
+        "--source",
+        source,
+        "--message-count",
+        str(message_count),
+    ]
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=str(root),
+            text=True,
+            capture_output=True,
+            timeout=timeout,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            "status": "blocked",
+            "source": source,
+            "pattern": pattern,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_broker_timeout"],
+            "notes": f"native Rust broker-owned ZeroMQ probe timed out after {timeout}s: {exc}",
+        }
+
+    parsed = parse_probe_json_stdout(completed.stdout)
+    if not parsed:
+        return {
+            "status": "blocked",
+            "source": source,
+            "pattern": pattern,
+            "messages_requested": message_count,
+            "messages_received": 0,
+            "messages_acknowledged": 0,
+            "round_trip_ms_p95": None,
+            "issue_codes": ["hostess.issue.connectivity_probe.manifold_zmq_broker_report_missing"],
+            "notes": (completed.stderr or completed.stdout or "native Rust broker-owned ZeroMQ report missing").strip()[:800],
+        }
+
+    issue_codes = [str(code) for code in parsed.get("issue_codes", []) or []]
+    route_evidence = object_value(parsed.get("bridge_route_evidence"))
+    authority = object_value(parsed.get("authority"))
+    broker_owned = (
+        str(parsed.get("evidence_tier") or "") == "broker_owned"
+        and str(authority.get("owner") or "") == "rusty.manifold.transport"
+        and str(route_evidence.get("status") or "") == "pass"
+    )
+    requested = int(parsed.get("messages_requested") or message_count)
+    received = int(parsed.get("messages_received") or 0)
+    acknowledged = int(parsed.get("messages_acknowledged") or received)
+    dropped = int(parsed.get("dropped_count") or 0)
+    decode_errors = int(parsed.get("decode_error_count") or 0)
+    status = str(parsed.get("status") or "blocked")
+    if completed.returncode != 0 and status == "pass":
+        status = "blocked"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_failed")
+    if status == "pass" and not broker_owned:
+        status = "warn"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_owned_evidence_missing")
+    if status == "pass" and (acknowledged < requested or dropped or decode_errors):
+        status = "warn"
+        issue_codes.append("hostess.issue.connectivity_probe.zeromq_exchange_degraded")
+    if status not in {"pass", "warn", "fail", "blocked"}:
+        status = "blocked"
+        issue_codes.append("hostess.issue.connectivity_probe.manifold_zmq_broker_status_invalid")
+
+    return {
+        "status": status,
+        "source": source,
+        "pattern": pattern,
+        "endpoint": parsed.get("endpoint") or "tcp://127.0.0.1:<dynamic>",
+        "messages_requested": requested,
+        "messages_received": received,
+        "messages_acknowledged": acknowledged,
+        "round_trip_ms_p95": parsed.get("round_trip_ms_p95"),
+        "received_sequences": parsed.get("received_sequences", []),
+        "dropped_count": dropped,
+        "decode_error_count": decode_errors,
+        "evidence_tier": parsed.get("evidence_tier"),
+        "authority_owner": authority.get("owner"),
+        "bridge_route_evidence": route_evidence,
+        "issue_codes": dedupe_issue_codes(issue_codes),
+        "notes": (
+            "native Rust Manifold-owned ZeroMQ PUB/SUB route evidence from rusty-manifold-zmq; "
+            "Hostess only wraps the emitted broker-owned report"
+        ),
     }
 
 
@@ -6625,9 +6762,12 @@ def live_qcl084_status(checks: list[dict[str, Any]], *, source: str, device_ip: 
     if exchange_status == "warn":
         return "warn"
     if exchange_status == "pass":
+        if source == "native-rust-broker":
+            return "pass"
+        if source == "quest-runtime" and device_ip:
+            return "pass"
         if source not in {"native-rust-broker", "quest-runtime"} or not device_ip:
             return "warn"
-        return "pass"
     return "blocked"
 
 

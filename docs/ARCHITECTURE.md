@@ -257,7 +257,12 @@ that converts Goofi PAIR/send_pyobj payloads into bounded JSON for the generic
 ZeroMQ route. The generic proof now lives in the Manifold-owned
 `rusty-manifold-zmq` adapter, while Hostess can still ingest the public
 Rusty-XR compatibility proof and the Goofi sidecar witness log. Neither WPF
-nor Hostess should make Goofi the protocol authority.
+nor Hostess should make Goofi the protocol authority. The promotable
+`native-rust-broker` QCL-084 path is still CLI-owned: Hostess shells to the
+Manifold adapter's JSON report mode, requires `evidence_tier=broker_owned`,
+`authority.owner=rusty.manifold.transport`, passing bridge-route evidence,
+zero drops, and zero decode errors, then wraps that report as Hostess
+connectivity evidence for WPF and protocol-matrix rendering.
 `hostessctl connectivity-probe protocol-matrix` is the roll-up contract for
 operator protocol promotion views. It consumes existing suite, probe,
 device-link, and stream-capability artifacts and classifies each protocol by

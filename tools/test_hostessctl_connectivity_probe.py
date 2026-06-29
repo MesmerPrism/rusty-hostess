@@ -605,6 +605,32 @@ class HostessCtlConnectivityProbeTests(unittest.TestCase):
         self.assertFalse(report["promotion"]["allowed"])
         self.assertEqual(validation["status"], "pass")
 
+    def test_live_zeromq_report_promotes_native_rust_broker_evidence(self) -> None:
+        report = live_zeromq_report(
+            probe_args(
+                mode="live",
+                probe_id="QCL-084",
+                host_ip="",
+                zeromq_source="native-rust-broker",
+                zeromq_pattern="pub-sub",
+            ),
+            run_captured_func=FakeRunner(),
+            clock_func=fixed_datetime,
+            host_ipv4_func=lambda: [],
+            zeromq_probe_func=fake_native_rust_broker_zeromq_pass,
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-084")
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["transport"]["endpoint_source"], "native-rust-broker")
+        self.assertEqual(check(report, "protocol.zeromq_dependency")["status"], "pass")
+        self.assertEqual(check(report, "protocol.zeromq_payload_exchange")["status"], "pass")
+        self.assertEqual(report["zeromq_payload_probe"]["evidence_tier"], "broker_owned")
+        self.assertEqual(report["zeromq_payload_probe"]["authority_owner"], "rusty.manifold.transport")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
     def test_live_bluetooth_report_classifies_passive_readiness_as_warning(self) -> None:
         report = live_bluetooth_report(
             probe_args(mode="live", probe_id="QCL-050"),
@@ -1185,6 +1211,36 @@ def fake_zeromq_loopback_pass(args: argparse.Namespace) -> dict[str, Any]:
         "received_sequences": list(range(16)),
         "issue_codes": [],
         "notes": "host-local ZeroMQ loopback",
+    }
+
+
+def fake_native_rust_broker_zeromq_pass(args: argparse.Namespace) -> dict[str, Any]:
+    return {
+        "status": "pass",
+        "source": "native-rust-broker",
+        "pattern": "pub-sub",
+        "messages_requested": 16,
+        "messages_received": 16,
+        "messages_acknowledged": 16,
+        "round_trip_ms_p95": None,
+        "received_sequences": list(range(16)),
+        "dropped_count": 0,
+        "decode_error_count": 0,
+        "evidence_tier": "broker_owned",
+        "authority_owner": "rusty.manifold.transport",
+        "bridge_route_evidence": {
+            "$schema": "rusty.manifold.bridge.route_evidence.v1",
+            "route_id": "bridge_route.stream.zeromq.pub_sub",
+            "status": "pass",
+            "stage_reports": [
+                {"stage": "sent", "status": "pass", "issue_codes": []},
+                {"stage": "transport_ok", "status": "pass", "issue_codes": []},
+                {"stage": "observed", "status": "pass", "issue_codes": []},
+            ],
+            "issues": [],
+        },
+        "issue_codes": [],
+        "notes": "native Rust Manifold-owned ZeroMQ route evidence",
     }
 
 

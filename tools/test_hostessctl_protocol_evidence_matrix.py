@@ -85,6 +85,31 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(qcl080["missing_gates"], [])
         self.assertIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
 
+    def test_native_rust_broker_zero_mq_promotes_qcl084(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl084_path = root / "qcl084-native-rust-broker.json"
+            qcl084_path.write_text(json.dumps(promoted_qcl084_report()), encoding="utf-8")
+
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl084-promoted",
+                    input=[str(qcl084_path)],
+                    suite_run=[],
+                    fail_on_error=True,
+                )
+            )
+
+        qcl084 = row(matrix, "QCL-084")
+        self.assertEqual(qcl084["status"], "usable")
+        self.assertEqual(qcl084["promotion_state"], "promoted")
+        self.assertEqual(qcl084["evidence_tier"], "broker_owned")
+        self.assertTrue(qcl084["promotion_allowed"])
+        self.assertEqual(qcl084["missing_gates"], [])
+        self.assertIn("QCL-081", matrix["summary"]["pending_required_probe_ids"])
+
     def test_device_link_report_promotes_command_baseline(self) -> None:
         matrix = build_protocol_evidence_matrix(
             argparse.Namespace(
@@ -202,6 +227,46 @@ def promoted_qcl080_report() -> dict[str, Any]:
             "product_scope_matches": True,
         }
     )
+    return report
+
+
+def promoted_qcl084_report() -> dict[str, Any]:
+    report = read_json(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-084-zeromq-loopback-pass.json")
+    report["run_id"] = "qcl084-native-rust-broker-promoted"
+    report["status"] = "pass"
+    report["transport"]["endpoint_source"] = "native-rust-broker"
+    report["transport"]["local_endpoint"] = "native-rust-broker"
+    report["transport"]["remote_endpoint"] = "native-rust-broker"
+    report["host"]["adb_provider"] = ""
+    report["host"]["toolchain_profile"] = "hostessctl.connectivity_probe.qcl084"
+    report["measurements"]["zeromq_messages_requested"] = 16
+    report["measurements"]["zeromq_messages_received"] = 16
+    report["promotion"]["allowed"] = True
+    report["promotion"]["reason"] = "QCL-084 proves native Rust broker-owned ZeroMQ route evidence"
+    report["zeromq_payload_probe"] = {
+        "status": "pass",
+        "source": "native-rust-broker",
+        "pattern": "pub-sub",
+        "messages_requested": 16,
+        "messages_received": 16,
+        "messages_acknowledged": 16,
+        "dropped_count": 0,
+        "decode_error_count": 0,
+        "evidence_tier": "broker_owned",
+        "authority_owner": "rusty.manifold.transport",
+        "bridge_route_evidence": {
+            "$schema": "rusty.manifold.bridge.route_evidence.v1",
+            "route_id": "bridge_route.stream.zeromq.pub_sub",
+            "status": "pass",
+            "stage_reports": [
+                {"stage": "sent", "status": "pass", "issue_codes": []},
+                {"stage": "transport_ok", "status": "pass", "issue_codes": []},
+                {"stage": "observed", "status": "pass", "issue_codes": []},
+            ],
+            "issues": [],
+        },
+        "issue_codes": [],
+    }
     return report
 
 
