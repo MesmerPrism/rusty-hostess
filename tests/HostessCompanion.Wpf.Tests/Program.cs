@@ -189,6 +189,17 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "LoadSessionHistoryCommand"
             && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
+    var firewallActions = OperatorActionCatalog.All
+        .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
+        .ToArray();
+    Assert(firewallActions.Length == 4,
+        "firewall controls must expose plan/apply/verify/remove operator action descriptors");
+    Assert(firewallActions.All(action =>
+            action.CliRoute.StartsWith("connectivity-probe windows-firewall-rule --action ", StringComparison.Ordinal)),
+        "firewall controls must stay backed by the windows-firewall-rule CLI route");
+    Assert(firewallActions.All(action =>
+            action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
+        "firewall controls must advertise the emitted windows firewall evidence schema");
 }
 
 static void PageViewModelsOwnWpfRowsAndSelections()

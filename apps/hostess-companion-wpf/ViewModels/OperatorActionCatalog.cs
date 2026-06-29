@@ -49,7 +49,7 @@ public static class OperatorActionCatalog
             "Plan firewall rule",
             "PlanFirewallRuleCommand",
             "connectivity-probe windows-firewall-rule --action plan",
-            "rusty.hostess.connectivity.windows_firewall_rule.v1",
+            "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
         new(
@@ -57,7 +57,7 @@ public static class OperatorActionCatalog
             "Apply firewall rule",
             "ApplyFirewallRuleCommand",
             "connectivity-probe windows-firewall-rule --action apply",
-            "rusty.hostess.connectivity.windows_firewall_rule.v1",
+            "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
         new(
@@ -65,7 +65,7 @@ public static class OperatorActionCatalog
             "Verify firewall rule",
             "VerifyFirewallRuleCommand",
             "connectivity-probe windows-firewall-rule --action verify",
-            "rusty.hostess.connectivity.windows_firewall_rule.v1",
+            "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
         new(
@@ -89,7 +89,7 @@ public static class OperatorActionCatalog
             "Remove firewall rule",
             "RemoveFirewallRuleCommand",
             "connectivity-probe windows-firewall-rule --action remove",
-            "rusty.hostess.connectivity.windows_firewall_rule.v1",
+            "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
     ];
