@@ -359,6 +359,12 @@ projection while route execution remains in the facade and protocol helpers;
 Direct topology preflight reports. It may collect Quest feature state and
 Windows adapter state, but it keeps promotion blocked until peer discovery,
 group formation, bounded socket exchange, and cleanup evidence are present;
+`connectivity_topology_lifecycle.py` owns structured QCL-040/QCL-041
+Wi-Fi Direct lifecycle artifact ingestion. It validates live evidence source,
+peer class, feature/API or peer, permission, discovery, group formation,
+bounded TCP socket exchange, and cleanup before emitting a promoted topology
+report; it does not run the peer harness, mutate Wi-Fi Direct state, or claim
+QCL-082 product TCP media readiness;
 `connectivity_probe_validation.py` owns the shared QCL report schema/status
 validator so route dispatch, fixture construction, live probing, WPF rows, and
 Makepad rows all depend on the same report acceptance surface;
@@ -392,7 +398,7 @@ Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
 limitations. Live QCL-040/QCL-041 routes are intentionally separate and
 non-promoting until a real topology harness records the full Wi-Fi Direct peer
-lifecycle; and
+lifecycle and the lifecycle ingestion route normalizes that evidence; and
 `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
 ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution helpers, and
 protocol-specific live report assembly, source-specific report promotion

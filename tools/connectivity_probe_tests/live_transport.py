@@ -95,6 +95,71 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertIn("wifi_direct.peer_discovery", check_names)
         self.assertNotIn("device_to_host.tcp_echo", check_names)
 
+    def test_wifi_direct_lifecycle_report_promotes_complete_qcl041_topology(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            lifecycle_path.write_text(
+                json.dumps(wifi_direct_lifecycle_artifact(probe_id="QCL-041")),
+                encoding="utf-8",
+            )
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(report["probe_id"], "QCL-041")
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(report["transport"]["route"], "wifi_direct_lifecycle_artifact")
+        self.assertEqual(check(report, "wifi_direct.lifecycle_source")["status"], "pass")
+        self.assertEqual(check(report, "topology.socket_exchange")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "pass")
+        self.assertEqual(report["measurements"]["cleanup_completed"], True)
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_when_cleanup_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            lifecycle_path.write_text(
+                json.dumps(wifi_direct_lifecycle_artifact(probe_id="QCL-041", cleanup=False)),
+                encoding="utf-8",
+            )
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "blocked")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.wifi_direct_live_topology_not_promoted"
+                for issue in report["issues"]
+            )
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_live_same_wifi_report_does_not_pass_on_one_way_host_ping(self) -> None:
         report = live_same_wifi_report(
             probe_args(mode="live", host_ip="192.0.2.10"),

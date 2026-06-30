@@ -48,6 +48,7 @@ TOPOLOGY_REQUIRED_PASS_CHECKS = {
         "wifi_direct.peer_discovery",
         "wifi_direct.group_formation",
         "topology.socket_exchange",
+        "wifi_direct.cleanup",
     ],
     "QCL-041": [
         "wifi_direct.feature",
@@ -55,6 +56,7 @@ TOPOLOGY_REQUIRED_PASS_CHECKS = {
         "wifi_direct.peer_discovery",
         "wifi_direct.group_formation",
         "topology.socket_exchange",
+        "wifi_direct.cleanup",
     ],
 }
 
@@ -411,6 +413,11 @@ def qcl040_wifi_direct_body(
             "skipped" if blocked else "pass",
             "socket exchange skipped after group failure" if blocked else "bounded TCP message exchanged",
         ),
+        check_row(
+            "wifi_direct.cleanup",
+            "skipped" if blocked else "pass",
+            "cleanup skipped after group failure" if blocked else "group removed and restart gate clean",
+        ),
     ]
     measurements = empty_measurements()
     measurements.update(
@@ -418,6 +425,7 @@ def qcl040_wifi_direct_body(
             "tcp_connect_ms": None if blocked else 91,
             "wifi_direct_peer_count": 0 if blocked else 1,
             "reconnect_attempts": 1,
+            "cleanup_completed": not blocked,
         }
     )
     return {

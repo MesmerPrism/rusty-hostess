@@ -42,6 +42,9 @@ from tools.hostessctl.connectivity_probe import (
     windows_firewall_rule_report as facade_windows_firewall_rule_report,
 )
 from tools.hostessctl.connectivity_topology_live import live_direct_wifi_topology_report
+from tools.hostessctl.connectivity_topology_lifecycle import (
+    WIFI_DIRECT_LIFECYCLE_SCHEMA,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -615,6 +618,7 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "media_stream_receiver_sidecar": "",
         "media_stream_topology_report": "",
         "media_stream_firewall_report": "",
+        "wifi_direct_lifecycle_report": "",
         "capture_out": "target/connectivity-probe/media-stream.rmanvid1",
         "sidecar_out": "target/connectivity-probe/media-stream-receiver-sidecar.json",
         "bind_host": "0.0.0.0",
@@ -1213,6 +1217,66 @@ def media_stream_receiver_sidecar(*, capture_kind: str = "fixture_rmanvid1_captu
             "remote_endpoint": "127.0.0.1:8879",
             "command_id": "command.media_stream.start_source",
             "session_id": "session.media_stream.test",
+        },
+    }
+
+
+def wifi_direct_lifecycle_artifact(
+    *,
+    probe_id: str = "QCL-041",
+    cleanup: bool = True,
+    socket_bounded: bool = True,
+    live_evidence: bool = True,
+) -> dict[str, Any]:
+    windows_peer = probe_id == "QCL-041"
+    peer_class = "windows" if windows_peer else "android_phone"
+    peer_phase = "windows_wifi_direct_api" if windows_peer else "android_phone_peer"
+    lifecycle = {
+        "feature": {"status": "pass", "evidence": "android.hardware.wifi.direct"},
+        peer_phase: {"status": "pass", "evidence": f"{peer_class} peer available"},
+        "permission_state": {"status": "pass", "evidence": "permissions granted"},
+        "peer_discovery": {"status": "pass", "evidence": "peer discovered", "peer_count": 1},
+        "group_formation": {"status": "pass", "evidence": "group owner/client roles recorded"},
+        "socket_exchange": {
+            "status": "pass",
+            "evidence": "bounded TCP probe exchanged",
+            "protocol": "tcp",
+            "payload_class": "bounded_tcp_probe" if socket_bounded else "unbounded_stream",
+            "bounded": socket_bounded,
+            "messages_sent": 3,
+            "messages_received": 3,
+        },
+        "cleanup": {
+            "status": "pass" if cleanup else "blocked",
+            "evidence": "group removed and restart gate clean" if cleanup else "cleanup did not complete",
+            "completed": cleanup,
+        },
+    }
+    return {
+        "$schema": WIFI_DIRECT_LIFECYCLE_SCHEMA,
+        "schema_version": 1,
+        "probe_id": probe_id,
+        "peer_class": peer_class,
+        "evidence_tier": "quest_runtime" if live_evidence else "fixture",
+        "capture_kind": "live_wifi_direct_lifecycle" if live_evidence else "fixture_wifi_direct_lifecycle",
+        "live_evidence": live_evidence,
+        "observed_at_utc": "2026-06-28T13:00:00Z",
+        "topology": {
+            "owner": "wifi_direct",
+            "network_provider": "wifi_direct",
+            "endpoint_direction": "peer_to_peer_group",
+            "peer_class": peer_class,
+        },
+        "device": {"model": "Quest 3S", "wifi_direct_role": "group_owner_or_client"},
+        "host": {
+            "os": "windows" if windows_peer else "android_phone_peer",
+            "toolchain_profile": "fixture.wifi_direct_lifecycle",
+        },
+        "lifecycle": lifecycle,
+        "measurements": {
+            "tcp_connect_ms": 91,
+            "wifi_direct_peer_count": 1,
+            "group_formation_ms": 320,
         },
     }
 

@@ -599,6 +599,21 @@ def project_connectivity_probe_rows(
     promotion = object_value(report.get("promotion"))
     if promotion:
         allowed = promotion.get("allowed") is True
+        promotion_details = dict(promotion)
+        promotion_details.update(
+            {
+                "probe_id": probe_id,
+                "promotion_state": "promoted" if allowed else "candidate",
+                "owner": topology.get("owner"),
+                "network_provider": topology.get("network_provider"),
+                "endpoint_direction": topology.get("endpoint_direction"),
+                "peer_class": topology.get("peer_class"),
+                "family": transport.get("family"),
+                "route": transport.get("route"),
+                "protocol_role": transport.get("protocol_role"),
+                "payload_class": transport.get("payload_class"),
+            }
+        )
         rows.append(
             row(
                 f"connectivity_probe.promotion.{safe_token(probe_id)}",
@@ -613,7 +628,7 @@ def project_connectivity_probe_rows(
                 ),
                 notes=str(promotion.get("reason") or ""),
                 issue_codes=[] if allowed else [f"gate.{probe_id.lower()}.promotion_allowed"],
-                details=promotion,
+                details=promotion_details,
             )
         )
 

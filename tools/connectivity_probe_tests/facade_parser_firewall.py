@@ -156,6 +156,38 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.bluetooth_timeout_seconds, 7.0)
         self.assertEqual(args.hostess_android_package, "io.example.hostess")
 
+    def test_parser_accepts_wifi_direct_lifecycle_report_input(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "run",
+                "--mode",
+                "fixture",
+                "--probe-id",
+                "QCL-041",
+                "--wifi-direct-lifecycle-report",
+                "target\\connectivity-probe\\qcl041-lifecycle.json",
+                "--out",
+                "target\\connectivity-probe\\qcl041-live-topology.json",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "run")
+        self.assertEqual(args.probe_id, "QCL-041")
+        self.assertEqual(
+            args.wifi_direct_lifecycle_report,
+            "target\\connectivity-probe\\qcl041-lifecycle.json",
+        )
+
     def test_parser_accepts_pc_hotspot_probe(self) -> None:
         args = build_hostessctl_parser(
             broker_package="broker",

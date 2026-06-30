@@ -113,6 +113,9 @@ from tools.hostessctl.connectivity_topology_live import (
     LIVE_DIRECT_WIFI_PROBE_IDS,
     live_direct_wifi_topology_report,
 )
+from tools.hostessctl.connectivity_topology_lifecycle import (
+    wifi_direct_lifecycle_probe_report,
+)
 from tools.hostessctl.connectivity_probe_fixtures import (
     fixture_report,
     qcl000_fixture_body,
@@ -202,7 +205,16 @@ def run_connectivity_probe(
 
     run_captured = run_captured_func or default_run_captured
     clock = clock_func or utc_now
-    if getattr(args, "mode", "fixture") == "fixture":
+    if getattr(args, "probe_id", "QCL-010") in LIVE_DIRECT_WIFI_PROBE_IDS and getattr(
+        args,
+        "wifi_direct_lifecycle_report",
+        "",
+    ):
+        report = wifi_direct_lifecycle_probe_report(
+            args,
+            observed_at=clock(),
+        )
+    elif getattr(args, "mode", "fixture") == "fixture":
         report = fixture_report(args, observed_at=clock())
     elif getattr(args, "probe_id", "QCL-010") in {"QCL-050", "QCL-051"}:
         report = live_bluetooth_report(

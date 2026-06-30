@@ -771,6 +771,41 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         }
         self.assertNotIn("transport.general_websocket_capability", remaining_gate_ids)
 
+    def test_projection_clears_direct_wifi_gate_with_promoted_lifecycle_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl041_path = root / "qcl041-promoted-direct-wifi.json"
+            qcl041_path.write_text(json.dumps(qcl041_promoted_wifi_direct_report()), encoding="utf-8")
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.direct-wifi-lifecycle",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[str(qcl041_path)],
+                    protocol_matrix=[],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=False,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        promotion = find_row(report, "connectivity_probe.promotion.QCL-041")
+        self.assertEqual(promotion["status"], "pass")
+        self.assertEqual(promotion["details"]["family"], "wifi_direct")
+        coverage = find_row(report, "transport_coverage.summary")
+        wifi_direct_gate = coverage["details"]["term_gates"]["wifi_direct"]
+        self.assertTrue(wifi_direct_gate["live_or_promoted"])
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.direct_wifi_live_topology", remaining_gate_ids)
+
     def test_projection_clears_product_tcp_media_direct_wifi_gate_only_with_combined_proof(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1018,6 +1053,60 @@ def qcl082_product_direct_wifi_report() -> dict[str, Any]:
     }
 
 
+def qcl041_promoted_wifi_direct_report() -> dict[str, Any]:
+    return {
+        "schema": CONNECTIVITY_PROBE_SCHEMA,
+        "schema_version": 1,
+        "probe_id": "QCL-041",
+        "run_id": "qcl041-promoted-direct-wifi",
+        "observed_at_utc": "2026-06-30T00:00:00Z",
+        "status": "pass",
+        "classification": "experimental",
+        "topology": {
+            "owner": "wifi_direct",
+            "network_provider": "wifi_direct",
+            "endpoint_direction": "peer_to_peer_group",
+            "requires_existing_wifi": False,
+            "requires_adb": True,
+            "requires_pairing": True,
+            "requires_termux": False,
+            "experimental": True,
+            "peer_class": "windows",
+        },
+        "transport": {
+            "family": "wifi_direct",
+            "route": "wifi_direct_lifecycle_artifact",
+            "protocol_role": "experimental_topology",
+            "payload_class": "bounded_tcp_probe",
+            "product_data_plane": False,
+        },
+        "device": {"model": "Quest 3S", "wifi_direct_role": "group_owner_or_client"},
+        "host": {"os": "windows", "toolchain_profile": "fixture.wifi_direct_lifecycle"},
+        "checks": [
+            check_report_row("wifi_direct.lifecycle_source", "pass", "live Quest lifecycle artifact"),
+            check_report_row("wifi_direct.feature", "pass", "android.hardware.wifi.direct"),
+            check_report_row("windows.wifi_direct_api", "pass", "Windows Wi-Fi Direct API available"),
+            check_report_row("wifi_direct.permission_state", "pass", "permissions granted"),
+            check_report_row("wifi_direct.peer_discovery", "pass", "peer discovered"),
+            check_report_row("wifi_direct.group_formation", "pass", "group formed"),
+            check_report_row("topology.socket_exchange", "pass", "bounded TCP probe exchanged"),
+            check_report_row("wifi_direct.cleanup", "pass", "group removed and restart gate clean"),
+        ],
+        "measurements": {
+            "tcp_connect_ms": 91,
+            "wifi_direct_peer_count": 1,
+            "group_formation_ms": 320,
+            "cleanup_completed": True,
+        },
+        "issues": [],
+        "promotion": {
+            "allowed": True,
+            "target": "experimental topology descriptor",
+            "reason": "Live Wi-Fi Direct topology lifecycle is complete",
+        },
+    }
+
+
 def qcl082_product_tcp_firewall_report() -> dict[str, Any]:
     return {
         "schema": CONNECTIVITY_PROBE_SCHEMA,
@@ -1116,6 +1205,17 @@ def protocol_row(report: dict[str, Any], probe_id: str) -> dict[str, Any]:
         if isinstance(details, dict) and details.get("probe_id") == probe_id:
             return projection_row
     raise AssertionError(f"missing protocol row {probe_id}")
+
+
+def check_report_row(name: str, status: str, evidence: str) -> dict[str, Any]:
+    return {
+        "name": name,
+        "status": status,
+        "evidence": evidence,
+        "observed": {},
+        "notes": "",
+        "issue_codes": [],
+    }
 
 
 def find_row(report: dict[str, Any], row_id: str) -> dict[str, Any]:
