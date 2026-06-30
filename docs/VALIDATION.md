@@ -165,18 +165,21 @@ python tools\hostessctl\hostessctl.py companion-report transport-gates `
 ```
 
 Add `--fail-on-pending` only when the run must stop until every WPF-visible
-transport gate is cleared. This route emits
-`rusty.hostess.companion.transport_gate_report.v1` and does not run probes,
-change firewall/device state, select latest artifacts, parse media, or promote
-topology/protocol evidence. Pending gates include `next_actions` that automation
-and WPF can render as the CLI-equivalent path to the clearing evidence. Each
-action names a PowerShell-compatible command when one exists, the expected
-acceptance artifacts, whether elevation is required, and whether a Quest lease
-is required. Headset-bound actions also carry structured Agent Board lease
-metadata with the `quest:<quest-serial>` resource, reserve command, release
-command, duration, and the `adb-server:lifecycle` policy. Headset-bound
-commands use serial-scoped ADB; reserve `adb-server:lifecycle` only for
-disruptive daemon lifecycle recovery.
+transport gate is cleared. Add `--fail-on-incomplete` when the run must also
+stop unless the projected protocol matrix reports
+`all_required_data_protocols_promoted=true`. This route emits
+`rusty.hostess.companion.transport_gate_report.v1` with both
+`remaining_live_gates` and `data_protocols`; it does not run probes, change
+firewall/device state, select latest artifacts, parse media, or promote
+topology/protocol evidence. Pending gates include `next_actions` that
+automation and WPF can render as the CLI-equivalent path to the clearing
+evidence. Each action names a PowerShell-compatible command when one exists,
+the expected acceptance artifacts, whether elevation is required, and whether a
+Quest lease is required. Headset-bound actions also carry structured Agent
+Board lease metadata with the `quest:<quest-serial>` resource, reserve command,
+release command, duration, and the `adb-server:lifecycle` policy.
+Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
+only for disruptive daemon lifecycle recovery.
 The WPF Protocol Matrix action follows that sequence: it runs the fixture
 suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixtures,
 refreshes the QCL-082 Rusty Quest media-stream source-contract report through

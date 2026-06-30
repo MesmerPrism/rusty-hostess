@@ -27,6 +27,7 @@ HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA = (
     "rusty.hostess.companion.transport_gate_report.validation.v1"
 )
 TRANSPORT_COVERAGE_ROW_ID = "transport_coverage.summary"
+PROTOCOL_MATRIX_SUMMARY_ROW_ID = "protocol_matrix.summary"
 
 
 def run_companion_transport_gates(
@@ -57,6 +58,11 @@ def run_companion_transport_gates(
         return 2
     if getattr(args, "fail_on_pending", False) and report["summary"]["remaining_gate_count"]:
         return 2
+    if (
+        getattr(args, "fail_on_incomplete", False)
+        and not report["summary"]["all_wpf_transport_and_protocol_gates_clear"]
+    ):
+        return 2
     return 0
 
 
@@ -79,6 +85,7 @@ def build_companion_transport_gate_report(
         issues.append(issue("hostess.issue.transport_gates.coverage_row_missing", "error"))
 
     details = object_value(coverage_row.get("details")) if coverage_row else {}
+    data_protocols = protocol_matrix_data_protocol_summary(projection)
     term_gates = object_value(details.get("term_gates"))
     remaining_live_gates = [
         normalize_remaining_gate(gate)
@@ -92,22 +99,37 @@ def build_companion_transport_gate_report(
     report_id = str(getattr(args, "report_id", None) or "").strip()
     if not report_id:
         report_id = f"transport-gates-{generated_at.strftime('%Y%m%d-%H%M%S')}"
+    all_required_data_protocols_promoted = bool(
+        data_protocols.get("all_required_data_protocols_promoted")
+    )
+    all_transport_gates_clear = not remaining_gate_ids and not any_error(issues)
+    completion_blockers = []
+    if not all_required_data_protocols_promoted:
+        completion_blockers.append("protocol_matrix.required_data_protocols")
+    completion_blockers.extend(remaining_gate_ids)
 
     return {
         "$schema": HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA,
         "schema_version": 1,
         "report_id": report_id,
         "generated_at_utc": generated_at.isoformat().replace("+00:00", "Z"),
-        "status": "fail" if any_error(issues) else ("warn" if remaining_gate_ids else "pass"),
+        "status": (
+            "fail"
+            if any_error(issues)
+            else ("warn" if completion_blockers else "pass")
+        ),
         "authority": {
             "ui_role": "requester_and_inspector",
             "projection_only": True,
             "source_artifact": "rusty.hostess.companion.report_projection.v1",
             "acceptance_owner": "source_projection",
+            "requires_data_protocol_matrix": True,
             "policy": (
                 "This report summarizes transport gates already emitted by "
-                "companion-report projection. It does not run probes, change "
-                "firewall/device state, parse media, or promote protocols."
+                "companion-report projection and the data-protocol completion "
+                "state already emitted by the protocol matrix. It does not run "
+                "probes, change firewall/device state, parse media, or promote "
+                "protocols."
             ),
         },
         "source_projection": {
@@ -118,12 +140,18 @@ def build_companion_transport_gate_report(
             "sha256": sha256_file(projection_path),
         },
         "summary": {
-            "all_transport_gates_clear": not remaining_gate_ids and not any_error(issues),
+            "all_transport_gates_clear": all_transport_gates_clear,
+            "all_required_data_protocols_promoted": all_required_data_protocols_promoted,
+            "all_wpf_transport_and_protocol_gates_clear": (
+                all_transport_gates_clear and all_required_data_protocols_promoted
+            ),
+            "completion_blockers": completion_blockers,
             "remaining_gate_count": len(remaining_gate_ids),
             "remaining_gate_ids": remaining_gate_ids,
             "term_gate_count": len(term_gates),
             "term_gate_ids": sorted(term_gates.keys()),
         },
+        "data_protocols": data_protocols,
         "operator_next_actions": operator_next_actions_summary(remaining_live_gates),
         "term_gates": term_gates,
         "remaining_live_gates": remaining_live_gates,
@@ -144,9 +172,30 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
     if not str(source.get("path") or "").strip():
         errors.append("source_projection missing path")
     summary = object_value(report.get("summary"))
+    data_protocols = object_value(report.get("data_protocols"))
     remaining = list_value(report.get("remaining_live_gates"))
     if int_value(summary.get("remaining_gate_count")) != len(remaining):
         errors.append("remaining_gate_count does not match remaining_live_gates")
+    if bool(summary.get("all_required_data_protocols_promoted")) != bool(
+        data_protocols.get("all_required_data_protocols_promoted")
+    ):
+        errors.append(
+            "summary all_required_data_protocols_promoted does not match data_protocols"
+        )
+    if bool(summary.get("all_wpf_transport_and_protocol_gates_clear")) and remaining:
+        errors.append(
+            "all_wpf_transport_and_protocol_gates_clear cannot be true with remaining gates"
+        )
+    if bool(summary.get("all_wpf_transport_and_protocol_gates_clear")) and not bool(
+        data_protocols.get("all_required_data_protocols_promoted")
+    ):
+        errors.append(
+            "all_wpf_transport_and_protocol_gates_clear cannot be true without promoted data protocols"
+        )
+    if not data_protocols.get("protocol_matrix_present"):
+        warnings.append("protocol matrix summary is missing")
+    elif not data_protocols.get("all_required_data_protocols_promoted"):
+        warnings.append("required data protocols are not all promoted")
     for gate in remaining:
         gate_id = str(object_value(gate).get("gate_id") or "")
         if not gate_id:
@@ -165,6 +214,12 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
         "report_id": report.get("report_id"),
         "source_projection": source.get("path"),
         "remaining_gate_count": len(remaining),
+        "all_required_data_protocols_promoted": bool(
+            data_protocols.get("all_required_data_protocols_promoted")
+        ),
+        "all_wpf_transport_and_protocol_gates_clear": bool(
+            summary.get("all_wpf_transport_and_protocol_gates_clear")
+        ),
         "errors": errors,
         "warnings": warnings,
     }
@@ -173,6 +228,36 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
 def transport_coverage_row(projection: dict[str, Any]) -> dict[str, Any]:
     for row in list_objects(projection.get("rows")):
         if row.get("row_id") == TRANSPORT_COVERAGE_ROW_ID:
+            return row
+    return {}
+
+
+def protocol_matrix_data_protocol_summary(projection: dict[str, Any]) -> dict[str, Any]:
+    summary_row = protocol_matrix_summary_row(projection)
+    details = object_value(summary_row.get("details"))
+    present = bool(summary_row)
+    return {
+        "protocol_matrix_present": present,
+        "row_id": str(summary_row.get("row_id") or ""),
+        "status": str(summary_row.get("status") or ("missing" if not present else "unknown")),
+        "source_artifact": str(summary_row.get("source_artifact") or ""),
+        "source_path": str(summary_row.get("source_path") or ""),
+        "all_required_data_protocols_promoted": (
+            details.get("all_required_data_protocols_promoted") is True
+        ),
+        "required_promoted_count": int_value(details.get("required_promoted_count")),
+        "promoted_count": int_value(details.get("promoted_count")),
+        "required_count": int_value(details.get("required_count")),
+        "candidate_count": int_value(details.get("candidate_count")),
+        "missing_gate_count": int_value(details.get("missing_gate_count")),
+        "issue_count": int_value(summary_row.get("issue_count")),
+        "issue_codes": list_value(summary_row.get("issue_codes")),
+    }
+
+
+def protocol_matrix_summary_row(projection: dict[str, Any]) -> dict[str, Any]:
+    for row in list_objects(projection.get("rows")):
+        if row.get("row_id") == PROTOCOL_MATRIX_SUMMARY_ROW_ID:
             return row
     return {}
 

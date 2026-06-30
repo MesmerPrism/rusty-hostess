@@ -72,7 +72,7 @@ public static class OperatorActionCatalog
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl041LifecycleReport --fail-on-error; " +
         "python $HostessCtl connectivity-probe protocol-matrix --suite-run $SuiteRun @TopologyFixtureInputs --latest-artifact-dir $LatestArtifactDir @LatestProbeArgs --latest-device-link-dir $LatestDeviceLinkDir --latest-stream-capability-dir $LatestStreamCapabilityDir --latest-stream-probe-id QCL-080 --out $ProtocolMatrix; " +
         "python $HostessCtl companion-report projection --protocol-matrix $ProtocolMatrix --include-protocol-matrix-inputs --suite-run $SuiteRun --out $Projection; " +
-        "python $HostessCtl companion-report transport-gates --projection $Projection --out $TransportGates --fail-on-pending";
+        "python $HostessCtl companion-report transport-gates --projection $Projection --out $TransportGates --fail-on-pending --fail-on-incomplete";
 
     public static IReadOnlyList<OperatorActionDescriptor> All { get; } =
     [

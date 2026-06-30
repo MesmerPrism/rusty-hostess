@@ -662,23 +662,26 @@ python tools\hostessctl\hostessctl.py companion-report transport-gates `
 ```
 
 Use `--fail-on-pending` only for runs that require every transport gate to be
-cleared. The command consumes the projection report; it does not run probes,
-apply firewall rules, parse media, or promote evidence on behalf of WPF.
-Pending gates carry `next_actions` so WPF can show the same CLI-equivalent
-PowerShell route automation will use. The action metadata distinguishes
-non-elevated handoff generation from elevated firewall mutation, marks
-Quest-bound direct-Wi-Fi and product-media actions with `requires_quest_lease`,
-projects the Hostess-owned Agent Board reserve/release command metadata, and
-keeps ordinary ADB commands serial-scoped. Per-action rows also render the
-Hostess authority owner, dependency gates, and acceptance artifacts, so
-operators can see that QCL-082 product media depends on promoted direct-Wi-Fi
-topology plus product listener firewall evidence before the CLI route can clear
-the gate.
+cleared. Use `--fail-on-incomplete` when automation must also fail unless the
+projected protocol matrix reports
+`all_required_data_protocols_promoted=true`. The command consumes the
+projection report; it does not run probes, apply firewall rules, parse media,
+or promote evidence on behalf of WPF. Pending gates carry `next_actions` so WPF
+can show the same CLI-equivalent PowerShell route automation will use. The
+action metadata distinguishes non-elevated handoff generation from elevated
+firewall mutation, marks Quest-bound direct-Wi-Fi and product-media actions
+with `requires_quest_lease`, projects the Hostess-owned Agent Board
+reserve/release command metadata, and keeps ordinary ADB commands
+serial-scoped. Per-action rows also render the Hostess authority owner,
+dependency gates, and acceptance artifacts, so operators can see that QCL-082
+product media depends on promoted direct-Wi-Fi topology plus product listener
+firewall evidence before the CLI route can clear the gate.
 The WPF Protocol Matrix button now materializes this report immediately after
 `companion-report projection` and appends its summary, term-gate, pending-gate,
 and next-action rows to the Connectivity page. It does not use
-`--fail-on-pending`; pending transport gates are rendered as operator work
-items, while CI or smoke automation can opt into `--fail-on-pending` for a hard
+`--fail-on-pending` for normal refreshes; pending transport gates are rendered
+as operator work items, while CI or smoke automation can opt into
+`--fail-on-pending --fail-on-incomplete` for a hard protocol-plus-transport
 gate.
 
 ## Build

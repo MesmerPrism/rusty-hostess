@@ -1489,6 +1489,8 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must render the transport gate status artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-pending", StringComparison.Ordinal),
         "protocol matrix action must advertise the pending transport gate automation switch");
+    Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-incomplete", StringComparison.Ordinal),
+        "protocol matrix action must fail automation when data protocols or transport gates remain incomplete");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal),
         "protocol matrix action must advertise topology probe evidence");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.direct_wifi_product_media_acceptance_plan.v1", StringComparison.Ordinal),

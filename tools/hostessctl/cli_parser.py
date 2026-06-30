@@ -640,6 +640,7 @@ def build_hostessctl_parser(
     companion_report_transport_gates.add_argument("--report-id")
     companion_report_transport_gates.add_argument("--fail-on-error", action="store_true")
     companion_report_transport_gates.add_argument("--fail-on-pending", action="store_true")
+    companion_report_transport_gates.add_argument("--fail-on-incomplete", action="store_true")
 
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(

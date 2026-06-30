@@ -167,6 +167,7 @@ class HostessCtlCliParserTests(unittest.TestCase):
                 "--out",
                 "target/companion-report/wpf.transport-gates.json",
                 "--fail-on-pending",
+                "--fail-on-incomplete",
             ]
         )
 
@@ -175,6 +176,7 @@ class HostessCtlCliParserTests(unittest.TestCase):
         self.assertEqual(args.projection, "target/companion-report/wpf.projection.json")
         self.assertEqual(args.out, "target/companion-report/wpf.transport-gates.json")
         self.assertTrue(args.fail_on_pending)
+        self.assertTrue(args.fail_on_incomplete)
 
     def test_companion_report_projection_accepts_firewall_rule_report(self) -> None:
         args = self.build_parser().parse_args(

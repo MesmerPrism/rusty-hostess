@@ -282,10 +282,12 @@ Transport gate status automation lives in
 `tools/hostessctl/companion_transport_gates.py`. It consumes an existing
 `rusty.hostess.companion.report_projection.v1` artifact and emits
 `rusty.hostess.companion.transport_gate_report.v1`, including the same
-`term_gates` and `remaining_live_gates` WPF renders. Pending gates also carry
-`next_actions` with PowerShell-compatible Hostess CLI routes, acceptance
-artifacts, elevation flags, host/device mutation flags, and structured Agent
-Board `quest:<quest-serial>` lease reserve/release metadata supplied by
+`term_gates` and `remaining_live_gates` WPF renders, plus the
+`data_protocols` summary copied from `protocol_matrix.summary`. Pending gates
+also carry `next_actions` with PowerShell-compatible Hostess CLI routes,
+acceptance artifacts, elevation flags, host/device mutation flags, and
+structured Agent Board `quest:<quest-serial>` lease reserve/release metadata
+supplied by
 `companion_transport_gate_actions.py`. WPF renders the same authority owner,
 dependency gates, and acceptance artifacts from the report, including the
 QCL-082 product-media dependency on promoted direct-Wi-Fi topology plus the
@@ -293,9 +295,10 @@ product listener firewall gate. Those actions are operator guidance and
 automation inputs; the route still does not run
 probes, choose latest artifacts, mutate firewall/device state, parse media, or
 promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
-is an automation guard only. WPF uses the same route without
-`--fail-on-pending` so pending gates remain visible instead of turning the UI
-refresh into a failed command.
+stops automation on remaining live transport gates; `--fail-on-incomplete`
+also stops automation when the protocol matrix has not promoted all required
+data protocols. WPF renders the same report rows while normal UI refreshes keep
+pending gates visible instead of turning the view update into a failed command.
 For direct-Wi-Fi topology promotion, the QCL-040/QCL-041 lifecycle source
 artifact itself must also prove lease discipline. The
 `tools/hostessctl/connectivity_topology_lifecycle.py` normalizer blocks

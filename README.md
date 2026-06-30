@@ -174,7 +174,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/companion_transport_gates.py`: read-only transport gate
   report helper. It consumes the shared companion-report projection and emits
   `rusty.hostess.companion.transport_gate_report.v1` so automation can fail on
-  the same `remaining_live_gates` that WPF renders without moving probe,
+  the same `remaining_live_gates` that WPF renders and, when requested, on an
+  incomplete protocol-matrix data-protocol summary without moving probe,
   firewall, media, topology, or promotion authority into UI code.
 - `tools/hostessctl/companion_transport_gate_actions.py`: static operator
   action catalog for transport gates. It names Hostess CLI routes,

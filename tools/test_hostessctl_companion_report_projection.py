@@ -684,6 +684,132 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
 
         self.assertEqual(status, 2)
 
+    def test_transport_gate_report_can_fail_on_incomplete_data_protocols(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            gate_path = root / "transport-gates.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.incomplete-protocols",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "protocol_matrix.summary",
+                                "kind": "protocol_matrix_summary",
+                                "status": "warn",
+                                "details": {
+                                    "all_required_data_protocols_promoted": False,
+                                    "required_promoted_count": 4,
+                                    "required_count": 5,
+                                    "promoted_count": 7,
+                                    "candidate_count": 1,
+                                    "missing_gate_count": 1,
+                                },
+                            },
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [],
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(gate_path),
+                    "--fail-on-incomplete",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+            gate_report = read_json(gate_path)
+            validation = read_json(gate_path.with_name("transport-gates.validation-report.json"))
+
+        self.assertEqual(status, 2)
+        self.assertEqual(gate_report["status"], "warn")
+        self.assertEqual(gate_report["summary"]["remaining_gate_count"], 0)
+        self.assertFalse(gate_report["summary"]["all_required_data_protocols_promoted"])
+        self.assertFalse(gate_report["summary"]["all_wpf_transport_and_protocol_gates_clear"])
+        self.assertIn(
+            "protocol_matrix.required_data_protocols",
+            gate_report["summary"]["completion_blockers"],
+        )
+        self.assertFalse(gate_report["data_protocols"]["all_required_data_protocols_promoted"])
+        self.assertEqual(validation["status"], "pass")
+        self.assertIn("required data protocols are not all promoted", validation["warnings"])
+
+    def test_transport_gate_report_passes_completion_gate_when_protocols_and_gates_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            gate_path = root / "transport-gates.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.complete",
+                        "status": "pass",
+                        "rows": [
+                            {
+                                "row_id": "protocol_matrix.summary",
+                                "kind": "protocol_matrix_summary",
+                                "status": "pass",
+                                "details": {
+                                    "all_required_data_protocols_promoted": True,
+                                    "required_promoted_count": 5,
+                                    "required_count": 5,
+                                    "promoted_count": 8,
+                                    "candidate_count": 1,
+                                    "missing_gate_count": 0,
+                                },
+                            },
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [],
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(gate_path),
+                    "--fail-on-incomplete",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+            gate_report = read_json(gate_path)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(gate_report["status"], "pass")
+        self.assertTrue(gate_report["summary"]["all_required_data_protocols_promoted"])
+        self.assertTrue(gate_report["summary"]["all_wpf_transport_and_protocol_gates_clear"])
+        self.assertEqual(gate_report["summary"]["completion_blockers"], [])
+
     def test_transport_gate_report_validates_projection_authority(self) -> None:
         report = build_companion_transport_gate_report(
             argparse.Namespace(
@@ -693,6 +819,7 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
                 report_id="transport-gates.missing",
                 fail_on_error=True,
                 fail_on_pending=False,
+                fail_on_incomplete=False,
             ),
             clock_func=fixed_clock,
         )
