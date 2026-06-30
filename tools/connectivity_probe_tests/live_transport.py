@@ -193,6 +193,70 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_wifi_direct_lifecycle_report_blocks_when_group_roles_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["lifecycle"]["group_formation"].pop("local_role")
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        group_check = check(report, "wifi_direct.group_formation")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(group_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_group_roles_missing",
+            group_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_when_socket_counters_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["lifecycle"]["socket_exchange"].pop("messages_received")
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        socket_check = check(report, "topology.socket_exchange")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(socket_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_socket_exchange_counters_missing",
+            socket_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_wifi_direct_lifecycle_template_is_non_promoting_source_contract(self) -> None:
         artifact = wifi_direct_lifecycle_template_artifact(
             probe_id="QCL-041",
@@ -205,6 +269,9 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(artifact["evidence_tier"], "template")
         self.assertFalse(artifact["live_evidence"])
         self.assertTrue(artifact["contract"]["non_promoting_template"])
+        self.assertEqual(artifact["lifecycle"]["peer_discovery"]["peer_count"], 0)
+        self.assertIsNone(artifact["lifecycle"]["group_formation"]["local_role"])
+        self.assertIsNone(artifact["lifecycle"]["group_formation"]["peer_role"])
         self.assertEqual(artifact["lifecycle"]["socket_exchange"]["protocol"], "tcp")
         self.assertEqual(artifact["lifecycle"]["socket_exchange"]["payload_class"], "bounded_tcp_probe")
 

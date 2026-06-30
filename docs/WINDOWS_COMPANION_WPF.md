@@ -562,6 +562,11 @@ that report is intentionally non-promoting until the Quest/peer harness records
 peer discovery, group formation, bounded socket exchange, and cleanup evidence.
 WPF should render the blocked report and transport gate; it must not infer live
 direct-Wi-Fi topology from normal LAN echo rows.
+For a lifecycle source artifact to promote, Hostess also requires a positive
+peer count, recorded local/peer group roles, positive bounded TCP
+messages-sent/messages-received counters, and `cleanup.completed=true`.
+WPF renders those Hostess checks; it does not reinterpret a source artifact
+that merely marks phases as `status=pass`.
 
 Automation can materialize the same WPF-visible gate state as a standalone
 read-only artifact:

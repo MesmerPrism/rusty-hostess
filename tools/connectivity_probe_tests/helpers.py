@@ -1243,7 +1243,12 @@ def wifi_direct_lifecycle_artifact(
         peer_phase: {"status": "pass", "evidence": f"{peer_class} peer available"},
         "permission_state": {"status": "pass", "evidence": "permissions granted"},
         "peer_discovery": {"status": "pass", "evidence": "peer discovered", "peer_count": 1},
-        "group_formation": {"status": "pass", "evidence": "group owner/client roles recorded"},
+        "group_formation": {
+            "status": "pass",
+            "evidence": "group owner/client roles recorded",
+            "local_role": "group_owner",
+            "peer_role": "client",
+        },
         "socket_exchange": {
             "status": "pass",
             "evidence": "bounded TCP probe exchanged",

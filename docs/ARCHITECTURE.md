@@ -366,7 +366,10 @@ group formation, bounded socket exchange, and cleanup evidence are present;
 Wi-Fi Direct lifecycle artifact ingestion. It validates live evidence source,
 peer class, feature/API or peer, permission, discovery, group formation,
 bounded TCP socket exchange, and cleanup before emitting a promoted topology
-report; it does not run the peer harness, mutate Wi-Fi Direct state, or claim
+report. Promotion requires a positive peer count, recorded group roles,
+positive bounded TCP message counters, and explicit cleanup completion; a
+phase marked `status=pass` without those details remains blocked. The
+normalizer does not run the peer harness, mutate Wi-Fi Direct state, or claim
 QCL-082 product TCP media readiness;
 `connectivity_topology_lifecycle_plan.py` owns the read-only QCL-040/QCL-041
 Wi-Fi Direct lifecycle plan artifact. It binds Agent Board lease metadata,

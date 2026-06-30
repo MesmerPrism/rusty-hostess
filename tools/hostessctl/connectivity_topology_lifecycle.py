@@ -132,10 +132,13 @@ def wifi_direct_lifecycle_template_artifact(
                 "Wi-Fi Direct runtime permissions accepted"
             ),
             "peer_discovery": lifecycle_template_phase(
-                "Wi-Fi Direct peer discovery completed with at least one peer"
+                "Wi-Fi Direct peer discovery completed with at least one peer",
+                peer_count=0,
             ),
             "group_formation": lifecycle_template_phase(
-                "Wi-Fi Direct group formation completed with recorded roles"
+                "Wi-Fi Direct group formation completed with recorded roles",
+                local_role=None,
+                peer_role=None,
             ),
             "socket_exchange": lifecycle_template_phase(
                 "Bounded TCP probe exchanged across the Wi-Fi Direct group",
@@ -222,28 +225,10 @@ def wifi_direct_lifecycle_body(
             "Wi-Fi Direct runtime permissions accepted",
             "hostess.issue.connectivity_probe.wifi_direct_permission_denied",
         ),
-        lifecycle_check(
-            lifecycle,
-            "peer_discovery",
-            "wifi_direct.peer_discovery",
-            "Wi-Fi Direct peer discovery completed",
-            "hostess.issue.connectivity_probe.wifi_direct_live_peer_discovery_missing",
-        ),
-        lifecycle_check(
-            lifecycle,
-            "group_formation",
-            "wifi_direct.group_formation",
-            "Wi-Fi Direct group formation completed",
-            "hostess.issue.connectivity_probe.wifi_direct_group_formation_missing",
-        ),
+        peer_discovery_check(lifecycle),
+        group_formation_check(lifecycle),
         socket_exchange_check(lifecycle),
-        lifecycle_check(
-            lifecycle,
-            "cleanup",
-            "wifi_direct.cleanup",
-            "Wi-Fi Direct group cleanup completed",
-            "hostess.issue.connectivity_probe.wifi_direct_cleanup_missing",
-        ),
+        cleanup_check(lifecycle),
     ]
     phase_pass = all(check.get("status") == "pass" for check in checks)
     issues = topology_issues(checks)
@@ -404,7 +389,10 @@ def socket_exchange_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
     phase = object_value(lifecycle.get("socket_exchange"))
     bounded = phase.get("bounded") is True or str(phase.get("payload_class") or "") == "bounded_tcp_probe"
     tcp = str(phase.get("protocol") or "").lower() in {"tcp", "tcp_echo", "bounded_tcp_probe"}
-    passed = phase_passed(phase) and bounded and tcp
+    sent = int_value(phase.get("messages_sent"))
+    received = int_value(phase.get("messages_received"))
+    counters_proven = sent is not None and sent > 0 and received is not None and received > 0
+    passed = phase_passed(phase) and bounded and tcp and counters_proven
     issue_codes: list[str] = []
     if not phase_passed(phase):
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_socket_exchange_missing")
@@ -412,6 +400,8 @@ def socket_exchange_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_socket_exchange_not_bounded")
     if phase and not tcp:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_socket_exchange_not_tcp")
+    if phase and not counters_proven:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_socket_exchange_counters_missing")
     return check_row(
         "topology.socket_exchange",
         "pass" if passed else "blocked",
@@ -425,13 +415,89 @@ def socket_exchange_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
     )
 
 
+def peer_discovery_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
+    phase = object_value(lifecycle.get("peer_discovery"))
+    peer_count = int_value(phase.get("peer_count"))
+    peer_observed = peer_count is not None and peer_count > 0
+    passed = phase_passed(phase) and peer_observed
+    issue_codes: list[str] = []
+    if not phase_passed(phase):
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_live_peer_discovery_missing")
+    if phase and not peer_observed:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_peer_count_missing")
+    return check_row(
+        "wifi_direct.peer_discovery",
+        "pass" if passed else "blocked",
+        (
+            str(phase.get("evidence") or "Wi-Fi Direct peer discovery completed")
+            if passed
+            else str(phase.get("evidence") or "Wi-Fi Direct peer discovery evidence missing")
+        ),
+        observed=phase,
+        issue_codes=issue_codes,
+    )
+
+
+def group_formation_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
+    phase = object_value(lifecycle.get("group_formation"))
+    local_role = str(phase.get("local_role") or "").strip()
+    peer_role = str(phase.get("peer_role") or "").strip()
+    roles_recorded = bool(local_role and peer_role)
+    passed = phase_passed(phase) and roles_recorded
+    issue_codes: list[str] = []
+    if not phase_passed(phase):
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_group_formation_missing")
+    if phase and not roles_recorded:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_group_roles_missing")
+    return check_row(
+        "wifi_direct.group_formation",
+        "pass" if passed else "blocked",
+        (
+            str(phase.get("evidence") or "Wi-Fi Direct group formation completed")
+            if passed
+            else str(phase.get("evidence") or "Wi-Fi Direct group formation evidence incomplete")
+        ),
+        observed=phase,
+        issue_codes=issue_codes,
+    )
+
+
+def cleanup_check(lifecycle: dict[str, Any]) -> dict[str, Any]:
+    phase = object_value(lifecycle.get("cleanup"))
+    completed = phase.get("completed") is True
+    passed = phase_passed(phase) and completed
+    issue_codes: list[str] = []
+    if not phase_passed(phase):
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_cleanup_missing")
+    if phase and not completed:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_cleanup_not_completed")
+    return check_row(
+        "wifi_direct.cleanup",
+        "pass" if passed else "blocked",
+        (
+            str(phase.get("evidence") or "Wi-Fi Direct group cleanup completed")
+            if passed
+            else str(phase.get("evidence") or "Wi-Fi Direct cleanup evidence incomplete")
+        ),
+        observed=phase,
+        issue_codes=issue_codes,
+    )
+
+
 def phase_passed(phase: dict[str, Any]) -> bool:
     return phase.get("status") == "pass" or phase.get("passed") is True
 
 
 def cleanup_completed(lifecycle: dict[str, Any]) -> bool:
     cleanup = object_value(lifecycle.get("cleanup"))
-    return phase_passed(cleanup) and cleanup.get("completed") is not False
+    return phase_passed(cleanup) and cleanup.get("completed") is True
+
+
+def int_value(raw: Any) -> int | None:
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return None
 
 
 __all__ = [

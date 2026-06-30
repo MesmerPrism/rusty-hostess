@@ -289,6 +289,15 @@ discovery, group formation, bounded TCP socket exchange, and cleanup checks all
 pass. Product TCP media over that topology still needs the separate QCL-082
 RMANVID1 receiver/listener report.
 
+The lifecycle normalizer requires concrete live details before promotion. The
+source artifact must include a positive `peer_discovery.peer_count`, recorded
+`group_formation.local_role` and `group_formation.peer_role`,
+`socket_exchange.protocol=tcp`, bounded
+`socket_exchange.payload_class=bounded_tcp_probe`, positive
+`socket_exchange.messages_sent` and `socket_exchange.messages_received`
+counters, and `cleanup.completed=true`. A phase with only `status=pass` is
+not enough to clear the topology gate.
+
 LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
 host-loopback live reports. These are dependency/protocol checks, not Quest
 topology promotion:
