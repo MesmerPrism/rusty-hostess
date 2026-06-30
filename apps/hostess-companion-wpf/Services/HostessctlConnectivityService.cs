@@ -865,6 +865,16 @@ public sealed class HostessctlConnectivityService
             arguments.Add(qcl041TopologyReport.FullName);
         }
 
+        var promotedTopologyReport = PromotedDirectWifiTopologySelector.Select(
+            repoRoot,
+            matrix,
+            topologyReports);
+        if (promotedTopologyReport is not null)
+        {
+            arguments.Add("--promoted-topology-report");
+            arguments.Add(promotedTopologyReport.FullName);
+        }
+
         if (qcl082FirewallVerifyReport is not null)
         {
             arguments.Add("--firewall-report");
