@@ -40,6 +40,9 @@ public sealed class CompanionTransportGateReport
 
     [JsonIgnore]
     public string ReportPath { get; set; } = "";
+
+    [JsonIgnore]
+    public string ValidationReportPath { get; set; } = "";
 }
 
 public sealed class CompanionTransportGateAuthority

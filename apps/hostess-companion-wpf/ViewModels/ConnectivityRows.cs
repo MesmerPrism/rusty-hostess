@@ -609,6 +609,10 @@ public static class ConnectivityRows
         {
             parts.Add(report.ReportPath);
         }
+        if (!string.IsNullOrWhiteSpace(report.ValidationReportPath))
+        {
+            parts.Add($"validation_report={report.ValidationReportPath}");
+        }
         if (report.Summary.CompletionBlockers.Count > 0)
         {
             parts.Add($"completion_blockers={string.Join(",", report.Summary.CompletionBlockers)}");

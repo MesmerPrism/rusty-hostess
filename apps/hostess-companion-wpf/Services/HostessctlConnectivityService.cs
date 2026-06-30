@@ -733,6 +733,9 @@ public sealed class HostessctlConnectivityService
         CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(reportPath.Directory!.FullName);
+        var validationPath = new FileInfo(Path.Combine(
+            reportPath.Directory.FullName,
+            $"{Path.GetFileNameWithoutExtension(reportPath.Name)}.validation-report.json"));
 
         await RunHostessctlAsync(
                 repoRoot,
@@ -743,6 +746,8 @@ public sealed class HostessctlConnectivityService
                     projection.ReportPath,
                     "--out",
                     reportPath.FullName,
+                    "--validation-out",
+                    validationPath.FullName,
                     "--report-id",
                     $"{matrix.MatrixId}.wpf.transport-gates",
                     "--fail-on-error",
@@ -756,6 +761,7 @@ public sealed class HostessctlConnectivityService
                 cancellationToken)
             .ConfigureAwait(false);
         report.ReportPath = reportPath.FullName;
+        report.ValidationReportPath = validationPath.FullName;
         return report;
     }
 

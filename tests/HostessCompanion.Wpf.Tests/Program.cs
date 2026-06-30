@@ -422,6 +422,10 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "direct-Wi-Fi product-media acceptance plan path must be run-scoped");
     Assert(File.Exists(run.Projection.ReportPath), "projection report must be written");
     Assert(File.Exists(run.TransportGates.ReportPath), "transport gate report must be written");
+    Assert(File.Exists(run.TransportGates.ValidationReportPath),
+        "transport gate validation sidecar must be written");
+    Assert(run.TransportGates.ValidationReportPath.EndsWith(".transport-gates.validation-report.json", StringComparison.Ordinal),
+        "transport gate validation sidecar path must be run-scoped");
     Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
         "service must return the companion-report projection schema");
     Assert(run.TransportGates.Schema == "rusty.hostess.companion.transport_gate_report.v1",
@@ -557,6 +561,10 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
     }
     var transportGateRows = ConnectivityRows.ForTransportGateReport(run.TransportGates);
     Assert(transportGateRows.Any(row =>
+            row.Name == "hostess.companion_transport_gates"
+            && row.Notes.Contains($"validation_report={run.TransportGates.ValidationReportPath}", StringComparison.Ordinal)),
+        "transport gate summary row must expose the validation sidecar path");
+    Assert(transportGateRows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.run_qcl040_live_wifi_direct_preflight"
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)),
         "transport gate rows must project direct-Wi-Fi Quest lease requirements");
@@ -599,6 +607,8 @@ static void TransportGateRowsExposeNextActions()
         Schema = "rusty.hostess.companion.transport_gate_report.v1",
         Status = "warn",
         ReportId = "transport-gates.test",
+        ReportPath = "target/companion-report/transport-gates.json",
+        ValidationReportPath = "target/companion-report/transport-gates.validation-report.json",
         Authority = new CompanionTransportGateAuthority
         {
             ProjectionOnly = true,
@@ -1081,8 +1091,10 @@ static void TransportGateRowsExposeNextActions()
             row.Name == "hostess.companion_transport_gates"
             && row.Evidence.Contains("data_protocols_promoted=False", StringComparison.Ordinal)
             && row.Evidence.Contains("complete=False", StringComparison.Ordinal)
+            && row.Notes.Contains("target/companion-report/transport-gates.json", StringComparison.Ordinal)
+            && row.Notes.Contains("validation_report=target/companion-report/transport-gates.validation-report.json", StringComparison.Ordinal)
             && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols,transport.general_websocket_capability,transport.direct_wifi_live_topology,transport.product_tcp_media_over_direct_wifi,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)),
-        "transport gate summary row must expose strict protocol-plus-transport completion blockers");
+        "transport gate summary row must expose report artifacts and strict protocol-plus-transport completion blockers");
     Assert(rows.Any(row =>
             row.Name == "transport_gates.data_protocols"
             && row.Status == "warn"
