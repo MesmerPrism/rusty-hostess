@@ -492,6 +492,12 @@ to QCL-040/QCL-041 topology. `remaining_live_gates` names the still-open
 generic WebSocket, live
 direct-Wi-Fi topology, and product TCP media over direct-Wi-Fi gates.
 
+Live QCL-040/QCL-041 now has a CLI-equivalent Wi-Fi Direct preflight route, but
+that report is intentionally non-promoting until the Quest/peer harness records
+peer discovery, group formation, bounded socket exchange, and cleanup evidence.
+WPF should render the blocked report and transport gate; it must not infer live
+direct-Wi-Fi topology from normal LAN echo rows.
+
 Automation can materialize the same WPF-visible gate state as a standalone
 read-only artifact:
 

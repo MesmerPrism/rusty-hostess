@@ -109,6 +109,10 @@ from tools.hostessctl.connectivity_topology import (
     windows_mobile_hotspot_status,
     windows_mobile_hotspot_summary,
 )
+from tools.hostessctl.connectivity_topology_live import (
+    LIVE_DIRECT_WIFI_PROBE_IDS,
+    live_direct_wifi_topology_report,
+)
 from tools.hostessctl.connectivity_probe_fixtures import (
     fixture_report,
     qcl000_fixture_body,
@@ -241,6 +245,13 @@ def run_connectivity_probe(
         report = live_websocket_report(
             args,
             clock_func=clock,
+        )
+    elif getattr(args, "probe_id", "QCL-010") in LIVE_DIRECT_WIFI_PROBE_IDS:
+        report = live_direct_wifi_topology_report(
+            args,
+            run_captured_func=run_captured,
+            clock_func=clock,
+            host_ipv4_func=host_ipv4_func,
         )
     else:
         report = live_same_wifi_report(

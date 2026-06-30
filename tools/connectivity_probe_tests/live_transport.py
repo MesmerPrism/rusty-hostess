@@ -51,6 +51,50 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(report["status"], "warn")
         self.assertEqual(validation["status"], "pass")
 
+    def test_live_wifi_direct_topology_preflight_blocks_until_peer_lifecycle_exists(self) -> None:
+        report = live_direct_wifi_topology_report(
+            probe_args(mode="live", probe_id="QCL-041", host_ip="192.0.2.10"),
+            run_captured_func=FakeRunner(),
+            clock_func=fixed_datetime,
+            host_ipv4_func=lambda: [{"ip": "192.0.2.10", "prefix_length": 24, "interface": "fixture"}],
+        )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-041")
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["topology"]["owner"], "wifi_direct")
+        self.assertEqual(report["transport"]["route"], "wifi_direct_live_preflight")
+        self.assertEqual(check(report, "wifi_direct.feature")["status"], "pass")
+        self.assertEqual(check(report, "windows.wifi_direct_api")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.peer_discovery")["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.wifi_direct_live_topology_not_promoted"
+                for issue in report["issues"]
+            )
+        )
+
+    def test_run_connectivity_probe_routes_qcl040_live_to_wifi_direct_preflight(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            out = root / "qcl040-live.json"
+            status = run_connectivity_probe(
+                probe_args(mode="live", probe_id="QCL-040", out=str(out)),
+                run_captured_func=FakeRunner(),
+                clock_func=fixed_datetime,
+                host_ipv4_func=lambda: [{"ip": "192.0.2.10", "prefix_length": 24, "interface": "fixture"}],
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+
+        check_names = [row["name"] for row in report["checks"]]
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(report["transport"]["family"], "wifi_direct")
+        self.assertIn("wifi_direct.peer_discovery", check_names)
+        self.assertNotIn("device_to_host.tcp_echo", check_names)
+
     def test_live_same_wifi_report_does_not_pass_on_one_way_host_ping(self) -> None:
         report = live_same_wifi_report(
             probe_args(mode="live", host_ip="192.0.2.10"),
@@ -270,6 +314,9 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         topology_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_topology.py"
         ).read_text(encoding="utf-8")
+        topology_live_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_topology_live.py"
+        ).read_text(encoding="utf-8")
         common_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_probe_common.py"
         ).read_text(encoding="utf-8")
@@ -287,6 +334,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertIn("from tools.hostessctl.connectivity_data_protocols import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_probe_common import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_topology import", probe_source)
+        self.assertIn("from tools.hostessctl.connectivity_topology_live import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_udp import", probe_source)
         self.assertIn("from tools.hostessctl.connectivity_websocket import", probe_source)
         facade_defs = re.findall(r"^def ([A-Za-z_][A-Za-z0-9_]*)\(", probe_source, re.MULTILINE)
@@ -298,6 +346,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertNotIn("def live_bluetooth_report", probe_source)
         self.assertNotIn("def live_websocket_report", probe_source)
         self.assertNotIn("def live_same_wifi_report", probe_source)
+        self.assertNotIn("def live_direct_wifi_topology_report", probe_source)
         self.assertNotIn("def device_to_host_udp_freshness", probe_source)
         self.assertNotIn("def collect_device_identity", probe_source)
         self.assertNotIn("def qcl020_wifi_adb_body", probe_source)
@@ -308,6 +357,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertIn("def run_qcl050_android_rfcomm_probe", bluetooth_source)
         self.assertIn("def live_bluetooth_report", bluetooth_source)
         self.assertIn("def qcl020_wifi_adb_body", topology_source)
+        self.assertIn("def live_direct_wifi_topology_report", topology_live_source)
         self.assertIn("def live_lsl_report", protocol_source)
         self.assertIn("def live_osc_report", protocol_source)
         self.assertIn("def live_zeromq_report", protocol_source)

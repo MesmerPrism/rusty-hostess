@@ -720,6 +720,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise generated QCL-041 topology fixture evidence");
     Assert(protocolMatrixAction.CliRoute.Contains("qcl-041-wifi-direct-windows-peer-pass", StringComparison.Ordinal),
         "protocol matrix action must advertise QCL-041 fixture profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-040", StringComparison.Ordinal),
+        "protocol matrix action must advertise live QCL-040 Wi-Fi Direct preflight");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-041", StringComparison.Ordinal),
+        "protocol matrix action must advertise live QCL-041 Wi-Fi Direct preflight");
     Assert(protocolMatrixAction.CliRoute.Contains("--input <topology-fixture-reports>", StringComparison.Ordinal),
         "protocol matrix action must advertise explicit topology fixture report inputs");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-000", StringComparison.Ordinal),

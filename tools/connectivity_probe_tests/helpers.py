@@ -41,6 +41,7 @@ from tools.hostessctl.connectivity_probe import (
     validate_connectivity_probe_report,
     windows_firewall_rule_report as facade_windows_firewall_rule_report,
 )
+from tools.hostessctl.connectivity_topology_live import live_direct_wifi_topology_report
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -300,6 +301,13 @@ class FakeRunner:
             return subprocess.CompletedProcess(command, 0, "35\n", "")
         if "ro.build.version.incremental" in text:
             return subprocess.CompletedProcess(command, 0, "2.5.fixture\n", "")
+        if "pm list features" in text:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                "feature:android.hardware.wifi\nfeature:android.hardware.wifi.direct\n",
+                "",
+            )
         if "ip -o -4 addr show wlan0" in text:
             return subprocess.CompletedProcess(
                 command,
@@ -321,6 +329,20 @@ class FakeRunner:
                         "ssid": "RustyHostess-QCL011",
                         "passphrase_set": True,
                         "band": "Auto",
+                    }
+                ),
+                "",
+            )
+        if "Get-NetAdapter" in text and "Wi-Fi Direct" in text:
+            return subprocess.CompletedProcess(
+                command,
+                0,
+                json.dumps(
+                    {
+                        "available": True,
+                        "adapter_count": 1,
+                        "adapter_names": ["Local Area Connection* 12"],
+                        "source": "fixture_get_netadapter",
                     }
                 ),
                 "",

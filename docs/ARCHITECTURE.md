@@ -333,6 +333,10 @@ artifacts while preserving the facade import surface;
 `connectivity_probe_live_reports.py` owns pure live report shaping for QCL
 status derivation, listener rows, topology summaries, and measurement
 projection while route execution remains in the facade and protocol helpers;
+`connectivity_topology_live.py` owns read-only live QCL-040/QCL-041 Wi-Fi
+Direct topology preflight reports. It may collect Quest feature state and
+Windows adapter state, but it keeps promotion blocked until peer discovery,
+group formation, bounded socket exchange, and cleanup evidence are present;
 `connectivity_probe_validation.py` owns the shared QCL report schema/status
 validator so route dispatch, fixture construction, live probing, WPF rows, and
 Makepad rows all depend on the same report acceptance surface;
@@ -364,7 +368,9 @@ gate;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
-limitations; and
+limitations. Live QCL-040/QCL-041 routes are intentionally separate and
+non-promoting until a real topology harness records the full Wi-Fi Direct peer
+lifecycle; and
 `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
 ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution helpers, and
 protocol-specific live report assembly, source-specific report promotion

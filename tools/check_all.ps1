@@ -46,6 +46,8 @@ try {
         "tools\hostessctl\connectivity_probe_live_reports.py",
         "tools\hostessctl\connectivity_probe_validation.py",
         "tools\hostessctl\connectivity_suite.py",
+        "tools\hostessctl\connectivity_topology.py",
+        "tools\hostessctl\connectivity_topology_live.py",
         "tools\hostessctl\connectivity_udp.py",
         "tools\hostessctl\connectivity_websocket.py",
         "tools\hostessctl\device_link_report.py",
