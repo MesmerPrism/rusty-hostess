@@ -130,7 +130,9 @@ generic code or sanitized sample fixtures.
   acceptance artifacts, elevation flags, mutation flags, and Agent Board
   `quest:<serial>` lease reserve/release metadata; it must not run probes,
   select artifacts, change
-  firewall/device state, parse media, or promote evidence.
+  firewall/device state, parse media, or promote evidence. Its validation
+  sidecar must reject drift between top-level `operator_next_actions` summaries
+  and each pending gate's source-owned `next_actions`.
 - Keep `tools\hostessctl\companion_transport_gate_actions.py` as the static
   transport gate operator-action catalog. It may name existing Hostess CLI
   routes, PowerShell command strings, acceptance artifacts, and lease/elevation

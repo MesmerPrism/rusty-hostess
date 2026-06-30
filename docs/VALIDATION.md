@@ -205,6 +205,9 @@ Board lease metadata with the `quest:<quest-serial>` resource, reserve command,
 release command, duration, and the `adb-server:lifecycle` policy.
 Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
 only for disruptive daemon lifecycle recovery.
+The validation sidecar also rejects report drift when the top-level
+`operator_next_actions.gates` summary no longer matches the per-gate
+`remaining_live_gates[*].next_actions` action IDs that WPF renders.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps those PowerShell command strings,
 output artifacts, elevation boundaries, Quest lease metadata, QCL-079 generic

@@ -895,6 +895,86 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             [issue["issue_code"] for issue in report["issues"]],
         )
 
+    def test_transport_gate_report_rejects_operator_next_action_summary_drift(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.transport-gate-summary-drift",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "protocol_matrix.summary",
+                                "kind": "protocol_matrix_summary",
+                                "status": "pass",
+                                "details": {
+                                    "all_required_data_protocols_promoted": True,
+                                    "required_promoted_count": 5,
+                                    "required_count": 5,
+                                    "promoted_count": 8,
+                                    "candidate_count": 1,
+                                    "missing_gate_count": 0,
+                                },
+                            },
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [
+                                        {
+                                            "gate_id": "transport.general_websocket_capability",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "needs broker-owned generic WebSocket evidence",
+                                        }
+                                    ],
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = build_companion_transport_gate_report(
+                argparse.Namespace(
+                    projection=str(projection_path),
+                    out=str(root / "transport-gates.json"),
+                    validation_out=None,
+                    report_id="transport-gates.summary-drift",
+                    fail_on_error=True,
+                    fail_on_pending=False,
+                    fail_on_incomplete=False,
+                ),
+                clock_func=fixed_clock,
+            )
+
+        self.assertEqual(validate_companion_transport_gate_report(report)["status"], "pass")
+
+        tampered = json.loads(json.dumps(report))
+        tampered["operator_next_actions"]["gates"][0]["next_action_ids"] = [
+            "run_qcl079_host_loopback_websocket"
+        ]
+        validation = validate_companion_transport_gate_report(tampered)
+
+        self.assertEqual(validation["status"], "fail")
+        self.assertIn(
+            (
+                "operator_next_actions action ids do not match "
+                "remaining_live_gates: transport.general_websocket_capability"
+            ),
+            validation["errors"],
+        )
+
+        missing_summary = json.loads(json.dumps(report))
+        del missing_summary["operator_next_actions"]
+        validation = validate_companion_transport_gate_report(missing_summary)
+
+        self.assertEqual(validation["status"], "fail")
+        self.assertIn("operator_next_actions summary missing", validation["errors"])
+
     def test_projection_can_include_protocol_matrix_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

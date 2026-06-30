@@ -174,6 +174,7 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
     summary = object_value(report.get("summary"))
     data_protocols = object_value(report.get("data_protocols"))
     remaining = list_value(report.get("remaining_live_gates"))
+    operator_next_actions = object_value(report.get("operator_next_actions"))
     if int_value(summary.get("remaining_gate_count")) != len(remaining):
         errors.append("remaining_gate_count does not match remaining_live_gates")
     if bool(summary.get("all_required_data_protocols_promoted")) != bool(
@@ -205,6 +206,7 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
             warnings.append(f"transport gate remains pending: {gate_id}")
             next_actions = list_objects(object_value(gate).get("next_actions"))
             errors.extend(validate_next_actions_for_gate(gate_id, next_actions))
+    errors.extend(validate_operator_next_actions_summary(operator_next_actions, remaining))
     for report_issue in list_objects(report.get("issues")):
         if report_issue.get("severity") == "error":
             errors.append(str(report_issue.get("issue_code") or "transport gate issue"))
@@ -223,6 +225,61 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
         "errors": errors,
         "warnings": warnings,
     }
+
+
+def validate_operator_next_actions_summary(
+    operator_next_actions: dict[str, Any],
+    remaining_live_gates: list[Any],
+) -> list[str]:
+    errors: list[str] = []
+    if not operator_next_actions:
+        return ["operator_next_actions summary missing"]
+    if operator_next_actions.get("shell") != "powershell":
+        errors.append("operator_next_actions shell must be powershell")
+    gates = list_objects(operator_next_actions.get("gates"))
+    if int_value(operator_next_actions.get("gate_count")) != len(gates):
+        errors.append("operator_next_actions gate_count does not match gates")
+
+    expected = remaining_gate_action_ids(remaining_live_gates)
+    reported: dict[str, set[str]] = {}
+    for gate in gates:
+        gate_id = str(gate.get("gate_id") or "")
+        if not gate_id:
+            errors.append("operator_next_actions gate missing gate_id")
+            continue
+        if gate_id in reported:
+            errors.append(f"duplicate operator_next_actions gate: {gate_id}")
+        reported[gate_id] = {
+            str(action_id)
+            for action_id in list_value(gate.get("next_action_ids"))
+            if str(action_id)
+        }
+
+    if set(reported.keys()) != set(expected.keys()):
+        errors.append(
+            "operator_next_actions gates do not match remaining_live_gates next_actions"
+        )
+    for gate_id in sorted(set(reported.keys()) & set(expected.keys())):
+        if reported[gate_id] != expected[gate_id]:
+            errors.append(
+                f"operator_next_actions action ids do not match remaining_live_gates: {gate_id}"
+            )
+    return errors
+
+
+def remaining_gate_action_ids(remaining_live_gates: list[Any]) -> dict[str, set[str]]:
+    gate_actions: dict[str, set[str]] = {}
+    for gate in list_objects(remaining_live_gates):
+        gate_id = str(gate.get("gate_id") or "")
+        next_actions = list_objects(object_value(gate).get("next_actions"))
+        action_ids = {
+            str(action.get("action_id") or "")
+            for action in next_actions
+            if str(action.get("action_id") or "")
+        }
+        if gate_id and action_ids:
+            gate_actions[gate_id] = action_ids
+    return gate_actions
 
 
 def transport_coverage_row(projection: dict[str, Any]) -> dict[str, Any]:
