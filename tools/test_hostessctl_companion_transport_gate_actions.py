@@ -105,8 +105,48 @@ class HostessCtlCompanionTransportGateActionTests(unittest.TestCase):
         self.assertIn("--out target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json", verify_command)
         self.assertIn("--fail-on-error", verify_command)
 
+    def test_general_websocket_actions_preserve_candidate_and_promotion_boundary(self) -> None:
+        actions = actions_by_id("transport.general_websocket_capability")
+
+        self.assert_valid_actions("transport.general_websocket_capability", actions)
+        self.assertEqual(
+            set(actions),
+            {
+                "run_qcl079_host_loopback_websocket",
+                "run_qcl079_broker_owned_websocket",
+            },
+        )
+        host_loopback = actions["run_qcl079_host_loopback_websocket"]
+        self.assertFalse(host_loopback["requires_elevation"])
+        self.assertFalse(host_loopback["requires_quest_lease"])
+        self.assertFalse(host_loopback["requires_adb_server_lifecycle_lease"])
+        self.assertFalse(host_loopback["mutates_host"])
+        self.assertFalse(host_loopback["mutates_device"])
+        self.assertFalse(host_loopback["clears_gate_when_accepted"])
+        self.assertIn("--probe-id QCL-079", command_text(host_loopback))
+        self.assertIn("--websocket-source host-loopback", command_text(host_loopback))
+        self.assertIn("--out target\\connectivity-probe\\qcl079-live-host-loopback.json", command_text(host_loopback))
+
+        broker_owned = actions["run_qcl079_broker_owned_websocket"]
+        self.assertFalse(broker_owned["requires_elevation"])
+        self.assertFalse(broker_owned["requires_quest_lease"])
+        self.assertFalse(broker_owned["requires_adb_server_lifecycle_lease"])
+        self.assertFalse(broker_owned["mutates_host"])
+        self.assertFalse(broker_owned["mutates_device"])
+        self.assertTrue(broker_owned["clears_gate_when_accepted"])
+        broker_command = command_text(broker_owned)
+        self.assertIn("--websocket-source broker-owned-websocket", broker_command)
+        self.assertIn("--websocket-route-descriptor '<manifold-stream-websocket-route>'", broker_command)
+        self.assertIn("--websocket-route-evidence '<manifold-stream-websocket-evidence>'", broker_command)
+        self.assertIn("--out target\\connectivity-probe\\qcl079-live-broker-owned-websocket.json", broker_command)
+        self.assertIn("--fail-on-error", broker_command)
+
     def test_operator_next_actions_summary_lists_source_owned_action_ids(self) -> None:
         remaining = [
+            {
+                "gate_id": "transport.general_websocket_capability",
+                "next_actions": operator_next_actions_for_gate("transport.general_websocket_capability"),
+            },
             {
                 "gate_id": "transport.direct_wifi_live_topology",
                 "next_actions": operator_next_actions_for_gate("transport.direct_wifi_live_topology"),
@@ -120,7 +160,12 @@ class HostessCtlCompanionTransportGateActionTests(unittest.TestCase):
 
         self.assertEqual(summary["shell"], "powershell")
         self.assertEqual(summary["cwd"], "<rusty-hostess-root>")
-        self.assertEqual(summary["gate_count"], 2)
+        self.assertEqual(summary["gate_count"], 3)
+        websocket = next(
+            gate for gate in summary["gates"]
+            if gate["gate_id"] == "transport.general_websocket_capability"
+        )
+        self.assertIn("run_qcl079_broker_owned_websocket", websocket["next_action_ids"])
         direct_wifi = next(
             gate for gate in summary["gates"]
             if gate["gate_id"] == "transport.direct_wifi_live_topology"

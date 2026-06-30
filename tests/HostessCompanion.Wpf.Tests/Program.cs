@@ -618,19 +618,21 @@ static void TransportGateRowsExposeNextActions()
             CompletionBlockers =
             [
                 "protocol_matrix.required_data_protocols",
+                "transport.general_websocket_capability",
                 "transport.direct_wifi_live_topology",
                 "transport.product_tcp_media_over_direct_wifi",
                 "transport.product_tcp_media_listener_firewall",
             ],
-            RemainingGateCount = 3,
+            RemainingGateCount = 4,
             RemainingGateIds =
             [
+                "transport.general_websocket_capability",
                 "transport.direct_wifi_live_topology",
                 "transport.product_tcp_media_over_direct_wifi",
                 "transport.product_tcp_media_listener_firewall",
             ],
-            TermGateCount = 1,
-            TermGateIds = ["wifi_direct"],
+            TermGateCount = 2,
+            TermGateIds = ["websocket", "wifi_direct"],
         },
         DataProtocols = new CompanionTransportGateDataProtocols
         {
@@ -652,10 +654,19 @@ static void TransportGateRowsExposeNextActions()
         {
             Shell = "powershell",
             Cwd = "<rusty-hostess-root>",
-            GateCount = 2,
+            GateCount = 4,
             Policy = "Hostess-owned CLI routes only",
             Gates =
             [
+                new CompanionTransportGateActionSummary
+                {
+                    GateId = "transport.general_websocket_capability",
+                    NextActionIds =
+                    [
+                        "run_qcl079_host_loopback_websocket",
+                        "run_qcl079_broker_owned_websocket",
+                    ],
+                },
                 new CompanionTransportGateActionSummary
                 {
                     GateId = "transport.direct_wifi_live_topology",
@@ -692,6 +703,10 @@ static void TransportGateRowsExposeNextActions()
         },
         TermGates = new Dictionary<string, JsonElement>
         {
+            ["websocket"] = JsonSerializer.SerializeToElement(new
+            {
+                scope = "manifold_command_session_receipts_and_qcl079_generic_protocol_fit",
+            }),
             ["wifi_direct"] = JsonSerializer.SerializeToElement(new
             {
                 scope = "qcl040_qcl041_topology_evidence",
@@ -699,6 +714,48 @@ static void TransportGateRowsExposeNextActions()
         },
         RemainingLiveGates =
         [
+            new CompanionTransportGate
+            {
+                GateId = "transport.general_websocket_capability",
+                Status = "pending_live_evidence",
+                Evidence = "needs broker-owned or Quest-runtime generic WebSocket endpoint evidence",
+                NextActions =
+                [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "run_qcl079_host_loopback_websocket",
+                        Label = "Run QCL-079 host loopback",
+                        AuthorityOwner = "tools.hostessctl.connectivity_websocket",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl079-live-host-loopback.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Run QCL-079 host loopback",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source host-loopback --out target\\connectivity-probe\\qcl079-live-host-loopback.json",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "run_qcl079_broker_owned_websocket",
+                        Label = "Run QCL-079 broker-owned WebSocket",
+                        AuthorityOwner = "tools.hostessctl.connectivity_websocket",
+                        ClearsGateWhenAccepted = true,
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl079-live-broker-owned-websocket.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Run QCL-079 broker-owned WebSocket",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor '<manifold-stream-websocket-route>' --websocket-route-evidence '<manifold-stream-websocket-evidence>' --out target\\connectivity-probe\\qcl079-live-broker-owned-websocket.json --fail-on-error",
+                        },
+                    },
+                ],
+            },
             new CompanionTransportGate
             {
                 GateId = "transport.direct_wifi_live_topology",
@@ -1024,7 +1081,7 @@ static void TransportGateRowsExposeNextActions()
             row.Name == "hostess.companion_transport_gates"
             && row.Evidence.Contains("data_protocols_promoted=False", StringComparison.Ordinal)
             && row.Evidence.Contains("complete=False", StringComparison.Ordinal)
-            && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols,transport.direct_wifi_live_topology,transport.product_tcp_media_over_direct_wifi,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)),
+            && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols,transport.general_websocket_capability,transport.direct_wifi_live_topology,transport.product_tcp_media_over_direct_wifi,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)),
         "transport gate summary row must expose strict protocol-plus-transport completion blockers");
     Assert(rows.Any(row =>
             row.Name == "transport_gates.data_protocols"
@@ -1040,6 +1097,27 @@ static void TransportGateRowsExposeNextActions()
             row.Name == "transport_gates.operator_next_actions"
             && row.Evidence.Contains("shell=powershell", StringComparison.Ordinal)),
         "transport gate rows must include the operator next-action summary");
+    Assert(rows.Any(row =>
+            row.Name == "transport.general_websocket_capability.run_qcl079_host_loopback_websocket"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_adb_server_lifecycle_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_websocket", StringComparison.Ordinal)
+            && row.Notes.Contains("clears_gate=False", StringComparison.Ordinal)
+            && row.Evidence.Contains("--probe-id QCL-079", StringComparison.Ordinal)
+            && row.Evidence.Contains("--websocket-source host-loopback", StringComparison.Ordinal)),
+        "generic WebSocket host-loopback action must stay candidate-only and CLI-equivalent");
+    Assert(rows.Any(row =>
+            row.Name == "transport.general_websocket_capability.run_qcl079_broker_owned_websocket"
+            && row.Notes.Contains("requires_elevation=False", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_host=False", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_device=False", StringComparison.Ordinal)
+            && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl079-live-broker-owned-websocket.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--websocket-source broker-owned-websocket", StringComparison.Ordinal)
+            && row.Evidence.Contains("--websocket-route-descriptor '<manifold-stream-websocket-route>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--websocket-route-evidence '<manifold-stream-websocket-evidence>'", StringComparison.Ordinal)),
+        "generic WebSocket gate must render the broker-owned QCL-079 route that can clear it");
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.run_qcl041_live_wifi_direct_preflight"
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)

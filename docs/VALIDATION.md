@@ -207,9 +207,10 @@ Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
 only for disruptive daemon lifecycle recovery.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps those PowerShell command strings,
-output artifacts, elevation boundaries, Quest lease metadata, direct-Wi-Fi and
-QCL-082 dependency gates, and non-mutating firewall verify posture intact
-before WPF row-projection tests render them for operators.
+output artifacts, elevation boundaries, Quest lease metadata, QCL-079 generic
+WebSocket candidate-vs-promoting boundaries, direct-Wi-Fi and QCL-082
+dependency gates, and non-mutating firewall verify posture intact before WPF
+row-projection tests render them for operators.
 `HostessCompanion.Wpf.Tests` also checks that the WPF transport-gate model and
 row projection preserve `data_protocols`,
 `all_required_data_protocols_promoted`,
