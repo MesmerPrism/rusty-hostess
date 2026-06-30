@@ -126,6 +126,10 @@ python tools\hostessctl\hostessctl.py companion-report operator-actions `
 
 and compares every emitted action row with `OperatorActionCatalog`, so the
 machine-readable report and the human-visible WPF command catalog cannot drift.
+The advertised protocol-matrix workflow must render transport gates with
+`--fail-on-error --fail-on-pending --fail-on-incomplete`, matching the WPF
+service path's validation-first report request before human operators see the
+rows.
 The Hostess-side report imports static rows from
 `tools\hostessctl\companion_operator_action_rows.py` and keeps schema,
 validation, and failure status in `companion_operator_actions.py`, so row

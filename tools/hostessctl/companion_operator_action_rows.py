@@ -87,7 +87,7 @@ PROTOCOL_MATRIX_CLI_ROUTE = (
     r"python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl041LifecycleReport --fail-on-error; "
     r"python $HostessCtl connectivity-probe protocol-matrix --suite-run $SuiteRun @TopologyFixtureInputs @LifecycleTopologyInputs --latest-artifact-dir $LatestArtifactDir @LatestProbeArgs --latest-device-link-dir $LatestDeviceLinkDir --latest-stream-capability-dir $LatestStreamCapabilityDir --latest-stream-probe-id QCL-080 --out $ProtocolMatrix; "
     r"python $HostessCtl companion-report projection --protocol-matrix $ProtocolMatrix --include-protocol-matrix-inputs --suite-run $SuiteRun --out $Projection; "
-    r"python $HostessCtl companion-report transport-gates --projection $Projection --out $TransportGates --fail-on-pending --fail-on-incomplete"
+    r"python $HostessCtl companion-report transport-gates --projection $Projection --out $TransportGates --fail-on-error --fail-on-pending --fail-on-incomplete"
 )
 
 

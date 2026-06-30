@@ -1695,6 +1695,8 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must include protocol-matrix inputs in the report projection");
     Assert(protocolMatrixAction.CliRoute.Contains("companion-report transport-gates", StringComparison.Ordinal),
         "protocol matrix action must render the transport gate status artifact");
+    Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-error", StringComparison.Ordinal),
+        "protocol matrix action must advertise transport gate validation failure handling");
     Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-pending", StringComparison.Ordinal),
         "protocol matrix action must advertise the pending transport gate automation switch");
     Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-incomplete", StringComparison.Ordinal),

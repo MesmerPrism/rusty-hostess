@@ -72,6 +72,9 @@ class CompanionOperatorActionCatalogTests(unittest.TestCase):
         self.assertTrue(protocol_action["mutates_device"])
         self.assertIn("companion-report projection", protocol_action["cli_route"])
         self.assertIn("companion-report transport-gates", protocol_action["cli_route"])
+        self.assertIn("--fail-on-error", protocol_action["cli_route"])
+        self.assertIn("--fail-on-pending", protocol_action["cli_route"])
+        self.assertIn("--fail-on-incomplete", protocol_action["cli_route"])
         self.assertIn("--quest-lease-id $QuestLeaseId", protocol_action["cli_route"])
         self.assertIn("QCL-079", protocol_action["cli_route"])
 
