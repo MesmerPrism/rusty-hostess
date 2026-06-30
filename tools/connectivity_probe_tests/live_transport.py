@@ -125,6 +125,8 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(check(report, "wifi_direct.quest_lease")["status"], "pass")
         self.assertEqual(check(report, "topology.socket_exchange")["status"], "pass")
         self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "pass")
+        self.assertEqual(report["artifacts"][0]["source_run_id"], "qcl-041-unit-test-lifecycle-run")
+        self.assertEqual(report["artifacts"][0]["harness_id"], "qcl-041-unit-test-peer-harness")
         self.assertEqual(report["measurements"]["cleanup_completed"], True)
         self.assertEqual(validation["status"], "pass")
 
@@ -376,6 +378,10 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(artifact["evidence_tier"], "template")
         self.assertFalse(artifact["live_evidence"])
         self.assertTrue(artifact["contract"]["non_promoting_template"])
+        self.assertIn("harness.harness_id", artifact["contract"]["required_fields"])
+        self.assertEqual(artifact["run_id"], "<wifi-direct-lifecycle-run-id>")
+        self.assertEqual(artifact["harness"]["harness_id"], "<wifi-direct-peer-harness-id>")
+        self.assertFalse(artifact["harness"]["hostess_runs_harness"])
         self.assertEqual(artifact["lease"]["manager"], "Agent Board")
         self.assertEqual(artifact["lease"]["resource"], "quest:<quest-serial>")
         self.assertEqual(artifact["device"]["serial"], "<quest-serial>")
@@ -417,6 +423,47 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(source_check["status"], "blocked")
         self.assertIn(
             "hostess.issue.connectivity_probe.wifi_direct_lifecycle_not_live",
+            source_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_without_source_identity(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact.pop("run_id")
+            artifact.pop("harness")
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        source_check = check(report, "wifi_direct.lifecycle_source")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(source_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_lifecycle_run_id_missing",
+            source_check["issue_codes"],
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_lifecycle_harness_id_missing",
+            source_check["issue_codes"],
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_lifecycle_harness_owner_missing",
             source_check["issue_codes"],
         )
         self.assertEqual(validation["status"], "pass")
@@ -570,6 +617,8 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(report["issues"], [])
         self.assertEqual(dependency["summary"]["topology_status"], "pass")
         self.assertTrue(dependency["summary"]["promotion_allowed"])
+        self.assertEqual(dependency["summary"]["run_id"], "qcl-041-unit-test-lifecycle-run")
+        self.assertEqual(dependency["summary"]["harness_id"], "qcl-041-unit-test-peer-harness")
         self.assertIn("Normalize the supplied live lifecycle artifact", report["next_step"])
 
     def test_live_same_wifi_report_does_not_pass_on_one_way_host_ping(self) -> None:

@@ -39,6 +39,11 @@ PLACEHOLDER_SERIAL_TOKENS = {
     "<quest-serial>",
     "QUEST_SERIAL_FROM_ADB_DEVICES",
 }
+PLACEHOLDER_ID_TOKENS = {
+    "",
+    "<wifi-direct-lifecycle-run-id>",
+    "<wifi-direct-peer-harness-id>",
+}
 
 
 def wifi_direct_lifecycle_probe_report(
@@ -109,12 +114,29 @@ def wifi_direct_lifecycle_template_artifact(
         "observed_at_utc": isoformat_utc(observed_at),
         "contract": {
             "required_phases": required_phases,
+            "required_fields": [
+                "run_id",
+                "harness.harness_id",
+                "harness.owner",
+                "device.serial",
+                "lease.resource",
+                "lease.lease_id",
+            ],
             "promotes_when": (
                 "live_evidence is true, evidence_tier is a live tier, peer class "
-                "matches the probe, the leased Quest serial matches device.serial, "
-                "and all lifecycle phases pass"
+                "matches the probe, the source run and harness are identified, "
+                "the leased Quest serial matches device.serial, and all lifecycle "
+                "phases pass"
             ),
             "non_promoting_template": True,
+        },
+        "run_id": "<wifi-direct-lifecycle-run-id>",
+        "harness": {
+            "harness_id": "<wifi-direct-peer-harness-id>",
+            "owner": "external leased Wi-Fi Direct peer harness",
+            "route": "external_peer_harness",
+            "hostess_runs_harness": False,
+            "writes_live_source_artifact": True,
         },
         "topology": {
             "owner": "wifi_direct",
@@ -337,6 +359,9 @@ def wifi_direct_lifecycle_body(
                 "schema": source_summary["schema"],
                 "evidence_tier": source_summary["evidence_tier"],
                 "capture_kind": source_summary["capture_kind"],
+                "source_run_id": source_summary["run_id"],
+                "harness_id": source_summary["harness_id"],
+                "harness_owner": source_summary["harness_owner"],
                 "quest_lease_valid": lease_summary["valid"],
             }
         ],
@@ -453,6 +478,24 @@ def lifecycle_source_summary(
         or object_value(artifact.get("topology")).get("peer_class")
         or ""
     ).strip()
+    harness = object_value(artifact.get("harness") or artifact.get("source_harness"))
+    run_id = str(
+        artifact.get("run_id")
+        or object_value(artifact.get("source")).get("run_id")
+        or ""
+    ).strip()
+    harness_id = str(
+        artifact.get("harness_id")
+        or harness.get("harness_id")
+        or harness.get("id")
+        or ""
+    ).strip()
+    harness_owner = str(
+        artifact.get("harness_owner")
+        or harness.get("owner")
+        or harness.get("authority_owner")
+        or ""
+    ).strip()
     declares_live = artifact.get("live_evidence") is True or capture_kind_lower.startswith("live")
     live_evidence = declares_live and evidence_tier in LIVE_EVIDENCE_TIERS
 
@@ -465,11 +508,18 @@ def lifecycle_source_summary(
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_lifecycle_peer_mismatch")
     if not live_evidence:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_lifecycle_not_live")
+    if run_id in PLACEHOLDER_ID_TOKENS or "<" in run_id:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_lifecycle_run_id_missing")
+    if harness_id in PLACEHOLDER_ID_TOKENS or "<" in harness_id:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_lifecycle_harness_id_missing")
+    if not harness_owner or "<" in harness_owner:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_lifecycle_harness_owner_missing")
 
     evidence = (
         f"schema={schema or 'missing'}; probe_id={artifact_probe_id or 'missing'}; "
         f"peer_class={peer_class or 'missing'}; evidence_tier={evidence_tier or 'missing'}; "
-        f"capture_kind={capture_kind or 'missing'}"
+        f"capture_kind={capture_kind or 'missing'}; run_id={run_id or 'missing'}; "
+        f"harness_id={harness_id or 'missing'}; harness_owner={harness_owner or 'missing'}"
     )
     return {
         "schema": schema,
@@ -477,6 +527,9 @@ def lifecycle_source_summary(
         "peer_class": peer_class,
         "evidence_tier": evidence_tier,
         "capture_kind": capture_kind,
+        "run_id": run_id,
+        "harness_id": harness_id,
+        "harness_owner": harness_owner,
         "live_evidence": live_evidence,
         "valid": not issue_codes,
         "issue_codes": issue_codes,

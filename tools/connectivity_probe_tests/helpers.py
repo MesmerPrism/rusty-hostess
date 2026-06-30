@@ -1326,6 +1326,14 @@ def wifi_direct_lifecycle_artifact(
         "evidence_tier": "quest_runtime" if live_evidence else "fixture",
         "capture_kind": "live_wifi_direct_lifecycle" if live_evidence else "fixture_wifi_direct_lifecycle",
         "live_evidence": live_evidence,
+        "run_id": f"{probe_id.lower()}-unit-test-lifecycle-run",
+        "harness": {
+            "harness_id": f"{probe_id.lower()}-unit-test-peer-harness",
+            "owner": "unit-test external Wi-Fi Direct peer harness",
+            "route": "unit_test_peer_harness",
+            "hostess_runs_harness": False,
+            "writes_live_source_artifact": True,
+        },
         "observed_at_utc": "2026-06-28T13:00:00Z",
         "topology": {
             "owner": "wifi_direct",

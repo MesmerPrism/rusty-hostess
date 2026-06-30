@@ -666,10 +666,12 @@ direct-Wi-Fi topology from normal LAN echo rows.
 For a lifecycle source artifact to promote, Hostess also requires a positive
 peer count, recorded local/peer group roles, positive bounded TCP
 messages-sent/messages-received counters, `cleanup.completed=true`, and an
-Agent Board `quest:<serial>` lease receipt in the source artifact with a real
-lease id plus reserve-before-live and release-after-cleanup metadata. WPF
-renders those Hostess checks; it does not reinterpret a source artifact that
-merely marks phases as `status=pass` or omits lease proof.
+identified source run: `run_id`, `harness.harness_id`, and `harness.owner`.
+The artifact must also carry an Agent Board `quest:<serial>` lease receipt
+with a real lease id plus reserve-before-live and release-after-cleanup
+metadata. WPF renders those Hostess checks; it does not reinterpret a source
+artifact that merely marks phases as `status=pass`, omits source identity, or
+omits lease proof.
 
 Automation can materialize the same WPF-visible gate state as a standalone
 read-only artifact:

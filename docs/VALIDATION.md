@@ -346,10 +346,13 @@ The plan route is read-only and non-promoting: it records the PowerShell
 command chain, Agent Board `quest:<quest-serial>` lease policy, expected
 artifacts, external live-source dependency, and the requirement that
 `device.serial` match the Agent Board `quest:<serial>` lease resource that was
-reserved for the live steps. The template route is a local contract aid only:
-it writes the expected source artifact shape with `live_evidence=false` and
-blocked phases, so the normalizer keeps `transport.direct_wifi_live_topology`
-pending until a leased live harness replaces it with real evidence.
+reserved for the live steps. It also requires the source artifact to name a
+real `run_id`, `harness.harness_id`, and `harness.owner`, so a passing-looking
+phase list cannot masquerade as a traceable live harness run. The template
+route is a local contract aid only: it writes the expected source artifact
+shape with placeholder source identity, `live_evidence=false`, and blocked
+phases, so the normalizer keeps `transport.direct_wifi_live_topology` pending
+until a leased live harness replaces it with real evidence.
 
 Use `QCL-040` plus `qcl040-*` artifact names for Android-phone peer lifecycle
 evidence, or `QCL-041` plus `qcl041-*` artifact names for Windows-peer
@@ -365,13 +368,15 @@ source artifact must include a positive `peer_discovery.peer_count`, recorded
 `socket_exchange.protocol=tcp`, bounded
 `socket_exchange.payload_class=bounded_tcp_probe`, positive
 `socket_exchange.messages_sent` and `socket_exchange.messages_received`
-counters, and `cleanup.completed=true`. It must also include a `lease` or
-`agent_board_lease` object proving an Agent Board `quest:<serial>` lease was
-reserved before live Wi-Fi Direct steps and released after cleanup, with a
-real lease id rather than a placeholder, and the source `device.serial` must
-match the serial portion of the lease resource. A phase with only
-`status=pass`, or a complete-looking artifact without matching lease and device
-identity evidence, is not enough to clear the topology gate.
+counters, and `cleanup.completed=true`. It must also include a traceable
+source identity (`run_id`, `harness.harness_id`, and `harness.owner`) plus a
+`lease` or `agent_board_lease` object proving an Agent Board
+`quest:<serial>` lease was reserved before live Wi-Fi Direct steps and
+released after cleanup, with a real lease id rather than a placeholder, and
+the source `device.serial` must match the serial portion of the lease
+resource. A phase with only `status=pass`, or a complete-looking artifact
+without matching source, lease, and device identity evidence, is not enough to
+clear the topology gate.
 
 LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
 host-loopback live reports. These are dependency/protocol checks, not Quest
