@@ -992,7 +992,7 @@ static void TransportGateRowsExposeNextActions()
                     {
                         ActionId = "verify_qcl082_product_firewall_rule",
                         Label = "Verify product listener rule",
-                        RequiresElevation = true,
+                        RequiresElevation = false,
                         Command = new CompanionTransportGateNextActionCommand
                         {
                             Shell = "powershell",
@@ -1145,9 +1145,10 @@ static void TransportGateRowsExposeNextActions()
         "product media promotion action must render the QCL-082 fold-in route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
-            && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_elevation=False", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_host=False", StringComparison.Ordinal)
             && row.Evidence.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal)),
-        "firewall next action must show elevation and product rule profile");
+        "firewall verify next action must show non-mutating verification and product rule profile");
 }
 
 static void FirewallRowsExposeProductVerification()

@@ -51,7 +51,7 @@ delegated broker-stream command execution.
 Windows companion catalog, readiness, and session report validation is covered by:
 
 ```powershell
-python -m unittest tools.test_hostessctl_companion_catalog tools.test_hostessctl_companion_operator_actions tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_report_projection tools.test_hostessctl_companion_session
+python -m unittest tools.test_hostessctl_companion_catalog tools.test_hostessctl_companion_operator_actions tools.test_hostessctl_companion_transport_gate_actions tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_report_projection tools.test_hostessctl_companion_session
 python tools\hostessctl\hostessctl.py companion-catalog --out target\companion-catalog\catalog.json --fail-on-error
 python tools\hostessctl\hostessctl.py companion-readiness --out target\companion-readiness\readiness.json
 python tools\hostessctl\hostessctl.py companion-session run --out target\companion-session\session.json --profile basic --skip-probe
@@ -205,6 +205,11 @@ Board lease metadata with the `quest:<quest-serial>` resource, reserve command,
 release command, duration, and the `adb-server:lifecycle` policy.
 Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
 only for disruptive daemon lifecycle recovery.
+`tools.test_hostessctl_companion_transport_gate_actions` validates that the
+source-owned next-action catalog keeps those PowerShell command strings,
+output artifacts, elevation boundaries, Quest lease metadata, direct-Wi-Fi and
+QCL-082 dependency gates, and non-mutating firewall verify posture intact
+before WPF row-projection tests render them for operators.
 `HostessCompanion.Wpf.Tests` also checks that the WPF transport-gate model and
 row projection preserve `data_protocols`,
 `all_required_data_protocols_promoted`,

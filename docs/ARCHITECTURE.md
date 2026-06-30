@@ -96,6 +96,11 @@ Connectivity page. WPF deserializes `operator_next_actions` and each pending
 gate's `next_actions` only as operator-visible guidance; Hostess CLI remains
 the owner of the PowerShell command text, elevation flags, Quest lease
 requirements, mutation flags, and acceptance artifacts.
+`tools.test_hostessctl_companion_transport_gate_actions` validates that the
+source-owned next-action catalog keeps direct-Wi-Fi and QCL-082 product-media
+commands PowerShell-shaped, output-artifact-backed, serial-scoped, and honest
+about elevation, Quest lease, host mutation, device mutation, and dependency
+requirements before WPF row-projection tests render those fields.
 Page-owned viewmodels keep the row projection families separated:
 `ReadinessPageViewModel`, `DevicesPageViewModel`,
 `ConnectivityPageViewModel`, `SessionPageViewModel`,

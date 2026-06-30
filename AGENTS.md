@@ -136,6 +136,11 @@ generic code or sanitized sample fixtures.
   routes, PowerShell command strings, acceptance artifacts, and lease/elevation
   metadata for pending gates; it must not execute those commands or decide that
   a gate is cleared.
+- Keep `tools\test_hostessctl_companion_transport_gate_actions.py` as the
+  source-owned test family for that static transport-gate next-action catalog.
+  It checks PowerShell command shape, output artifacts, elevation boundaries,
+  Quest lease metadata, serial-scoped ADB posture, dependencies, and
+  non-mutating verify routes before WPF projection tests render the rows.
 - Keep `tools\hostessctl\companion_operator_action_rows.py` as the static WPF
   operator-action row owner, and keep
   `tools\hostessctl\companion_operator_actions.py` as the read-only
