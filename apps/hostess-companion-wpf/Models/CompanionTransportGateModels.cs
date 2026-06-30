@@ -76,6 +76,9 @@ public sealed class CompanionTransportGateValidationReport
 
     [JsonPropertyName("warnings")]
     public List<string> Warnings { get; set; } = [];
+
+    [JsonPropertyName("issues")]
+    public List<CommandIssue> Issues { get; set; } = [];
 }
 
 public sealed class CompanionTransportGateAuthority

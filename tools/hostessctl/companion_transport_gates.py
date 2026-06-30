@@ -210,6 +210,7 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
     for report_issue in list_objects(report.get("issues")):
         if report_issue.get("severity") == "error":
             errors.append(str(report_issue.get("issue_code") or "transport gate issue"))
+    issues = validation_issues(errors, "error") + validation_issues(warnings, "warning")
     return {
         "$schema": HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA,
         "status": "pass" if not errors else "fail",
@@ -224,7 +225,65 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
         ),
         "errors": errors,
         "warnings": warnings,
+        "issues": issues,
     }
+
+
+def validation_issues(messages: list[str], severity: str) -> list[dict[str, str]]:
+    return [
+        {
+            "issue_code": validation_issue_code(message),
+            "severity": severity,
+            "message": message,
+        }
+        for message in messages
+        if message
+    ]
+
+
+def validation_issue_code(message: str) -> str:
+    if message.startswith("hostess.issue."):
+        return message
+    if message == "unsupported companion transport gate report schema":
+        return "hostess.issue.transport_gates.unsupported_schema"
+    if message == "transport gate report must set projection_only=true":
+        return "hostess.issue.transport_gates.authority_not_projection_only"
+    if message == "source_projection must be a companion report projection":
+        return "hostess.issue.transport_gates.source_projection_schema_invalid"
+    if message == "source_projection missing path":
+        return "hostess.issue.transport_gates.source_projection_missing_path"
+    if message == "remaining_gate_count does not match remaining_live_gates":
+        return "hostess.issue.transport_gates.remaining_gate_count_mismatch"
+    if message == "summary all_required_data_protocols_promoted does not match data_protocols":
+        return "hostess.issue.transport_gates.data_protocol_summary_mismatch"
+    if message == "all_wpf_transport_and_protocol_gates_clear cannot be true with remaining gates":
+        return "hostess.issue.transport_gates.completion_claim_with_remaining_gates"
+    if (
+        message
+        == "all_wpf_transport_and_protocol_gates_clear cannot be true without promoted data protocols"
+    ):
+        return "hostess.issue.transport_gates.completion_claim_without_data_protocols"
+    if message == "protocol matrix summary is missing":
+        return "hostess.issue.transport_gates.protocol_matrix_missing"
+    if message == "required data protocols are not all promoted":
+        return "hostess.issue.transport_gates.required_data_protocols_not_promoted"
+    if message == "remaining gate missing gate_id":
+        return "hostess.issue.transport_gates.remaining_gate_missing_id"
+    if message.startswith("transport gate remains pending:"):
+        return "hostess.issue.transport_gates.gate_pending"
+    if message.startswith("next action missing authority_owner:"):
+        return "hostess.issue.transport_gates.next_action_authority_missing"
+    if " must be boolean: " in message and message.startswith("next action "):
+        return "hostess.issue.transport_gates.next_action_boolean_field_invalid"
+    if message.startswith("next action missing acceptance_artifacts:"):
+        return "hostess.issue.transport_gates.next_action_acceptance_artifacts_missing"
+    if message.startswith("next action depends_on must be non-empty gate ids:"):
+        return "hostess.issue.transport_gates.next_action_dependencies_invalid"
+    if message.startswith("operator_next_actions "):
+        return "hostess.issue.transport_gates.operator_next_actions_invalid"
+    if message.startswith("duplicate operator_next_actions gate:"):
+        return "hostess.issue.transport_gates.operator_next_actions_duplicate_gate"
+    return "hostess.issue.transport_gates.validation"
 
 
 def validate_operator_next_actions_summary(

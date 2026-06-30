@@ -28,6 +28,39 @@ internal static class TransportGateReportFixtures
                     "transport gate remains pending: transport.product_tcp_media_over_direct_wifi",
                     "transport gate remains pending: transport.product_tcp_media_listener_firewall",
                 ],
+                Issues =
+                [
+                    new CommandIssue
+                    {
+                        IssueCode = "hostess.issue.transport_gates.required_data_protocols_not_promoted",
+                        Severity = "warning",
+                        Message = "required data protocols are not all promoted",
+                    },
+                    new CommandIssue
+                    {
+                        IssueCode = "hostess.issue.transport_gates.gate_pending",
+                        Severity = "warning",
+                        Message = "transport gate remains pending: transport.general_websocket_capability",
+                    },
+                    new CommandIssue
+                    {
+                        IssueCode = "hostess.issue.transport_gates.gate_pending",
+                        Severity = "warning",
+                        Message = "transport gate remains pending: transport.direct_wifi_live_topology",
+                    },
+                    new CommandIssue
+                    {
+                        IssueCode = "hostess.issue.transport_gates.gate_pending",
+                        Severity = "warning",
+                        Message = "transport gate remains pending: transport.product_tcp_media_over_direct_wifi",
+                    },
+                    new CommandIssue
+                    {
+                        IssueCode = "hostess.issue.transport_gates.gate_pending",
+                        Severity = "warning",
+                        Message = "transport gate remains pending: transport.product_tcp_media_listener_firewall",
+                    },
+                ],
             },
             Authority = new CompanionTransportGateAuthority
             {

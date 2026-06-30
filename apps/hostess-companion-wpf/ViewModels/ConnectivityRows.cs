@@ -690,6 +690,14 @@ public static class ConnectivityRows
         {
             return [];
         }
+        var issueCodes = report.ValidationReport.Issues
+            .Select(issue => issue.IssueCode)
+            .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+            .ToList();
+        if (issueCodes.Count > 0)
+        {
+            return issueCodes;
+        }
         return report.ValidationReport.Errors
             .Concat(report.ValidationReport.Warnings)
             .Where(issue => !string.IsNullOrWhiteSpace(issue))

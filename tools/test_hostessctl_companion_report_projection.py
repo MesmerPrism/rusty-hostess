@@ -394,6 +394,13 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertEqual(gate_report["report_id"], "transport-gates.fixture")
         self.assertEqual(gate_report["status"], "warn")
         self.assertEqual(validation["status"], "pass")
+        validation_issue_codes = {
+            issue["issue_code"] for issue in validation["issues"]
+        }
+        self.assertIn(
+            "hostess.issue.transport_gates.gate_pending",
+            validation_issue_codes,
+        )
         self.assertTrue(gate_report["authority"]["projection_only"])
         self.assertIn(
             "transport.direct_wifi_live_topology",
@@ -813,6 +820,10 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertFalse(gate_report["data_protocols"]["all_required_data_protocols_promoted"])
         self.assertEqual(validation["status"], "pass")
         self.assertIn("required data protocols are not all promoted", validation["warnings"])
+        self.assertIn(
+            "hostess.issue.transport_gates.required_data_protocols_not_promoted",
+            {issue["issue_code"] for issue in validation["issues"]},
+        )
 
     def test_transport_gate_report_passes_completion_gate_when_protocols_and_gates_clear(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -967,6 +978,10 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             ),
             validation["errors"],
         )
+        self.assertIn(
+            "hostess.issue.transport_gates.operator_next_actions_invalid",
+            {issue["issue_code"] for issue in validation["issues"]},
+        )
 
         missing_summary = json.loads(json.dumps(report))
         del missing_summary["operator_next_actions"]
@@ -974,6 +989,10 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
 
         self.assertEqual(validation["status"], "fail")
         self.assertIn("operator_next_actions summary missing", validation["errors"])
+        self.assertIn(
+            "hostess.issue.transport_gates.operator_next_actions_invalid",
+            {issue["issue_code"] for issue in validation["issues"]},
+        )
 
     def test_transport_gate_report_rejects_malformed_next_action_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -1070,6 +1089,25 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
                 f"transport.product_tcp_media_over_direct_wifi/{action_id}"
             ),
             validation["errors"],
+        )
+        validation_issue_codes = {
+            issue["issue_code"] for issue in validation["issues"]
+        }
+        self.assertIn(
+            "hostess.issue.transport_gates.next_action_authority_missing",
+            validation_issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.transport_gates.next_action_boolean_field_invalid",
+            validation_issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.transport_gates.next_action_acceptance_artifacts_missing",
+            validation_issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.transport_gates.next_action_dependencies_invalid",
+            validation_issue_codes,
         )
 
     def test_projection_can_include_protocol_matrix_inputs(self) -> None:

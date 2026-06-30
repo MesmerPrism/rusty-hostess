@@ -158,8 +158,8 @@ generic code or sanitized sample fixtures.
   `ViewModels\ConnectivityRows.cs` projection-only for transport-gate sidecar
   content. They may load and render the Hostess-written
   `rusty.hostess.companion.transport_gate_report.validation.v1` status, counts,
-  warnings, and source path, but they must not recalculate transport-gate
-  validation or change promotion policy.
+  structured issue codes, warnings, and source path, but they must not
+  recalculate transport-gate validation or change promotion policy.
 - Keep `tools\hostessctl\companion_operator_action_rows.py` as the static WPF
   operator-action row owner, and keep
   `tools\hostessctl\companion_operator_actions.py` as the read-only

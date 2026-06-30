@@ -434,6 +434,9 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "transport gate validation sidecar must identify the loaded transport-gate report");
     Assert(run.TransportGates.ValidationReport.SourceProjection == run.Projection.ReportPath,
         "transport gate validation sidecar must identify the loaded projection artifact");
+    Assert(run.TransportGates.ValidationReport.Issues.Any(issue =>
+            issue.IssueCode == "hostess.issue.transport_gates.gate_pending"),
+        "transport gate validation sidecar must preserve structured issue codes");
     Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
         "service must return the companion-report projection schema");
     Assert(run.TransportGates.Schema == "rusty.hostess.companion.transport_gate_report.v1",
@@ -647,8 +650,9 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("complete=False", StringComparison.Ordinal)
             && row.Notes.Contains("validation_report=target/companion-report/transport-gates.validation-report.json", StringComparison.Ordinal)
             && row.Notes.Contains("source_projection=target/companion-report/projection.json", StringComparison.Ordinal)
-            && row.IssueCodes.Contains("required data protocols are not all promoted")),
-        "transport gate validation sidecar row must expose Hostess validation status and warnings");
+            && row.IssueCodes.Contains("hostess.issue.transport_gates.required_data_protocols_not_promoted")
+            && row.IssueCodes.Contains("hostess.issue.transport_gates.gate_pending")),
+        "transport gate validation sidecar row must expose Hostess validation status and issue codes");
     Assert(rows.Any(row =>
             row.Name == "transport_gates.data_protocols"
             && row.Status == "warn"
