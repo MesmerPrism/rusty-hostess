@@ -145,6 +145,11 @@ generic code or sanitized sample fixtures.
   metadata, serial-scoped ADB posture, dependencies, candidate-vs-promoting
   boundaries, and non-mutating verify routes before WPF projection tests render
   the rows.
+- Keep `tests\HostessCompanion.Wpf.Tests\TransportGateReportFixtures.cs` as the
+  WPF transport-gate report fixture owner. It may construct the large
+  pending-gate report shape used by `Program.cs` row-projection assertions, but
+  it must not replace Hostess source-owned validation in
+  `companion_transport_gates.py` or the CLI next-action catalog tests.
 - Keep `tools\hostessctl\companion_operator_action_rows.py` as the static WPF
   operator-action row owner, and keep
   `tools\hostessctl\companion_operator_actions.py` as the read-only
