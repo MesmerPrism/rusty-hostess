@@ -169,9 +169,14 @@ exists, accepts QCL-082 broker/runtime status artifacts through
 `connectivity-probe protocol-matrix` for source selection and promotion state
 with those topology reports as explicit `--input` files, then asks
 `companion-report projection --include-protocol-matrix-inputs` for the
-normalized operator rows that the Connectivity page renders. The flag keeps
-device-link and connectivity-probe source selection inside the CLI route rather
-than WPF row projection.
+normalized operator rows that the Connectivity page renders. It then asks
+`companion-report transport-gates --projection <projection>` for the
+projection-derived gate report and renders `operator_next_actions` plus
+per-gate `next_actions` as read-only operator rows. The flag keeps device-link
+and connectivity-probe source selection inside the CLI route rather than WPF
+row projection, and the transport-gates route keeps next-action command text,
+elevation, Quest lease, and acceptance-artifact metadata in Hostess-owned CLI
+artifacts.
 
 With `--check-broker`, readiness also inspects the Manifold broker APK package,
 activity, process, ADB forward mapping, forwarded local socket, and direct host

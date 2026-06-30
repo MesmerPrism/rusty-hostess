@@ -809,10 +809,11 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                     ConnectivityProtocol,
                     ConnectivityPort,
                     CancellationToken.None);
-            ApplyCompanionReportProjection(run.Projection);
+            ApplyProtocolMatrixProjectionRun(run);
             SummaryLabel =
                 $"Protocol matrix {run.Matrix.MatrixId}: {run.Matrix.Status}. " +
-                $"Projection {run.Projection.ProjectionId}: {run.Projection.Rows.Count} rows.";
+                $"Projection {run.Projection.ProjectionId}: {run.Projection.Rows.Count} rows. " +
+                $"Transport gates: {run.TransportGates.Summary.RemainingGateCount} remaining.";
         }
         catch (Exception ex)
         {
@@ -952,6 +953,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private void ApplyCompanionReportProjection(CompanionReportProjection report)
     {
         ApplyConnectivityRows(ConnectivityRows.ForCompanionReportProjection(report), report.Status);
+    }
+
+    private void ApplyProtocolMatrixProjectionRun(ConnectivityProtocolMatrixProjectionRun run)
+    {
+        var rows = ConnectivityRows.ForProtocolMatrixProjectionRun(run);
+        ApplyConnectivityRows(rows, ConnectivityRows.StatusFromRows(rows));
     }
 
     private void ApplyConnectivityRows(IReadOnlyList<ConnectivityCheck> rows, string status)

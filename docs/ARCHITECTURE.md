@@ -79,6 +79,13 @@ views can still pass explicit connectivity-probe artifacts through that same
 projection route. WPF renders the resulting projection rows through
 `ConnectivityRows.ForCompanionReportProjection` so the human page and CLI
 automation inspect the same normalized report artifact.
+The same Protocol Matrix action then requests
+`companion-report transport-gates --projection <projection>` and renders the
+resulting `rusty.hostess.companion.transport_gate_report.v1` rows in the
+Connectivity page. WPF deserializes `operator_next_actions` and each pending
+gate's `next_actions` only as operator-visible guidance; Hostess CLI remains
+the owner of the PowerShell command text, elevation flags, Quest lease
+requirements, mutation flags, and acceptance artifacts.
 Page-owned viewmodels keep the row projection families separated:
 `ReadinessPageViewModel`, `DevicesPageViewModel`,
 `ConnectivityPageViewModel`, `SessionPageViewModel`,
@@ -271,7 +278,9 @@ requirements supplied by `companion_transport_gate_actions.py`. Those actions
 are operator guidance and automation inputs; the route still does not run
 probes, choose latest artifacts, mutate firewall/device state, parse media, or
 promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
-is an automation guard only.
+is an automation guard only. WPF uses the same route without
+`--fail-on-pending` so pending gates remain visible instead of turning the UI
+refresh into a failed command.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and

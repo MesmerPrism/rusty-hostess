@@ -283,6 +283,111 @@ public static class ConnectivityRows
         return rows;
     }
 
+    public static IReadOnlyList<ConnectivityCheck> ForTransportGateReport(
+        CompanionTransportGateReport report)
+    {
+        var rows = new List<ConnectivityCheck>
+        {
+            new()
+            {
+                Name = "hostess.companion_transport_gates",
+                Status = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status,
+                Evidence =
+                    $"{report.ReportId}: {report.Summary.RemainingGateCount} remaining gates; " +
+                    $"source={report.SourceProjection.ProjectionId}",
+                Notes = report.ReportPath,
+                IssueCodes = report.Issues
+                    .Select(issue => issue.IssueCode)
+                    .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+                    .ToList(),
+                Observed = ToObservedElement(report),
+            },
+            new()
+            {
+                Name = "transport_gates.operator_next_actions",
+                Status = report.OperatorNextActions.GateCount == 0 ? "pass" : "planned",
+                Evidence =
+                    $"shell={report.OperatorNextActions.Shell}; cwd={report.OperatorNextActions.Cwd}; " +
+                    $"gates={report.OperatorNextActions.GateCount}",
+                Notes = report.OperatorNextActions.Policy,
+                IssueCodes = [],
+                Observed = ToObservedElement(report.OperatorNextActions),
+            },
+        };
+
+        foreach (var termGate in report.TermGates)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = $"transport_gates.term.{termGate.Key}",
+                Status = "pass",
+                Evidence = termGate.Key,
+                Notes = "term gate copied from companion-report projection",
+                IssueCodes = [],
+                Observed = ExistingJsonElementOrFallback(termGate.Value, termGate.Key),
+            });
+        }
+
+        foreach (var gate in report.RemainingLiveGates)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = gate.GateId,
+                Status = StatusForTransportGate(gate.Status),
+                Evidence = gate.Evidence,
+                Notes = gate.NextActions.Count == 0
+                    ? "no next actions"
+                    : $"next_actions={string.Join(", ", gate.NextActions.Select(action => action.ActionId))}",
+                IssueCodes = string.IsNullOrWhiteSpace(gate.GateId) ? [] : [gate.GateId],
+                Observed = ToObservedElement(gate),
+            });
+
+            foreach (var action in gate.NextActions)
+            {
+                rows.Add(new ConnectivityCheck
+                {
+                    Name = $"{gate.GateId}.{action.ActionId}",
+                    Status = "planned",
+                    Evidence = string.IsNullOrWhiteSpace(action.Command.Command)
+                        ? string.Join("; ", action.AcceptanceArtifacts)
+                        : action.Command.Command,
+                    Notes =
+                        $"requires_quest_lease={action.RequiresQuestLease}; " +
+                        $"requires_elevation={action.RequiresElevation}; " +
+                        $"requires_adb_server_lifecycle_lease={action.RequiresAdbServerLifecycleLease}; " +
+                        $"mutates_host={action.MutatesHost}; mutates_device={action.MutatesDevice}; " +
+                        $"clears_gate={action.ClearsGateWhenAccepted}",
+                    IssueCodes = [],
+                    Observed = ToObservedElement(action),
+                });
+            }
+        }
+
+        foreach (var issue in report.Issues)
+        {
+            rows.Add(new ConnectivityCheck
+            {
+                Name = issue.IssueCode,
+                Status = issue.Severity == "error" ? "fail" : "warn",
+                Evidence = issue.Message,
+                Notes = issue.Severity,
+                IssueCodes = string.IsNullOrWhiteSpace(issue.IssueCode) ? [] : [issue.IssueCode],
+                Observed = ToObservedElement(issue),
+            });
+        }
+
+        return rows;
+    }
+
+    public static IReadOnlyList<ConnectivityCheck> ForProtocolMatrixProjectionRun(
+        ConnectivityProtocolMatrixProjectionRun run)
+    {
+        var rows = new List<ConnectivityCheck>();
+        rows.AddRange(ForCompanionReportProjection(run.Projection));
+        rows.AddRange(ForTransportGateReport(run.TransportGates));
+        return rows;
+    }
+
     public static IReadOnlyList<ConnectivityCheck> Failure(string checkName, Exception ex) =>
         [
             new ConnectivityCheck
@@ -414,6 +519,17 @@ public static class ConnectivityRows
     {
         "satisfied" => "pass",
         "missing" => "warn",
+        "blocked" => "blocked",
+        _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
+    };
+
+    private static string StatusForTransportGate(string status) => status switch
+    {
+        "satisfied" => "pass",
+        "clear" => "pass",
+        "cleared" => "pass",
+        "pending_live_evidence" => "planned",
+        "not_in_current_scope" => "planned",
         "blocked" => "blocked",
         _ => string.IsNullOrWhiteSpace(status) ? "unknown" : status,
     };

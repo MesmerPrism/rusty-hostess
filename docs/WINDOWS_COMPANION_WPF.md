@@ -524,6 +524,12 @@ PowerShell route automation will use. The action metadata distinguishes
 non-elevated handoff generation from elevated firewall mutation, marks
 Quest-bound direct-Wi-Fi and product-media actions with `requires_quest_lease`,
 and keeps ordinary ADB commands serial-scoped.
+The WPF Protocol Matrix button now materializes this report immediately after
+`companion-report projection` and appends its summary, term-gate, pending-gate,
+and next-action rows to the Connectivity page. It does not use
+`--fail-on-pending`; pending transport gates are rendered as operator work
+items, while CI or smoke automation can opt into `--fail-on-pending` for a hard
+gate.
 
 ## Build
 

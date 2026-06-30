@@ -15,6 +15,7 @@ var tests = new (string Name, Action Test)[]
     ("companion report projection rows expose shared artifact", CompanionReportProjectionRowsExposeSharedArtifact),
     ("companion report projection projects topology probe rows", CompanionReportProjectionProjectsTopologyProbeRows),
     ("companion report projection rows expose transport coverage", CompanionReportProjectionRowsExposeTransportCoverage),
+    ("transport gate rows expose next actions", TransportGateRowsExposeNextActions),
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall rows expose elevation preflight", FirewallRowsExposeElevationPreflight),
@@ -412,10 +413,17 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
     Assert(run.Matrix.ReportPath.EndsWith(".protocol-matrix.json", StringComparison.Ordinal),
         "matrix report path must be attached");
     Assert(File.Exists(run.Projection.ReportPath), "projection report must be written");
+    Assert(File.Exists(run.TransportGates.ReportPath), "transport gate report must be written");
     Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
         "service must return the companion-report projection schema");
+    Assert(run.TransportGates.Schema == "rusty.hostess.companion.transport_gate_report.v1",
+        "service must return the companion transport-gate report schema");
     Assert(run.Projection.Rows.Any(row => row.RowId == "protocol_matrix.summary"),
         "projection must include the protocol matrix summary row");
+    Assert(run.TransportGates.Authority.ProjectionOnly,
+        "transport gate report must remain projection-only authority");
+    Assert(run.TransportGates.SourceProjection.Path == run.Projection.ReportPath,
+        "transport gate report must derive from the WPF companion projection artifact");
     Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_suite_run"),
         "projection must include the suite source artifact");
     Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_probe_report"),
@@ -492,6 +500,19 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "generated coverage must state product TCP media over direct Wi-Fi still needs live evidence");
     Assert(remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"),
         "generated coverage must state product TCP media still needs verified Hostess/WPF firewall evidence");
+    var transportGateRows = ConnectivityRows.ForTransportGateReport(run.TransportGates);
+    Assert(transportGateRows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.run_qcl040_live_wifi_direct_preflight"
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)),
+        "transport gate rows must project direct-Wi-Fi Quest lease requirements");
+    Assert(transportGateRows.Any(row =>
+            row.Name == "transport.product_tcp_media_listener_firewall.run_qcl082_firewall_admin_handoff"
+            && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)),
+        "transport gate rows must project QCL-082 firewall elevation requirements");
+    Assert(transportGateRows.Any(row =>
+            row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
+            && row.Evidence.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal)),
+        "transport gate rows must project the product firewall verify CLI route");
     if (RustyQuestMediaStreamSessionPlanExists())
     {
         var sourceContractArtifact = $"{run.Suite.SuiteRunId}.qcl082-media-stream-session-plan.json";
@@ -504,6 +525,128 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
                 && source.Path.EndsWith(sourceContractArtifact, StringComparison.Ordinal)),
             "projection must include the QCL-082 Rusty Quest media-stream source-contract artifact");
     }
+}
+
+static void TransportGateRowsExposeNextActions()
+{
+    var report = new CompanionTransportGateReport
+    {
+        Schema = "rusty.hostess.companion.transport_gate_report.v1",
+        Status = "warn",
+        ReportId = "transport-gates.test",
+        Authority = new CompanionTransportGateAuthority
+        {
+            ProjectionOnly = true,
+            AcceptanceOwner = "source_projection",
+        },
+        SourceProjection = new CompanionTransportGateSourceProjection
+        {
+            ProjectionId = "projection.test",
+            Schema = "rusty.hostess.companion.report_projection.v1",
+            Path = "target/companion-report/projection.json",
+        },
+        Summary = new CompanionTransportGateSummary
+        {
+            RemainingGateCount = 2,
+            RemainingGateIds =
+            [
+                "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_listener_firewall",
+            ],
+            TermGateCount = 1,
+            TermGateIds = ["wifi_direct"],
+        },
+        OperatorNextActions = new CompanionTransportGateOperatorActions
+        {
+            Shell = "powershell",
+            Cwd = "<rusty-hostess-root>",
+            GateCount = 2,
+            Policy = "Hostess-owned CLI routes only",
+            Gates =
+            [
+                new CompanionTransportGateActionSummary
+                {
+                    GateId = "transport.direct_wifi_live_topology",
+                    NextActionIds = ["run_qcl041_live_wifi_direct_preflight"],
+                },
+                new CompanionTransportGateActionSummary
+                {
+                    GateId = "transport.product_tcp_media_listener_firewall",
+                    NextActionIds = ["verify_qcl082_product_firewall_rule"],
+                },
+            ],
+        },
+        TermGates = new Dictionary<string, JsonElement>
+        {
+            ["wifi_direct"] = JsonSerializer.SerializeToElement(new
+            {
+                scope = "qcl040_qcl041_topology_evidence",
+            }),
+        },
+        RemainingLiveGates =
+        [
+            new CompanionTransportGate
+            {
+                GateId = "transport.direct_wifi_live_topology",
+                Status = "pending_live_evidence",
+                Evidence = "needs live peer lifecycle",
+                NextActions =
+                [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "run_qcl041_live_wifi_direct_preflight",
+                        Label = "Run QCL-041 live preflight",
+                        RequiresQuestLease = true,
+                        RequiresAdbServerLifecycleLease = false,
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-041 --adb S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe --serial '<quest-serial>'",
+                        },
+                    },
+                ],
+            },
+            new CompanionTransportGate
+            {
+                GateId = "transport.product_tcp_media_listener_firewall",
+                Status = "pending_live_evidence",
+                Evidence = "needs product listener firewall rule",
+                NextActions =
+                [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "verify_qcl082_product_firewall_rule",
+                        Label = "Verify product listener rule",
+                        RequiresElevation = true,
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media",
+                        },
+                    },
+                ],
+            },
+        ],
+    };
+
+    var rows = ConnectivityRows.ForTransportGateReport(report);
+
+    Assert(rows.Any(row => row.Name == "hostess.companion_transport_gates" && row.Status == "warn"),
+        "transport gate report summary row must stay visible");
+    Assert(rows.Any(row =>
+            row.Name == "transport_gates.operator_next_actions"
+            && row.Evidence.Contains("shell=powershell", StringComparison.Ordinal)),
+        "transport gate rows must include the operator next-action summary");
+    Assert(rows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.run_qcl041_live_wifi_direct_preflight"
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_adb_server_lifecycle_lease=False", StringComparison.Ordinal)),
+        "direct Wi-Fi next action must show Quest lease and non-lifecycle ADB policy");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
+            && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)
+            && row.Evidence.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal)),
+        "firewall next action must show elevation and product rule profile");
 }
 
 static void FirewallRowsExposeProductVerification()

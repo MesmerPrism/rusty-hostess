@@ -204,6 +204,8 @@ public sealed class ConnectivityProtocolMatrixProjectionRun
     public ConnectivityProtocolEvidenceMatrix Matrix { get; set; } = new();
 
     public CompanionReportProjection Projection { get; set; } = new();
+
+    public CompanionTransportGateReport TransportGates { get; set; } = new();
 }
 
 public sealed class ConnectivityProtocolEvidenceRow

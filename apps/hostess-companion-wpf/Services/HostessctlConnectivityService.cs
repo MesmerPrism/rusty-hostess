@@ -537,11 +537,19 @@ public sealed class HostessctlConnectivityService
                 matrix,
                 cancellationToken)
             .ConfigureAwait(false);
+        var transportGates = await RunCompanionTransportGateReportAsync(
+                repoRoot,
+                suite,
+                matrix,
+                projection,
+                cancellationToken)
+            .ConfigureAwait(false);
         return new ConnectivityProtocolMatrixProjectionRun
         {
             Suite = suite,
             Matrix = matrix,
             Projection = projection,
+            TransportGates = transportGates,
         };
     }
 
@@ -706,6 +714,45 @@ public sealed class HostessctlConnectivityService
                 cancellationToken)
             .ConfigureAwait(false);
         report.ReportPath = projectionPath.FullName;
+        return report;
+    }
+
+    private static async Task<CompanionTransportGateReport> RunCompanionTransportGateReportAsync(
+        DirectoryInfo repoRoot,
+        ConnectivitySuiteRunReport suite,
+        ConnectivityProtocolEvidenceMatrix matrix,
+        CompanionReportProjection projection,
+        CancellationToken cancellationToken)
+    {
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "companion-report",
+            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.transport-gates.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        await RunHostessctlAsync(
+                repoRoot,
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    projection.ReportPath,
+                    "--out",
+                    reportPath.FullName,
+                    "--report-id",
+                    $"{matrix.MatrixId}.wpf.transport-gates",
+                    "--fail-on-error",
+                ],
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+
+        var report = await ReadReportAsync<CompanionTransportGateReport>(
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        report.ReportPath = reportPath.FullName;
         return report;
     }
 
