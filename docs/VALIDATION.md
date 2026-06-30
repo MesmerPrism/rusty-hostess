@@ -251,9 +251,16 @@ owner:
 
 ```powershell
 $ProbeId = 'QCL-041'
+$LifecyclePlan = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-plan.json'
 $LifecycleTemplate = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-template.json'
 $LifecycleReport = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-source.json'
 $TopologyReport = 'target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json'
+python tools\hostessctl\hostessctl.py connectivity-probe wifi-direct-lifecycle-plan `
+  --probe-id $ProbeId `
+  --out $LifecyclePlan `
+  --adb $Adb `
+  --serial $QuestSerial
+
 python tools\hostessctl\hostessctl.py connectivity-probe wifi-direct-lifecycle-template `
   --probe-id $ProbeId `
   --out $LifecycleTemplate
@@ -266,9 +273,12 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --fail-on-error
 ```
 
-The template route is a local contract aid only: it writes the expected source
-artifact shape with `live_evidence=false` and blocked phases, so the normalizer
-keeps `transport.direct_wifi_live_topology` pending until a leased live harness
+The plan route is read-only and non-promoting: it records the PowerShell
+command chain, Agent Board `quest:<quest-serial>` lease policy, expected
+artifacts, and external live-source dependency that WPF renders. The template
+route is a local contract aid only: it writes the expected source artifact
+shape with `live_evidence=false` and blocked phases, so the normalizer keeps
+`transport.direct_wifi_live_topology` pending until a leased live harness
 replaces it with real evidence.
 
 Use `QCL-040` plus `qcl040-*` artifact names for Android-phone peer lifecycle

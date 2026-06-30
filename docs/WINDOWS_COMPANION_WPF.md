@@ -413,6 +413,20 @@ missing/product-mismatched firewall evidence keeps the product gates visible
 instead of letting WPF infer readiness from separate TCP, firewall, and Wi-Fi
 Direct rows:
 
+Direct-Wi-Fi topology has a read-only plan artifact before any live headset or
+peer-harness work. WPF renders the same plan route and must not infer topology
+readiness from TCP, Wi-Fi, or preflight rows:
+
+```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+python tools\hostessctl\hostessctl.py connectivity-probe wifi-direct-lifecycle-plan `
+  --probe-id QCL-041 `
+  --out target\connectivity-probe\qcl041-wifi-direct-lifecycle-plan.json `
+  --adb $Adb `
+  --serial $QuestSerial
+```
+
 Before a live product-media attempt, write the read-only Hostess plan artifact.
 It binds the same PowerShell commands, dependencies, Quest lease policy, and
 acceptance artifacts WPF renders, but it does not run headset commands or clear

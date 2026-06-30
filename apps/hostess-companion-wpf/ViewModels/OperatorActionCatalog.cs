@@ -22,6 +22,8 @@ public static class OperatorActionCatalog
         "$Qcl040Preflight = '<qcl040-live-wifi-direct-preflight>'; " +
         "$Qcl041Preflight = '<qcl041-live-wifi-direct-preflight>'; " +
         "$LifecycleReport = '<wifi-direct-lifecycle-report>'; " +
+        "$Qcl040LifecyclePlan = 'target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-plan.json'; " +
+        "$Qcl041LifecyclePlan = 'target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json'; " +
         "$Qcl040LifecycleTemplate = 'target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-template.json'; " +
         "$Qcl041LifecycleTemplate = 'target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-template.json'; " +
         "$Qcl040LifecycleReport = 'target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json'; " +
@@ -44,6 +46,8 @@ public static class OperatorActionCatalog
         "connectivity-probe run --mode fixture --probe-id QCL-030 --fixture-profile qcl-030-local-only-hotspot-started; " +
         "connectivity-probe run --mode fixture --probe-id QCL-040 --fixture-profile qcl-040-wifi-direct-phone-peer-pass; " +
         "connectivity-probe run --mode fixture --probe-id QCL-041 --fixture-profile qcl-041-wifi-direct-windows-peer-pass; " +
+        "connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-040 --out $Qcl040LifecyclePlan --adb $Adb --serial $QuestSerial; " +
+        "connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out $Qcl041LifecyclePlan --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --mode live --probe-id QCL-040 --adb $Adb --serial $QuestSerial --out $Qcl040Preflight; " +
         "connectivity-probe run --mode live --probe-id QCL-041 --adb $Adb --serial $QuestSerial --out $Qcl041Preflight; " +
         "connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-040 --out $Qcl040LifecycleTemplate; " +

@@ -216,6 +216,47 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
             "target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-template.json",
         )
 
+    def test_parser_accepts_wifi_direct_lifecycle_plan_route(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "wifi-direct-lifecycle-plan",
+                "--probe-id",
+                "QCL-041",
+                "--out",
+                "target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json",
+                "--adb",
+                "S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                "--serial",
+                "<quest-serial>",
+                "--lifecycle-report",
+                "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle-source.json",
+                "--fail-on-error",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "wifi-direct-lifecycle-plan")
+        self.assertEqual(args.probe_id, "QCL-041")
+        self.assertEqual(
+            args.out,
+            "target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json",
+        )
+        self.assertEqual(args.serial, "<quest-serial>")
+        self.assertEqual(
+            args.lifecycle_report,
+            "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle-source.json",
+        )
+        self.assertTrue(args.fail_on_error)
+
     def test_parser_accepts_pc_hotspot_probe(self) -> None:
         args = build_hostessctl_parser(
             broker_package="broker",

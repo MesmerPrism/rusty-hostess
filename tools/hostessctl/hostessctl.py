@@ -25,6 +25,7 @@ from tools.hostessctl import companion_session  # noqa: E402
 from tools.hostessctl import connectivity_media_product_plan  # noqa: E402
 from tools.hostessctl import connectivity_media_receiver  # noqa: E402
 from tools.hostessctl import connectivity_probe  # noqa: E402
+from tools.hostessctl import connectivity_topology_lifecycle_plan  # noqa: E402
 from tools.hostessctl import connectivity_suite  # noqa: E402
 from tools.hostessctl import device_link_report  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
@@ -253,6 +254,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
         if args.connectivity_probe_command == "wifi-direct-lifecycle-template":
             return connectivity_probe.run_wifi_direct_lifecycle_template(args)
+        if args.connectivity_probe_command == "wifi-direct-lifecycle-plan":
+            return connectivity_topology_lifecycle_plan.run_wifi_direct_lifecycle_plan(args)
         if args.connectivity_probe_command == "qcl082-product-media-plan":
             return connectivity_media_product_plan.run_qcl082_product_media_direct_wifi_plan(args)
         if args.connectivity_probe_command == "rmanvid1-receiver-capture":

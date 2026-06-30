@@ -18,6 +18,12 @@ QCL082_FIREWALL_VERIFY = (
     r"target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json"
 )
 DIRECT_WIFI_LIFECYCLE_INPUT = r"<wifi-direct-lifecycle-report>"
+DIRECT_WIFI_QCL040_LIFECYCLE_PLAN = (
+    r"target\connectivity-probe\qcl040-wifi-direct-lifecycle-plan.json"
+)
+DIRECT_WIFI_QCL041_LIFECYCLE_PLAN = (
+    r"target\connectivity-probe\qcl041-wifi-direct-lifecycle-plan.json"
+)
 DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT = (
     r"target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json"
 )
@@ -215,6 +221,18 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 "adb-server:lifecycle only for disruptive daemon lifecycle work."
             ),
         ),
+        wifi_direct_lifecycle_plan_action(
+            action_id="plan_qcl040_wifi_direct_lifecycle",
+            probe_id="QCL-040",
+            output=DIRECT_WIFI_QCL040_LIFECYCLE_PLAN,
+            label="Write the QCL-040 Wi-Fi Direct lifecycle execution plan.",
+        ),
+        wifi_direct_lifecycle_plan_action(
+            action_id="plan_qcl041_wifi_direct_lifecycle",
+            probe_id="QCL-041",
+            output=DIRECT_WIFI_QCL041_LIFECYCLE_PLAN,
+            label="Write the QCL-041 Wi-Fi Direct lifecycle execution plan.",
+        ),
         next_action(
             "run_qcl040_live_wifi_direct_preflight",
             "Refresh the Android-phone Wi-Fi Direct live preflight evidence.",
@@ -306,6 +324,42 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
             ),
         ),
     ]
+
+
+def wifi_direct_lifecycle_plan_action(
+    *,
+    action_id: str,
+    probe_id: str,
+    output: str,
+    label: str,
+) -> dict[str, Any]:
+    return next_action(
+        action_id,
+        label,
+        authority_owner="tools.hostessctl.connectivity_topology_lifecycle_plan",
+        requires_elevation=False,
+        requires_quest_lease=False,
+        mutates_host=False,
+        mutates_device=False,
+        command=powershell_command(
+            f"Write {probe_id} lifecycle execution plan",
+            (
+                "python tools\\hostessctl\\hostessctl.py "
+                "connectivity-probe wifi-direct-lifecycle-plan "
+                f"--probe-id {probe_id} "
+                f"--out {output} "
+                "--adb S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe "
+                "--serial '<quest-serial>'"
+            ),
+        ),
+        acceptance_artifacts=[output],
+        clears_gate=False,
+        note=(
+            "This read-only plan ties the Agent Board lease, live preflight, "
+            "source template, external lifecycle source, and normalization route. "
+            "It does not collect or promote live evidence by itself."
+        ),
+    )
 
 
 def wifi_direct_lifecycle_template_action(

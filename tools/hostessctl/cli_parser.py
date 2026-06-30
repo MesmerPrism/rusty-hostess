@@ -794,6 +794,38 @@ def build_hostessctl_parser(
         choices=["QCL-040", "QCL-041"],
         required=True,
     )
+    connectivity_probe_wifi_direct_lifecycle_plan = connectivity_probe_subcommands.add_parser(
+        "wifi-direct-lifecycle-plan"
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument("--out", required=True)
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--probe-id",
+        choices=["QCL-040", "QCL-041"],
+        required=True,
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument("--plan-id", default="")
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--adb",
+        default=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--serial",
+        default="<quest-serial>",
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--preflight-report-out",
+        default="",
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument("--template-out", default="")
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument("--lifecycle-report", default="")
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--topology-report-out",
+        default="",
+    )
+    connectivity_probe_wifi_direct_lifecycle_plan.add_argument(
+        "--fail-on-error",
+        action="store_true",
+    )
     connectivity_probe_run.add_argument("--adb")
     connectivity_probe_run.add_argument("--serial")
     connectivity_probe_run.add_argument("--wifi-interface", default="wlan0")

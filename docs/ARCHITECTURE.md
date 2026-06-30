@@ -368,6 +368,12 @@ peer class, feature/API or peer, permission, discovery, group formation,
 bounded TCP socket exchange, and cleanup before emitting a promoted topology
 report; it does not run the peer harness, mutate Wi-Fi Direct state, or claim
 QCL-082 product TCP media readiness;
+`connectivity_topology_lifecycle_plan.py` owns the read-only QCL-040/QCL-041
+Wi-Fi Direct lifecycle plan artifact. It binds Agent Board lease metadata,
+live preflight, source-template, external live-source, and normalization
+PowerShell routes into one WPF/CLI-equivalent report before a human or agent
+runs the live steps; it does not run headset commands, mutate Wi-Fi Direct
+state, or declare topology promotion;
 `connectivity_probe_validation.py` owns the shared QCL report schema/status
 validator so route dispatch, fixture construction, live probing, WPF rows, and
 Makepad rows all depend on the same report acceptance surface;

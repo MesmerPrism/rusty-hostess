@@ -242,6 +242,79 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_wifi_direct_lifecycle_plan_lists_required_chain(self) -> None:
+        report = wifi_direct_lifecycle_plan(
+            argparse.Namespace(
+                probe_id="QCL-041",
+                plan_id="",
+                adb=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+                serial="<quest-serial>",
+                preflight_report_out="",
+                template_out="",
+                lifecycle_report="",
+                topology_report_out="",
+                out="unused.json",
+                fail_on_error=False,
+            ),
+            observed_at=fixed_datetime(),
+        )
+
+        actions = {command["action_id"]: command for command in report["commands"]}
+        collect = actions["collect_qcl041_wifi_direct_lifecycle_source"]
+        normalize = actions["normalize_qcl041_wifi_direct_lifecycle_report"]
+        self.assertEqual(report["schema"], WIFI_DIRECT_LIFECYCLE_PLAN_SCHEMA)
+        self.assertEqual(report["status"], "planned")
+        self.assertEqual(report["probe_id"], "QCL-041")
+        self.assertFalse(report["readiness"]["ready_for_topology_promotion"])
+        self.assertFalse(report["policy"]["mutates_wifi_direct_state"])
+        self.assertIn("reserve_quest_lease_for_wifi_direct_lifecycle", actions)
+        self.assertIn("run_qcl041_live_wifi_direct_preflight", actions)
+        self.assertIn("write_qcl041_wifi_direct_lifecycle_template", actions)
+        self.assertFalse(collect["available_now"])
+        self.assertTrue(collect["requires_quest_lease"])
+        self.assertTrue(normalize["clears_gate_when_accepted"])
+        self.assertIn("adb-server:lifecycle only for disruptive", report["policy"]["adb_server_lifecycle_policy"])
+        self.assertTrue(
+            any(
+                issue["issue_code"]
+                == "hostess.issue.connectivity_probe.wifi_direct_lifecycle_source_missing"
+                for issue in report["issues"]
+            )
+        )
+
+    def test_wifi_direct_lifecycle_plan_is_ready_when_live_source_artifact_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            lifecycle_path.write_text(
+                json.dumps(wifi_direct_lifecycle_artifact(probe_id="QCL-041")),
+                encoding="utf-8",
+            )
+            report = wifi_direct_lifecycle_plan(
+                argparse.Namespace(
+                    probe_id="QCL-041",
+                    plan_id="",
+                    adb=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+                    serial="<quest-serial>",
+                    preflight_report_out="",
+                    template_out="",
+                    lifecycle_report=str(lifecycle_path),
+                    topology_report_out="",
+                    out="unused.json",
+                    fail_on_error=False,
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        dependency = report["dependencies"][0]
+        self.assertTrue(dependency["ready"])
+        self.assertTrue(report["readiness"]["ready_for_normalization"])
+        self.assertTrue(report["readiness"]["ready_for_topology_promotion"])
+        self.assertEqual(report["issues"], [])
+        self.assertEqual(dependency["summary"]["topology_status"], "pass")
+        self.assertTrue(dependency["summary"]["promotion_allowed"])
+        self.assertIn("Normalize the supplied live lifecycle artifact", report["next_step"])
+
     def test_live_same_wifi_report_does_not_pass_on_one_way_host_ping(self) -> None:
         report = live_same_wifi_report(
             probe_args(mode="live", host_ip="192.0.2.10"),

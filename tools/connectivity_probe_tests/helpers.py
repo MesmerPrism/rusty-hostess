@@ -47,6 +47,11 @@ from tools.hostessctl.connectivity_topology_lifecycle import (
     run_wifi_direct_lifecycle_template,
     wifi_direct_lifecycle_template_artifact,
 )
+from tools.hostessctl.connectivity_topology_lifecycle_plan import (
+    WIFI_DIRECT_LIFECYCLE_PLAN_SCHEMA,
+    run_wifi_direct_lifecycle_plan,
+    wifi_direct_lifecycle_plan,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]

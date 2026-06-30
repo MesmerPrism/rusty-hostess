@@ -240,6 +240,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   lifecycle artifact and emits the promoted topology report only when feature,
   peer/API, permission, discovery, group formation, bounded TCP socket
   exchange, and cleanup checks pass.
+- `tools/hostessctl/connectivity_topology_lifecycle_plan.py`: read-only
+  QCL-040/QCL-041 Wi-Fi Direct lifecycle plan artifacts. It binds the Agent
+  Board lease, live preflight, source-template, external live-source, and
+  normalization routes into one WPF/CLI-equivalent report without running the
+  live steps or clearing gates.
 - `tools/hostessctl/connectivity_bluetooth.py`: QCL-050/QCL-051 Bluetooth
   RFCOMM and BLE/GATT readiness, Android payload probes, Windows helper
   command construction, live report assembly, reconnect measurements, and

@@ -528,6 +528,13 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
             row.Name == "transport.direct_wifi_live_topology.run_qcl040_live_wifi_direct_preflight"
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)),
         "transport gate rows must project direct-Wi-Fi Quest lease requirements");
+    Assert(transportGateRows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.plan_qcl041_wifi_direct_lifecycle"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_topology_lifecycle_plan", StringComparison.Ordinal)
+            && row.Evidence.Contains("wifi-direct-lifecycle-plan", StringComparison.Ordinal)
+            && row.Evidence.Contains("--serial '<quest-serial>'", StringComparison.Ordinal)),
+        "transport gate rows must project the non-mutating Wi-Fi Direct lifecycle plan route");
     if (remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"))
     {
         Assert(transportGateRows.Any(row =>
@@ -596,6 +603,8 @@ static void TransportGateRowsExposeNextActions()
                     GateId = "transport.direct_wifi_live_topology",
                     NextActionIds =
                     [
+                        "plan_qcl040_wifi_direct_lifecycle",
+                        "plan_qcl041_wifi_direct_lifecycle",
                         "run_qcl041_live_wifi_direct_preflight",
                         "normalize_qcl040_wifi_direct_lifecycle_report",
                         "normalize_qcl041_wifi_direct_lifecycle_report",
@@ -637,6 +646,21 @@ static void TransportGateRowsExposeNextActions()
                 Evidence = "needs live peer lifecycle",
                 NextActions =
                 [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "plan_qcl041_wifi_direct_lifecycle",
+                        Label = "Write QCL-041 lifecycle execution plan",
+                        AuthorityOwner = "tools.hostessctl.connectivity_topology_lifecycle_plan",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json",
+                        },
+                    },
                     new CompanionTransportGateNextAction
                     {
                         ActionId = "run_qcl041_live_wifi_direct_preflight",
@@ -868,6 +892,13 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("lease_resource=quest:<quest-serial>", StringComparison.Ordinal)
             && row.Notes.Contains("lease_release=& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done", StringComparison.Ordinal)),
         "direct Wi-Fi next action must show Quest lease resource, release command, and non-lifecycle ADB policy");
+    Assert(rows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.plan_qcl041_wifi_direct_lifecycle"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_topology_lifecycle_plan", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("wifi-direct-lifecycle-plan", StringComparison.Ordinal)),
+        "direct Wi-Fi lifecycle plan must be visible as a non-mutating CLI-equivalent WPF action");
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.normalize_qcl040_wifi_direct_lifecycle_report"
             && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
@@ -1201,6 +1232,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise live QCL-041 Wi-Fi Direct preflight");
     Assert(protocolMatrixAction.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
         "protocol matrix action must use PowerShell variables for serial-scoped ADB placeholders");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-040 --out $Qcl040LifecyclePlan --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle execution plan route");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out $Qcl041LifecyclePlan --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-041 Wi-Fi Direct lifecycle execution plan route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-040 --out $Qcl040LifecycleTemplate", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle source template route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-041 --out $Qcl041LifecycleTemplate", StringComparison.Ordinal),
