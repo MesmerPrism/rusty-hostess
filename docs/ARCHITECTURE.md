@@ -95,7 +95,9 @@ resulting `rusty.hostess.companion.transport_gate_report.v1` rows in the
 Connectivity page. WPF deserializes `operator_next_actions` and each pending
 gate's `next_actions` only as operator-visible guidance; Hostess CLI remains
 the owner of the PowerShell command text, elevation flags, Quest lease
-requirements, mutation flags, and acceptance artifacts.
+requirements, mutation flags, dependency gates, gate-clearing markers, and
+acceptance artifacts. The Hostess validation sidecar rejects malformed
+next-action metadata before WPF renders those rows.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps QCL-079 generic WebSocket,
 direct-Wi-Fi, and QCL-082 product-media commands PowerShell-shaped,

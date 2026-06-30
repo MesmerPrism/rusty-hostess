@@ -211,7 +211,11 @@ Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
 only for disruptive daemon lifecycle recovery.
 The validation sidecar also rejects report drift when the top-level
 `operator_next_actions.gates` summary no longer matches the per-gate
-`remaining_live_gates[*].next_actions` action IDs that WPF renders.
+`remaining_live_gates[*].next_actions` action IDs that WPF renders. It also
+rejects malformed action metadata, including missing authority owners,
+non-boolean elevation/lease/mutation/gate-clearing flags, empty acceptance
+artifacts, and malformed dependency gate IDs, so WPF never treats an
+underspecified operator recipe as accepted guidance.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps those PowerShell command strings,
 output artifacts, elevation boundaries, Quest lease metadata, QCL-079 generic

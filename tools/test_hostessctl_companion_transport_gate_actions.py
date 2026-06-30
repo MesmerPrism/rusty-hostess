@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import unittest
 from typing import Any
 
@@ -176,6 +177,35 @@ class HostessCtlCompanionTransportGateActionTests(unittest.TestCase):
             if gate["gate_id"] == "transport.product_tcp_media_over_direct_wifi"
         )
         self.assertIn("run_qcl082_product_media_live_session", product_media["next_action_ids"])
+
+    def test_next_action_validation_rejects_malformed_operator_metadata(self) -> None:
+        gate_id = "transport.general_websocket_capability"
+        actions = copy.deepcopy(operator_next_actions_for_gate(gate_id))
+        action = actions[0]
+        action_id = action["action_id"]
+        action.pop("authority_owner")
+        action["requires_elevation"] = "false"
+        action["acceptance_artifacts"] = []
+        action["depends_on"] = "transport.direct_wifi_live_topology"
+
+        errors = validate_next_actions_for_gate(gate_id, actions)
+
+        self.assertIn(
+            f"next action missing authority_owner: {gate_id}/{action_id}",
+            errors,
+        )
+        self.assertIn(
+            f"next action requires_elevation must be boolean: {gate_id}/{action_id}",
+            errors,
+        )
+        self.assertIn(
+            f"next action missing acceptance_artifacts: {gate_id}/{action_id}",
+            errors,
+        )
+        self.assertIn(
+            f"next action depends_on must be non-empty gate ids: {gate_id}/{action_id}",
+            errors,
+        )
 
     def assert_valid_actions(self, gate_id: str, actions: dict[str, dict[str, Any]]) -> None:
         self.assertFalse(validate_next_actions_for_gate(gate_id, list(actions.values())))

@@ -52,6 +52,15 @@ QCL082_PRODUCT_MEDIA_PLAN = (
 DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN = (
     r"target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json"
 )
+NEXT_ACTION_BOOLEAN_FIELDS = (
+    "available_now",
+    "requires_elevation",
+    "requires_quest_lease",
+    "requires_adb_server_lifecycle_lease",
+    "mutates_host",
+    "mutates_device",
+    "clears_gate_when_accepted",
+)
 
 
 def operator_next_actions_summary(
@@ -109,25 +118,43 @@ def validate_next_actions_for_gate(
         action_id = str(next_action.get("action_id") or "")
         if not action_id:
             errors.append(f"pending transport gate next action missing action_id: {gate_id}")
+        action_ref = f"{gate_id}/{action_id or '<missing-action-id>'}"
+        if not str(next_action.get("authority_owner") or "").strip():
+            errors.append(f"next action missing authority_owner: {action_ref}")
+        for field in NEXT_ACTION_BOOLEAN_FIELDS:
+            if not isinstance(next_action.get(field), bool):
+                errors.append(f"next action {field} must be boolean: {action_ref}")
+        acceptance_artifacts = list_value(next_action.get("acceptance_artifacts"))
+        if not acceptance_artifacts or not all(
+            isinstance(artifact, str) and artifact.strip()
+            for artifact in acceptance_artifacts
+        ):
+            errors.append(f"next action missing acceptance_artifacts: {action_ref}")
+        depends_on = next_action.get("depends_on")
+        if depends_on is not None and (
+            not isinstance(depends_on, list)
+            or not all(isinstance(gate, str) and gate.strip() for gate in depends_on)
+        ):
+            errors.append(f"next action depends_on must be non-empty gate ids: {action_ref}")
         command = object_value(next_action.get("command"))
         available_now = next_action.get("available_now") is not False
         if available_now and not command:
-            errors.append(f"available next action missing command: {gate_id}/{action_id}")
+            errors.append(f"available next action missing command: {action_ref}")
         if command:
             if command.get("shell") != POWERSHELL_SHELL:
-                errors.append(f"next action command must be powershell: {gate_id}/{action_id}")
+                errors.append(f"next action command must be powershell: {action_ref}")
             if not str(command.get("command") or "").strip():
-                errors.append(f"next action command missing command text: {gate_id}/{action_id}")
+                errors.append(f"next action command missing command text: {action_ref}")
         if next_action.get("requires_quest_lease"):
             lease = object_value(next_action.get("lease"))
             if lease.get("manager") != "Agent Board":
-                errors.append(f"quest-bound next action missing Agent Board lease metadata: {gate_id}/{action_id}")
+                errors.append(f"quest-bound next action missing Agent Board lease metadata: {action_ref}")
             if str(lease.get("resource") or "") != QUEST_LEASE_RESOURCE:
-                errors.append(f"quest-bound next action missing quest:<quest-serial> resource: {gate_id}/{action_id}")
+                errors.append(f"quest-bound next action missing quest:<quest-serial> resource: {action_ref}")
             if "adb-server:lifecycle" not in str(lease.get("adb_server_lifecycle_policy") or ""):
-                errors.append(f"quest-bound next action missing adb-server lifecycle policy: {gate_id}/{action_id}")
+                errors.append(f"quest-bound next action missing adb-server lifecycle policy: {action_ref}")
             if not str(lease.get("release_command") or "").strip():
-                errors.append(f"quest-bound next action missing lease release command: {gate_id}/{action_id}")
+                errors.append(f"quest-bound next action missing lease release command: {action_ref}")
     return errors
 
 
@@ -862,6 +889,10 @@ def agent_board_release_command() -> str:
 
 def object_value(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
+
+
+def list_value(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
 
 
 def list_objects(value: Any) -> list[dict[str, Any]]:

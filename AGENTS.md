@@ -132,12 +132,15 @@ generic code or sanitized sample fixtures.
   select artifacts, change
   firewall/device state, parse media, or promote evidence. Its validation
   sidecar must reject drift between top-level `operator_next_actions` summaries
-  and each pending gate's source-owned `next_actions`.
+  and each pending gate's source-owned `next_actions`, and must reject
+  malformed next-action metadata before WPF renders operator guidance.
 - Keep `tools\hostessctl\companion_transport_gate_actions.py` as the static
   transport gate operator-action catalog. It may name existing Hostess CLI
   routes, PowerShell command strings, acceptance artifacts, and lease/elevation
-  metadata for pending gates; it must not execute those commands or decide that
-  a gate is cleared.
+  metadata for pending gates; it must keep authority owner, elevation, lease,
+  mutation, dependency, gate-clearing, and acceptance-artifact fields
+  structured so report validation can enforce them. It must not execute those
+  commands or decide that a gate is cleared.
 - Keep `tools\test_hostessctl_companion_transport_gate_actions.py` as the
   source-owned test family for that static transport-gate next-action catalog.
   It checks QCL-079 generic WebSocket, direct-Wi-Fi, and QCL-082 product-media

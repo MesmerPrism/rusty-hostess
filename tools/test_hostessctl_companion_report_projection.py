@@ -975,6 +975,103 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertEqual(validation["status"], "fail")
         self.assertIn("operator_next_actions summary missing", validation["errors"])
 
+    def test_transport_gate_report_rejects_malformed_next_action_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.transport-gate-action-metadata",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "protocol_matrix.summary",
+                                "kind": "protocol_matrix_summary",
+                                "status": "pass",
+                                "details": {
+                                    "all_required_data_protocols_promoted": True,
+                                    "required_promoted_count": 5,
+                                    "required_count": 5,
+                                    "promoted_count": 8,
+                                    "candidate_count": 1,
+                                    "missing_gate_count": 0,
+                                },
+                            },
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [
+                                        {
+                                            "gate_id": "transport.product_tcp_media_over_direct_wifi",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "needs RMANVID1 over promoted direct-Wi-Fi",
+                                        }
+                                    ],
+                                },
+                            },
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = build_companion_transport_gate_report(
+                argparse.Namespace(
+                    projection=str(projection_path),
+                    out=str(root / "transport-gates.json"),
+                    validation_out=None,
+                    report_id="transport-gates.action-metadata",
+                    fail_on_error=True,
+                    fail_on_pending=False,
+                    fail_on_incomplete=False,
+                ),
+                clock_func=fixed_clock,
+            )
+
+        self.assertEqual(validate_companion_transport_gate_report(report)["status"], "pass")
+
+        tampered = json.loads(json.dumps(report))
+        first_action = tampered["remaining_live_gates"][0]["next_actions"][0]
+        action_id = first_action["action_id"]
+        first_action.pop("authority_owner")
+        first_action["requires_quest_lease"] = "false"
+        first_action["acceptance_artifacts"] = []
+        first_action["depends_on"] = "transport.direct_wifi_live_topology"
+        validation = validate_companion_transport_gate_report(tampered)
+
+        self.assertEqual(validation["status"], "fail")
+        self.assertIn(
+            (
+                "next action missing authority_owner: "
+                f"transport.product_tcp_media_over_direct_wifi/{action_id}"
+            ),
+            validation["errors"],
+        )
+        self.assertIn(
+            (
+                "next action requires_quest_lease must be boolean: "
+                f"transport.product_tcp_media_over_direct_wifi/{action_id}"
+            ),
+            validation["errors"],
+        )
+        self.assertIn(
+            (
+                "next action missing acceptance_artifacts: "
+                f"transport.product_tcp_media_over_direct_wifi/{action_id}"
+            ),
+            validation["errors"],
+        )
+        self.assertIn(
+            (
+                "next action depends_on must be non-empty gate ids: "
+                f"transport.product_tcp_media_over_direct_wifi/{action_id}"
+            ),
+            validation["errors"],
+        )
+
     def test_projection_can_include_protocol_matrix_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
