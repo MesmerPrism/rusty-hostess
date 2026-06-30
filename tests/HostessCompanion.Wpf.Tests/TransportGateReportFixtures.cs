@@ -253,7 +253,7 @@ internal static class TransportGateReportFixtures
                         Command = new CompanionTransportGateNextActionCommand
                         {
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl040-lifecycle-report '<qcl040-live-wifi-direct-lifecycle-source>' --qcl041-lifecycle-report '<qcl041-live-wifi-direct-lifecycle-source>' --qcl040-topology-report target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --quest-lease-id '<quest-lease-id>' --quest-lease-resource 'quest:<quest-serial>'",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -329,7 +329,7 @@ internal static class TransportGateReportFixtures
                         {
                             Label = "Write QCL-082 product media plan",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-plan --out target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-plan --out target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --quest-lease-id '<quest-lease-id>' --quest-lease-resource 'quest:<quest-serial>'",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -345,7 +345,7 @@ internal static class TransportGateReportFixtures
                         {
                             Label = "Write direct-Wi-Fi product-media acceptance plan",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl040-lifecycle-report '<qcl040-live-wifi-direct-lifecycle-source>' --qcl041-lifecycle-report '<qcl041-live-wifi-direct-lifecycle-source>' --qcl040-topology-report target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --quest-lease-id '<quest-lease-id>' --quest-lease-resource 'quest:<quest-serial>'",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -440,7 +440,7 @@ internal static class TransportGateReportFixtures
                         {
                             Label = "Run QCL-082 product media live session",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json --bridge-evidence-out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --adb '<adb>' --serial '<quest-serial>' --out target\\connectivity-probe\\media-stream-receiver-result.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json --bridge-evidence-out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --logcat-out target\\connectivity-probe\\media-stream-start-source.logcat.txt --bind-host 0.0.0.0 --port 9079 --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --capture-kind live_broker_stream --max-packets 240 --adb '<adb>' --serial '<quest-serial>' --quest-lease-id '<quest-lease-id>' --quest-lease-resource 'quest:<quest-serial>' --quest-lease-reserved-before-live-steps --out target\\connectivity-probe\\media-stream-receiver-result.json --fail-on-error",
                         },
                         Lease = new CompanionTransportGateNextActionLease
                         {
@@ -472,7 +472,7 @@ internal static class TransportGateReportFixtures
                         {
                             Label = "Capture RMANVID1 receiver counters",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --out target\\connectivity-probe\\media-stream-receiver-result.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --bind-host 0.0.0.0 --port 9079 --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --capture-kind live_broker_stream --max-packets 240 --quest-lease-id '<quest-lease-id>' --quest-lease-resource 'quest:<quest-serial>' --quest-lease-reserved-before-live-steps --out target\\connectivity-probe\\media-stream-receiver-result.json --fail-on-error",
                         },
                         Lease = new CompanionTransportGateNextActionLease
                         {

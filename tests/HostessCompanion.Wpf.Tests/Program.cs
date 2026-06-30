@@ -728,7 +728,11 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_direct_wifi_product_media_plan", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal)
             && row.Evidence.Contains("direct-wifi-product-media-plan", StringComparison.Ordinal)
-            && row.Evidence.Contains("--qcl082-report", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--qcl040-lifecycle-report '<qcl040-live-wifi-direct-lifecycle-source>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--qcl040-topology-report target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--qcl082-report", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-id '<quest-lease-id>'", StringComparison.Ordinal)),
         "direct Wi-Fi gate must render the combined read-only product-media acceptance plan");
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.normalize_qcl040_wifi_direct_lifecycle_report"
@@ -753,14 +757,17 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_product_plan", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json", StringComparison.Ordinal)
             && row.Evidence.Contains("qcl082-product-media-plan", StringComparison.Ordinal)
-            && row.Evidence.Contains("--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-resource 'quest:<quest-serial>'", StringComparison.Ordinal)),
         "product media plan action must render the CLI-owned direct-Wi-Fi media plan artifact");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.write_direct_wifi_product_media_acceptance_plan"
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_direct_wifi_product_media_plan", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal)
             && row.Evidence.Contains("direct-wifi-product-media-plan", StringComparison.Ordinal)
-            && row.Evidence.Contains("--firewall-report", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--firewall-report", StringComparison.Ordinal)
+            && row.Evidence.Contains("--qcl041-lifecycle-report '<qcl041-live-wifi-direct-lifecycle-source>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-resource 'quest:<quest-serial>'", StringComparison.Ordinal)),
         "product media gate must render the combined read-only direct-Wi-Fi acceptance plan");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_media_stream_start_source_request"
@@ -793,7 +800,13 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream-start-source.request.json,target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json,target\\connectivity-probe\\media-stream-start-source.live-android-execution.json,target\\connectivity-probe\\media-stream-start-source.validation-report.json,target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
             && row.Evidence.Contains("qcl082-product-media-live-session", StringComparison.Ordinal)
             && row.Evidence.Contains("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)
-            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--logcat-out target\\connectivity-probe\\media-stream-start-source.logcat.txt", StringComparison.Ordinal)
+            && row.Evidence.Contains("--bind-host 0.0.0.0", StringComparison.Ordinal)
+            && row.Evidence.Contains("--capture-kind live_broker_stream", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-id '<quest-lease-id>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-reserved-before-live-steps", StringComparison.Ordinal)
+            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--fail-on-error", StringComparison.Ordinal)),
         "product media live session action must show the orchestrated receiver-plus-command route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.capture_rmanvid1_over_promoted_direct_wifi"
@@ -802,8 +815,13 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
             && row.Notes.Contains("depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--capture-out target\\connectivity-probe\\media-stream.rmanvid1", StringComparison.Ordinal)
+            && row.Evidence.Contains("--sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json", StringComparison.Ordinal)
             && row.Evidence.Contains("--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)
-            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--quest-lease-resource 'quest:<quest-serial>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--quest-lease-reserved-before-live-steps", StringComparison.Ordinal)
+            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--fail-on-error", StringComparison.Ordinal)),
         "product media next action must show dependency and acceptance-artifact evidence");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.promote_qcl082_rmanvid1_capture"
