@@ -243,6 +243,23 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             "hostess.issue.connectivity_probe.product_media_firewall_missing",
             firewall_check["issue_codes"],
         )
+        live_session_command = find_row(
+            report,
+            "direct_wifi_product_media_plan.command.run_qcl082_product_media_live_session",
+        )
+        self.assertEqual(live_session_command["status"], "planned")
+        self.assertEqual(
+            live_session_command["authority_owner"],
+            "tools.hostessctl.connectivity_media_receiver",
+        )
+        self.assertIn("qcl082-product-media-live-session", live_session_command["evidence"])
+        self.assertIn("requires_quest_lease=True", live_session_command["notes"])
+        self.assertIn(
+            "depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall",
+            live_session_command["notes"],
+        )
+        self.assertTrue(live_session_command["details"]["requires_quest_lease"])
+        self.assertFalse(live_session_command["details"]["mutates_host"])
 
     def test_projection_warns_for_failed_source_evidence(self) -> None:
         report = build_companion_report_projection(
@@ -1791,7 +1808,35 @@ def direct_wifi_product_media_acceptance_plan_fixture() -> dict[str, Any]:
             "acceptance_plan_out": "target/connectivity-probe/direct-wifi-product-media-acceptance-plan.json",
         },
         "subplans": {},
-        "commands": [],
+        "commands": [
+            {
+                "action_id": "run_qcl082_product_media_live_session",
+                "label": "Run QCL-082 product-media live session",
+                "authority_owner": "tools.hostessctl.connectivity_media_receiver",
+                "available_now": True,
+                "shell": "powershell",
+                "cwd": "S:\\Work\\repos\\active\\rusty-hostess",
+                "command": (
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe "
+                    "qcl082-product-media-live-session --out "
+                    "target\\connectivity-probe\\media-stream-receiver-result.json "
+                    "--quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource"
+                ),
+                "acceptance_artifacts": [
+                    "target\\connectivity-probe\\media-stream-receiver-result.json"
+                ],
+                "requires_quest_lease": True,
+                "requires_elevation": False,
+                "requires_adb_server_lifecycle_lease": False,
+                "mutates_host": False,
+                "mutates_device": False,
+                "clears_gate_when_accepted": False,
+                "depends_on": [
+                    "transport.direct_wifi_live_topology",
+                    "transport.product_tcp_media_listener_firewall",
+                ],
+            }
+        ],
         "checks": [
             {
                 "check_id": "direct_wifi_product_media.acceptance_plan_authority",

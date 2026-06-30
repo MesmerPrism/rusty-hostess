@@ -81,8 +81,11 @@ The CLI
 projection route derives selected device-link and connectivity-probe inputs
 from the matrix, so WPF does not parse matrix sources or own artifact
 selection. The projected direct-Wi-Fi product-media plan is a checklist source:
-it renders readiness, dependency, and next-step rows, but it does not run ADB,
-mutate firewall state, parse media payloads, or promote topology/media gates.
+it renders readiness, dependency, command, check, issue, and next-step rows,
+but it does not run ADB, mutate firewall state, parse media payloads, or
+promote topology/media gates. Command rows are copied from the Hostess plan
+artifact so WPF can inspect PowerShell command text, Quest lease flags,
+dependency gates, and acceptance artifacts without synthesizing recipes.
 QCL-000 fixture WebSocket evidence is visible as candidate evidence;
 promotion still requires live device-link command evidence. Topology report
 views can still pass explicit connectivity-probe artifacts through that same

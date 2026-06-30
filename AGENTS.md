@@ -187,6 +187,10 @@ generic code or sanitized sample fixtures.
   artifacts into one WPF/CLI-equivalent plan, but it must not run headset
   commands, mutate firewall/device state, parse media, or clear promotion
   gates.
+- Keep `tools\hostessctl\companion_report_projection.py` as the source-owned
+  row projector for that plan. It may expose the plan's readiness,
+  dependencies, commands, checks, and issues as WPF/CLI rows, but it must not
+  synthesize new command recipes or execute any plan command.
 - Keep `tools\hostessctl\connectivity_firewall.py` as the Windows Firewall
   listener lifecycle owner. It owns rule planning, product-rule verification,
   network/firewall profile summaries, and elevation preflight for mutating

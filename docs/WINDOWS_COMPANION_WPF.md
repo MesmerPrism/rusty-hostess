@@ -351,7 +351,10 @@ topology, firewall, matrix, projection, and gate outputs, then includes it in
 `companion-report projection --include-protocol-matrix-inputs
 --direct-wifi-product-media-plan`. The plan is only a projected checklist:
 live direct-Wi-Fi topology, product listener firewall, and QCL-082 RMANVID1
-media evidence still own promotion. QCL-000
+media evidence still own promotion. Its source-owned command rows let WPF show
+the same PowerShell command text, Quest lease flags, dependency gates, and
+acceptance artifacts that CLI automation sees, without splitting live receiver
+or source startup orchestration into UI handlers. QCL-000
 fixture WebSocket
 evidence remains candidate-only; QCL-000 promotion comes from a live
 `rusty.quest.device_link.v1` companion-session artifact. QCL-079 generic

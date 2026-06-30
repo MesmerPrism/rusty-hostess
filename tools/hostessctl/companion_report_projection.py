@@ -814,6 +814,7 @@ def project_direct_wifi_product_media_plan_rows(
     readiness = object_value(report.get("readiness"))
     dependencies = list_objects(report.get("dependencies"))
     checks = list_objects(report.get("checks"))
+    commands = list_objects(report.get("commands"))
     issues = list_objects(report.get("issues"))
     plan_id = str(report.get("plan_id") or "direct-wifi-product-media")
     issue_codes = [
@@ -842,6 +843,7 @@ def project_direct_wifi_product_media_plan_rows(
             metrics={
                 "dependency_count": len(dependencies),
                 "check_count": len(checks),
+                "command_count": len(commands),
                 "issue_count": len(issues),
             },
             details={
@@ -871,6 +873,32 @@ def project_direct_wifi_product_media_plan_rows(
                 notes=str(summary.get("report_path") or dependency.get("artifact") or ""),
                 issue_codes=string_list(summary.get("issue_codes")),
                 details=direct_wifi_plan_dependency_details(dependency),
+            )
+        )
+    for command in commands:
+        action_id = str(command.get("action_id") or "command")
+        command_text = str(command.get("command") or "")
+        artifacts = string_list(command.get("acceptance_artifacts"))
+        rows.append(
+            row(
+                f"direct_wifi_product_media_plan.command.{safe_token(action_id)}",
+                "transport_gate_plan_command",
+                "direct_wifi_product_media_command",
+                str(command.get("label") or action_id),
+                "planned" if command.get("available_now") is not False else "blocked",
+                source,
+                authority_owner=str(
+                    command.get("authority_owner")
+                    or "tools.hostessctl.connectivity_direct_wifi_product_media_plan"
+                ),
+                evidence=command_text or "; ".join(artifacts),
+                notes=direct_wifi_plan_command_notes(command),
+                metrics={
+                    "acceptance_artifact_count": len(artifacts),
+                    "requires_quest_lease": command.get("requires_quest_lease") is True,
+                    "requires_elevation": command.get("requires_elevation") is True,
+                },
+                details=command,
             )
         )
     for check in checks:
@@ -906,6 +934,28 @@ def project_direct_wifi_product_media_plan_rows(
             )
         )
     return rows
+
+
+def direct_wifi_plan_command_notes(command: dict[str, Any]) -> str:
+    parts = [
+        f"available_now={command.get('available_now') is not False}",
+        f"requires_quest_lease={command.get('requires_quest_lease') is True}",
+        f"requires_elevation={command.get('requires_elevation') is True}",
+        f"requires_adb_server_lifecycle_lease={command.get('requires_adb_server_lifecycle_lease') is True}",
+        f"mutates_host={command.get('mutates_host') is True}",
+        f"mutates_device={command.get('mutates_device') is True}",
+        f"clears_gate={command.get('clears_gate_when_accepted') is True}",
+    ]
+    depends_on = string_list(command.get("depends_on"))
+    if depends_on:
+        parts.append(f"depends_on={','.join(depends_on)}")
+    artifacts = string_list(command.get("acceptance_artifacts"))
+    if artifacts:
+        parts.append(f"acceptance_artifacts={','.join(artifacts)}")
+    shell = str(command.get("shell") or "")
+    if shell:
+        parts.append(f"shell={shell}")
+    return "; ".join(parts)
 
 
 def direct_wifi_plan_dependency_details(dependency: dict[str, Any]) -> dict[str, Any]:

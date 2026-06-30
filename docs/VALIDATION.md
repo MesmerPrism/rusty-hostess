@@ -247,7 +247,10 @@ topology, firewall, matrix, projection, and gate outputs, then asks
 --direct-wifi-product-media-plan` for the normalized operator rows that the
 Connectivity page renders. That plan is projected as checklist evidence only:
 live direct-Wi-Fi topology, product listener firewall, and QCL-082 RMANVID1
-media reports still own promotion. It then asks
+media reports still own promotion. The projection includes source-owned plan
+command rows so WPF/CLI automation can inspect the same PowerShell command
+text, Quest lease flags, dependency gates, and acceptance artifacts without
+running those commands. It then asks
 `companion-report transport-gates --projection <projection>` for the
 projection-derived gate report and renders `operator_next_actions` plus
 per-gate `next_actions` as read-only operator rows. The flag keeps device-link

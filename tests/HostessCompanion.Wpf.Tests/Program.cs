@@ -513,6 +513,13 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
             row.Name == "direct_wifi_product_media_plan.summary"
             && row.Evidence.Contains("topology=", StringComparison.Ordinal)),
         "WPF row projection must render the generated direct-Wi-Fi product-media acceptance plan");
+    Assert(directWifiPlanRows.Any(row =>
+            row.Name == "direct_wifi_product_media_plan.command.qcl082_run_qcl082_product_media_live_session"
+            && row.Evidence.Contains("qcl082-product-media-live-session", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
+            && row.Notes.Contains("depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)
+            && row.Notes.Contains("media-stream-receiver-result.json", StringComparison.Ordinal)),
+        "WPF row projection must render the direct-Wi-Fi product-media live-session command row");
     Assert(coverage.Evidence.Contains("websocket", StringComparison.Ordinal),
         "projection coverage must keep WebSocket command route visible");
     Assert(coverage.Evidence.Contains("tcp", StringComparison.Ordinal),
