@@ -200,6 +200,73 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_wifi_direct_lifecycle_report_blocks_when_device_serial_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["device"].pop("serial")
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        lease_check = check(report, "wifi_direct.quest_lease")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(lease_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_quest_device_serial_missing",
+            lease_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_when_lease_serial_mismatches_device(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["lease"]["resource"] = "quest:OTHERQUESTSERIAL"
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        lease_check = check(report, "wifi_direct.quest_lease")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(lease_check["status"], "blocked")
+        self.assertEqual(lease_check["observed"]["quest_serial"], "OTHERQUESTSERIAL")
+        self.assertEqual(lease_check["observed"]["device_serial"], "TESTQUESTSERIAL")
+        self.assertFalse(lease_check["observed"]["serial_matches"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_quest_lease_serial_mismatch",
+            lease_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_wifi_direct_lifecycle_report_blocks_when_cleanup_missing(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -311,6 +378,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertTrue(artifact["contract"]["non_promoting_template"])
         self.assertEqual(artifact["lease"]["manager"], "Agent Board")
         self.assertEqual(artifact["lease"]["resource"], "quest:<quest-serial>")
+        self.assertEqual(artifact["device"]["serial"], "<quest-serial>")
         self.assertFalse(artifact["lease"]["reserved_before_live_steps"])
         self.assertFalse(artifact["lease"]["released_after_live_steps"])
         self.assertEqual(artifact["lifecycle"]["peer_discovery"]["peer_count"], 0)
@@ -381,6 +449,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertIn("reserve_quest_lease_for_wifi_direct_lifecycle", actions)
         self.assertIn("run_qcl041_live_wifi_direct_preflight", actions)
         self.assertIn("write_qcl041_wifi_direct_lifecycle_template", actions)
+        self.assertTrue(report["policy"]["requires_device_serial_matches_quest_lease"])
         self.assertFalse(collect["available_now"])
         self.assertTrue(collect["requires_quest_lease"])
         self.assertTrue(normalize["clears_gate_when_accepted"])
@@ -392,6 +461,33 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
                 for issue in report["issues"]
             )
         )
+
+    def test_wifi_direct_lifecycle_plan_binds_generated_commands_to_serial(self) -> None:
+        report = wifi_direct_lifecycle_plan(
+            argparse.Namespace(
+                probe_id="QCL-041",
+                plan_id="",
+                adb=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+                serial="3487C10H3M017Q",
+                preflight_report_out="",
+                template_out="",
+                lifecycle_report="",
+                topology_report_out="",
+                out="unused.json",
+                fail_on_error=False,
+            ),
+            observed_at=fixed_datetime(),
+        )
+
+        actions = {command["action_id"]: command for command in report["commands"]}
+        reserve = actions["reserve_quest_lease_for_wifi_direct_lifecycle"]
+        preflight = actions["run_qcl041_live_wifi_direct_preflight"]
+        collect = actions["collect_qcl041_wifi_direct_lifecycle_source"]
+        self.assertEqual(report["lease"]["resource"], "quest:3487C10H3M017Q")
+        self.assertIn("reserve 'quest:3487C10H3M017Q'", reserve["command"])
+        self.assertIn("--serial '3487C10H3M017Q'", preflight["command"])
+        self.assertEqual(collect["lease"]["resource"], "quest:3487C10H3M017Q")
+        self.assertIn("device.serial matching quest resource 'quest:3487C10H3M017Q'", collect["command"])
 
     def test_wifi_direct_lifecycle_plan_is_ready_when_live_source_artifact_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

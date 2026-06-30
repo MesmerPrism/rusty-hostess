@@ -335,9 +335,10 @@ artifact itself must also prove lease discipline. The
 `tools/hostessctl/connectivity_topology_lifecycle.py` normalizer blocks
 promotion unless the source carries an Agent Board `quest:<serial>` lease
 receipt with a real lease id, reserve-before-live metadata, and
-release-after-cleanup metadata. WPF may render the lease requirement and the
-Hostess checks, but it must not infer topology readiness from an action label,
-preflight row, or status-only lifecycle artifact.
+release-after-cleanup metadata, and the source `device.serial` matches the
+serial portion of that lease resource. WPF may render the lease requirement
+and the Hostess checks, but it must not infer topology readiness from an
+action label, preflight row, or status-only lifecycle artifact.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and
@@ -418,8 +419,9 @@ bounded TCP socket exchange, and cleanup before emitting a promoted topology
 report. Promotion requires a positive peer count, recorded group roles,
 positive bounded TCP message counters, and explicit cleanup completion; a
 phase marked `status=pass` without those details remains blocked. The
-normalizer does not run the peer harness, mutate Wi-Fi Direct state, or claim
-QCL-082 product TCP media readiness;
+normalizer also requires `device.serial` to match the serial in the Agent Board
+`quest:<serial>` lease resource. It does not run the peer harness, mutate
+Wi-Fi Direct state, or claim QCL-082 product TCP media readiness;
 `connectivity_topology_lifecycle_plan.py` owns the read-only QCL-040/QCL-041
 Wi-Fi Direct lifecycle plan artifact. It binds Agent Board lease metadata,
 live preflight, source-template, external live-source, and normalization

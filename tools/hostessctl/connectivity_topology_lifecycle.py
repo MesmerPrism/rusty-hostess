@@ -34,6 +34,11 @@ PLACEHOLDER_TOKENS = {
     "<quest-lease-id>",
     "LEASE_ID_FROM_RESERVE_OUTPUT",
 }
+PLACEHOLDER_SERIAL_TOKENS = {
+    "",
+    "<quest-serial>",
+    "QUEST_SERIAL_FROM_ADB_DEVICES",
+}
 
 
 def wifi_direct_lifecycle_probe_report(
@@ -106,7 +111,8 @@ def wifi_direct_lifecycle_template_artifact(
             "required_phases": required_phases,
             "promotes_when": (
                 "live_evidence is true, evidence_tier is a live tier, peer class "
-                "matches the probe, and all lifecycle phases pass"
+                "matches the probe, the leased Quest serial matches device.serial, "
+                "and all lifecycle phases pass"
             ),
             "non_promoting_template": True,
         },
@@ -118,6 +124,7 @@ def wifi_direct_lifecycle_template_artifact(
         },
         "device": {
             "model": "Quest",
+            "serial": "<quest-serial>",
             "wifi_direct_role": "group_owner_or_client",
         },
         "host": {
@@ -364,8 +371,11 @@ def lifecycle_lease_check(summary: dict[str, Any]) -> dict[str, Any]:
 
 def lifecycle_lease_summary(artifact: dict[str, Any]) -> dict[str, Any]:
     lease = object_value(artifact.get("lease") or artifact.get("agent_board_lease"))
+    device = object_value(artifact.get("device"))
     manager = str(lease.get("manager") or lease.get("provider") or "").strip()
     resource = str(lease.get("resource") or "").strip()
+    resource_serial = quest_serial_from_resource(resource)
+    device_serial = quest_device_serial(device)
     lease_id = str(lease.get("lease_id") or lease.get("id") or "").strip()
     reserved_before = (
         lease.get("reserved_before_live_steps") is True
@@ -384,6 +394,10 @@ def lifecycle_lease_summary(artifact: dict[str, Any]) -> dict[str, Any]:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_missing")
     if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX) or "<" in resource:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_resource_invalid")
+    if not device_serial:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_device_serial_missing")
+    if resource_serial and device_serial and resource_serial != device_serial:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_serial_mismatch")
     if lease_id in PLACEHOLDER_TOKENS or "<" in lease_id:
         issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_id_missing")
     if not reserved_before:
@@ -394,6 +408,9 @@ def lifecycle_lease_summary(artifact: dict[str, Any]) -> dict[str, Any]:
     return {
         "manager": manager,
         "resource": resource,
+        "quest_serial": resource_serial,
+        "device_serial": device_serial,
+        "serial_matches": bool(resource_serial and device_serial and resource_serial == device_serial),
         "lease_id": lease_id,
         "reserved_before_live_steps": reserved_before,
         "released_after_live_steps": released_after,
@@ -404,6 +421,21 @@ def lifecycle_lease_summary(artifact: dict[str, Any]) -> dict[str, Any]:
         "release_command": str(lease.get("release_command") or ""),
         "adb_server_lifecycle_policy": str(lease.get("adb_server_lifecycle_policy") or ""),
     }
+
+
+def quest_serial_from_resource(resource: str) -> str:
+    if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX):
+        return ""
+    serial = resource[len(QUEST_LEASE_RESOURCE_PREFIX) :].strip()
+    return "" if serial in PLACEHOLDER_SERIAL_TOKENS or "<" in serial else serial
+
+
+def quest_device_serial(device: dict[str, Any]) -> str:
+    for key in ("serial", "adb_serial"):
+        serial = str(device.get(key) or "").strip()
+        if serial and serial not in PLACEHOLDER_SERIAL_TOKENS and "<" not in serial:
+            return serial
+    return ""
 
 
 def lifecycle_source_summary(

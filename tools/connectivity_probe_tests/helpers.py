@@ -1333,7 +1333,11 @@ def wifi_direct_lifecycle_artifact(
             "endpoint_direction": "peer_to_peer_group",
             "peer_class": peer_class,
         },
-        "device": {"model": "Quest 3S", "wifi_direct_role": "group_owner_or_client"},
+        "device": {
+            "model": "Quest 3S",
+            "serial": "TESTQUESTSERIAL",
+            "wifi_direct_role": "group_owner_or_client",
+        },
         "host": {
             "os": "windows" if windows_peer else "android_phone_peer",
             "toolchain_profile": "fixture.wifi_direct_lifecycle",

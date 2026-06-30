@@ -217,9 +217,11 @@ generic code or sanitized sample fixtures.
 - Keep `tools\hostessctl\connectivity_topology_lifecycle.py` as the
   QCL-040/QCL-041 Wi-Fi Direct lifecycle evidence ingestion owner. It may
   validate a structured live lifecycle artifact and emit a promoted topology
-  report only when peer discovery, group formation, bounded TCP socket
-  exchange, and cleanup all pass; it must not run headset lifecycle mechanics,
-  mutate Wi-Fi Direct state, or claim QCL-082 product media readiness.
+  report only when the Agent Board `quest:<serial>` lease resource matches the
+  artifact `device.serial` and peer discovery, group formation, bounded TCP
+  socket exchange, and cleanup all pass; it must not run headset lifecycle
+  mechanics, mutate Wi-Fi Direct state, or claim QCL-082 product media
+  readiness.
 - Keep `tools\hostessctl\connectivity_topology_lifecycle_plan.py` as the
   read-only QCL-040/QCL-041 Wi-Fi Direct lifecycle plan owner. It may bind
   Agent Board lease metadata, preflight, source-template, external live-source,

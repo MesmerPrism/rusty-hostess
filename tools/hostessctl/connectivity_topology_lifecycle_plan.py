@@ -79,6 +79,7 @@ def wifi_direct_lifecycle_plan(
     probe_id = str(getattr(args, "probe_id", "") or "QCL-041").upper()
     if probe_id not in LIVE_DIRECT_WIFI_PROBE_IDS:
         raise SystemExit("Wi-Fi Direct lifecycle plans support QCL-040 or QCL-041")
+    serial = value(args, "serial", "<quest-serial>")
     paths = wifi_direct_lifecycle_plan_paths(args, probe_id)
     lifecycle = lifecycle_dependency(paths["lifecycle_report"], probe_id)
     commands = wifi_direct_lifecycle_plan_commands(args, paths, probe_id)
@@ -134,6 +135,7 @@ def wifi_direct_lifecycle_plan(
         "policy": {
             "requires_quest_lease_for_live_steps": True,
             "requires_adb_server_lifecycle_lease": False,
+            "requires_device_serial_matches_quest_lease": True,
             "mutates_wifi_direct_state": False,
             "plan_runs_lifecycle_harness": False,
             "promotes_only_after_live_source_artifact": True,
@@ -142,7 +144,7 @@ def wifi_direct_lifecycle_plan(
                 "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
             ),
         },
-        "lease": quest_lease_metadata(f"{probe_id} direct Wi-Fi lifecycle evidence"),
+        "lease": quest_lease_metadata(f"{probe_id} direct Wi-Fi lifecycle evidence", serial=serial),
         "dependencies": [
             {
                 "gate_id": "transport.direct_wifi_live_topology",
@@ -169,7 +171,8 @@ def wifi_direct_lifecycle_plan(
             else (
                 "Under a quest:<quest-serial> lease, collect a live "
                 f"{WIFI_DIRECT_LIFECYCLE_SCHEMA} source artifact with peer discovery, "
-                "group formation, bounded TCP socket exchange, and cleanup evidence."
+                "group formation, bounded TCP socket exchange, cleanup evidence, "
+                "and device.serial matching the Agent Board quest lease resource."
             )
         ),
     }
@@ -214,8 +217,8 @@ def wifi_direct_lifecycle_plan_commands(
             "reserve_quest_lease_for_wifi_direct_lifecycle",
             "Agent Board",
             f"Reserve Quest lease for {probe_id} lifecycle evidence",
-            agent_board_reserve_command(f"{probe_id} direct Wi-Fi lifecycle evidence"),
-            ["Agent Board quest:<quest-serial> lease id"],
+            agent_board_reserve_command(f"{probe_id} direct Wi-Fi lifecycle evidence", serial),
+            [f"Agent Board {quest_lease_resource(serial)} lease id"],
         ),
         plan_command(
             f"run_{probe_token}_live_wifi_direct_preflight",
@@ -247,14 +250,17 @@ def wifi_direct_lifecycle_plan_commands(
             f"Collect live {probe_id} lifecycle source artifact",
             (
                 "external leased peer harness writes "
-                f"{ps_quote(paths['lifecycle_report'])} with schema {WIFI_DIRECT_LIFECYCLE_SCHEMA}"
+                f"{ps_quote(paths['lifecycle_report'])} with schema {WIFI_DIRECT_LIFECYCLE_SCHEMA} "
+                f"and device.serial matching quest resource {ps_quote(quest_lease_resource(serial))}"
             ),
             [paths["lifecycle_report"]],
             requires_quest_lease=True,
+            lease_serial=serial,
             available_now=False,
             note=(
                 "Hostess does not own Wi-Fi Direct peer discovery/group mechanics yet; "
-                "it accepts the resulting structured source artifact."
+                "it accepts the resulting structured source artifact only when the "
+                "device serial matches the reserved Agent Board quest resource."
             ),
         ),
         plan_command(
@@ -281,6 +287,7 @@ def plan_command(
     acceptance_artifacts: list[str],
     *,
     requires_quest_lease: bool = False,
+    lease_serial: str = "<quest-serial>",
     available_now: bool = True,
     clears_gate: bool = False,
     note: str = "",
@@ -302,7 +309,7 @@ def plan_command(
         "clears_gate_when_accepted": clears_gate,
     }
     if requires_quest_lease:
-        item["lease"] = quest_lease_metadata(label)
+        item["lease"] = quest_lease_metadata(label, serial=lease_serial)
     if note:
         item["note"] = note
     return item
@@ -357,14 +364,14 @@ def report_if_path_exists(path_text: str) -> dict[str, Any]:
     return read_json_file(Path(path_text))
 
 
-def quest_lease_metadata(task: str) -> dict[str, Any]:
+def quest_lease_metadata(task: str, *, serial: str = "<quest-serial>") -> dict[str, Any]:
     return {
         "manager": "Agent Board",
-        "resource": QUEST_LEASE_RESOURCE,
+        "resource": quest_lease_resource(serial),
         "duration": QUEST_LEASE_DURATION,
         "task": task,
         "lease_id_placeholder": "<quest-lease-id>",
-        "reserve_command": agent_board_reserve_command(task),
+        "reserve_command": agent_board_reserve_command(task, serial),
         "release_command": f"& '{AGENT_BOARD_SCRIPT}' release '<quest-lease-id>' --result done",
         "adb_server_lifecycle_policy": (
             "Use adb-server:lifecycle only for disruptive daemon lifecycle "
@@ -373,11 +380,18 @@ def quest_lease_metadata(task: str) -> dict[str, Any]:
     }
 
 
-def agent_board_reserve_command(task: str) -> str:
+def agent_board_reserve_command(task: str, serial: str = "<quest-serial>") -> str:
     return (
-        f"& '{AGENT_BOARD_SCRIPT}' reserve '{QUEST_LEASE_RESOURCE}' "
+        f"& '{AGENT_BOARD_SCRIPT}' reserve '{quest_lease_resource(serial)}' "
         f"--duration {QUEST_LEASE_DURATION} --task '{task}'"
     )
+
+
+def quest_lease_resource(serial: str) -> str:
+    serial_text = str(serial or "<quest-serial>").strip()
+    if serial_text.startswith("quest:"):
+        return serial_text
+    return f"quest:{serial_text}"
 
 
 def value(args: argparse.Namespace, name: str, default: Any) -> str:
