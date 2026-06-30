@@ -15,6 +15,7 @@ public static class OperatorActionCatalog
         "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
         "$Rmanvid1Capture = '<rmanvid1-capture>'; " +
         "$ReceiverSidecar = '<receiver-sidecar>'; " +
+        "$ReceiverResult = 'target\\connectivity-probe\\media-stream-receiver-result.json'; " +
         "$PromotedTopologyReport = '<promoted-qcl040-or-qcl041-topology-report>'; " +
         "$ManifoldWebSocketRoute = '<manifold-stream-websocket-route>'; " +
         "$ManifoldWebSocketEvidence = '<manifold-stream-websocket-evidence>'; " +
@@ -40,9 +41,9 @@ public static class OperatorActionCatalog
         "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
         "connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +
-        "connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial; " +
-        "connectivity-probe rmanvid1-receiver-capture --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify; " +
-        "connectivity-probe run --probe-id QCL-082 --media-stream-rmanvid1-capture $Rmanvid1Capture --media-stream-receiver-sidecar $ReceiverSidecar --media-stream-runtime-status $RuntimeStatus --media-stream-topology-report $PromotedTopologyReport --media-stream-firewall-report $FirewallVerify; " +
+        "connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --out $ReceiverResult; " +
+        "connectivity-probe rmanvid1-receiver-capture --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --out $ReceiverResult; " +
+        "connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult; " +
         "connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback; " +
         "connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence; " +
         "connectivity-probe run-suite; " +

@@ -891,7 +891,7 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Label = "Run QCL-082 product media live session",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json --bridge-evidence-out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --adb '<adb>' --serial '<quest-serial>'",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json --bridge-evidence-out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --adb '<adb>' --serial '<quest-serial>' --out target\\connectivity-probe\\media-stream-receiver-result.json",
                         },
                         Lease = new CompanionTransportGateNextActionLease
                         {
@@ -923,7 +923,7 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Label = "Capture RMANVID1 receiver counters",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --out target\\connectivity-probe\\media-stream-receiver-result.json",
                         },
                         Lease = new CompanionTransportGateNextActionLease
                         {
@@ -947,7 +947,7 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Label = "Build QCL-082 product media report",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --media-stream-rmanvid1-capture target\\connectivity-probe\\media-stream.rmanvid1 --media-stream-receiver-sidecar target\\connectivity-probe\\media-stream-receiver-sidecar.json --media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --media-stream-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --media-stream-firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --out target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --fail-on-error",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --media-stream-receiver-result target\\connectivity-probe\\media-stream-receiver-result.json --out target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --fail-on-error",
                         },
                     },
                 ],
@@ -1067,7 +1067,8 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream-start-source.request.json,target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json,target\\connectivity-probe\\media-stream-start-source.live-android-execution.json,target\\connectivity-probe\\media-stream-start-source.validation-report.json,target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
             && row.Evidence.Contains("qcl082-product-media-live-session", StringComparison.Ordinal)
-            && row.Evidence.Contains("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
         "product media live session action must show the orchestrated receiver-plus-command route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.capture_rmanvid1_over_promoted_direct_wifi"
@@ -1076,13 +1077,14 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
             && row.Notes.Contains("depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
-            && row.Evidence.Contains("--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
         "product media next action must show dependency and acceptance-artifact evidence");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.promote_qcl082_rmanvid1_capture"
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_probe", StringComparison.Ordinal)
             && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
-            && row.Evidence.Contains("--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
+            && row.Evidence.Contains("--media-stream-receiver-result target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
         "product media promotion action must render the QCL-082 fold-in route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
@@ -1430,28 +1432,26 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must pass the start_source request artifact into the live media session route");
     Assert(protocolMatrixAction.CliRoute.Contains("--logcat-out $StartSourceLogcat", StringComparison.Ordinal),
         "protocol matrix action must preserve the live media session logcat sidecar path");
+    Assert(protocolMatrixAction.CliRoute.Contains("--out $ReceiverResult", StringComparison.Ordinal),
+        "protocol matrix action must write the QCL-082 receiver-result artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("media-stream-start-source.live-android-execution.json", StringComparison.Ordinal),
         "protocol matrix action must name the QCL-082 live Android execution sidecar");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-runtime-status", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 broker runtime-status input");
     Assert(protocolMatrixAction.CliRoute.Contains("rmanvid1-receiver-capture", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 RMANVID1 receiver capture route");
-    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-rmanvid1-capture", StringComparison.Ordinal),
-        "protocol matrix action must advertise the QCL-082 RMANVID1 capture evidence input");
-    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-receiver-sidecar", StringComparison.Ordinal),
-        "protocol matrix action must advertise the QCL-082 receiver sidecar evidence input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-receiver-result $ReceiverResult", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 receiver-result fold-in input");
+    Assert(protocolMatrixAction.CliRoute.Contains("media-stream-receiver-result.json", StringComparison.Ordinal),
+        "protocol matrix action must name the QCL-082 receiver-result artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("--topology-report", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 receiver topology report input");
-    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-topology-report", StringComparison.Ordinal),
-        "protocol matrix action must advertise the QCL-082 follow-on topology report input");
     Assert(protocolMatrixAction.CliRoute.Contains("windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal),
         "protocol matrix action must advertise the product TCP firewall verification route");
     Assert(protocolMatrixAction.CliRoute.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal),
         "protocol matrix action must use the QCL-082 product media listener firewall profile");
     Assert(protocolMatrixAction.CliRoute.Contains("--firewall-report", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 receiver firewall report input");
-    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-firewall-report", StringComparison.Ordinal),
-        "protocol matrix action must advertise the QCL-082 follow-on firewall report input");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal),
         "protocol matrix action must advertise latest device-link directory selection");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal),

@@ -468,6 +468,12 @@ bounded RMANVID1 TCP receiver before it sends the Quest/Manifold
 execution, validation, logcat, capture, sidecar, and receiver-result artifacts
 that automation uses. WPF only renders or requests that Hostess route; it must
 not split the timing-sensitive receiver/source orchestration into UI handlers.
+After the route writes the receiver result, the preferred QCL-082 report
+fold-in is the single-artifact route
+`connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result
+<result.json>`; Hostess resolves the capture, sidecar, runtime-status,
+topology, and firewall paths from that artifact. The explicit capture/sidecar
+flags remain a lower-level compatibility route.
 The route requires a `quest:<serial>` lease and serial-scoped ADB for live
 headset work, but it does not mutate firewall state and does not require
 `adb-server:lifecycle` unless the run also performs disruptive ADB daemon
@@ -524,11 +530,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id QCL-082 `
-  --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
-  --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
-  --media-stream-topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
-  --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --media-stream-receiver-result target\connectivity-probe\media-stream-receiver-result.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
   --fail-on-error
 ```

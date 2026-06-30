@@ -95,6 +95,7 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
         firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
     )
     out = Path(getattr(args, "out"))
+    result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if getattr(args, "fail_on_error", False) and result.get("status") != "pass":
@@ -243,6 +244,7 @@ def run_qcl082_product_media_live_session(
     }
 
     out = Path(getattr(args, "out"))
+    result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if getattr(args, "fail_on_error", False) and result.get("status") != "pass":
@@ -289,6 +291,54 @@ def qcl082_live_session_bridge_args(args: Any, request_out: Path) -> argparse.Na
         no_wait_makepad_process=bool(getattr(args, "no_wait_makepad_process", False)),
         no_adb_forward_broker=bool(getattr(args, "no_adb_forward_broker", False)),
     )
+
+
+def receiver_result_follow_on_args(result_path: str) -> list[str]:
+    return [
+        "connectivity-probe",
+        "run",
+        "--probe-id",
+        "QCL-082",
+        "--media-stream-receiver-result",
+        result_path,
+    ]
+
+
+def receiver_result_follow_on_paths(result: dict[str, Any]) -> dict[str, str]:
+    result = object_value(result)
+    sidecar = object_value(result.get("receiver_sidecar"))
+    source = object_value(sidecar.get("source"))
+    live_session = object_value(result.get("live_session"))
+
+    def first_text(*values: Any) -> str:
+        for value in values:
+            text = str(value or "").strip()
+            if text:
+                return text
+        return ""
+
+    return {
+        "capture_path": first_text(result.get("capture_path")),
+        "sidecar_path": first_text(result.get("sidecar_path")),
+        "runtime_status_path": first_text(
+            result.get("runtime_status_path"),
+            source.get("runtime_status_path"),
+            live_session.get("execution_path"),
+        ),
+        "topology_report_path": first_text(
+            result.get("topology_report_path"),
+            source.get("topology_report_path"),
+        ),
+        "firewall_report_path": first_text(
+            result.get("firewall_report_path"),
+            source.get("firewall_report_path"),
+        ),
+        "receiver_result_schema": first_text(result.get("schema")),
+        "receiver_live_session_schema": first_text(live_session.get("schema")),
+        "receiver_armed_before_command": "true"
+        if live_session.get("receiver_armed_before_command") is True
+        else "false",
+    }
 
 
 def capture_rmanvid1_receiver_stream(
@@ -1444,5 +1494,7 @@ __all__ = [
     "capture_rmanvid1_receiver_stream",
     "parse_rmanvid1_capture",
     "qcl082_media_stream_receiver_capture_body",
+    "receiver_result_follow_on_args",
+    "receiver_result_follow_on_paths",
     "run_rmanvid1_receiver_capture",
 ]

@@ -338,6 +338,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "target\\connectivity-probe\\media-stream.rmanvid1",
                 "--media-stream-receiver-sidecar",
                 "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+                "--media-stream-receiver-result",
+                "target\\connectivity-probe\\media-stream-receiver-result.json",
                 "--media-stream-topology-report",
                 "target\\connectivity-probe\\qcl040-topology.json",
                 "--media-stream-firewall-report",
@@ -364,6 +366,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(
             args.media_stream_receiver_sidecar,
             "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+        )
+        self.assertEqual(
+            args.media_stream_receiver_result,
+            "target\\connectivity-probe\\media-stream-receiver-result.json",
         )
         self.assertEqual(
             args.media_stream_topology_report,

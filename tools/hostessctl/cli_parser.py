@@ -711,6 +711,7 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--media-stream-runtime-status", default="")
     connectivity_probe_run.add_argument("--media-stream-rmanvid1-capture", default="")
     connectivity_probe_run.add_argument("--media-stream-receiver-sidecar", default="")
+    connectivity_probe_run.add_argument("--media-stream-receiver-result", default="")
     connectivity_probe_run.add_argument("--media-stream-topology-report", default="")
     connectivity_probe_run.add_argument("--media-stream-firewall-report", default="")
     connectivity_probe_run.add_argument("--wifi-direct-lifecycle-report", default="")

@@ -499,10 +499,15 @@ contracts, shell-hidden display lab gates, and receiver packet evidence without
 making Hostess the source authority for Android capture. Session plans remain
 source-contract evidence; broker/runtime status is broker-owned candidate
 evidence; receiver counters become promotable only when paired with live
-broker-owned or Quest-runtime status. Product TCP media over direct Wi-Fi is a
-separate gate: the receiver report must also be paired with a promoted
-QCL-040/QCL-041 direct-Wi-Fi topology report before the WPF transport summary
-can mark that product path proven.
+broker-owned or Quest-runtime status. The preferred QCL-082 fold-in input is
+the Hostess receiver-result artifact; `connectivity-probe run --probe-id
+QCL-082 --media-stream-receiver-result <result.json>` resolves the capture,
+sidecar, runtime-status, topology, and firewall report paths from that
+artifact. The older explicit path flags remain lower-level compatibility
+inputs. Product TCP media over direct Wi-Fi is a separate gate: the receiver
+report must also be paired with a promoted QCL-040/QCL-041 direct-Wi-Fi
+topology report before the WPF transport summary can mark that product path
+proven.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ

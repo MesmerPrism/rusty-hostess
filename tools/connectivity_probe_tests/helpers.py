@@ -626,6 +626,7 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "media_stream_runtime_status": "",
         "media_stream_rmanvid1_capture": "",
         "media_stream_receiver_sidecar": "",
+        "media_stream_receiver_result": "",
         "media_stream_topology_report": "",
         "media_stream_firewall_report": "",
         "wifi_direct_lifecycle_report": "",

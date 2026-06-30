@@ -162,8 +162,8 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("run-bridge-command-live-android", command_text)
         self.assertIn("qcl082-product-media-live-session", command_text)
         self.assertIn("rmanvid1-receiver-capture", command_text)
-        self.assertIn("--media-stream-topology-report", command_text)
-        self.assertIn("--media-stream-firewall-report", command_text)
+        self.assertIn("--media-stream-receiver-result", command_text)
+        self.assertIn("media-stream-receiver-result.json", command_text)
 
     def test_qcl082_product_media_direct_wifi_plan_detects_ready_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -570,6 +570,40 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertTrue(report["media_stream_receiver_capture"]["product_listener_firewall"]["ready"])
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_receiver_result_rejects_wrong_schema(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            result_path = root / "receiver-result.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            result_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "wrong.receiver.result.schema",
+                        "status": "pass",
+                        "capture_path": str(capture_path),
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_receiver_result=str(result_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+        receiver_result_check = check(report, "protocol.media_receiver_result")
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(receiver_result_check["status"], "fail")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_receiver_result_schema_mismatch",
+            receiver_result_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_qcl082_rmanvid1_receiver_capture_rejects_diagnostic_tcp_firewall(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -704,8 +738,8 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertEqual(sidecar["receiver"]["arrival_timestamped_packet_count"], 4)
         self.assertEqual(sidecar["receiver"]["max_queue_depth_observed"], 1)
         self.assertEqual(sidecar["source"]["topology_report_path"], str(topology_path))
-        self.assertIn("--media-stream-rmanvid1-capture", receipt["follow_on_qcl082_args"])
-        self.assertIn("--media-stream-topology-report", receipt["follow_on_qcl082_args"])
+        self.assertIn("--media-stream-receiver-result", receipt["follow_on_qcl082_args"])
+        self.assertIn(str(result_path), receipt["follow_on_qcl082_args"])
         self.assertEqual(report["status"], "pass")
         self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "pass")
         self.assertEqual(check(report, "protocol.media_timestamp_policy")["status"], "pass")
@@ -795,11 +829,7 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
             report = fixture_report(
                 probe_args(
                     probe_id="QCL-082",
-                    media_stream_rmanvid1_capture=str(capture_path),
-                    media_stream_receiver_sidecar=str(sidecar_path),
-                    media_stream_runtime_status=str(execution_path),
-                    media_stream_topology_report=str(topology_path),
-                    media_stream_firewall_report=str(firewall_path),
+                    media_stream_receiver_result=str(result_path),
                 ),
                 observed_at=fixed_datetime(),
             )
@@ -814,6 +844,8 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertTrue(receipt["live_session"]["receiver_armed_before_command"])
         self.assertEqual(receipt["live_session"]["live_command_returncode"], 0)
         self.assertEqual(receipt["capture_stats"]["packet_count"], 4)
+        self.assertIn("--media-stream-receiver-result", receipt["follow_on_qcl082_args"])
+        self.assertIn(str(result_path), receipt["follow_on_qcl082_args"])
         self.assertEqual(report["status"], "pass")
         self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
         self.assertTrue(report["media_stream_receiver_capture"]["product_listener_firewall"]["ready"])

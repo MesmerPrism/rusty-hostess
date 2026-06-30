@@ -704,11 +704,7 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     "connectivity-probe run "
                     "--mode fixture "
                     "--probe-id QCL-082 "
-                    "--media-stream-rmanvid1-capture target\\connectivity-probe\\media-stream.rmanvid1 "
-                    "--media-stream-receiver-sidecar target\\connectivity-probe\\media-stream-receiver-sidecar.json "
-                    f"--media-stream-runtime-status {QCL082_START_SOURCE_EXECUTION} "
-                    "--media-stream-topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
-                    f"--media-stream-firewall-report {QCL082_FIREWALL_VERIFY} "
+                    "--media-stream-receiver-result target\\connectivity-probe\\media-stream-receiver-result.json "
                     "--out target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json "
                     "--fail-on-error"
                 ),

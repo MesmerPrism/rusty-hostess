@@ -401,11 +401,7 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
             (
                 "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
                 "--mode fixture --probe-id QCL-082 "
-                f"--media-stream-rmanvid1-capture {ps_quote(paths['capture_out'])} "
-                f"--media-stream-receiver-sidecar {ps_quote(paths['sidecar_out'])} "
-                f"--media-stream-runtime-status {ps_quote(paths['start_source_execution_out'])} "
-                f"--media-stream-topology-report {ps_quote(paths['promoted_topology_report'])} "
-                f"--media-stream-firewall-report {ps_quote(paths['firewall_report'])} "
+                f"--media-stream-receiver-result {ps_quote(paths['receiver_result_out'])} "
                 f"--out {ps_quote(paths['qcl082_report_out'])} --fail-on-error"
             ),
             [paths["qcl082_report_out"]],

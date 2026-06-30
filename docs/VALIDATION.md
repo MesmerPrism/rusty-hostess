@@ -438,18 +438,21 @@ carrying `media_stream_runtime`. That broker-owned route proves accepted
 lab-only gating, and binary-plane policy. Hostess can also arm a bounded TCP
 `RMANVID1` receiver with `connectivity-probe rmanvid1-receiver-capture`; the
 capture command writes the raw byte stream plus receiver sidecar/result
-artifacts. The QCL report route then ingests that capture through
-`--media-stream-rmanvid1-capture`, parses stream headers and packet records
-without decoding H.264, and joins receiver queue/drop/backpressure/close
-evidence. Source contracts, runtime status artifacts, and fixture receiver
-captures are CLI/WPF-visible candidate checks only; promotion still needs live
-broker-owned or Quest-runtime receiver frame, byte, drop, close-reason, and
-queue evidence. Product TCP media over direct Wi-Fi additionally needs the
-receiver report paired with a promoted QCL-040/QCL-041 direct-Wi-Fi topology
-report through `--topology-report` and `--media-stream-topology-report`.
-Product listener readiness is a separate CLI-owned artifact: verify the
-Hostess/WPF TCP listener firewall rule first, then pass the report through
-`--firewall-report` and `--media-stream-firewall-report`:
+artifacts. The preferred QCL report fold-in route ingests that result through
+`--media-stream-receiver-result`, resolves the capture, sidecar,
+runtime-status, topology, and firewall paths from the result, parses stream
+headers and packet records without decoding H.264, and joins receiver
+queue/drop/backpressure/close evidence. The older explicit
+`--media-stream-rmanvid1-capture` and sidecar/status/topology/firewall flags
+remain lower-level compatibility inputs. Source contracts, runtime status
+artifacts, and fixture receiver captures are CLI/WPF-visible candidate checks
+only; promotion still needs live broker-owned or Quest-runtime receiver frame,
+byte, drop, close-reason, and queue evidence. Product TCP media over direct
+Wi-Fi additionally needs the receiver result paired with a promoted
+QCL-040/QCL-041 direct-Wi-Fi topology report through the receiver capture
+`--topology-report` field. Product listener readiness is a separate CLI-owned
+artifact: verify the Hostess/WPF TCP listener firewall rule first, then attach
+that report through the receiver capture `--firewall-report` field:
 
 For live acceptance, prefer the orchestrated
 `connectivity-probe qcl082-product-media-live-session` route over separate
@@ -599,11 +602,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id QCL-082 `
-  --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
-  --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
-  --media-stream-topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
-  --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --media-stream-receiver-result target\connectivity-probe\media-stream-receiver-result.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
   --fail-on-error
 

@@ -21,8 +21,10 @@ from tools.hostessctl.connectivity_media import (
     qcl082_media_stream_runtime_status_body,
 )
 from tools.hostessctl.connectivity_media_receiver import (
+    RECEIVER_CAPTURE_RESULT_SCHEMA,
     parse_rmanvid1_capture,
     qcl082_media_stream_receiver_capture_body,
+    receiver_result_follow_on_paths,
 )
 from tools.hostessctl.connectivity_websocket import qcl079_fixture_body
 from tools.hostessctl.connectivity_probe_common import (
@@ -56,8 +58,41 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
     media_stream_runtime_status = str(getattr(args, "media_stream_runtime_status", "") or "").strip()
     media_stream_rmanvid1_capture = str(getattr(args, "media_stream_rmanvid1_capture", "") or "").strip()
     media_stream_receiver_sidecar = str(getattr(args, "media_stream_receiver_sidecar", "") or "").strip()
+    media_stream_receiver_result = str(getattr(args, "media_stream_receiver_result", "") or "").strip()
     media_stream_topology_report = str(getattr(args, "media_stream_topology_report", "") or "").strip()
     media_stream_firewall_report = str(getattr(args, "media_stream_firewall_report", "") or "").strip()
+    if probe_id == "QCL-082" and media_stream_receiver_result:
+        receiver_result_path = Path(media_stream_receiver_result)
+        receiver_result = read_json_file(receiver_result_path)
+        if str(receiver_result.get("schema") or "") != RECEIVER_CAPTURE_RESULT_SCHEMA:
+            report = base_report(args, observed_at=observed_at, probe_id="QCL-082")
+            report.update(
+                qcl082_media_receiver_result_error_body(
+                    receiver_result,
+                    receiver_result_path=str(receiver_result_path),
+                )
+            )
+            return report
+        receiver_paths = receiver_result_follow_on_paths(receiver_result)
+        if not media_stream_rmanvid1_capture:
+            media_stream_rmanvid1_capture = receiver_paths["capture_path"]
+        if not media_stream_receiver_sidecar:
+            media_stream_receiver_sidecar = receiver_paths["sidecar_path"]
+        if not media_stream_runtime_status:
+            media_stream_runtime_status = receiver_paths["runtime_status_path"]
+        if not media_stream_topology_report:
+            media_stream_topology_report = receiver_paths["topology_report_path"]
+        if not media_stream_firewall_report:
+            media_stream_firewall_report = receiver_paths["firewall_report_path"]
+        if not media_stream_rmanvid1_capture:
+            report = base_report(args, observed_at=observed_at, probe_id="QCL-082")
+            report.update(
+                qcl082_media_receiver_result_error_body(
+                    receiver_result,
+                    receiver_result_path=str(receiver_result_path),
+                )
+            )
+            return report
     if probe_id == "QCL-082" and media_stream_rmanvid1_capture:
         capture_path = Path(media_stream_rmanvid1_capture)
         sidecar_path = Path(media_stream_receiver_sidecar) if media_stream_receiver_sidecar else None
@@ -242,6 +277,90 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
         report.update(qcl079_fixture_body(status="blocked", handshake_blocked=True))
         return report
     raise SystemExit(f"unsupported connectivity fixture profile: {profile}")
+
+
+def qcl082_media_receiver_result_error_body(
+    receiver_result: dict[str, Any],
+    *,
+    receiver_result_path: str,
+) -> dict[str, Any]:
+    result = object_value(receiver_result)
+    schema = str(result.get("schema") or "")
+    capture_path = str(result.get("capture_path") or "")
+    issue_codes: list[str] = []
+    if not result:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_result_missing")
+    elif schema != RECEIVER_CAPTURE_RESULT_SCHEMA:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_result_schema_mismatch")
+    if not capture_path:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_result_missing_capture")
+    return {
+        "status": "fail",
+        "classification": "protocol_fit_receiver_result",
+        "topology": {
+            "owner": "hostess_receiver_canary",
+            "network_provider": "declared_by_receiver_result",
+            "endpoint_direction": "quest_to_host_binary_media",
+            "requires_existing_wifi": True,
+            "requires_adb": False,
+            "requires_pairing": False,
+            "requires_termux": False,
+            "experimental": True,
+        },
+        "transport": {
+            "family": "tcp_binary",
+            "route": "hostess_rmanvid1_receiver_result",
+            "local_endpoint": "declared_by_receiver_result",
+            "remote_endpoint": "declared_by_receiver_result",
+            "protocol_role": "binary_media_plane_receiver_counters",
+        },
+        "device": {
+            "serial_redacted": True,
+            "model": "receiver_result",
+            "foreground_package": "not_checked",
+            "adb_state": "not_applicable",
+        },
+        "host": {
+            "os": "windows",
+            "toolchain_profile": "hostessctl.connectivity_probe.qcl082.receiver_result",
+        },
+        "checks": [
+            check_row(
+                "protocol.media_receiver_result",
+                "fail",
+                "QCL-082 receiver-result artifact is not a valid receiver capture result",
+                observed={
+                    "receiver_result_path": receiver_result_path,
+                    "schema": schema,
+                    "expected_schema": RECEIVER_CAPTURE_RESULT_SCHEMA,
+                    "capture_path": capture_path,
+                    "sidecar_path": result.get("sidecar_path"),
+                },
+                issue_codes=issue_codes,
+            )
+        ],
+        "measurements": empty_measurements(),
+        "issues": [
+            issue_row(
+                issue_code,
+                "error",
+                "QCL-082 receiver-result artifact cannot be folded into product media evidence",
+            )
+            for issue_code in issue_codes
+        ],
+        "promotion": {
+            "allowed": False,
+            "target": "quest.device_link binary media stream capability descriptor",
+            "reason": "receiver-result artifact is not accepted as the QCL-082 fold-in contract",
+        },
+        "media_stream_receiver_result": {
+            "schema": schema,
+            "expected_schema": RECEIVER_CAPTURE_RESULT_SCHEMA,
+            "artifact_path": receiver_result_path,
+            "capture_path": result.get("capture_path"),
+            "sidecar_path": result.get("sidecar_path"),
+        },
+    }
 
 
 def qcl000_fixture_body() -> dict[str, Any]:
