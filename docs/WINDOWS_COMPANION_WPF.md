@@ -81,7 +81,12 @@ The same test suite runs
 so automation can inspect the operator action surface without clicking UI. The
 Hostess report loads its static rows from
 `tools\hostessctl\companion_operator_action_rows.py` and keeps schema/status
-validation in `companion_operator_actions.py`.
+validation in `companion_operator_actions.py`. Those rows also carry typed
+`requires_elevation`, `requires_quest_lease`,
+`requires_adb_server_lifecycle_lease`, `mutates_host`, and `mutates_device`
+flags, so the human WPF catalog and CLI automation agree on which actions need
+Quest leases, elevation, or host/device mutation. Ordinary headset-bound rows
+stay serial-scoped and do not reserve `adb-server:lifecycle`.
 Catalog routes are PowerShell-shaped Hostess CLI commands, not bare route
 fragments: they advertise `python tools\hostessctl\hostessctl.py ...`, use
 PowerShell variables or splats for repeated arguments, and avoid pipe-delimited

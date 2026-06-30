@@ -164,13 +164,16 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   authority, firewall semantics, topology readiness, or protocol promotion.
 - `tools/hostessctl/companion_operator_action_rows.py`: static WPF
   operator-action rows, including PowerShell-shaped Hostess CLI recipes,
-  evidence artifacts, authority owners, and test coverage labels.
+  evidence artifacts, authority owners, test coverage labels, and structured
+  elevation, Quest lease, host mutation, device mutation, and ADB lifecycle
+  metadata.
 - `tools/hostessctl/companion_operator_actions.py`: read-only WPF operator
   action catalog report and validation facade. It emits
   `rusty.hostess.companion.operator_action_catalog.v1` so automation can
   inspect the same visible action ids, command properties, PowerShell-shaped
-  Hostess CLI routes, evidence artifacts, authority owners, and test coverage
-  that the WPF shell advertises without running those routes.
+  Hostess CLI routes, evidence artifacts, authority owners, test coverage, and
+  route requirement flags that the WPF shell advertises without running those
+  routes.
 - `tools/hostessctl/companion_report_transport_coverage.py`: transport
   coverage row helper for companion-report projection. It derives the
   `transport_coverage.summary` row from already-projected source rows so TCP,

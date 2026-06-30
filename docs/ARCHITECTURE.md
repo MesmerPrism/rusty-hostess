@@ -110,13 +110,17 @@ CLI-equivalent route, evidence artifact, authority owner, and test coverage.
 Hostess keeps the machine-readable row source split as
 `tools/hostessctl/companion_operator_action_rows.py`, while
 `tools/hostessctl/companion_operator_actions.py` owns report assembly and
-validation.
+validation. The row source also carries structured requirement flags for
+elevation, Quest lease use, host mutation, device mutation, and
+`adb-server:lifecycle`; WPF renders/requesters use those flags as metadata and
+do not turn them into a second execution policy.
 The equivalent machine-readable catalog is
 `hostessctl companion-report operator-actions --frontend wpf`, which emits
 `rusty.hostess.companion.operator_action_catalog.v1` without executing the
 advertised routes. `HostessCompanion.Wpf.Tests` compares every WPF catalog row
 with that CLI report so human-visible buttons, automation recipes, evidence
-artifacts, and authority labels stay locked together.
+artifacts, authority labels, and lease/elevation/mutation posture stay locked
+together.
 Session browsing follows the same rule through `companion-session history`,
 which emits `rusty.hostess.companion.session_history.v1`; WPF loads selected
 session artifacts after that route has supplied the report index.

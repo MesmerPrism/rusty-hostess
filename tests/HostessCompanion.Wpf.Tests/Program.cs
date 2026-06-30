@@ -1329,6 +1329,22 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         }
         Assert(!string.IsNullOrWhiteSpace(action.EvidenceArtifact), $"missing evidence artifact for {action.ActionId}");
         Assert(!string.IsNullOrWhiteSpace(action.TestCoverage), $"missing test coverage for {action.ActionId}");
+        Assert(!action.RequiresAdbServerLifecycleLease,
+            $"ordinary WPF operator actions must stay serial-scoped instead of requiring adb-server:lifecycle: {action.ActionId}");
+        if (action.RequiresElevation)
+        {
+            Assert(action.CliRoute.Contains("windows-firewall-rule", StringComparison.Ordinal),
+                $"elevated WPF operator actions must use the Hostess firewall route: {action.ActionId}");
+            Assert(action.MutatesHost,
+                $"elevated WPF operator actions must mark host mutation: {action.ActionId}");
+        }
+        if (action.RequiresQuestLease)
+        {
+            Assert(
+                action.CliRoute.Contains("$QuestSerial", StringComparison.Ordinal)
+                || action.CliRoute.Contains("<quest-serial>", StringComparison.Ordinal),
+                $"Quest-leased WPF operator actions must advertise the serial placeholder: {action.ActionId}");
+        }
     }
     Assert(
         OperatorActionCatalog.All.Any(action =>
@@ -1341,11 +1357,15 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             action.UiCommandProperty == "RunSessionCommand"
             && action.CliRoute.Contains("companion-session run", StringComparison.Ordinal)
             && action.CliRoute.Contains("--out $SessionReport", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
             && action.CliRoute.Contains("--wait-seconds 30", StringComparison.Ordinal)
             && action.CliRoute.Contains("--fallback-wait-seconds 30", StringComparison.Ordinal)
             && action.CliRoute.Contains("--runtime-subscriber-retry-count 8", StringComparison.Ordinal)
-            && action.CliRoute.Contains("--runtime-subscriber-retry-wait-seconds 2", StringComparison.Ordinal)),
-        "session run must advertise the robust runtime receipt CLI route");
+            && action.CliRoute.Contains("--runtime-subscriber-retry-wait-seconds 2", StringComparison.Ordinal)
+            && action.RequiresQuestLease
+            && action.MutatesHost
+            && action.MutatesDevice),
+        "session run must advertise the robust headset-bound runtime receipt CLI route");
     Assert(
         OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "LoadSessionHistoryCommand"
@@ -1355,7 +1375,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "RunProbeCommand"
             && action.CliRoute.Contains("run-bridge-command-live-android --input $PrimaryInput --out $PrimaryEvidence --adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
-            && action.CliRoute.Contains("run-bridge-command-android --input $FallbackInput --out $FallbackEvidence --adb $Adb --serial $QuestSerial", StringComparison.Ordinal)),
+            && action.CliRoute.Contains("run-bridge-command-android --input $FallbackInput --out $FallbackEvidence --adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
+            && action.RequiresQuestLease
+            && action.MutatesHost
+            && action.MutatesDevice),
         "safe bridge probe must name input, output, ADB, and serial placeholders for both primary and fallback CLI routes");
     Assert(
         OperatorActionCatalog.All.Any(action =>
@@ -1365,7 +1388,9 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             && action.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport", StringComparison.Ordinal)
             && action.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
             && action.CliRoute.Contains("--udp-listener-helper $HostessCompanionWpfExe", StringComparison.Ordinal)
-            && action.CliRoute.Contains("connectivity-probe stream-capability --input $ConnectivityReport --out $StreamCapability", StringComparison.Ordinal)),
+            && action.CliRoute.Contains("connectivity-probe stream-capability --input $ConnectivityReport --out $StreamCapability", StringComparison.Ordinal)
+            && action.RequiresQuestLease
+            && action.MutatesDevice),
         "connectivity verification must name probe inputs plus probe report and stream-capability descriptor artifacts");
     Assert(
         OperatorActionCatalog.All.Any(action =>
@@ -1378,6 +1403,8 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         action.UiCommandProperty == "RunProtocolMatrixCommand");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal),
         "protocol matrix action must advertise the protocol-matrix CLI route");
+    Assert(protocolMatrixAction.RequiresQuestLease && protocolMatrixAction.MutatesHost && protocolMatrixAction.MutatesDevice,
+        "protocol matrix action must mark its live Quest and product-media side effects");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-artifact-dir", StringComparison.Ordinal),
         "protocol matrix action must advertise latest artifact directory selection");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal),
@@ -1568,6 +1595,20 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(firewallActions.All(action =>
             action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
         "firewall controls must advertise the emitted windows firewall evidence schema");
+    Assert(firewallActions.Single(action => action.ActionId == "wpf.connectivity.firewall.apply").RequiresElevation,
+        "firewall apply must mark elevation");
+    Assert(firewallActions.Single(action => action.ActionId == "wpf.connectivity.firewall.remove").RequiresElevation,
+        "firewall remove must mark elevation");
+    Assert(firewallActions.Where(action =>
+            action.ActionId == "wpf.connectivity.firewall.apply"
+            || action.ActionId == "wpf.connectivity.firewall.remove")
+        .All(action => action.MutatesHost),
+        "firewall apply/remove must mark host mutation");
+    Assert(firewallActions.Where(action =>
+            action.ActionId == "wpf.connectivity.firewall.plan"
+            || action.ActionId == "wpf.connectivity.firewall.verify")
+        .All(action => !action.RequiresElevation && !action.MutatesHost),
+        "firewall plan/verify must remain non-mutating non-elevated actions");
 }
 
 static void OperatorActionCliReportMatchesWpfCatalog()
@@ -1648,6 +1689,16 @@ static void OperatorActionCliReportMatchesWpfCatalog()
             $"operator action authority owner mismatch for {action.ActionId}");
         Assert(JsonString(reportAction, "test_coverage") == action.TestCoverage,
             $"operator action test coverage mismatch for {action.ActionId}");
+        Assert(JsonBool(reportAction, "requires_elevation") == action.RequiresElevation,
+            $"operator action elevation flag mismatch for {action.ActionId}");
+        Assert(JsonBool(reportAction, "requires_quest_lease") == action.RequiresQuestLease,
+            $"operator action Quest lease flag mismatch for {action.ActionId}");
+        Assert(JsonBool(reportAction, "requires_adb_server_lifecycle_lease") == action.RequiresAdbServerLifecycleLease,
+            $"operator action ADB lifecycle lease flag mismatch for {action.ActionId}");
+        Assert(JsonBool(reportAction, "mutates_host") == action.MutatesHost,
+            $"operator action host mutation flag mismatch for {action.ActionId}");
+        Assert(JsonBool(reportAction, "mutates_device") == action.MutatesDevice,
+            $"operator action device mutation flag mismatch for {action.ActionId}");
     }
 }
 
@@ -1665,6 +1716,12 @@ static string JsonString(JsonElement element, string propertyName)
     return element.TryGetProperty(propertyName, out var value)
         ? value.GetString() ?? string.Empty
         : string.Empty;
+}
+
+static bool JsonBool(JsonElement element, string propertyName)
+{
+    return element.TryGetProperty(propertyName, out var value)
+        && value.ValueKind == JsonValueKind.True;
 }
 
 static ConnectivityProtocolEvidenceRow PromotedProtocolRow(

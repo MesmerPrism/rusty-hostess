@@ -94,6 +94,18 @@ def build_companion_operator_action_catalog(
         "summary": {
             "action_count": len(actions),
             "hostess_cli_segment_count": len(segments),
+            "requires_elevation_count": sum(
+                1 for action in actions if action.get("requires_elevation") is True
+            ),
+            "requires_quest_lease_count": sum(
+                1 for action in actions if action.get("requires_quest_lease") is True
+            ),
+            "mutates_host_count": sum(
+                1 for action in actions if action.get("mutates_host") is True
+            ),
+            "mutates_device_count": sum(
+                1 for action in actions if action.get("mutates_device") is True
+            ),
             "all_hostess_cli_segments_name_out": not any(
                 issue.get("issue_code")
                 == "hostess.issue.operator_action_catalog.cli_segment_missing_out"
@@ -136,6 +148,17 @@ def validate_companion_operator_action_catalog(report: dict[str, Any]) -> dict[s
         ]:
             if not str(action_row.get(field) or "").strip():
                 errors.append(f"action {action_id or '<unknown>'} missing {field}")
+        for bool_field in [
+            "requires_elevation",
+            "requires_quest_lease",
+            "requires_adb_server_lifecycle_lease",
+            "mutates_host",
+            "mutates_device",
+        ]:
+            if not isinstance(action_row.get(bool_field), bool):
+                errors.append(
+                    f"action {action_id or '<unknown>'} missing boolean {bool_field}"
+                )
     for catalog_issue in list_objects(report.get("issues")):
         message = str(catalog_issue.get("message") or catalog_issue.get("issue_code") or "")
         if catalog_issue.get("severity") == "error":
@@ -207,6 +230,33 @@ def operator_catalog_issues(
                         action_id=action_id,
                     )
                 )
+        if action_row.get("requires_quest_lease") is True and "quest" not in route.lower():
+            issues.append(
+                issue(
+                    "hostess.issue.operator_action_catalog.quest_lease_unexplained",
+                    "error",
+                    f"action {action_id or '<unknown>'} requires a Quest lease but the route has no Quest context",
+                    action_id=action_id,
+                )
+            )
+        if action_row.get("requires_elevation") is True and "windows-firewall-rule" not in route:
+            issues.append(
+                issue(
+                    "hostess.issue.operator_action_catalog.elevation_unexplained",
+                    "error",
+                    f"action {action_id or '<unknown>'} requires elevation outside a Hostess firewall route",
+                    action_id=action_id,
+                )
+            )
+        if action_row.get("requires_adb_server_lifecycle_lease") is True:
+            issues.append(
+                issue(
+                    "hostess.issue.operator_action_catalog.adb_lifecycle_over_serial_scoped_action",
+                    "error",
+                    f"action {action_id or '<unknown>'} should not require adb-server:lifecycle for serial-scoped WPF routes",
+                    action_id=action_id,
+                )
+            )
     return issues
 
 

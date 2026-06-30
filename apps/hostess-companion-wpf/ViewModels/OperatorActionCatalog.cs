@@ -102,14 +102,20 @@ public static class OperatorActionCatalog
             "Run companion session",
             "RunSessionCommand",
             "$SessionReport = 'target\\companion-session\\wpf-session.json'; " +
+            "$Adb = '<adb>'; " +
+            "$QuestSerial = '<quest-serial>'; " +
             HostessCtl + "companion-session run --out $SessionReport --frontend wpf --profile hostess-makepad-quest " +
+            "--adb $Adb --serial $QuestSerial " +
             "--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30 " +
             "--broker-process-wait-seconds 20 --makepad-process-wait-seconds 20 " +
             "--socket-wait-seconds 20 --launch-settle-seconds 8 " +
             "--runtime-subscriber-retry-count 8 --runtime-subscriber-retry-wait-seconds 2",
             "rusty.hostess.companion.session.v1; rusty.quest.device_link.v1",
             "Hostess",
-            "tools.test_hostessctl_companion_session; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_companion_session; HostessCompanion.Wpf.Tests",
+            RequiresQuestLease: true,
+            MutatesHost: true,
+            MutatesDevice: true),
         new(
             "wpf.session.history",
             "Load session history",
@@ -141,7 +147,10 @@ public static class OperatorActionCatalog
             "if ($LASTEXITCODE -ne 0) { " + HostessCtl + "run-bridge-command-android --input $FallbackInput --out $FallbackEvidence --adb $Adb --serial $QuestSerial }",
             "rusty.hostess.bridge_command.live_android_execution_evidence.v1",
             "Hostess / Manifold / Rusty Quest",
-            "tools.test_hostessctl_bridge_command_live_android; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_bridge_command_live_android; HostessCompanion.Wpf.Tests",
+            RequiresQuestLease: true,
+            MutatesHost: true,
+            MutatesDevice: true),
         new(
             "wpf.connectivity.firewall.plan",
             "Plan firewall rule",
@@ -161,7 +170,9 @@ public static class OperatorActionCatalog
             HostessCtl + "connectivity-probe windows-firewall-rule --action apply --rule-profile '<rule-profile>' --out $FirewallApply --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
-            "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
+            RequiresElevation: true,
+            MutatesHost: true),
         new(
             "wpf.connectivity.firewall.verify",
             "Verify firewall rule",
@@ -190,7 +201,9 @@ public static class OperatorActionCatalog
             HostessCtl + "connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport --adb $Adb --serial $QuestSerial --tcp-echo-port $TcpEchoPort }",
             "rusty.hostess.connectivity_probe.v1; rusty.quest.device_link.stream_capability.v1",
             "Hostess / Rusty Quest",
-            "tools.test_hostessctl_connectivity_probe; tools.test_hostessctl_device_link_report; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_connectivity_probe; tools.test_hostessctl_device_link_report; HostessCompanion.Wpf.Tests",
+            RequiresQuestLease: true,
+            MutatesDevice: true),
         new(
             "wpf.connectivity.suite",
             "Run connectivity suite",
@@ -211,7 +224,10 @@ public static class OperatorActionCatalog
             ProtocolMatrixCliRoute,
             "rusty.quest.device_link.protocol_evidence_matrix.v1; rusty.quest.connectivity_topology_probe.v1; rusty.hostess.direct_wifi_product_media_acceptance_plan.v1; rusty.hostess.companion.report_projection.v1; rusty.hostess.companion.transport_gate_report.v1",
             "Hostess / Rusty Quest / Manifold",
-            "tools.test_hostessctl_protocol_evidence_matrix; tools.test_hostessctl_companion_report_projection; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_protocol_evidence_matrix; tools.test_hostessctl_companion_report_projection; HostessCompanion.Wpf.Tests",
+            RequiresQuestLease: true,
+            MutatesHost: true,
+            MutatesDevice: true),
         new(
             "wpf.connectivity.firewall.remove",
             "Remove firewall rule",
@@ -222,6 +238,8 @@ public static class OperatorActionCatalog
             HostessCtl + "connectivity-probe windows-firewall-rule --action remove --rule-profile '<rule-profile>' --out $FirewallRemove --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
-            "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
+            "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
+            RequiresElevation: true,
+            MutatesHost: true),
     ];
 }

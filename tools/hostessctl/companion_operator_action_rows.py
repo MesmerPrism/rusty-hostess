@@ -114,8 +114,11 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "Run companion session",
             "RunSessionCommand",
             r"$SessionReport = 'target\companion-session\wpf-session.json'; "
+            r"$Adb = '<adb>'; "
+            r"$QuestSerial = '<quest-serial>'; "
             + HOSTESS_CTL
             + "companion-session run --out $SessionReport --frontend wpf --profile hostess-makepad-quest "
+            "--adb $Adb --serial $QuestSerial "
             "--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30 "
             "--broker-process-wait-seconds 20 --makepad-process-wait-seconds 20 "
             "--socket-wait-seconds 20 --launch-settle-seconds 8 "
@@ -123,6 +126,9 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.hostess.companion.session.v1; rusty.quest.device_link.v1",
             "Hostess",
             "tools.test_hostessctl_companion_session; HostessCompanion.Wpf.Tests",
+            requires_quest_lease=True,
+            mutates_host=True,
+            mutates_device=True,
         ),
         action(
             "wpf.session.history",
@@ -165,6 +171,9 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.hostess.bridge_command.live_android_execution_evidence.v1",
             "Hostess / Manifold / Rusty Quest",
             "tools.test_hostessctl_bridge_command_live_android; HostessCompanion.Wpf.Tests",
+            requires_quest_lease=True,
+            mutates_host=True,
+            mutates_device=True,
         ),
         action(
             "wpf.connectivity.firewall.plan",
@@ -189,6 +198,8 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
+            requires_elevation=True,
+            mutates_host=True,
         ),
         action(
             "wpf.connectivity.firewall.verify",
@@ -224,6 +235,8 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.hostess.connectivity_probe.v1; rusty.quest.device_link.stream_capability.v1",
             "Hostess / Rusty Quest",
             "tools.test_hostessctl_connectivity_probe; tools.test_hostessctl_device_link_report; HostessCompanion.Wpf.Tests",
+            requires_quest_lease=True,
+            mutates_device=True,
         ),
         action(
             "wpf.connectivity.suite",
@@ -248,6 +261,9 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.quest.device_link.protocol_evidence_matrix.v1; rusty.quest.connectivity_topology_probe.v1; rusty.hostess.direct_wifi_product_media_acceptance_plan.v1; rusty.hostess.companion.report_projection.v1; rusty.hostess.companion.transport_gate_report.v1",
             "Hostess / Rusty Quest / Manifold",
             "tools.test_hostessctl_protocol_evidence_matrix; tools.test_hostessctl_companion_report_projection; HostessCompanion.Wpf.Tests",
+            requires_quest_lease=True,
+            mutates_host=True,
+            mutates_device=True,
         ),
         action(
             "wpf.connectivity.firewall.remove",
@@ -261,6 +277,8 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
+            requires_elevation=True,
+            mutates_host=True,
         ),
     ]
 
@@ -273,6 +291,12 @@ def action(
     evidence_artifact: str,
     authority_owner: str,
     test_coverage: str,
+    *,
+    requires_elevation: bool = False,
+    requires_quest_lease: bool = False,
+    requires_adb_server_lifecycle_lease: bool = False,
+    mutates_host: bool = False,
+    mutates_device: bool = False,
 ) -> dict[str, Any]:
     return {
         "action_id": action_id,
@@ -282,6 +306,11 @@ def action(
         "evidence_artifact": evidence_artifact,
         "authority_owner": authority_owner,
         "test_coverage": test_coverage,
+        "requires_elevation": requires_elevation,
+        "requires_quest_lease": requires_quest_lease,
+        "requires_adb_server_lifecycle_lease": requires_adb_server_lifecycle_lease,
+        "mutates_host": mutates_host,
+        "mutates_device": mutates_device,
     }
 
 
