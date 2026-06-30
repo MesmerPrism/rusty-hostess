@@ -122,6 +122,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertTrue(report["promotion"]["allowed"])
         self.assertEqual(report["transport"]["route"], "wifi_direct_lifecycle_artifact")
         self.assertEqual(check(report, "wifi_direct.lifecycle_source")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.quest_lease")["status"], "pass")
         self.assertEqual(check(report, "topology.socket_exchange")["status"], "pass")
         self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "pass")
         self.assertEqual(report["measurements"]["cleanup_completed"], True)
@@ -156,8 +157,47 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(report["host"]["os"], "android_phone_peer")
         self.assertEqual(report["transport"]["route"], "wifi_direct_lifecycle_artifact")
         self.assertEqual(check(report, "wifi_direct.lifecycle_source")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.quest_lease")["status"], "pass")
         self.assertEqual(check(report, "topology.socket_exchange")["status"], "pass")
         self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "pass")
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_without_quest_lease_receipt(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact.pop("lease")
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        lease_check = check(report, "wifi_direct.quest_lease")
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(lease_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_quest_lease_missing",
+            lease_check["issue_codes"],
+        )
+        self.assertTrue(
+            any(
+                issue["issue_code"] == "hostess.issue.connectivity_probe.wifi_direct_live_topology_not_promoted"
+                for issue in report["issues"]
+            )
+        )
         self.assertEqual(validation["status"], "pass")
 
     def test_wifi_direct_lifecycle_report_blocks_when_cleanup_missing(self) -> None:
@@ -269,6 +309,10 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(artifact["evidence_tier"], "template")
         self.assertFalse(artifact["live_evidence"])
         self.assertTrue(artifact["contract"]["non_promoting_template"])
+        self.assertEqual(artifact["lease"]["manager"], "Agent Board")
+        self.assertEqual(artifact["lease"]["resource"], "quest:<quest-serial>")
+        self.assertFalse(artifact["lease"]["reserved_before_live_steps"])
+        self.assertFalse(artifact["lease"]["released_after_live_steps"])
         self.assertEqual(artifact["lifecycle"]["peer_discovery"]["peer_count"], 0)
         self.assertIsNone(artifact["lifecycle"]["group_formation"]["local_role"])
         self.assertIsNone(artifact["lifecycle"]["group_formation"]["peer_role"])

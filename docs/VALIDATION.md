@@ -300,8 +300,12 @@ source artifact must include a positive `peer_discovery.peer_count`, recorded
 `socket_exchange.protocol=tcp`, bounded
 `socket_exchange.payload_class=bounded_tcp_probe`, positive
 `socket_exchange.messages_sent` and `socket_exchange.messages_received`
-counters, and `cleanup.completed=true`. A phase with only `status=pass` is
-not enough to clear the topology gate.
+counters, and `cleanup.completed=true`. It must also include a `lease` or
+`agent_board_lease` object proving an Agent Board `quest:<serial>` lease was
+reserved before live Wi-Fi Direct steps and released after cleanup, with a
+real lease id rather than a placeholder. A phase with only `status=pass`, or a
+complete-looking artifact without the lease receipt, is not enough to clear
+the topology gate.
 
 LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
 host-loopback live reports. These are dependency/protocol checks, not Quest

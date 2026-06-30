@@ -27,6 +27,13 @@ LIVE_EVIDENCE_TIERS = {
     "product_harness",
     "product_owned",
 }
+AGENT_BOARD_MANAGER = "Agent Board"
+QUEST_LEASE_RESOURCE_PREFIX = "quest:"
+PLACEHOLDER_TOKENS = {
+    "",
+    "<quest-lease-id>",
+    "LEASE_ID_FROM_RESERVE_OUTPUT",
+}
 
 
 def wifi_direct_lifecycle_probe_report(
@@ -117,6 +124,27 @@ def wifi_direct_lifecycle_template_artifact(
             "os": "windows" if windows_peer else "android_phone_peer",
             "toolchain_profile": "hostessctl.connectivity_probe.wifi_direct_lifecycle_template",
         },
+        "lease": {
+            "manager": AGENT_BOARD_MANAGER,
+            "resource": "quest:<quest-serial>",
+            "lease_id": "<quest-lease-id>",
+            "reserved_before_live_steps": False,
+            "released_after_live_steps": False,
+            "adb_server_lifecycle_lease_used": False,
+            "reserve_command": (
+                "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' "
+                "reserve 'quest:<quest-serial>' --duration 45m "
+                f"--task '{probe_id} direct Wi-Fi lifecycle evidence'"
+            ),
+            "release_command": (
+                "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' "
+                "release '<quest-lease-id>' --result done"
+            ),
+            "adb_server_lifecycle_policy": (
+                "Use adb-server:lifecycle only for disruptive daemon lifecycle "
+                "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
+            ),
+        },
         "lifecycle": {
             "feature": lifecycle_template_phase(
                 "Quest Wi-Fi Direct feature observed by the leased harness"
@@ -186,6 +214,7 @@ def wifi_direct_lifecycle_body(
     windows_peer = probe_id == "QCL-041"
     expected_peer_class = "windows" if windows_peer else "android_phone"
     source_summary = lifecycle_source_summary(artifact, probe_id, expected_peer_class)
+    lease_summary = lifecycle_lease_summary(artifact)
     lifecycle = object_value(artifact.get("lifecycle"))
 
     checks = [
@@ -196,6 +225,7 @@ def wifi_direct_lifecycle_body(
             observed=source_summary,
             issue_codes=source_summary["issue_codes"],
         ),
+        lifecycle_lease_check(lease_summary),
         lifecycle_check(
             lifecycle,
             "feature",
@@ -300,6 +330,7 @@ def wifi_direct_lifecycle_body(
                 "schema": source_summary["schema"],
                 "evidence_tier": source_summary["evidence_tier"],
                 "capture_kind": source_summary["capture_kind"],
+                "quest_lease_valid": lease_summary["valid"],
             }
         ],
         "promotion": {
@@ -314,6 +345,64 @@ def wifi_direct_lifecycle_body(
                 )
             ),
         },
+    }
+
+
+def lifecycle_lease_check(summary: dict[str, Any]) -> dict[str, Any]:
+    return check_row(
+        "wifi_direct.quest_lease",
+        "pass" if summary["valid"] else "blocked",
+        (
+            "Agent Board quest lease was reserved before live Wi-Fi Direct steps and released after cleanup"
+            if summary["valid"]
+            else "live Wi-Fi Direct lifecycle evidence is missing an accepted Agent Board quest lease receipt"
+        ),
+        observed=summary,
+        issue_codes=summary["issue_codes"],
+    )
+
+
+def lifecycle_lease_summary(artifact: dict[str, Any]) -> dict[str, Any]:
+    lease = object_value(artifact.get("lease") or artifact.get("agent_board_lease"))
+    manager = str(lease.get("manager") or lease.get("provider") or "").strip()
+    resource = str(lease.get("resource") or "").strip()
+    lease_id = str(lease.get("lease_id") or lease.get("id") or "").strip()
+    reserved_before = (
+        lease.get("reserved_before_live_steps") is True
+        or lease.get("reserved") is True
+        or str(lease.get("reserve_status") or "").lower() == "pass"
+    )
+    released_after = (
+        lease.get("released_after_live_steps") is True
+        or str(lease.get("release_result") or "").lower() in {"done", "pass", "released"}
+        or str(lease.get("release_status") or "").lower() == "pass"
+    )
+    adb_server_lifecycle_used = lease.get("adb_server_lifecycle_lease_used") is True
+
+    issue_codes: list[str] = []
+    if manager != AGENT_BOARD_MANAGER:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_missing")
+    if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX) or "<" in resource:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_resource_invalid")
+    if lease_id in PLACEHOLDER_TOKENS or "<" in lease_id:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_id_missing")
+    if not reserved_before:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_not_reserved")
+    if not released_after:
+        issue_codes.append("hostess.issue.connectivity_probe.wifi_direct_quest_lease_not_released")
+
+    return {
+        "manager": manager,
+        "resource": resource,
+        "lease_id": lease_id,
+        "reserved_before_live_steps": reserved_before,
+        "released_after_live_steps": released_after,
+        "adb_server_lifecycle_lease_used": adb_server_lifecycle_used,
+        "valid": not issue_codes,
+        "issue_codes": issue_codes,
+        "reserve_command": str(lease.get("reserve_command") or ""),
+        "release_command": str(lease.get("release_command") or ""),
+        "adb_server_lifecycle_policy": str(lease.get("adb_server_lifecycle_policy") or ""),
     }
 
 
@@ -503,6 +592,7 @@ def int_value(raw: Any) -> int | None:
 __all__ = [
     "WIFI_DIRECT_LIFECYCLE_SCHEMA",
     "run_wifi_direct_lifecycle_template",
+    "lifecycle_lease_summary",
     "wifi_direct_lifecycle_body",
     "wifi_direct_lifecycle_probe_report",
     "wifi_direct_lifecycle_template_artifact",

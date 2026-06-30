@@ -584,9 +584,11 @@ WPF should render the blocked report and transport gate; it must not infer live
 direct-Wi-Fi topology from normal LAN echo rows.
 For a lifecycle source artifact to promote, Hostess also requires a positive
 peer count, recorded local/peer group roles, positive bounded TCP
-messages-sent/messages-received counters, and `cleanup.completed=true`.
-WPF renders those Hostess checks; it does not reinterpret a source artifact
-that merely marks phases as `status=pass`.
+messages-sent/messages-received counters, `cleanup.completed=true`, and an
+Agent Board `quest:<serial>` lease receipt in the source artifact with a real
+lease id plus reserve-before-live and release-after-cleanup metadata. WPF
+renders those Hostess checks; it does not reinterpret a source artifact that
+merely marks phases as `status=pass` or omits lease proof.
 
 Automation can materialize the same WPF-visible gate state as a standalone
 read-only artifact:

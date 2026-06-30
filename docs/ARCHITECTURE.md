@@ -296,6 +296,14 @@ promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
 is an automation guard only. WPF uses the same route without
 `--fail-on-pending` so pending gates remain visible instead of turning the UI
 refresh into a failed command.
+For direct-Wi-Fi topology promotion, the QCL-040/QCL-041 lifecycle source
+artifact itself must also prove lease discipline. The
+`tools/hostessctl/connectivity_topology_lifecycle.py` normalizer blocks
+promotion unless the source carries an Agent Board `quest:<serial>` lease
+receipt with a real lease id, reserve-before-live metadata, and
+release-after-cleanup metadata. WPF may render the lease requirement and the
+Hostess checks, but it must not infer topology readiness from an action label,
+preflight row, or status-only lifecycle artifact.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and

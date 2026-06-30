@@ -1284,6 +1284,27 @@ def wifi_direct_lifecycle_artifact(
             "os": "windows" if windows_peer else "android_phone_peer",
             "toolchain_profile": "fixture.wifi_direct_lifecycle",
         },
+        "lease": {
+            "manager": "Agent Board",
+            "resource": "quest:TESTQUESTSERIAL",
+            "lease_id": "unit-test-quest-lease",
+            "reserved_before_live_steps": live_evidence,
+            "released_after_live_steps": live_evidence,
+            "adb_server_lifecycle_lease_used": False,
+            "reserve_command": (
+                "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' "
+                "reserve 'quest:TESTQUESTSERIAL' --duration 45m "
+                f"--task '{probe_id} direct Wi-Fi lifecycle evidence'"
+            ),
+            "release_command": (
+                "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' "
+                "release 'unit-test-quest-lease' --result done"
+            ),
+            "adb_server_lifecycle_policy": (
+                "Use adb-server:lifecycle only for disruptive daemon lifecycle "
+                "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
+            ),
+        },
         "lifecycle": lifecycle,
         "measurements": {
             "tcp_connect_ms": 91,
