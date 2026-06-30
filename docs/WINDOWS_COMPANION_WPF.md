@@ -491,10 +491,14 @@ flags remain a lower-level compatibility route.
 The route requires a `quest:<serial>` lease and serial-scoped ADB for live
 headset work, but it does not mutate firewall state and does not require
 `adb-server:lifecycle` unless the run also performs disruptive ADB daemon
-recovery or Wi-Fi ADB setup. Hostess blocks before arming the receiver or
-starting the live Android command unless the command includes
-`--quest-lease-id`, `--quest-lease-resource`, and
-`--quest-lease-reserved-before-live-steps`.
+recovery or Wi-Fi ADB setup. That lease is necessary but not sufficient:
+Hostess also requires a promoted direct-Wi-Fi topology report and a verified
+product Hostess/WPF listener firewall report. If those dependencies are missing
+or unready, Hostess writes a blocked receiver result with
+`close_reason=blocked_missing_product_media_dependencies`, does not write the
+start-source request, does not arm the receiver, and does not start the live
+Android command. WPF renders that blocked evidence; it must not bypass the CLI
+preflight from UI handlers.
 
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script

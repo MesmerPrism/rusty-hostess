@@ -26,6 +26,7 @@ from tools.hostessctl.connectivity_probe_common import (
     empty_measurements,
     issue_row,
     object_value,
+    read_json_file,
     round_float,
 )
 
@@ -132,11 +133,23 @@ def blocked_receiver_capture_result(
     *,
     capture_kind: str,
     quest_lease: dict[str, Any],
+    close_reason: str = "blocked_missing_quest_lease",
+    extra_issue_codes: list[str] | None = None,
+    dependency_preflight: dict[str, Any] | None = None,
     live_session: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     capture_path = str(getattr(args, "capture_out", "") or "")
     sidecar_path = str(getattr(args, "sidecar_out", "") or "")
-    issue_codes = sorted(set(str(code) for code in quest_lease.get("issue_codes", []) if str(code)))
+    issue_codes = sorted(
+        set(
+            str(code)
+            for code in [
+                *(quest_lease.get("issue_codes", []) or []),
+                *(extra_issue_codes or []),
+            ]
+            if str(code)
+        )
+    )
     return {
         "schema": RECEIVER_CAPTURE_RESULT_SCHEMA,
         "status": "fail",
@@ -150,7 +163,7 @@ def blocked_receiver_capture_result(
         "local_endpoint": "",
         "remote_endpoint": "",
         "accepted_connection": False,
-        "close_reason": "blocked_missing_quest_lease",
+        "close_reason": close_reason,
         "elapsed_ms": 0.0,
         "bytes_written": 0,
         "issue_codes": issue_codes,
@@ -168,7 +181,7 @@ def blocked_receiver_capture_result(
             "live_capture": capture_kind in LIVE_CAPTURE_KINDS,
             "receiver": {
                 "local_endpoint": "",
-                "close_reason": "blocked_missing_quest_lease",
+                "close_reason": close_reason,
                 "queue_capacity_packets": None,
                 "max_queue_depth_observed": None,
                 "dropped_frames": None,
@@ -183,7 +196,60 @@ def blocked_receiver_capture_result(
             "lease": quest_lease,
         },
         "quest_lease": quest_lease,
+        "dependency_preflight": object_value(dependency_preflight),
         "live_session": live_session or {},
+    }
+
+
+def media_live_dependency_preflight_from_args(args: Any) -> dict[str, Any]:
+    """Check product-media live dependencies without running live steps."""
+
+    topology_path = str(getattr(args, "topology_report", "") or "").strip()
+    firewall_path = str(getattr(args, "firewall_report", "") or "").strip()
+    capture_kind = str(getattr(args, "capture_kind", "live_broker_stream") or "live_broker_stream")
+    topology_report = read_json_file(Path(topology_path)) if topology_path else {}
+    firewall_report = read_json_file(Path(firewall_path)) if firewall_path else {}
+    topology = media_product_topology_summary(
+        topology_report,
+        topology_report_path=topology_path,
+        media_promotion_allowed=True,
+        media_transport_ok=True,
+        runtime_ok=True,
+        capture_kind=capture_kind,
+    )
+    firewall = media_product_listener_firewall_summary(
+        firewall_report,
+        firewall_report_path=firewall_path,
+        media_promotion_allowed=True,
+        capture_kind=capture_kind,
+    )
+    issue_codes: list[str] = []
+    if not topology["topology_report_present"]:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.media_live_session_topology_report_missing"
+        )
+    elif not topology["ready"]:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.media_live_session_direct_wifi_topology_not_ready"
+        )
+    if not firewall["firewall_report_present"]:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.media_live_session_firewall_report_missing"
+        )
+    elif not firewall["ready"]:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.media_live_session_listener_firewall_not_ready"
+        )
+    issue_codes.extend(str(code) for code in topology.get("issue_codes", []) or [])
+    issue_codes.extend(str(code) for code in firewall.get("issue_codes", []) or [])
+    ready = topology["ready"] and firewall["ready"]
+    return {
+        "ready": ready,
+        "requires_promoted_direct_wifi_topology": True,
+        "requires_product_listener_firewall": True,
+        "topology": topology,
+        "firewall": firewall,
+        "issue_codes": sorted(set(code for code in issue_codes if code)),
     }
 
 
@@ -205,6 +271,24 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
         if getattr(args, "fail_on_error", False):
             return 2
         return 0
+    if capture_kind in LIVE_CAPTURE_KINDS:
+        dependency_preflight = media_live_dependency_preflight_from_args(args)
+        if not dependency_preflight["ready"]:
+            result = blocked_receiver_capture_result(
+                args,
+                capture_kind=capture_kind,
+                quest_lease=quest_lease,
+                close_reason="blocked_missing_product_media_dependencies",
+                extra_issue_codes=list(dependency_preflight.get("issue_codes") or []),
+                dependency_preflight=dependency_preflight,
+            )
+            out = Path(getattr(args, "out"))
+            result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
+            out.parent.mkdir(parents=True, exist_ok=True)
+            out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            if getattr(args, "fail_on_error", False):
+                return 2
+            return 0
 
     result = capture_rmanvid1_receiver_stream(
         bind_host=str(getattr(args, "bind_host", "0.0.0.0") or "0.0.0.0"),
@@ -286,6 +370,44 @@ def run_qcl082_product_media_live_session(
             args,
             capture_kind=str(getattr(args, "capture_kind", "live_broker_stream") or "live_broker_stream"),
             quest_lease=quest_lease,
+            live_session=live_session,
+        )
+        out = Path(getattr(args, "out"))
+        result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if getattr(args, "fail_on_error", False):
+            return 2
+        return 0
+
+    dependency_preflight = media_live_dependency_preflight_from_args(args)
+    if not dependency_preflight["ready"]:
+        live_session = {
+            "schema": RECEIVER_LIVE_SESSION_SCHEMA,
+            "bridge_command": str(getattr(args, "bridge_command", "") or DEFAULT_QCL082_START_SOURCE_COMMAND),
+            "request_path": str(getattr(args, "start_source_request_out", "") or ""),
+            "bridge_evidence_path": str(getattr(args, "bridge_evidence_out", "") or ""),
+            "execution_path": str(getattr(args, "execution_out", "") or ""),
+            "validation_path": str(getattr(args, "validation_out", "") or ""),
+            "logcat_path": str(getattr(args, "logcat_out", "") or ""),
+            "receiver_armed_before_command": False,
+            "receiver_local_endpoint": "",
+            "live_command_returncode": None,
+            "live_command_finished": False,
+            "live_command_error": "blocked before live steps because product media dependencies are missing",
+            "requires_quest_lease": True,
+            "requires_adb_server_lifecycle_lease": False,
+            "quest_lease": quest_lease,
+            "dependency_preflight": dependency_preflight,
+            "adb_server_lifecycle_policy": adb_server_lifecycle_policy(),
+        }
+        result = blocked_receiver_capture_result(
+            args,
+            capture_kind=str(getattr(args, "capture_kind", "live_broker_stream") or "live_broker_stream"),
+            quest_lease=quest_lease,
+            close_reason="blocked_missing_product_media_dependencies",
+            extra_issue_codes=list(dependency_preflight.get("issue_codes") or []),
+            dependency_preflight=dependency_preflight,
             live_session=live_session,
         )
         out = Path(getattr(args, "out"))

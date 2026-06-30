@@ -424,11 +424,13 @@ gate. It also owns the orchestrated
 same receiver and bridge-command helpers so the TCP listener is already armed
 before the Quest/Manifold `start_source` command is sent. That route writes the
 request, bridge evidence, live execution, validation, logcat, capture, sidecar,
-and receiver-result artifacts. It blocks before arming the receiver or running
+and receiver-result artifacts only after its live preflight passes. The
+preflight blocks before writing the request, arming the receiver, or running
 serial-scoped ADB unless the operator supplies an Agent Board `quest:<serial>`
-lease id/resource, but it still does not apply firewall rules, collect Wi-Fi
-Direct lifecycle evidence, choose Android camera/display sources, or promote
-QCL-082 by itself;
+lease id/resource, a promoted direct-Wi-Fi topology report, and a verified
+product Hostess/WPF listener firewall report. It still does not apply firewall
+rules, collect Wi-Fi Direct lifecycle evidence, choose Android camera/display
+sources, or promote QCL-082 by itself;
 `connectivity_media_product_plan.py` owns the read-only QCL-082 product-media
 direct-Wi-Fi plan artifact. It binds the existing Hostess CLI routes,
 dependency gates, Quest lease policy, PowerShell command strings, and

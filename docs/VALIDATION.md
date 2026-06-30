@@ -463,16 +463,20 @@ For live acceptance, prefer the orchestrated
 `connectivity-probe qcl082-product-media-live-session` route over separate
 `run-bridge-command-live-android` plus `rmanvid1-receiver-capture` fragments.
 It writes the inspectable start-source request, starts the bounded RMANVID1 TCP
-receiver, and only then sends the Quest/Manifold source command. The route uses
-serial-scoped ADB, requires a `quest:<serial>` lease for live headset work, and
-does not require an `adb-server:lifecycle` lease unless the run also performs
-disruptive ADB daemon recovery or Wi-Fi ADB setup. It does not mutate firewall
-state and does not clear product gates until the follow-on QCL-082 fold-in and
-protocol-matrix/projection routes consume the generated artifacts. The route
-blocks before arming the receiver or starting the live Android command unless
-`--quest-lease-id`, `--quest-lease-resource`, and
-`--quest-lease-reserved-before-live-steps` prove the operator reserved the
-Quest through Agent Board first.
+receiver, and only then sends the Quest/Manifold source command after its live
+preflight passes. The route uses serial-scoped ADB, requires a `quest:<serial>`
+lease for live headset work, and does not require an `adb-server:lifecycle`
+lease unless the run also performs disruptive ADB daemon recovery or Wi-Fi ADB
+setup. It does not mutate firewall state and does not clear product gates until
+the follow-on QCL-082 fold-in and protocol-matrix/projection routes consume the
+generated artifacts. A valid `quest:<serial>` lease is necessary but not
+sufficient: the route also requires `--topology-report` to resolve to a
+promoted direct-Wi-Fi topology report and `--firewall-report` to resolve to a
+verified product Hostess/WPF listener firewall report. If either dependency is
+missing or unready, Hostess writes a blocked receiver result with
+`close_reason=blocked_missing_product_media_dependencies`, does not write the
+start-source request, does not arm the receiver, and does not start the live
+Android command.
 
 If verification reports `product_rule_verified=false`, run the same command
 with `--action apply` from an elevated PowerShell session, then rerun

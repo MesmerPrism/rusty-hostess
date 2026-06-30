@@ -750,6 +750,53 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "pass")
         self.assertEqual(check(report, "protocol.media_timestamp_policy")["status"], "pass")
 
+    def test_qcl082_rmanvid1_live_receiver_blocks_without_product_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "captured.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            status = run_rmanvid1_receiver_capture(
+                probe_args(
+                    connectivity_probe_command="rmanvid1-receiver-capture",
+                    out=str(result_path),
+                    capture_out=str(capture_path),
+                    sidecar_out=str(sidecar_path),
+                    bind_host="127.0.0.1",
+                    port=free_tcp_port(),
+                    timeout_seconds=0.01,
+                    max_packets=4,
+                    max_bytes=1048576,
+                    max_packet_bytes=4194304,
+                    max_metadata_bytes=262144,
+                    queue_capacity_packets=48,
+                    capture_kind="live_broker_stream",
+                    runtime_status=str(root / "runtime-status.json"),
+                    topology_report=str(root / "missing-topology.json"),
+                    firewall_report=str(root / "missing-firewall.json"),
+                    quest_lease_id="unit-test-quest-lease",
+                    quest_lease_resource="quest:TESTQUESTSERIAL",
+                    quest_lease_reserved_before_live_steps=True,
+                    fail_on_error=True,
+                )
+            )
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 2)
+        self.assertFalse(capture_path.exists())
+        self.assertFalse(sidecar_path.exists())
+        self.assertFalse(receipt["accepted_connection"])
+        self.assertEqual(receipt["close_reason"], "blocked_missing_product_media_dependencies")
+        self.assertFalse(receipt["dependency_preflight"]["ready"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_live_session_topology_report_missing",
+            receipt["issue_codes"],
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_live_session_firewall_report_missing",
+            receipt["issue_codes"],
+        )
+
     def test_qcl082_product_media_live_session_arms_receiver_before_command(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -912,5 +959,68 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertFalse(receipt["live_session"]["quest_lease"]["valid"])
         self.assertIn(
             "hostess.issue.connectivity_probe.media_receiver_quest_lease_id_missing",
+            receipt["issue_codes"],
+        )
+
+    def test_qcl082_product_media_live_session_blocks_without_product_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            request_path = root / "media-stream-start-source.request.json"
+            bridge_path = root / "media-stream-start-source.bridge-evidence.json"
+            execution_path = root / "media-stream-start-source.live-android-execution.json"
+            validation_path = root / "media-stream-start-source.validation-report.json"
+            logcat_path = root / "media-stream-start-source.logcat.txt"
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "media-stream-receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            runner_called = {"value": False}
+
+            def fake_live_android_runner(*_: object, **__: object) -> int:
+                runner_called["value"] = True
+                return 0
+
+            status = run_qcl082_product_media_live_session(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-live-session",
+                    out=str(result_path),
+                    start_source_request_out=str(request_path),
+                    bridge_evidence_out=str(bridge_path),
+                    execution_out=str(execution_path),
+                    validation_out=str(validation_path),
+                    logcat_out=str(logcat_path),
+                    capture_out=str(capture_path),
+                    sidecar_out=str(sidecar_path),
+                    bind_host="127.0.0.1",
+                    port=free_tcp_port(),
+                    timeout_seconds=0.01,
+                    capture_kind="live_broker_stream",
+                    topology_report=str(root / "missing-topology.json"),
+                    firewall_report=str(root / "missing-firewall.json"),
+                    adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                    serial="TESTQUESTSERIAL",
+                    quest_lease_id="unit-test-quest-lease",
+                    quest_lease_resource="quest:TESTQUESTSERIAL",
+                    quest_lease_reserved_before_live_steps=True,
+                    fail_on_error=True,
+                ),
+                live_android_runner=fake_live_android_runner,
+            )
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 2)
+        self.assertFalse(runner_called["value"])
+        self.assertFalse(request_path.exists())
+        self.assertFalse(capture_path.exists())
+        self.assertFalse(sidecar_path.exists())
+        self.assertEqual(receipt["close_reason"], "blocked_missing_product_media_dependencies")
+        self.assertFalse(receipt["live_session"]["receiver_armed_before_command"])
+        self.assertTrue(receipt["live_session"]["quest_lease"]["valid"])
+        self.assertFalse(receipt["live_session"]["dependency_preflight"]["ready"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_live_session_topology_report_missing",
+            receipt["issue_codes"],
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_live_session_firewall_report_missing",
             receipt["issue_codes"],
         )
