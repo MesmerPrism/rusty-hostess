@@ -620,6 +620,13 @@ def build_hostessctl_parser(
     companion_report_projection.add_argument("--include-protocol-matrix-inputs", action="store_true")
     companion_report_projection.add_argument("--suite-run", action="append")
     companion_report_projection.add_argument("--fail-on-error", action="store_true")
+    companion_report_transport_gates = companion_report_subcommands.add_parser("transport-gates")
+    companion_report_transport_gates.add_argument("--projection", required=True)
+    companion_report_transport_gates.add_argument("--out", required=True)
+    companion_report_transport_gates.add_argument("--validation-out")
+    companion_report_transport_gates.add_argument("--report-id")
+    companion_report_transport_gates.add_argument("--fail-on-error", action="store_true")
+    companion_report_transport_gates.add_argument("--fail-on-pending", action="store_true")
 
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(

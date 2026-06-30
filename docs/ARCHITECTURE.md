@@ -260,6 +260,14 @@ RMANVID1 TCP listener port. The current product rule name is
 `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079`. Diagnostic Python
 listener allowances stay diagnostic evidence and do not satisfy product
 readiness.
+Transport gate status automation lives in
+`tools/hostessctl/companion_transport_gates.py`. It consumes an existing
+`rusty.hostess.companion.report_projection.v1` artifact and emits
+`rusty.hostess.companion.transport_gate_report.v1`, including the same
+`term_gates` and `remaining_live_gates` WPF renders. Its optional
+`--fail-on-pending` behavior is an automation guard only; it does not run
+probes, choose latest artifacts, mutate firewall/device state, parse media, or
+promote topology/protocol evidence.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and

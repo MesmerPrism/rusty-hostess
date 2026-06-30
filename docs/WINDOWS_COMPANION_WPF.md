@@ -486,6 +486,20 @@ to QCL-040/QCL-041 topology. `remaining_live_gates` names the still-open
 generic WebSocket, live
 direct-Wi-Fi topology, and product TCP media over direct-Wi-Fi gates.
 
+Automation can materialize the same WPF-visible gate state as a standalone
+read-only artifact:
+
+```powershell
+python tools\hostessctl\hostessctl.py companion-report transport-gates `
+  --projection target\companion-report\wpf-connectivity-suite.projection.json `
+  --out target\companion-report\wpf-connectivity-suite.transport-gates.json `
+  --fail-on-error
+```
+
+Use `--fail-on-pending` only for runs that require every transport gate to be
+cleared. The command consumes the projection report; it does not run probes,
+apply firewall rules, parse media, or promote evidence on behalf of WPF.
+
 ## Build
 
 ```powershell

@@ -1,0 +1,237 @@
+"""Read-only transport gate reports derived from companion projections."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from collections.abc import Callable
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from tools.hostessctl.companion_report_projection import (
+    HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+)
+
+
+HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA = (
+    "rusty.hostess.companion.transport_gate_report.v1"
+)
+HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA = (
+    "rusty.hostess.companion.transport_gate_report.validation.v1"
+)
+TRANSPORT_COVERAGE_ROW_ID = "transport_coverage.summary"
+
+
+def run_companion_transport_gates(
+    args: argparse.Namespace,
+    *,
+    clock_func: Callable[[], datetime] | None = None,
+) -> int:
+    report = build_companion_transport_gate_report(
+        args,
+        clock_func=clock_func or utc_now,
+    )
+    validation = validate_companion_transport_gate_report(report)
+
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    validation_out = (
+        Path(args.validation_out)
+        if getattr(args, "validation_out", None)
+        else out.with_name(f"{out.stem}.validation-report.json")
+    )
+    validation_out.parent.mkdir(parents=True, exist_ok=True)
+    validation_out.write_text(
+        json.dumps(validation, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    if getattr(args, "fail_on_error", False) and validation["status"] != "pass":
+        return 2
+    if getattr(args, "fail_on_pending", False) and report["summary"]["remaining_gate_count"]:
+        return 2
+    return 0
+
+
+def build_companion_transport_gate_report(
+    args: argparse.Namespace,
+    *,
+    clock_func: Callable[[], datetime],
+) -> dict[str, Any]:
+    generated_at = clock_func()
+    projection_path = Path(args.projection)
+    projection = read_json(projection_path)
+    issues: list[dict[str, Any]] = []
+
+    coverage_row = transport_coverage_row(projection)
+    if not projection:
+        issues.append(issue("hostess.issue.transport_gates.projection_unreadable", "error"))
+    elif projection.get("$schema") != HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA:
+        issues.append(issue("hostess.issue.transport_gates.unsupported_projection_schema", "error"))
+    if not coverage_row:
+        issues.append(issue("hostess.issue.transport_gates.coverage_row_missing", "error"))
+
+    details = object_value(coverage_row.get("details")) if coverage_row else {}
+    term_gates = object_value(details.get("term_gates"))
+    remaining_live_gates = [
+        normalize_remaining_gate(gate)
+        for gate in list_objects(details.get("remaining_live_gates"))
+    ]
+    remaining_gate_ids = [
+        str(gate.get("gate_id") or "")
+        for gate in remaining_live_gates
+        if str(gate.get("gate_id") or "")
+    ]
+    report_id = str(getattr(args, "report_id", None) or "").strip()
+    if not report_id:
+        report_id = f"transport-gates-{generated_at.strftime('%Y%m%d-%H%M%S')}"
+
+    return {
+        "$schema": HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA,
+        "schema_version": 1,
+        "report_id": report_id,
+        "generated_at_utc": generated_at.isoformat().replace("+00:00", "Z"),
+        "status": "fail" if any_error(issues) else ("warn" if remaining_gate_ids else "pass"),
+        "authority": {
+            "ui_role": "requester_and_inspector",
+            "projection_only": True,
+            "source_artifact": "rusty.hostess.companion.report_projection.v1",
+            "acceptance_owner": "source_projection",
+            "policy": (
+                "This report summarizes transport gates already emitted by "
+                "companion-report projection. It does not run probes, change "
+                "firewall/device state, parse media, or promote protocols."
+            ),
+        },
+        "source_projection": {
+            "path": str(projection_path),
+            "schema": projection.get("$schema") or projection.get("schema"),
+            "projection_id": projection.get("projection_id"),
+            "status": projection.get("status") if projection else "unreadable",
+            "sha256": sha256_file(projection_path),
+        },
+        "summary": {
+            "all_transport_gates_clear": not remaining_gate_ids and not any_error(issues),
+            "remaining_gate_count": len(remaining_gate_ids),
+            "remaining_gate_ids": remaining_gate_ids,
+            "term_gate_count": len(term_gates),
+            "term_gate_ids": sorted(term_gates.keys()),
+        },
+        "term_gates": term_gates,
+        "remaining_live_gates": remaining_live_gates,
+        "issues": issues,
+    }
+
+
+def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str, Any]:
+    errors: list[str] = []
+    warnings: list[str] = []
+    if report.get("$schema") != HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA:
+        errors.append("unsupported companion transport gate report schema")
+    if object_value(report.get("authority")).get("projection_only") is not True:
+        errors.append("transport gate report must set projection_only=true")
+    source = object_value(report.get("source_projection"))
+    if source.get("schema") != HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA:
+        errors.append("source_projection must be a companion report projection")
+    if not str(source.get("path") or "").strip():
+        errors.append("source_projection missing path")
+    summary = object_value(report.get("summary"))
+    remaining = list_value(report.get("remaining_live_gates"))
+    if int_value(summary.get("remaining_gate_count")) != len(remaining):
+        errors.append("remaining_gate_count does not match remaining_live_gates")
+    for gate in remaining:
+        gate_id = str(object_value(gate).get("gate_id") or "")
+        if not gate_id:
+            errors.append("remaining gate missing gate_id")
+        status = str(object_value(gate).get("status") or "")
+        if status in {"pending_live_evidence", "not_in_current_scope"}:
+            warnings.append(f"transport gate remains pending: {gate_id}")
+    for report_issue in list_objects(report.get("issues")):
+        if report_issue.get("severity") == "error":
+            errors.append(str(report_issue.get("issue_code") or "transport gate issue"))
+    return {
+        "$schema": HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA,
+        "status": "pass" if not errors else "fail",
+        "report_id": report.get("report_id"),
+        "source_projection": source.get("path"),
+        "remaining_gate_count": len(remaining),
+        "errors": errors,
+        "warnings": warnings,
+    }
+
+
+def transport_coverage_row(projection: dict[str, Any]) -> dict[str, Any]:
+    for row in list_objects(projection.get("rows")):
+        if row.get("row_id") == TRANSPORT_COVERAGE_ROW_ID:
+            return row
+    return {}
+
+
+def normalize_remaining_gate(gate: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "gate_id": str(gate.get("gate_id") or ""),
+        "status": str(gate.get("status") or "unknown"),
+        "evidence": str(gate.get("evidence") or ""),
+    }
+
+
+def any_error(issues: list[dict[str, Any]]) -> bool:
+    return any(issue_row.get("severity") == "error" for issue_row in issues)
+
+
+def issue(issue_code: str, severity: str) -> dict[str, Any]:
+    return {
+        "issue_code": issue_code,
+        "severity": severity,
+    }
+
+
+def read_json(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def sha256_file(path: Path) -> str:
+    if not path.exists() or not path.is_file():
+        return ""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def object_value(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def list_value(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def list_objects(value: Any) -> list[dict[str, Any]]:
+    return [item for item in value if isinstance(item, dict)] if isinstance(value, list) else []
+
+
+def int_value(value: Any) -> int:
+    return value if isinstance(value, int) else 0
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+__all__ = [
+    "HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA",
+    "HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA",
+    "build_companion_transport_gate_report",
+    "run_companion_transport_gates",
+    "validate_companion_transport_gate_report",
+]

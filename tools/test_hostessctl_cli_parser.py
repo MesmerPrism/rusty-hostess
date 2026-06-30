@@ -157,6 +157,25 @@ class HostessCtlCliParserTests(unittest.TestCase):
         self.assertEqual(args.session_id, "session-1")
         self.assertEqual(args.participant_ref, "P001")
 
+    def test_companion_report_transport_gates_cli_route(self) -> None:
+        args = self.build_parser().parse_args(
+            [
+                "companion-report",
+                "transport-gates",
+                "--projection",
+                "target/companion-report/wpf.projection.json",
+                "--out",
+                "target/companion-report/wpf.transport-gates.json",
+                "--fail-on-pending",
+            ]
+        )
+
+        self.assertEqual(args.command, "companion-report")
+        self.assertEqual(args.companion_report_command, "transport-gates")
+        self.assertEqual(args.projection, "target/companion-report/wpf.projection.json")
+        self.assertEqual(args.out, "target/companion-report/wpf.transport-gates.json")
+        self.assertTrue(args.fail_on_pending)
+
     def test_pmb_physical_live_defaults_to_low_latency_breath_scale_profile(self) -> None:
         args = self.build_parser().parse_args(
             [

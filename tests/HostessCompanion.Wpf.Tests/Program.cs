@@ -745,10 +745,16 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must render a companion-report projection");
     Assert(protocolMatrixAction.CliRoute.Contains("--include-protocol-matrix-inputs", StringComparison.Ordinal),
         "protocol matrix action must include protocol-matrix inputs in the report projection");
+    Assert(protocolMatrixAction.CliRoute.Contains("companion-report transport-gates", StringComparison.Ordinal),
+        "protocol matrix action must render the transport gate status artifact");
+    Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-pending", StringComparison.Ordinal),
+        "protocol matrix action must advertise the pending transport gate automation switch");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal),
         "protocol matrix action must advertise topology probe evidence");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal),
         "protocol matrix action must render the shared companion-report projection artifact");
+    Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.companion.transport_gate_report.v1", StringComparison.Ordinal),
+        "protocol matrix action must advertise the transport gate status artifact");
     var firewallActions = OperatorActionCatalog.All
         .Where(action => action.ActionId.StartsWith("wpf.connectivity.firewall.", StringComparison.Ordinal))
         .ToArray();

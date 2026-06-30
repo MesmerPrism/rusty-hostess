@@ -15,6 +15,12 @@ from tools.hostessctl.companion_report_projection import (
     run_companion_report_projection,
     validate_companion_report_projection,
 )
+from tools.hostessctl.companion_transport_gates import (
+    HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA,
+    build_companion_transport_gate_report,
+    run_companion_transport_gates,
+    validate_companion_transport_gate_report,
+)
 from tools.hostessctl.connectivity_probe import (
     CONNECTIVITY_PROBE_SCHEMA,
     fixture_report,
@@ -248,6 +254,156 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             any(source["role"] == "connectivity_probe_report" for source in report["source_artifacts"])
         )
         self.assertEqual(validation["status"], "pass")
+
+    def test_cli_writes_transport_gate_report_from_projection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            matrix_path = root / "matrix.json"
+            projection_path = root / "projection.json"
+            gate_out = root / "transport-gates.json"
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(matrix_path),
+                    validation_out=None,
+                    matrix_id="projection-transport-gates",
+                    input=[
+                        str(REPO_ROOT / "fixtures" / "companion" / "device-link-pass.json"),
+                        str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-010-router-pass.json"),
+                        str(
+                            REPO_ROOT
+                            / "fixtures"
+                            / "connectivity-probe"
+                            / "qcl-040-wifi-direct-phone-peer-pass.json"
+                        ),
+                    ],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+            matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+            projection = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(projection_path),
+                    validation_out=None,
+                    projection_id="projection.transport-gates",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[],
+                    protocol_matrix=[str(matrix_path)],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=True,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            projection_path.write_text(json.dumps(projection), encoding="utf-8")
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(gate_out),
+                    "--report-id",
+                    "transport-gates.fixture",
+                    "--fail-on-error",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+            gate_report = read_json(gate_out)
+            validation = read_json(gate_out.with_name("transport-gates.validation-report.json"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(args.companion_report_command, "transport-gates")
+        self.assertEqual(gate_report["$schema"], HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA)
+        self.assertEqual(gate_report["report_id"], "transport-gates.fixture")
+        self.assertEqual(gate_report["status"], "warn")
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(gate_report["authority"]["projection_only"])
+        self.assertIn(
+            "transport.direct_wifi_live_topology",
+            gate_report["summary"]["remaining_gate_ids"],
+        )
+        self.assertIn("tcp", gate_report["summary"]["term_gate_ids"])
+
+    def test_transport_gate_report_can_fail_on_pending_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.pending-gates",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {
+                                        "tcp": {
+                                            "included": True,
+                                            "scope": "qcl010_qcl011_echo_and_qcl082_tcp_binary_media",
+                                        }
+                                    },
+                                    "remaining_live_gates": [
+                                        {
+                                            "gate_id": "transport.product_tcp_media_listener_firewall",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "verified product listener firewall report required",
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(root / "transport-gates.json"),
+                    "--fail-on-pending",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+
+        self.assertEqual(status, 2)
+
+    def test_transport_gate_report_validates_projection_authority(self) -> None:
+        report = build_companion_transport_gate_report(
+            argparse.Namespace(
+                projection="missing-projection.json",
+                out="target/companion-report/transport-gates.json",
+                validation_out=None,
+                report_id="transport-gates.missing",
+                fail_on_error=True,
+                fail_on_pending=False,
+            ),
+            clock_func=fixed_clock,
+        )
+        validation = validate_companion_transport_gate_report(report)
+
+        self.assertEqual(report["status"], "fail")
+        self.assertEqual(validation["status"], "fail")
+        self.assertIn(
+            "hostess.issue.transport_gates.projection_unreadable",
+            [issue["issue_code"] for issue in report["issues"]],
+        )
 
     def test_projection_can_include_protocol_matrix_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
