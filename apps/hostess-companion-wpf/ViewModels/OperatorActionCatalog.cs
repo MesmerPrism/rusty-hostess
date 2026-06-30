@@ -19,6 +19,11 @@ public static class OperatorActionCatalog
         "$Rmanvid1Capture = '<rmanvid1-capture>'; " +
         "$ReceiverSidecar = '<receiver-sidecar>'; " +
         "$ReceiverResult = 'target\\connectivity-probe\\media-stream-receiver-result.json'; " +
+        "$Qcl082SessionReport = 'target\\connectivity-probe\\qcl082-media-stream-session-plan.json'; " +
+        "$Qcl082RuntimeStatusReport = 'target\\connectivity-probe\\qcl082-runtime-status-from-live-execution.json'; " +
+        "$Qcl082ReceiverReport = 'target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json'; " +
+        "$Qcl079HostLoopbackReport = 'target\\connectivity-probe\\qcl079-websocket-loopback.json'; " +
+        "$Qcl079ManifoldWebSocketReport = 'target\\connectivity-probe\\qcl079-manifold-websocket-stream.json'; " +
         "$PromotedTopologyReport = '<promoted-qcl040-or-qcl041-topology-report>'; " +
         "$ManifoldWebSocketRoute = '<manifold-stream-websocket-route>'; " +
         "$ManifoldWebSocketEvidence = '<manifold-stream-websocket-evidence>'; " +
@@ -36,32 +41,37 @@ public static class OperatorActionCatalog
         "$Qcl041LifecycleTemplate = 'target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-template.json'; " +
         "$Qcl040LifecycleReport = 'target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json'; " +
         "$Qcl041LifecycleReport = 'target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json'; " +
+        "$Qcl020TopologyReport = 'target\\connectivity-probe\\qcl020-wifi-adb-session-pass.json'; " +
+        "$Qcl030TopologyReport = 'target\\connectivity-probe\\qcl030-local-only-hotspot-started.json'; " +
+        "$Qcl040TopologyFixtureReport = 'target\\connectivity-probe\\qcl040-wifi-direct-phone-peer-pass.json'; " +
+        "$Qcl041TopologyFixtureReport = 'target\\connectivity-probe\\qcl041-wifi-direct-windows-peer-pass.json'; " +
         "$SuiteRun = '<suite-run>'; " +
         "$LatestArtifactDir = 'target\\connectivity-probe'; " +
         "$LatestDeviceLinkDir = 'target\\companion-session'; " +
         "$LatestStreamCapabilityDir = 'target\\connectivity-probe'; " +
-        "$TopologyFixtureInputs = @('--input', '<qcl020-topology-report>', '--input', '<qcl030-topology-report>', '--input', '<qcl040-topology-report>', '--input', '<qcl041-topology-report>'); " +
+        "$TopologyFixtureInputs = @('--input', $Qcl020TopologyReport, '--input', $Qcl030TopologyReport, '--input', $Qcl040TopologyFixtureReport, '--input', $Qcl041TopologyFixtureReport); " +
+        "$LifecycleTopologyInputs = @('--input', $Qcl040LifecycleReport, '--input', $Qcl041LifecycleReport); " +
         "$LatestProbeArgs = @('--latest-probe-id', 'QCL-000', '--latest-probe-id', 'QCL-010', '--latest-probe-id', 'QCL-011', '--latest-probe-id', 'QCL-020', '--latest-probe-id', 'QCL-030', '--latest-probe-id', 'QCL-040', '--latest-probe-id', 'QCL-041', '--latest-probe-id', 'QCL-050', '--latest-probe-id', 'QCL-051', '--latest-probe-id', 'QCL-080', '--latest-probe-id', 'QCL-081', '--latest-probe-id', 'QCL-082', '--latest-probe-id', 'QCL-083', '--latest-probe-id', 'QCL-084', '--latest-probe-id', 'QCL-079'); " +
         "$ProtocolMatrix = '<protocol-matrix>'; " +
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
         "python $HostessCtl connectivity-probe qcl082-product-media-plan --out $ProductMediaPlan --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource; " +
-        "python $HostessCtl connectivity-probe direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan --qcl040-topology-report $Qcl040LifecycleReport --qcl041-topology-report $Qcl041LifecycleReport --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource; " +
-        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
+        "python $HostessCtl connectivity-probe direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan --qcl040-topology-report $Qcl040LifecycleReport --qcl041-topology-report $Qcl041LifecycleReport --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --qcl082-report $Qcl082ReceiverReport --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource; " +
+        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan --out $Qcl082SessionReport; " +
         "python $HostessCtl emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out $StartSourceRequest; " +
         "python $HostessCtl run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
-        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
+        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus --out $Qcl082RuntimeStatusReport; " +
         "python $HostessCtl connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +
         "python $HostessCtl connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource --quest-lease-reserved-before-live-steps --out $ReceiverResult; " +
         "python $HostessCtl connectivity-probe rmanvid1-receiver-capture --capture-kind live_broker_stream --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource --quest-lease-reserved-before-live-steps --out $ReceiverResult; " +
-        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult; " +
-        "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback; " +
-        "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence; " +
+        "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult --out $Qcl082ReceiverReport; " +
+        "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback --out $Qcl079HostLoopbackReport; " +
+        "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence --out $Qcl079ManifoldWebSocketReport; " +
         "python $HostessCtl connectivity-probe run-suite --out $SuiteRun; " +
-        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-020 --fixture-profile qcl-020-wifi-adb-session-pass; " +
-        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-030 --fixture-profile qcl-030-local-only-hotspot-started; " +
-        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-040 --fixture-profile qcl-040-wifi-direct-phone-peer-pass; " +
-        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-041 --fixture-profile qcl-041-wifi-direct-windows-peer-pass; " +
+        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-020 --fixture-profile qcl-020-wifi-adb-session-pass --out $Qcl020TopologyReport; " +
+        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-030 --fixture-profile qcl-030-local-only-hotspot-started --out $Qcl030TopologyReport; " +
+        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-040 --fixture-profile qcl-040-wifi-direct-phone-peer-pass --out $Qcl040TopologyFixtureReport; " +
+        "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-041 --fixture-profile qcl-041-wifi-direct-windows-peer-pass --out $Qcl041TopologyFixtureReport; " +
         "python $HostessCtl connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-040 --out $Qcl040LifecyclePlan --adb $Adb --serial $QuestSerial; " +
         "python $HostessCtl connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out $Qcl041LifecyclePlan --adb $Adb --serial $QuestSerial; " +
         "python $HostessCtl connectivity-probe run --mode live --probe-id QCL-040 --adb $Adb --serial $QuestSerial --out $Qcl040Preflight; " +
@@ -70,7 +80,7 @@ public static class OperatorActionCatalog
         "python $HostessCtl connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-041 --out $Qcl041LifecycleTemplate; " +
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-040 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl040LifecycleReport --fail-on-error; " +
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl041LifecycleReport --fail-on-error; " +
-        "python $HostessCtl connectivity-probe protocol-matrix --suite-run $SuiteRun @TopologyFixtureInputs --latest-artifact-dir $LatestArtifactDir @LatestProbeArgs --latest-device-link-dir $LatestDeviceLinkDir --latest-stream-capability-dir $LatestStreamCapabilityDir --latest-stream-probe-id QCL-080 --out $ProtocolMatrix; " +
+        "python $HostessCtl connectivity-probe protocol-matrix --suite-run $SuiteRun @TopologyFixtureInputs @LifecycleTopologyInputs --latest-artifact-dir $LatestArtifactDir @LatestProbeArgs --latest-device-link-dir $LatestDeviceLinkDir --latest-stream-capability-dir $LatestStreamCapabilityDir --latest-stream-probe-id QCL-080 --out $ProtocolMatrix; " +
         "python $HostessCtl companion-report projection --protocol-matrix $ProtocolMatrix --include-protocol-matrix-inputs --suite-run $SuiteRun --out $Projection; " +
         "python $HostessCtl companion-report transport-gates --projection $Projection --out $TransportGates --fail-on-pending --fail-on-incomplete";
 

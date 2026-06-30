@@ -76,9 +76,10 @@ added without a CLI-equivalent route and evidence artifact.
 Catalog routes are PowerShell-shaped Hostess CLI commands, not bare route
 fragments: they advertise `python tools\hostessctl\hostessctl.py ...`, use
 PowerShell variables or splats for repeated arguments, and avoid pipe-delimited
-option shorthand such as `QCL-010|QCL-080`. This keeps the operator-visible
-route text close enough to automation that a future smoke can copy the same
-shape after filling the placeholders.
+option shorthand such as `QCL-010|QCL-080`. Report-producing route segments
+such as `connectivity-probe run` must also name their `--out` artifact, so the
+operator-visible route text stays close enough to automation that a future
+smoke can copy the same shape after filling the placeholders.
 
 All readiness state comes from:
 

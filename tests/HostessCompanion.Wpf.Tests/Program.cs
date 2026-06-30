@@ -1383,8 +1383,17 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise explicit topology fixture report inputs through a PowerShell splat");
     Assert(protocolMatrixAction.CliRoute.Contains("@TopologyFixtureInputs", StringComparison.Ordinal),
         "protocol matrix action must pass explicit topology fixture report inputs through a PowerShell splat");
+    Assert(protocolMatrixAction.CliRoute.Contains("@LifecycleTopologyInputs", StringComparison.Ordinal),
+        "protocol matrix action must pass explicit lifecycle topology report inputs through a PowerShell splat");
     Assert(protocolMatrixAction.CliRoute.Contains("$LatestProbeArgs", StringComparison.Ordinal),
         "protocol matrix action must use repeated latest-probe-id arguments through a PowerShell splat");
+    foreach (var routeSegment in protocolMatrixAction.CliRoute
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(segment => segment.Contains("connectivity-probe run ", StringComparison.Ordinal)))
+    {
+        Assert(routeSegment.Contains(" --out ", StringComparison.Ordinal),
+            $"connectivity-probe run segment must name an output artifact: {routeSegment}");
+    }
     Assert(!protocolMatrixAction.CliRoute.Contains("QCL-000|", StringComparison.Ordinal),
         "protocol matrix action must not advertise pipe-delimited latest probe IDs");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-000", StringComparison.Ordinal),
@@ -1433,7 +1442,9 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the combined direct-Wi-Fi product-media acceptance plan route");
     Assert(protocolMatrixAction.CliRoute.Contains("direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal),
         "protocol matrix action must name the combined direct-Wi-Fi product-media acceptance plan artifact");
-    Assert(protocolMatrixAction.CliRoute.Contains("--qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json", StringComparison.Ordinal),
+    Assert(protocolMatrixAction.CliRoute.Contains("$Qcl082ReceiverReport = 'target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json'", StringComparison.Ordinal),
+        "protocol matrix action must name the QCL-082 receiver fold-in report artifact");
+    Assert(protocolMatrixAction.CliRoute.Contains("--qcl082-report $Qcl082ReceiverReport", StringComparison.Ordinal),
         "protocol matrix action must pass QCL-082 product-media evidence into the combined acceptance plan");
     Assert(protocolMatrixAction.CliRoute.Contains("emit-bridge-command-request", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 bridge-command request generator");

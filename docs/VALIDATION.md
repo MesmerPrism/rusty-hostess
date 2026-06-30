@@ -98,7 +98,10 @@ The WPF operator action catalog test also checks that each advertised command
 names the Hostess CLI entrypoint (`python tools\hostessctl\hostessctl.py`) and
 does not use pipe-delimited option shorthand. Use PowerShell variables, quoted
 placeholders, or splatted argument arrays for routes that need repeated flags
-such as `--input` or `--latest-probe-id`.
+such as `--input` or `--latest-probe-id`. Any advertised
+`connectivity-probe run` segment must also name its output artifact with
+`--out`, so the human-visible recipe is the same report-producing route that
+automation can validate.
 Every new WPF report view needs the same evidence-backed shape even when it is
 read-only: a CLI/API report, descriptor, sidecar, receipt, or fixture output
 must exist first, and projection tests must prove the page rows are derived from
