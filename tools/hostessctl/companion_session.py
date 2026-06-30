@@ -550,6 +550,7 @@ def run_live_probe_slice(
     evidence_out = out.with_name(f"{out.stem}.live-broker-stream-evidence.json")
     execution_out = evidence_out.with_name(f"{evidence_out.stem}.live-android-execution.json")
     validation_out = evidence_out.with_name(f"{evidence_out.stem}.validation-report.json")
+    logcat_out = evidence_out.with_name(f"{evidence_out.stem}.logcat.txt")
     request_out = out.with_name(f"{out.stem}.live-broker-stream-request.json")
     request_path = materialize_session_request(
         Path(str(getattr(args, "probe_input", None) or default_probe_input())),
@@ -560,7 +561,7 @@ def run_live_probe_slice(
     request = bridge_command_live_android_routes.load_bridge_command_request(
         request_path,
     )
-    live_args = live_android_args(args, evidence_out, execution_out, validation_out)
+    live_args = live_android_args(args, evidence_out, execution_out, validation_out, logcat_out)
     live_args.input = str(request_path)
     if live_execution_func is not None:
         execution = live_execution_func(request, args=live_args)
@@ -616,6 +617,16 @@ def run_live_probe_slice(
             ),
         ]
     )
+    if logcat_out.is_file():
+        artifact_refs.append(
+            artifact_ref(
+                "artifact.hostess.companion_session.live_broker_stream_logcat",
+                logcat_out,
+                "text/plain",
+                role="live_broker_stream_logcat",
+                validation_status="captured",
+            )
+        )
     return execution, validation
 
 
@@ -1151,12 +1162,14 @@ def live_android_args(
     evidence_out: Path,
     execution_out: Path,
     validation_out: Path,
+    logcat_out: Path,
 ) -> argparse.Namespace:
     return argparse.Namespace(
         input=str(getattr(args, "probe_input", None) or default_probe_input()),
         out=str(evidence_out),
         execution_out=str(execution_out),
         validation_out=str(validation_out),
+        logcat_out=str(logcat_out),
         route_descriptor=None,
         adb=str(getattr(args, "adb", "")),
         serial=str(getattr(args, "serial", "")),

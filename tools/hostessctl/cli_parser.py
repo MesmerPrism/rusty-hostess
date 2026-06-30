@@ -406,6 +406,7 @@ def build_hostessctl_parser(
     bridge_command_live_android.add_argument("--out", required=True)
     bridge_command_live_android.add_argument("--execution-out")
     bridge_command_live_android.add_argument("--validation-out")
+    bridge_command_live_android.add_argument("--logcat-out")
     bridge_command_live_android.add_argument("--route-descriptor")
     bridge_command_live_android.add_argument("--adb", required=True)
     bridge_command_live_android.add_argument("--serial", required=True)

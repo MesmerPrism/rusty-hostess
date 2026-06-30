@@ -175,9 +175,22 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
 
             execution = read_json(out.with_name("live-android-command.live-android-execution.json"))
             validation = read_json(out.with_name("live-android-command.validation-report.json"))
+            logcat = out.with_name("live-android-command.logcat.txt")
+            logcat_exists = logcat.is_file()
 
         self.assertEqual(status, 2)
         self.assertEqual(execution["status"], "fail")
+        self.assertTrue(logcat_exists)
+        self.assertTrue(
+            any(
+                action["action"] == "capture-hostess-makepad-logcat"
+                for action in execution["setup_actions"]
+            )
+        )
+        self.assertIn(
+            "artifact.hostess.bridge_command.live_android_logcat",
+            execution["bridge_route_evidence"]["artifact_refs"],
+        )
         self.assertEqual(validation["$schema"], HOSTESS_BRIDGE_ROUTE_VALIDATION_SCHEMA)
         self.assertEqual(validation["status"], "fail")
         self.assertIn("transport_ok", validation["missing_required_evidence_stages"])
@@ -196,6 +209,8 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
                 "request.json",
                 "--out",
                 "evidence.json",
+                "--logcat-out",
+                "live.logcat.txt",
                 "--adb",
                 "adb.exe",
                 "--serial",
@@ -214,6 +229,7 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertEqual(args.command, "run-bridge-command-live-android")
         self.assertEqual(args.input, "request.json")
         self.assertEqual(args.out, "evidence.json")
+        self.assertEqual(args.logcat_out, "live.logcat.txt")
         self.assertEqual(args.adb, "adb.exe")
         self.assertEqual(args.serial, "serial-1")
         self.assertEqual(args.broker_port, 18765)
@@ -236,6 +252,7 @@ def live_android_args(
         out=str(out),
         execution_out=None,
         validation_out=None,
+        logcat_out=None,
         route_descriptor=None,
         adb="adb.exe",
         serial="serial-1",

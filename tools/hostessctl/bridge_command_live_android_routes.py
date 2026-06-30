@@ -69,6 +69,11 @@ def run_bridge_command_live_android(
         if getattr(args, "validation_out", None)
         else out.with_name(f"{out.stem}.validation-report.json")
     )
+    logcat_out = (
+        Path(args.logcat_out)
+        if getattr(args, "logcat_out", None)
+        else out.with_name(f"{out.stem}.logcat.txt")
+    )
     route_descriptor = (
         load_json_object(Path(args.route_descriptor))
         if getattr(args, "route_descriptor", None)
@@ -83,6 +88,7 @@ def run_bridge_command_live_android(
         clock_ms_func=clock_ms_func,
         socket_probe_func=socket_probe_func or broker_port_open,
         sleep_func=sleep_func or time.sleep,
+        logcat_out=logcat_out,
     )
     bridge_evidence = execution["bridge_route_evidence"]
     validation = validate_bridge_route_evidence(
@@ -108,10 +114,13 @@ def execute_bridge_command_live_android_request(
     clock_ms_func: Any | None = None,
     socket_probe_func: Callable[[str, int, float], bool] | None = None,
     sleep_func: Callable[[float], None] | None = None,
+    logcat_out: Path | None = None,
 ) -> dict[str, Any]:
     clock = clock_ms_func or epoch_ms
     socket_probe = socket_probe_func or broker_port_open
     sleep = sleep_func or time.sleep
+    if logcat_out is None and getattr(args, "logcat_out", None):
+        logcat_out = Path(args.logcat_out)
     started_at_ms = int(clock())
     setup_actions: list[dict[str, Any]] = []
     setup_issues: list[dict[str, Any]] = []
@@ -192,7 +201,7 @@ def execute_bridge_command_live_android_request(
             setup_actions,
             setup_issues,
             "launch-hostess-makepad",
-            adb_command(args, "shell", "am", "start", "-n", makepad_activity),
+            adb_command(args, "shell", "am", "start", "-W", "-n", makepad_activity),
             run_captured_func,
             required=False,
         )
@@ -290,6 +299,17 @@ def execute_bridge_command_live_android_request(
         )
 
     issues = setup_issues + command_issues
+    logcat_artifact = collect_makepad_logcat(
+        args,
+        run_captured_func=run_captured_func,
+        logcat_out=logcat_out,
+        request_id=str(request.get("request_id") or ""),
+    )
+    if logcat_artifact:
+        setup_actions.append(logcat_artifact)
+        artifact_refs = bridge_evidence.get("artifact_refs")
+        if isinstance(artifact_refs, list):
+            artifact_refs.append("artifact.hostess.bridge_command.live_android_logcat")
     status = execution_status(setup_issues, command_execution)
     ended_at_ms = int(clock())
     return {
@@ -584,6 +604,33 @@ def failed_stage(stage: str, observed_at_ms: int, issue_code: str) -> dict[str, 
         [issue_code],
     )
     return row[0]
+
+
+def collect_makepad_logcat(
+    args: argparse.Namespace,
+    *,
+    run_captured_func: Any,
+    logcat_out: Path | None,
+    request_id: str,
+) -> dict[str, Any] | None:
+    if logcat_out is None:
+        return None
+    result = run_captured_func(
+        [args.adb, "-s", args.serial, "logcat", "-d", "-v", "time", "-s", "HostessMakepad:I"],
+        allow_failure=True,
+    )
+    text = result.stdout or ""
+    logcat_out.parent.mkdir(parents=True, exist_ok=True)
+    logcat_out.write_text(text, encoding="utf-8")
+    return {
+        "action": "capture-hostess-makepad-logcat",
+        "status": "pass" if result.returncode == 0 else "warn",
+        "artifact": str(logcat_out),
+        "returncode": result.returncode,
+        "request_id_seen": request_id in text if request_id else False,
+        "subscriber_marker_seen": "RUSTY_HOSTESS_MAKEPAD_BRIDGE_COMMAND_SUBSCRIBER" in text,
+        "receipt_marker_seen": "RUSTY_HOSTESS_MAKEPAD_BRIDGE_COMMAND_RECEIPT" in text,
+    }
 
 
 def adb_command(args: argparse.Namespace, *parts: str) -> list[str]:

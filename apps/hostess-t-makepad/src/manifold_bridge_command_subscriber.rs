@@ -2,9 +2,10 @@ use crate::bridge_command_inbox::{
     parse_bridge_command_request_value, BridgeCommandApplication, BridgeCommandInboxState,
     BridgeCommandRequest,
 };
+use crate::makepad_diagnostics::{emit_marker_line, marker_value};
 use serde_json::{json, Value as JsonValue};
 use std::{
-    io::{Read, Write},
+    io::{ErrorKind, Read, Write},
     net::TcpStream,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -154,12 +155,27 @@ fn run_bridge_command_worker(
     let mut client = BrokerWebSocketClient::new(config.clone());
     let mut inbox = BridgeCommandInboxState::default();
     let mut receipt_sequence_id = 1_u64;
+    let mut last_worker_marker = String::new();
     while !stop.load(Ordering::Relaxed) {
-        if client.ensure_subscribed().is_err() {
+        if let Err(error) = client.ensure_subscribed() {
+            emit_bridge_command_worker_marker(
+                &config,
+                "connect",
+                "error",
+                Some(error.as_str()),
+                &mut last_worker_marker,
+            );
             client.reset();
             thread::sleep(Duration::from_millis(250));
             continue;
         }
+        emit_bridge_command_worker_marker(
+            &config,
+            "connect",
+            "subscribe_sent",
+            None,
+            &mut last_worker_marker,
+        );
         match client.recv_json() {
             Ok(Some(message)) => {
                 let Some(request) = parse_bridge_command_event(&message, &config.stream_id) else {
@@ -182,12 +198,45 @@ fn run_bridge_command_worker(
                 }
             }
             Ok(None) => {}
-            Err(_) => {
+            Err(error) => {
+                emit_bridge_command_worker_marker(
+                    &config,
+                    "receive",
+                    "error",
+                    Some(error.as_str()),
+                    &mut last_worker_marker,
+                );
                 client.reset();
                 thread::sleep(Duration::from_millis(250));
             }
         }
     }
+}
+
+fn emit_bridge_command_worker_marker(
+    config: &ManifoldBridgeCommandSubscriberConfig,
+    phase: &str,
+    status: &str,
+    issue: Option<&str>,
+    last_marker: &mut String,
+) {
+    let issue_token = issue.map(marker_value).unwrap_or_else(|| "none".to_string());
+    let marker = format!(
+        "RUSTY_HOSTESS_MAKEPAD_BRIDGE_COMMAND_SUBSCRIBER schema=rusty.hostess.makepad.bridge_command_subscriber.v1 phase={} status={} stream={} receiptStream={} receiver={} brokerHost={} brokerPort={} issue={} highRateJsonPayload=false",
+        marker_value(phase),
+        marker_value(status),
+        marker_value(&config.stream_id),
+        marker_value(&config.receipt_stream_id),
+        marker_value(&config.receiver_id),
+        marker_value(&config.broker_host),
+        config.broker_port,
+        issue_token,
+    );
+    if last_marker == &marker {
+        return;
+    }
+    *last_marker = marker.clone();
+    emit_marker_line(&marker);
 }
 
 struct BrokerWebSocketClient {
@@ -334,9 +383,12 @@ fn websocket_mask(sequence_id: u64) -> [u8; 4] {
 
 fn read_websocket_frame(stream: &mut TcpStream) -> Result<Vec<u8>, String> {
     let mut header = [0_u8; 2];
-    stream
-        .read_exact(&mut header)
-        .map_err(|err| format!("websocket_frame_header_read_failed:{err}"))?;
+    if let Err(err) = stream.read_exact(&mut header) {
+        if matches!(err.kind(), ErrorKind::TimedOut | ErrorKind::WouldBlock) {
+            return Ok(Vec::new());
+        }
+        return Err(format!("websocket_frame_header_read_failed:{err}"));
+    }
     let masked = (header[1] & 0x80) != 0;
     let mut len = (header[1] & 0x7f) as usize;
     if len == 126 {
@@ -464,5 +516,24 @@ mod tests {
             }
         });
         assert!(parse_bridge_command_event(&event, BRIDGE_COMMAND_STREAM_ID).is_none());
+    }
+
+    #[test]
+    fn idle_websocket_read_timeout_is_nonfatal() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind listener");
+        let address = listener.local_addr().expect("listener address");
+        let server = std::thread::spawn(move || {
+            let (_socket, _) = listener.accept().expect("accept client");
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        });
+        let mut client = TcpStream::connect(address).expect("connect client");
+        client
+            .set_read_timeout(Some(std::time::Duration::from_millis(10)))
+            .expect("set read timeout");
+
+        let payload = read_websocket_frame(&mut client).expect("idle timeout is not fatal");
+
+        assert!(payload.is_empty());
+        server.join().expect("server joined");
     }
 }
