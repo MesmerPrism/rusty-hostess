@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Text.Json;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
@@ -1309,6 +1310,16 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         Assert(!string.IsNullOrWhiteSpace(action.CliRoute), $"missing CLI route for {action.ActionId}");
         Assert(!action.CliRoute.Contains("button", StringComparison.OrdinalIgnoreCase),
             $"CLI route must not be UI-only for {action.ActionId}");
+        var advertisesHostessCtl =
+            action.CliRoute.Contains("python tools\\hostessctl\\hostessctl.py", StringComparison.Ordinal)
+            || (
+                action.CliRoute.Contains("$HostessCtl = 'tools\\hostessctl\\hostessctl.py'", StringComparison.Ordinal)
+                && action.CliRoute.Contains("python $HostessCtl", StringComparison.Ordinal)
+            );
+        Assert(advertisesHostessCtl,
+            $"CLI route must advertise the Hostess CLI entrypoint for {action.ActionId}");
+        Assert(!Regex.IsMatch(action.CliRoute, @"[A-Za-z0-9_)-]\|[A-Za-z0-9_(]"),
+            $"CLI route must not use pipe-delimited option shorthand for {action.ActionId}");
         Assert(!string.IsNullOrWhiteSpace(action.EvidenceArtifact), $"missing evidence artifact for {action.ActionId}");
         Assert(!string.IsNullOrWhiteSpace(action.TestCoverage), $"missing test coverage for {action.ActionId}");
     }
@@ -1368,8 +1379,14 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle normalization route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-041 Wi-Fi Direct lifecycle normalization route");
-    Assert(protocolMatrixAction.CliRoute.Contains("--input $TopologyFixtureReports", StringComparison.Ordinal),
-        "protocol matrix action must advertise explicit topology fixture report inputs through a PowerShell variable");
+    Assert(protocolMatrixAction.CliRoute.Contains("$TopologyFixtureInputs", StringComparison.Ordinal),
+        "protocol matrix action must advertise explicit topology fixture report inputs through a PowerShell splat");
+    Assert(protocolMatrixAction.CliRoute.Contains("@TopologyFixtureInputs", StringComparison.Ordinal),
+        "protocol matrix action must pass explicit topology fixture report inputs through a PowerShell splat");
+    Assert(protocolMatrixAction.CliRoute.Contains("$LatestProbeArgs", StringComparison.Ordinal),
+        "protocol matrix action must use repeated latest-probe-id arguments through a PowerShell splat");
+    Assert(!protocolMatrixAction.CliRoute.Contains("QCL-000|", StringComparison.Ordinal),
+        "protocol matrix action must not advertise pipe-delimited latest probe IDs");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-000", StringComparison.Ordinal),
         "protocol matrix action must include WebSocket command route evidence QCL-000");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-010", StringComparison.Ordinal),

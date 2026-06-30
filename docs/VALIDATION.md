@@ -94,6 +94,11 @@ renders, fixture or fake-mode coverage for that route, and a WPF projection
 test proving the viewmodel surface maps the same evidence into human-facing
 rows. WPF button handlers must not be the only executable path for setup,
 commands, probes, firewall changes, or evidence export.
+The WPF operator action catalog test also checks that each advertised command
+names the Hostess CLI entrypoint (`python tools\hostessctl\hostessctl.py`) and
+does not use pipe-delimited option shorthand. Use PowerShell variables, quoted
+placeholders, or splatted argument arrays for routes that need repeated flags
+such as `--input` or `--latest-probe-id`.
 Every new WPF report view needs the same evidence-backed shape even when it is
 read-only: a CLI/API report, descriptor, sidecar, receipt, or fixture output
 must exist first, and projection tests must prove the page rows are derived from
