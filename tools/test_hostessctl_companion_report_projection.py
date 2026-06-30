@@ -26,6 +26,9 @@ from tools.hostessctl.connectivity_probe import (
     fixture_report,
     live_websocket_report,
 )
+from tools.hostessctl.connectivity_direct_wifi_product_media_plan import (
+    DIRECT_WIFI_PRODUCT_MEDIA_PLAN_SCHEMA,
+)
 from tools.hostessctl.connectivity_firewall import CONNECTIVITY_FIREWALL_RULE_SCHEMA
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import build_protocol_evidence_matrix
@@ -176,6 +179,70 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertEqual(promotion["status"], "candidate")
         self.assertFalse(promotion["details"]["allowed"])
         self.assertIn("gate.qcl-030.promotion_allowed", promotion["issue_codes"])
+
+    def test_projection_accepts_direct_wifi_product_media_acceptance_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            plan_path = root / "direct-wifi-product-media-plan.json"
+            out = root / "projection.json"
+            plan_path.write_text(
+                json.dumps(direct_wifi_product_media_acceptance_plan_fixture()),
+                encoding="utf-8",
+            )
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "projection",
+                    "--frontend",
+                    "wpf",
+                    "--direct-wifi-product-media-plan",
+                    str(plan_path),
+                    "--out",
+                    str(out),
+                    "--projection-id",
+                    "projection.direct-wifi-product-media-plan",
+                    "--fail-on-error",
+                ]
+            )
+            status = run_companion_report_projection(args, clock_func=fixed_clock)
+            report = read_json(out)
+            validation = read_json(out.with_name("projection.validation-report.json"))
+
+        self.assertEqual(status, 0)
+        self.assertEqual(args.direct_wifi_product_media_plan, [str(plan_path)])
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(report["status"], "warn")
+        self.assertEqual(report["source_artifacts"][0]["role"], "direct_wifi_product_media_acceptance_plan")
+        self.assertEqual(
+            report["source_artifacts"][0]["schema"],
+            DIRECT_WIFI_PRODUCT_MEDIA_PLAN_SCHEMA,
+        )
+        self.assertEqual(
+            report["source_artifacts"][0]["summary"]["direct_wifi_topology_ready"],
+            False,
+        )
+        summary = find_row(report, "direct_wifi_product_media_plan.summary")
+        self.assertEqual(summary["status"], "planned")
+        self.assertEqual(
+            summary["authority_owner"],
+            "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+        )
+        self.assertIn("Collect direct-Wi-Fi lifecycle evidence", summary["notes"])
+        topology_dependency = find_row(
+            report,
+            "direct_wifi_product_media_plan.dependency.transport.direct_wifi_live_topology",
+        )
+        self.assertEqual(topology_dependency["status"], "planned")
+        self.assertEqual(topology_dependency["details"]["network_provider"], "wifi_direct")
+        firewall_check = find_row(
+            report,
+            "direct_wifi_product_media_plan.check.direct_wifi_product_media.product_listener_firewall_dependency",
+        )
+        self.assertEqual(firewall_check["status"], "planned")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.product_media_firewall_missing",
+            firewall_check["issue_codes"],
+        )
 
     def test_projection_warns_for_failed_source_evidence(self) -> None:
         report = build_companion_report_projection(
@@ -1203,6 +1270,129 @@ def qcl082_product_direct_wifi_report() -> dict[str, Any]:
             "reason": "unit fixture promoted product TCP media over direct-Wi-Fi",
         },
         "issues": [],
+    }
+
+
+def direct_wifi_product_media_acceptance_plan_fixture() -> dict[str, Any]:
+    return {
+        "schema": DIRECT_WIFI_PRODUCT_MEDIA_PLAN_SCHEMA,
+        "schema_version": 1,
+        "plan_id": "direct-wifi-product-media-acceptance",
+        "observed_at_utc": "2026-06-29T00:00:00Z",
+        "status": "planned",
+        "product_gates": [
+            "transport.direct_wifi_live_topology",
+            "transport.product_tcp_media_listener_firewall",
+            "transport.product_tcp_media_over_direct_wifi",
+        ],
+        "authority": {
+            "plan_owner": "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+            "frontend_role": "requester_inspector",
+        },
+        "policy": {
+            "read_only_plan": True,
+            "runs_adb": False,
+            "runs_firewall_mutation": False,
+            "requires_quest_lease_for_live_steps": True,
+        },
+        "dependencies": [
+            {
+                "gate_id": "transport.direct_wifi_live_topology",
+                "ready": False,
+                "authority_owner": "tools.hostessctl.connectivity_topology_lifecycle",
+                "selected": {
+                    "candidate_id": "qcl041_lifecycle_topology",
+                    "summary": {
+                        "ready": False,
+                        "evidence": "direct-Wi-Fi topology report is present but not promoted",
+                        "issue_codes": [
+                            "hostess.issue.connectivity_probe.product_media_direct_wifi_topology_not_promoted"
+                        ],
+                        "topology_network_provider": "wifi_direct",
+                        "transport_family": "wifi_direct",
+                    },
+                },
+                "summary": {
+                    "ready": False,
+                    "evidence": "direct-Wi-Fi topology report is present but not promoted",
+                    "issue_codes": [
+                        "hostess.issue.connectivity_probe.product_media_direct_wifi_topology_not_promoted"
+                    ],
+                },
+            },
+            {
+                "gate_id": "transport.product_tcp_media_listener_firewall",
+                "ready": False,
+                "artifact": "target/connectivity-probe/qcl082-product-firewall-verify.json",
+                "authority_owner": "tools.hostessctl.connectivity_firewall",
+                "summary": {
+                    "ready": False,
+                    "evidence": "verified product Hostess/WPF TCP listener firewall report is missing",
+                    "issue_codes": [
+                        "hostess.issue.connectivity_probe.product_media_firewall_missing"
+                    ],
+                    "protocol": "TCP",
+                },
+            },
+            {
+                "gate_id": "transport.product_tcp_media_over_direct_wifi",
+                "ready": False,
+                "artifact": "target/connectivity-probe/qcl082-rmanvid1-receiver-capture.json",
+                "authority_owner": "tools.hostessctl.connectivity_media_receiver",
+                "summary": {
+                    "ready": False,
+                    "evidence": "QCL-082 product media report is missing",
+                    "issue_codes": [
+                        "hostess.issue.connectivity_probe.qcl082_product_media_report_missing"
+                    ],
+                },
+            },
+        ],
+        "readiness": {
+            "lifecycle_source_ready_for_normalization": False,
+            "direct_wifi_topology_ready": False,
+            "product_listener_firewall_ready": False,
+            "ready_for_qcl082_receiver_capture": False,
+            "product_tcp_media_over_direct_wifi_ready": False,
+            "all_remaining_transport_gates_ready": False,
+            "live_steps_require_quest_lease": True,
+            "firewall_mutation_required_by_plan": False,
+            "headset_mutation_required_by_plan": False,
+            "host_mutation_required_by_plan": False,
+        },
+        "artifacts": {
+            "acceptance_plan_out": "target/connectivity-probe/direct-wifi-product-media-acceptance-plan.json",
+        },
+        "subplans": {},
+        "commands": [],
+        "checks": [
+            {
+                "check_id": "direct_wifi_product_media.acceptance_plan_authority",
+                "status": "pass",
+                "evidence": "Hostess composes existing plan/evidence owners; WPF renders the result only",
+                "issue_codes": [],
+                "observed": {
+                    "frontend_role": "requester_inspector",
+                },
+            },
+            {
+                "check_id": "direct_wifi_product_media.product_listener_firewall_dependency",
+                "status": "planned",
+                "evidence": "verified product Hostess/WPF TCP listener firewall report is missing",
+                "issue_codes": [
+                    "hostess.issue.connectivity_probe.product_media_firewall_missing"
+                ],
+                "observed": {},
+            },
+        ],
+        "issues": [
+            {
+                "issue_code": "hostess.issue.connectivity_probe.product_media_firewall_missing",
+                "severity": "warning",
+                "message": "direct-Wi-Fi product-media acceptance dependency is not ready",
+            }
+        ],
+        "next_step": "Collect direct-Wi-Fi lifecycle evidence under a quest:<quest-serial> lease.",
     }
 
 

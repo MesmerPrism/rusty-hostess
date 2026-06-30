@@ -69,14 +69,21 @@ media-stream session plan when that branch is present, accepts broker/runtime
 status artifacts through the same Hostess CLI route, runs a read-only
 `qcl-082-rmanvid1-media` Windows Firewall verify report for the Hostess/WPF
 executable, then requests the Hostess
-protocol-matrix route with those topology reports as explicit inputs. That
+protocol-matrix route with those topology reports as explicit inputs. After
+the matrix is written, WPF requests the read-only
+`connectivity-probe direct-wifi-product-media-plan` artifact with the same
+topology, firewall, matrix, projection, and transport-gate output paths. That
 preserves the CLI route's latest-artifact selection and promotion policy before
 WPF passes the suite and matrix artifacts into
-`companion-report projection --include-protocol-matrix-inputs --firewall-rule`.
+`companion-report projection --include-protocol-matrix-inputs --firewall-rule
+--direct-wifi-product-media-plan`.
 The CLI
 projection route derives selected device-link and connectivity-probe inputs
 from the matrix, so WPF does not parse matrix sources or own artifact
-selection. QCL-000 fixture WebSocket evidence is visible as candidate evidence;
+selection. The projected direct-Wi-Fi product-media plan is a checklist source:
+it renders readiness, dependency, and next-step rows, but it does not run ADB,
+mutate firewall state, parse media payloads, or promote topology/media gates.
+QCL-000 fixture WebSocket evidence is visible as candidate evidence;
 promotion still requires live device-link command evidence. Topology report
 views can still pass explicit connectivity-probe artifacts through that same
 projection route. WPF renders the resulting projection rows through
@@ -417,6 +424,9 @@ topology candidates, product Hostess/WPF TCP listener firewall evidence, and
 QCL-082 RMANVID1 product-media report into one WPF/CLI-equivalent checklist.
 It is not a new topology, firewall, media, or promotion authority and does not
 run ADB, mutate Wi-Fi Direct, mutate firewall state, or parse media payloads;
+`companion_report_projection.py` classifies that acceptance plan as a distinct
+source artifact and projects summary, dependency, and check rows without
+turning the plan into a promotion authority;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct

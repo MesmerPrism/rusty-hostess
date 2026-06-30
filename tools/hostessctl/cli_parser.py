@@ -628,6 +628,7 @@ def build_hostessctl_parser(
     companion_report_projection.add_argument("--device-link", action="append")
     companion_report_projection.add_argument("--connectivity-probe", action="append")
     companion_report_projection.add_argument("--firewall-rule", action="append")
+    companion_report_projection.add_argument("--direct-wifi-product-media-plan", action="append")
     companion_report_projection.add_argument("--protocol-matrix", action="append")
     companion_report_projection.add_argument("--include-protocol-matrix-inputs", action="store_true")
     companion_report_projection.add_argument("--suite-run", action="append")

@@ -319,7 +319,14 @@ fixture reports, refreshes the QCL-082 Rusty Quest media-stream source-contract
 report when the sibling plan exists, accepts QCL-082 broker/runtime status
 artifacts when present, and generates a read-only QCL-082 product firewall
 verify report for the Hostess/WPF executable. It then shells to the CLI roll-up
-with explicit topology inputs and the shared latest-artifact resolver. QCL-000
+with explicit topology inputs and the shared latest-artifact resolver. After
+that matrix is written, WPF requests the read-only
+`connectivity-probe direct-wifi-product-media-plan` artifact for the same
+topology, firewall, matrix, projection, and gate outputs, then includes it in
+`companion-report projection --include-protocol-matrix-inputs
+--direct-wifi-product-media-plan`. The plan is only a projected checklist:
+live direct-Wi-Fi topology, product listener firewall, and QCL-082 RMANVID1
+media evidence still own promotion. QCL-000
 fixture WebSocket
 evidence remains candidate-only; QCL-000 promotion comes from a live
 `rusty.quest.device_link.v1` companion-session artifact. QCL-079 generic

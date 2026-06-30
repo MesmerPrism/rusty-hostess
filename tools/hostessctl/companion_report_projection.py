@@ -11,6 +11,9 @@ from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.connectivity_firewall import CONNECTIVITY_FIREWALL_RULE_SCHEMA
+from tools.hostessctl.connectivity_direct_wifi_product_media_plan import (
+    DIRECT_WIFI_PRODUCT_MEDIA_PLAN_SCHEMA,
+)
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.connectivity_probe import CONNECTIVITY_PROBE_SCHEMA
 from tools.hostessctl.device_link_report import QUEST_DEVICE_LINK_SCHEMA
@@ -88,6 +91,8 @@ def build_companion_report_projection(
             rows.extend(project_connectivity_probe_rows(payload, source))
         elif projected_role == "firewall_rule_report":
             rows.extend(project_firewall_rule_rows(payload, source))
+        elif projected_role == "direct_wifi_product_media_acceptance_plan":
+            rows.extend(project_direct_wifi_product_media_plan_rows(payload, source))
         elif projected_role == "protocol_evidence_matrix":
             rows.extend(project_protocol_matrix_rows(payload, source))
         elif projected_role == "connectivity_suite_run":
@@ -138,6 +143,8 @@ def selected_source_paths(args: argparse.Namespace) -> list[tuple[str, Path]]:
         append_source("connectivity_probe_report", Path(raw))
     for raw in argument_values(getattr(args, "firewall_rule", None)):
         append_source("firewall_rule_report", Path(raw))
+    for raw in argument_values(getattr(args, "direct_wifi_product_media_plan", None)):
+        append_source("direct_wifi_product_media_acceptance_plan", Path(raw))
     protocol_matrix_paths = [
         Path(raw)
         for raw in argument_values(getattr(args, "protocol_matrix", None))
@@ -800,6 +807,151 @@ def project_firewall_rule_rows(
     return rows
 
 
+def project_direct_wifi_product_media_plan_rows(
+    report: dict[str, Any],
+    source: dict[str, Any],
+) -> list[dict[str, Any]]:
+    readiness = object_value(report.get("readiness"))
+    dependencies = list_objects(report.get("dependencies"))
+    checks = list_objects(report.get("checks"))
+    issues = list_objects(report.get("issues"))
+    plan_id = str(report.get("plan_id") or "direct-wifi-product-media")
+    issue_codes = [
+        str(item.get("issue_code") or "")
+        for item in issues
+        if str(item.get("issue_code") or "")
+    ]
+    rows = [
+        row(
+            "direct_wifi_product_media_plan.summary",
+            "transport_gate_plan",
+            "direct_wifi_product_media_acceptance_plan",
+            "Direct Wi-Fi product-media acceptance plan",
+            report_status(report),
+            source,
+            authority_owner="tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+            evidence=(
+                f"{plan_id}: "
+                f"topology={readiness.get('direct_wifi_topology_ready') is True}, "
+                f"listener_firewall={readiness.get('product_listener_firewall_ready') is True}, "
+                f"product_media={readiness.get('product_tcp_media_over_direct_wifi_ready') is True}"
+            ),
+            notes=str(report.get("next_step") or ""),
+            issue_count=len(issue_codes),
+            issue_codes=issue_codes,
+            metrics={
+                "dependency_count": len(dependencies),
+                "check_count": len(checks),
+                "issue_count": len(issues),
+            },
+            details={
+                "plan_id": plan_id,
+                "product_gates": string_list(report.get("product_gates")),
+                "readiness": readiness,
+                "policy": object_value(report.get("policy")),
+            },
+        )
+    ]
+    for dependency in dependencies:
+        gate_id = str(dependency.get("gate_id") or "dependency")
+        summary = object_value(dependency.get("summary"))
+        rows.append(
+            row(
+                f"direct_wifi_product_media_plan.dependency.{safe_token(gate_id)}",
+                "transport_gate_plan",
+                "direct_wifi_product_media_dependency",
+                gate_id,
+                "pass" if dependency.get("ready") is True else "planned",
+                source,
+                authority_owner=str(
+                    dependency.get("authority_owner")
+                    or "tools.hostessctl.connectivity_direct_wifi_product_media_plan"
+                ),
+                evidence=str(summary.get("evidence") or dependency.get("artifact") or gate_id),
+                notes=str(summary.get("report_path") or dependency.get("artifact") or ""),
+                issue_codes=string_list(summary.get("issue_codes")),
+                details=direct_wifi_plan_dependency_details(dependency),
+            )
+        )
+    for check in checks:
+        check_id = str(check.get("check_id") or check.get("name") or "check")
+        rows.append(
+            row(
+                f"direct_wifi_product_media_plan.check.{safe_token(check_id)}",
+                "transport_gate_plan_check",
+                "direct_wifi_product_media_check",
+                check_id,
+                str(check.get("status") or "unknown"),
+                source,
+                authority_owner="tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+                evidence=str(check.get("evidence") or check.get("message") or ""),
+                issue_codes=string_list(check.get("issue_codes")),
+                details=check,
+            )
+        )
+    for plan_issue in issues:
+        code = str(plan_issue.get("issue_code") or "direct_wifi_product_media_plan.issue")
+        rows.append(
+            row(
+                f"direct_wifi_product_media_plan.issue.{safe_token(code)}",
+                "issue",
+                "source_issue",
+                code,
+                status_from_severity(str(plan_issue.get("severity") or "")),
+                source,
+                authority_owner="tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+                evidence=str(plan_issue.get("message") or ""),
+                issue_codes=[code],
+                details=plan_issue,
+            )
+        )
+    return rows
+
+
+def direct_wifi_plan_dependency_details(dependency: dict[str, Any]) -> dict[str, Any]:
+    gate_id = str(dependency.get("gate_id") or "")
+    summary = object_value(dependency.get("summary"))
+    details = {
+        "gate_id": gate_id,
+        "ready": dependency.get("ready") is True,
+        "summary": summary,
+        "artifact": dependency.get("artifact"),
+    }
+    if gate_id == "transport.direct_wifi_live_topology":
+        selected = object_value(dependency.get("selected"))
+        selected_summary = object_value(selected.get("summary"))
+        details.update(
+            {
+                "network_provider": "wifi_direct",
+                "topology_network_provider": selected_summary.get(
+                    "topology_network_provider"
+                )
+                or "wifi_direct",
+                "topology_transport_family": selected_summary.get(
+                    "transport_family"
+                )
+                or "wifi_direct",
+            }
+        )
+    elif gate_id == "transport.product_tcp_media_listener_firewall":
+        details.update(
+            {
+                "protocol": summary.get("protocol") or "TCP",
+                "family": "tcp",
+                "route": "windows_firewall_rule",
+            }
+        )
+    elif gate_id == "transport.product_tcp_media_over_direct_wifi":
+        details.update(
+            {
+                "family": "tcp_binary",
+                "network_provider": "wifi_direct",
+                "route": "rmanvid1_receiver_capture",
+            }
+        )
+    return details
+
+
 def row(
     row_id: str,
     section: str,
@@ -937,6 +1089,8 @@ def classify_source_payload(payload: dict[str, Any]) -> str:
         return "connectivity_probe_report"
     if schema == CONNECTIVITY_FIREWALL_RULE_SCHEMA:
         return "firewall_rule_report"
+    if schema == DIRECT_WIFI_PRODUCT_MEDIA_PLAN_SCHEMA:
+        return "direct_wifi_product_media_acceptance_plan"
     if schema == PROTOCOL_EVIDENCE_MATRIX_SCHEMA:
         return "protocol_evidence_matrix"
     if schema == CONNECTIVITY_SUITE_RUN_SCHEMA:
@@ -994,6 +1148,20 @@ def source_summary(role: str, payload: dict[str, Any]) -> dict[str, Any]:
             "protocol": rule.get("protocol"),
             "local_port": rule.get("local_port"),
             "product_rule_verified": verification.get("product_rule_verified"),
+        }
+    if role == "direct_wifi_product_media_acceptance_plan":
+        readiness = object_value(payload.get("readiness"))
+        return {
+            "plan_id": payload.get("plan_id"),
+            "status": payload.get("status"),
+            "next_step": payload.get("next_step"),
+            "direct_wifi_topology_ready": readiness.get("direct_wifi_topology_ready"),
+            "product_listener_firewall_ready": readiness.get("product_listener_firewall_ready"),
+            "product_tcp_media_over_direct_wifi_ready": readiness.get(
+                "product_tcp_media_over_direct_wifi_ready"
+            ),
+            "check_count": len(list_objects(payload.get("checks"))),
+            "dependency_count": len(list_objects(payload.get("dependencies"))),
         }
     if role == "connectivity_suite_run":
         summary = object_value(payload.get("summary"))

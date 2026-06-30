@@ -206,6 +206,8 @@ public sealed class ConnectivityProtocolMatrixProjectionRun
     public CompanionReportProjection Projection { get; set; } = new();
 
     public CompanionTransportGateReport TransportGates { get; set; } = new();
+
+    public string DirectWifiProductMediaPlanPath { get; set; } = "";
 }
 
 public sealed class ConnectivityProtocolEvidenceRow

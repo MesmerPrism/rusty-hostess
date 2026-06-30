@@ -444,6 +444,7 @@ public sealed class HostessctlConnectivityService
             .ConfigureAwait(false);
 
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
+        var productProgram = string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim();
         var qcl082SourceContractReport = await RunQcl082MediaStreamSessionPlanIfAvailableAsync(
                 repoRoot,
                 suite.SuiteRunId,
@@ -452,7 +453,7 @@ public sealed class HostessctlConnectivityService
         var qcl082FirewallVerifyReport = await RunQcl082ProductFirewallVerifyAsync(
                 repoRoot,
                 suite.SuiteRunId,
-                string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+                productProgram,
                 cancellationToken)
             .ConfigureAwait(false);
         var qcl079WebSocketReport = await RunQcl079ManifoldWebSocketIfAvailableAsync(
@@ -552,11 +553,26 @@ public sealed class HostessctlConnectivityService
                 cancellationToken)
             .ConfigureAwait(false);
         matrix.ReportPath = reportPath.FullName;
+        var projectionPath = CompanionProjectionReportPath(repoRoot, suite, matrix);
+        var transportGatesPath = CompanionTransportGatesReportPath(repoRoot, suite, matrix);
+        var directWifiProductMediaPlan = await RunDirectWifiProductMediaPlanAsync(
+                repoRoot,
+                suite,
+                matrix,
+                topologyReports,
+                qcl082FirewallVerifyReport,
+                projectionPath,
+                transportGatesPath,
+                productProgram,
+                cancellationToken)
+            .ConfigureAwait(false);
         var projection = await RunCompanionReportProjectionAsync(
                 repoRoot,
                 suite,
                 matrix,
                 qcl082FirewallVerifyReport,
+                directWifiProductMediaPlan,
+                projectionPath,
                 cancellationToken)
             .ConfigureAwait(false);
         var transportGates = await RunCompanionTransportGateReportAsync(
@@ -564,6 +580,7 @@ public sealed class HostessctlConnectivityService
                 suite,
                 matrix,
                 projection,
+                transportGatesPath,
                 cancellationToken)
             .ConfigureAwait(false);
         return new ConnectivityProtocolMatrixProjectionRun
@@ -572,6 +589,7 @@ public sealed class HostessctlConnectivityService
             Matrix = matrix,
             Projection = projection,
             TransportGates = transportGates,
+            DirectWifiProductMediaPlanPath = directWifiProductMediaPlan.FullName,
         };
     }
 
@@ -661,13 +679,10 @@ public sealed class HostessctlConnectivityService
         ConnectivitySuiteRunReport suite,
         ConnectivityProtocolEvidenceMatrix matrix,
         FileInfo? qcl082FirewallVerifyReport,
+        FileInfo? directWifiProductMediaPlan,
+        FileInfo projectionPath,
         CancellationToken cancellationToken)
     {
-        var projectionPath = new FileInfo(Path.Combine(
-            repoRoot.FullName,
-            "target",
-            "companion-report",
-            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.projection.json"));
         Directory.CreateDirectory(projectionPath.Directory!.FullName);
 
         var arguments = new List<string>
@@ -692,6 +707,11 @@ public sealed class HostessctlConnectivityService
             arguments.Add("--firewall-rule");
             arguments.Add(qcl082FirewallVerifyReport.FullName);
         }
+        if (directWifiProductMediaPlan is not null)
+        {
+            arguments.Add("--direct-wifi-product-media-plan");
+            arguments.Add(directWifiProductMediaPlan.FullName);
+        }
 
         await RunHostessctlAsync(repoRoot, arguments, projectionPath, cancellationToken)
             .ConfigureAwait(false);
@@ -709,13 +729,9 @@ public sealed class HostessctlConnectivityService
         ConnectivitySuiteRunReport suite,
         ConnectivityProtocolEvidenceMatrix matrix,
         CompanionReportProjection projection,
+        FileInfo reportPath,
         CancellationToken cancellationToken)
     {
-        var reportPath = new FileInfo(Path.Combine(
-            repoRoot.FullName,
-            "target",
-            "companion-report",
-            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.transport-gates.json"));
         Directory.CreateDirectory(reportPath.Directory!.FullName);
 
         await RunHostessctlAsync(
@@ -781,6 +797,70 @@ public sealed class HostessctlConnectivityService
             reports.Add(reportPath);
         }
         return reports;
+    }
+
+    private static async Task<FileInfo> RunDirectWifiProductMediaPlanAsync(
+        DirectoryInfo repoRoot,
+        ConnectivitySuiteRunReport suite,
+        ConnectivityProtocolEvidenceMatrix matrix,
+        IReadOnlyList<FileInfo> topologyReports,
+        FileInfo? qcl082FirewallVerifyReport,
+        FileInfo projectionPath,
+        FileInfo transportGatesPath,
+        string program,
+        CancellationToken cancellationToken)
+    {
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"{suite.SuiteRunId}.direct-wifi-product-media-acceptance-plan.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        var arguments = new List<string>
+        {
+            "connectivity-probe",
+            "direct-wifi-product-media-plan",
+            "--out",
+            reportPath.FullName,
+            "--program",
+            program,
+            "--qcl082-report",
+            DefaultQcl082ProductMediaReportPath(repoRoot).FullName,
+            "--protocol-matrix-out",
+            matrix.ReportPath,
+            "--projection-out",
+            projectionPath.FullName,
+            "--transport-gates-out",
+            transportGatesPath.FullName,
+            "--fail-on-error",
+        };
+
+        var qcl040TopologyReport = topologyReports.FirstOrDefault(report =>
+            report.Name.Contains(".qcl040-", StringComparison.OrdinalIgnoreCase));
+        if (qcl040TopologyReport is not null)
+        {
+            arguments.Add("--qcl040-topology-report");
+            arguments.Add(qcl040TopologyReport.FullName);
+        }
+
+        var qcl041TopologyReport = topologyReports.FirstOrDefault(report =>
+            report.Name.Contains(".qcl041-", StringComparison.OrdinalIgnoreCase));
+        if (qcl041TopologyReport is not null)
+        {
+            arguments.Add("--qcl041-topology-report");
+            arguments.Add(qcl041TopologyReport.FullName);
+        }
+
+        if (qcl082FirewallVerifyReport is not null)
+        {
+            arguments.Add("--firewall-report");
+            arguments.Add(qcl082FirewallVerifyReport.FullName);
+        }
+
+        await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+            .ConfigureAwait(false);
+        return reportPath;
     }
 
     private static async Task<FileInfo?> RunQcl082MediaStreamSessionPlanIfAvailableAsync(
@@ -919,6 +999,32 @@ public sealed class HostessctlConnectivityService
             "bridge-route",
             "stream-websocket-ordered-evidence.json")));
 
+    private static FileInfo DefaultQcl082ProductMediaReportPath(DirectoryInfo repoRoot) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            "qcl082-rmanvid1-receiver-capture.json"));
+
+    private static FileInfo CompanionProjectionReportPath(
+        DirectoryInfo repoRoot,
+        ConnectivitySuiteRunReport suite,
+        ConnectivityProtocolEvidenceMatrix matrix) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "companion-report",
+            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.projection.json"));
+
+    private static FileInfo CompanionTransportGatesReportPath(
+        DirectoryInfo repoRoot,
+        ConnectivitySuiteRunReport suite,
+        ConnectivityProtocolEvidenceMatrix matrix) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "companion-report",
+            $"{SafeFileToken(matrix.MatrixId, suite.SuiteRunId)}.transport-gates.json"));
 
     private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>
         new(Path.Combine(

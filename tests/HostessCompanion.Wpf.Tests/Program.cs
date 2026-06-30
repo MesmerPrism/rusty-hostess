@@ -413,6 +413,10 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "suite report path must be attached");
     Assert(run.Matrix.ReportPath.EndsWith(".protocol-matrix.json", StringComparison.Ordinal),
         "matrix report path must be attached");
+    Assert(File.Exists(run.DirectWifiProductMediaPlanPath),
+        "direct-Wi-Fi product-media acceptance plan must be written");
+    Assert(run.DirectWifiProductMediaPlanPath.EndsWith(".direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal),
+        "direct-Wi-Fi product-media acceptance plan path must be run-scoped");
     Assert(File.Exists(run.Projection.ReportPath), "projection report must be written");
     Assert(File.Exists(run.TransportGates.ReportPath), "transport gate report must be written");
     Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
@@ -456,6 +460,10 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
             source.Role == "firewall_rule_report"
             && source.Path.EndsWith(firewallArtifact, StringComparison.Ordinal)),
         "projection must include the read-only QCL-082 product firewall verify report");
+    Assert(run.Projection.SourceArtifacts.Any(source =>
+            source.Role == "direct_wifi_product_media_acceptance_plan"
+            && source.Path == run.DirectWifiProductMediaPlanPath),
+        "projection must include the generated direct-Wi-Fi product-media acceptance plan");
     var firewallRow = run.Projection.Rows.Single(row =>
         row.RowId == "firewall_rule.qcl-082-rmanvid1-media.verify");
     Assert(firewallRow.AuthorityOwner == "tools.hostessctl.connectivity_firewall",
@@ -466,6 +474,27 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
     var firewallGateProven = firewallRow.Details.TryGetProperty("product_gate_proven", out var gateProven)
         && gateProven.ValueKind == JsonValueKind.True;
     var coverage = run.Projection.Rows.Single(row => row.RowId == "transport_coverage.summary");
+    var directWifiPlanRow = run.Projection.Rows.Single(row =>
+        row.RowId == "direct_wifi_product_media_plan.summary");
+    Assert(directWifiPlanRow.AuthorityOwner == "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+        "direct-Wi-Fi product-media plan row must keep Hostess CLI plan ownership");
+    Assert(directWifiPlanRow.Status == "planned",
+        "fixture-only WPF run must not promote the direct-Wi-Fi product-media plan");
+    Assert(directWifiPlanRow.Details.GetProperty("policy").GetProperty("read_only_plan").GetBoolean(),
+        "direct-Wi-Fi product-media plan must be a read-only artifact");
+    Assert(directWifiPlanRow.Details.GetProperty("readiness").GetProperty("live_steps_require_quest_lease").GetBoolean(),
+        "direct-Wi-Fi product-media plan must preserve Quest lease requirements for live steps");
+    var directWifiDependencyRow = run.Projection.Rows.Single(row =>
+        row.RowId == "direct_wifi_product_media_plan.dependency.transport.direct_wifi_live_topology");
+    Assert(directWifiDependencyRow.Status == "planned",
+        "generated acceptance plan must keep unpromoted direct-Wi-Fi topology planned");
+    Assert(directWifiDependencyRow.Details.GetProperty("network_provider").GetString() == "wifi_direct",
+        "direct-Wi-Fi acceptance dependency must keep Wi-Fi Direct visible to the projection");
+    var directWifiPlanRows = ConnectivityRows.ForCompanionReportProjection(run.Projection);
+    Assert(directWifiPlanRows.Any(row =>
+            row.Name == "direct_wifi_product_media_plan.summary"
+            && row.Evidence.Contains("topology=", StringComparison.Ordinal)),
+        "WPF row projection must render the generated direct-Wi-Fi product-media acceptance plan");
     Assert(coverage.Evidence.Contains("websocket", StringComparison.Ordinal),
         "projection coverage must keep WebSocket command route visible");
     Assert(coverage.Evidence.Contains("tcp", StringComparison.Ordinal),

@@ -179,9 +179,14 @@ refreshes the QCL-082 Rusty Quest media-stream source-contract report through
 exists, accepts QCL-082 broker/runtime status artifacts through
 `connectivity-probe run --media-stream-runtime-status`, asks
 `connectivity-probe protocol-matrix` for source selection and promotion state
-with those topology reports as explicit `--input` files, then asks
-`companion-report projection --include-protocol-matrix-inputs` for the
-normalized operator rows that the Connectivity page renders. It then asks
+with those topology reports as explicit `--input` files, writes the read-only
+`connectivity-probe direct-wifi-product-media-plan` artifact for the same
+topology, firewall, matrix, projection, and gate outputs, then asks
+`companion-report projection --include-protocol-matrix-inputs
+--direct-wifi-product-media-plan` for the normalized operator rows that the
+Connectivity page renders. That plan is projected as checklist evidence only:
+live direct-Wi-Fi topology, product listener firewall, and QCL-082 RMANVID1
+media reports still own promotion. It then asks
 `companion-report transport-gates --projection <projection>` for the
 projection-derived gate report and renders `operator_next_actions` plus
 per-gate `next_actions` as read-only operator rows. The flag keeps device-link
