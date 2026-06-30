@@ -450,6 +450,9 @@ public sealed class ConnectivityFirewallRuleReport
     [JsonPropertyName("powershell")]
     public ConnectivityFirewallPowerShell PowerShell { get; set; } = new();
 
+    [JsonPropertyName("elevation")]
+    public ConnectivityFirewallElevation Elevation { get; set; } = new();
+
     [JsonPropertyName("verification")]
     public ConnectivityFirewallVerification Verification { get; set; } = new();
 
@@ -505,6 +508,39 @@ public sealed class ConnectivityFirewallPowerShell
 
     [JsonPropertyName("script")]
     public string Script { get; set; } = "";
+}
+
+public sealed class ConnectivityFirewallElevation
+{
+    [JsonPropertyName("requires_admin")]
+    public bool RequiresAdmin { get; set; }
+
+    [JsonPropertyName("current_process_is_elevated")]
+    public bool CurrentProcessIsElevated { get; set; }
+
+    [JsonPropertyName("mutation_permitted")]
+    public bool MutationPermitted { get; set; }
+
+    [JsonPropertyName("blocked_before_mutation")]
+    public bool BlockedBeforeMutation { get; set; }
+
+    [JsonPropertyName("handoff")]
+    public ConnectivityFirewallElevationHandoff Handoff { get; set; } = new();
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed class ConnectivityFirewallElevationHandoff
+{
+    [JsonPropertyName("operator_action")]
+    public string OperatorAction { get; set; } = "";
+
+    [JsonPropertyName("powershell_command")]
+    public string PowerShellCommand { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
 
 public sealed class ConnectivityFirewallVerification

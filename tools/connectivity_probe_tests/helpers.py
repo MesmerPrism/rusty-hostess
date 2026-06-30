@@ -16,6 +16,7 @@ from typing import Any
 from tools.hostessctl.cli_parser import build_hostessctl_parser
 from tools.hostessctl.connectivity_firewall import (
     CONNECTIVITY_FIREWALL_RULE_SCHEMA,
+    run_windows_firewall_rule,
     windows_firewall_rule_report,
 )
 from tools.hostessctl.connectivity_media_receiver import run_rmanvid1_receiver_capture

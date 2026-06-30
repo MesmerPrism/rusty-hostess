@@ -17,6 +17,7 @@ var tests = new (string Name, Action Test)[]
     ("companion report projection rows expose transport coverage", CompanionReportProjectionRowsExposeTransportCoverage),
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
+    ("firewall rows expose elevation preflight", FirewallRowsExposeElevationPreflight),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
     ("firewall QCL-082 profile plan uses CLI profile", FirewallQcl082ProfilePlanUsesCliProfile),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
@@ -543,6 +544,50 @@ static void FirewallRowsExposeProductVerification()
     Assert(rows.Any(row => row.Evidence.Contains("product_rule_verified=True", StringComparison.Ordinal)),
         "missing product verification evidence");
     Assert(ConnectivityRows.StatusFromRows(rows) == "pass", "verified product rule should pass");
+}
+
+static void FirewallRowsExposeElevationPreflight()
+{
+    var report = new ConnectivityFirewallRuleReport
+    {
+        Status = "blocked",
+        Action = "apply",
+        Rule = new ConnectivityFirewallRule
+        {
+            Name = "Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079",
+            Program = "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+            Protocol = "TCP",
+            LocalPort = 9079,
+            Profiles = ["Public"],
+            RemoteAddress = "LocalSubnet",
+            ScopeNote = "product scoped listener",
+        },
+        Elevation = new ConnectivityFirewallElevation
+        {
+            RequiresAdmin = true,
+            CurrentProcessIsElevated = false,
+            MutationPermitted = false,
+            BlockedBeforeMutation = true,
+            Handoff = new ConnectivityFirewallElevationHandoff
+            {
+                OperatorAction = "rerun from elevated PowerShell",
+            },
+        },
+        ActionResult = new ConnectivityProcessResult
+        {
+            Attempted = false,
+            Stderr = "firewall apply requires an elevated PowerShell session",
+        },
+    };
+
+    var rows = ConnectivityRows.ForFirewallPlan(report);
+    var elevation = rows.Single(row => row.Name == "host.windows_firewall_rule_elevation");
+
+    Assert(elevation.Status == "blocked", "non-elevated firewall mutation must project blocked");
+    Assert(elevation.IssueCodes.Contains("hostess.issue.connectivity_probe.firewall_rule_requires_elevation"),
+        "missing elevation issue code");
+    Assert(rows.All(row => row.Name != "host.windows_firewall_rule_apply_process"),
+        "blocked preflight must not project an attempted mutation process row");
 }
 
 static void FirewallDefaultNamesStayProductScoped()

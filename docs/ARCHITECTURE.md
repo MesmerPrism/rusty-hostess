@@ -310,6 +310,12 @@ renders the report through explicit rule profiles (`custom`,
 `qcl-010-tcp-echo`, `qcl-080-udp-freshness`, and
 `qcl-082-rmanvid1-media`); it does not invent firewall scope rules or treat
 broad diagnostic Python listener allowances as product readiness.
+Mutating `apply` and `remove` reports include an `elevation` preflight. A
+non-elevated shell emits
+`hostess.issue.connectivity_probe.firewall_rule_requires_elevation`, blocks
+before `New-NetFirewallRule` or removal, and still permits read-only
+verification when the rule shape is valid. WPF renders that row and can request
+the same CLI route through an explicit elevated action.
 Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
 It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
 shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and
@@ -331,8 +337,9 @@ projection while route execution remains in the facade and protocol helpers;
 validator so route dispatch, fixture construction, live probing, WPF rows, and
 Makepad rows all depend on the same report acceptance surface;
 `connectivity_firewall.py` owns Windows Firewall listener rule planning,
-apply/verify/remove reports, product-rule verification, and network/firewall
-profile summaries used by QCL-010/QCL-080 and WPF operator rows;
+apply/verify/remove reports, elevation preflight, product-rule verification,
+and network/firewall profile summaries used by QCL-010/QCL-080 and WPF
+operator rows;
 `connectivity_lan.py` owns serial-scoped Quest ADB identity collection, host
 IPv4 selection, same-subnet checks, ICMP probes, Windows Mobile Hotspot state
 collection, TCP echo transport probes, and QCL-010/QCL-011 live report

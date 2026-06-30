@@ -181,9 +181,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   dispatches QCL routes, and preserves the CLI/report shape for WPF, Makepad,
   and automation. Protocol mechanics live in focused helpers.
 - `tools/hostessctl/connectivity_firewall.py`: Windows Firewall listener rule
-  planning, apply/verify/remove report shaping, product-rule verification, and
-  Windows network/firewall profile summaries used by QCL-010/QCL-080 and WPF
-  operator rows.
+  planning, apply/verify/remove report shaping, product-rule verification,
+  elevation preflight for mutating actions, and Windows network/firewall
+  profile summaries used by QCL-010/QCL-080 and WPF operator rows.
 - `tools/hostessctl/connectivity_lan.py`: live LAN/device transport helpers
   for serial-scoped Quest ADB identity, host IPv4 selection, same-subnet checks,
   ICMP probes, Windows Mobile Hotspot state collection, TCP echo probes, and

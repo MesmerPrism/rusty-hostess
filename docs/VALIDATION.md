@@ -352,8 +352,12 @@ Hostess/WPF TCP listener firewall rule first, then pass the report through
 
 If verification reports `product_rule_verified=false`, run the same command
 with `--action apply` from an elevated PowerShell session, then rerun
-`--action verify`. The scoped rule name is part of the QCL-082 product
-contract and must stay distinct from the default QCL-010 TCP echo rule.
+`--action verify`. A non-elevated apply must emit a blocked report with
+`hostess.issue.connectivity_probe.firewall_rule_requires_elevation`,
+`elevation.blocked_before_mutation=true`, and `action_result.attempted=false`;
+that report is useful operator evidence but does not clear the firewall gate.
+The scoped rule name is part of the QCL-082 product contract and must stay
+distinct from the default QCL-010 TCP echo rule.
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run `

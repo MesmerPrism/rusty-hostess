@@ -9,6 +9,10 @@ public static class ConnectivityRows
         ConnectivityFirewallRuleReport report)
     {
         var rows = new List<ConnectivityCheck> { FirewallPlanCheck(report) };
+        if (report.Elevation.RequiresAdmin || report.Elevation.BlockedBeforeMutation)
+        {
+            rows.Add(FirewallElevationCheck(report));
+        }
         if (!string.IsNullOrWhiteSpace(report.Verification.Status))
         {
             rows.Add(FirewallVerificationCheck(report));
@@ -324,6 +328,28 @@ public static class ConnectivityRows
             Observed = ExistingJsonElementOrFallback(
                 report.Verification.ListenerFirewall,
                 "host.windows_firewall_rule_verify"),
+        };
+
+    public static ConnectivityCheck FirewallElevationCheck(ConnectivityFirewallRuleReport report) =>
+        new()
+        {
+            Name = "host.windows_firewall_rule_elevation",
+            Status = !report.Elevation.RequiresAdmin
+                ? "pass"
+                : report.Elevation.MutationPermitted
+                    ? "pass"
+                    : "blocked",
+            Evidence =
+                $"requires_admin={report.Elevation.RequiresAdmin}; " +
+                $"current_process_is_elevated={report.Elevation.CurrentProcessIsElevated}; " +
+                $"mutation_permitted={report.Elevation.MutationPermitted}",
+            Notes = string.IsNullOrWhiteSpace(report.Elevation.Handoff.OperatorAction)
+                ? report.Elevation.Handoff.PowerShellCommand
+                : report.Elevation.Handoff.OperatorAction,
+            IssueCodes = report.Elevation.BlockedBeforeMutation
+                ? ["hostess.issue.connectivity_probe.firewall_rule_requires_elevation"]
+                : [],
+            Observed = ToObservedElement(report.Elevation),
         };
 
     public static ConnectivityCheck FirewallActionResultCheck(ConnectivityFirewallRuleReport report) =>

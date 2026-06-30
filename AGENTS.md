@@ -133,6 +133,11 @@ generic code or sanitized sample fixtures.
   product TCP listener firewall verification reports, but it must not own
   Windows firewall rule lifecycle, Android camera/display source setup, or QCL
   promotion policy.
+- Keep `tools\hostessctl\connectivity_firewall.py` as the Windows Firewall
+  listener lifecycle owner. It owns rule planning, product-rule verification,
+  network/firewall profile summaries, and elevation preflight for mutating
+  apply/remove actions; WPF renders its reports and uses explicit elevated
+  action requests instead of hidden firewall logic.
 - Keep `tools\hostessctl\connectivity_probe_fixtures.py` as the QCL fixture
   construction owner. `connectivity_probe.py` may preserve facade imports and
   route fixture mode to it, but fixture bodies, damaged fixture variants, and

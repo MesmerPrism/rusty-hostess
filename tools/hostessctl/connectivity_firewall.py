@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
+import getpass
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -20,6 +23,7 @@ CONNECTIVITY_FIREWALL_RULE_SCHEMA = "rusty.quest.connectivity_windows_firewall_r
 DEFAULT_QCL010_TCP_ECHO_PORT = 18766
 DEFAULT_QCL080_UDP_FRESHNESS_PORT = 18767
 DEFAULT_QCL082_RMANVID1_MEDIA_PORT = 9079
+MUTATING_FIREWALL_ACTIONS = {"apply", "remove"}
 FIREWALL_RULE_PROFILE_CUSTOM = "custom"
 FIREWALL_RULE_PROFILE_QCL010_TCP_ECHO = "qcl-010-tcp-echo"
 FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS = "qcl-080-udp-freshness"
@@ -46,6 +50,7 @@ def run_windows_firewall_rule(
     *,
     run_captured_func: Any | None = None,
     clock_func: Any | None = None,
+    elevation_func: Any | None = None,
 ) -> int:
     """Plan, apply, verify, or remove a scoped Windows Firewall listener rule."""
 
@@ -53,16 +58,35 @@ def run_windows_firewall_rule(
     clock = clock_func or utc_now
     report = windows_firewall_rule_report(args, observed_at=clock())
     action = str(report.get("action") or "plan")
+    report["elevation"] = firewall_elevation_report(
+        action,
+        (elevation_func or current_process_elevation)(),
+        powershell_command=str(object_value(report.get("powershell")).get("command") or ""),
+    )
 
-    if action in {"apply", "remove"}:
+    if action in MUTATING_FIREWALL_ACTIONS:
+        result_key = "apply_result" if action == "apply" else "remove_result"
         if report["status"] == "blocked":
-            result_key = "apply_result" if action == "apply" else "remove_result"
-            report[result_key] = {
-                "attempted": False,
-                "returncode": None,
-                "stdout": "",
-                "stderr": "firewall rule plan was blocked",
-            }
+            blocked_result = firewall_blocked_action_result("firewall rule plan was blocked")
+            report["action_result"] = blocked_result
+            report[result_key] = blocked_result
+        elif object_value(report.get("elevation")).get("mutation_permitted") is not True:
+            report["status"] = "blocked"
+            report.setdefault("issues", []).append(
+                issue_row(
+                    "hostess.issue.connectivity_probe.firewall_rule_requires_elevation",
+                    "error",
+                    "firewall apply/remove requires an elevated PowerShell session",
+                )
+            )
+            blocked_result = firewall_blocked_action_result(
+                (
+                    f"firewall {action} requires an elevated PowerShell session; "
+                    "rerun this Hostess CLI command from an elevated shell or use the WPF elevated action"
+                )
+            )
+            report["action_result"] = blocked_result
+            report[result_key] = blocked_result
         else:
             result = run_captured(
                 [
@@ -86,10 +110,17 @@ def run_windows_firewall_rule(
                 report["remove_result"] = action_result
             report["status"] = "pass" if result.returncode == 0 else "fail"
 
-    if action in {"apply", "verify", "remove"} and report["status"] != "blocked":
+    rule = object_value(report.get("rule"))
+    can_verify = (
+        bool(str(rule.get("program") or "").strip())
+        and 0 < int(rule.get("local_port") or 0) <= 65535
+    )
+    if action in {"apply", "verify", "remove"} and can_verify:
         verification = verify_windows_firewall_rule_report(report, run_captured)
         report["verification"] = verification
-        if action == "verify":
+        if report["status"] == "blocked":
+            pass
+        elif action == "verify":
             report["status"] = verification["status"]
         elif action == "apply" and report["status"] == "pass":
             report["status"] = "pass" if verification["product_rule_verified"] is True else "warn"
@@ -205,7 +236,7 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
             "connectivity_probe_args": connectivity_probe_args,
         },
         "powershell": {
-            "requires_admin": True,
+            "requires_admin": firewall_action_requires_admin(action),
             "script": script,
             "command": (
                 "powershell -NoProfile -ExecutionPolicy Bypass -Command "
@@ -273,6 +304,71 @@ def firewall_rule_action(args: argparse.Namespace) -> str:
     if getattr(args, "apply", False):
         return "apply"
     return "plan"
+
+
+def firewall_action_requires_admin(action: str) -> bool:
+    return str(action or "").strip().lower() in MUTATING_FIREWALL_ACTIONS
+
+
+def firewall_elevation_report(
+    action: str,
+    observed: dict[str, Any],
+    *,
+    powershell_command: str,
+) -> dict[str, Any]:
+    observed = object_value(observed)
+    requires_admin = firewall_action_requires_admin(action)
+    current_process_is_elevated = observed.get("current_process_is_elevated") is True
+    mutation_permitted = (not requires_admin) or current_process_is_elevated
+    blocked_before_mutation = requires_admin and not current_process_is_elevated
+    return {
+        "action": str(action or "plan"),
+        "requires_admin": requires_admin,
+        "current_process_is_elevated": current_process_is_elevated,
+        "mutation_permitted": mutation_permitted,
+        "blocked_before_mutation": blocked_before_mutation,
+        "user": str(observed.get("user") or ""),
+        "source": str(observed.get("source") or ""),
+        "error": str(observed.get("error") or ""),
+        "handoff": {
+            "operator_action": (
+                "rerun from elevated PowerShell or use the WPF elevated firewall action"
+                if blocked_before_mutation
+                else "no elevation handoff required for this action"
+            ),
+            "powershell_command": powershell_command,
+        },
+    }
+
+
+def current_process_elevation() -> dict[str, Any]:
+    source = "windows_shell32" if os.name == "nt" else "non_windows_default"
+    error = ""
+    is_elevated = False
+    if os.name == "nt":
+        try:
+            is_elevated = bool(ctypes.windll.shell32.IsUserAnAdmin())
+        except (AttributeError, OSError) as exc:
+            error = str(exc)
+    try:
+        user = getpass.getuser()
+    except OSError:
+        user = ""
+    return {
+        "current_process_is_elevated": is_elevated,
+        "user": user,
+        "source": source,
+        "error": error,
+    }
+
+
+def firewall_blocked_action_result(message: str) -> dict[str, Any]:
+    return {
+        "attempted": False,
+        "returncode": None,
+        "stdout": "",
+        "stderr": message,
+    }
 
 
 def default_firewall_program(protocol: str) -> str:
@@ -702,12 +798,17 @@ __all__ = [
     "build_windows_firewall_rule_verify_script",
     "collect_windows_network_profile",
     "connectivity_probe_usage_args",
+    "current_process_elevation",
     "default_firewall_program",
     "default_firewall_rule_name",
     "diagnostic_python_program_path",
+    "firewall_action_requires_admin",
+    "firewall_blocked_action_result",
+    "firewall_elevation_report",
     "firewall_rule_action",
     "firewall_rule_probe_id",
     "firewall_rule_profile_defaults",
+    "MUTATING_FIREWALL_ACTIONS",
     "network_profile_summary",
     "normalize_firewall_program_path",
     "normalize_firewall_profiles",

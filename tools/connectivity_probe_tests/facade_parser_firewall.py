@@ -559,6 +559,7 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertIn("makepad-runtime", report["probe_usage"]["connectivity_probe_args"])
         self.assertIn("New-NetFirewallRule", report["powershell"]["script"])
         self.assertIn("-Protocol $protocol", report["powershell"]["script"])
+        self.assertFalse(report["powershell"]["requires_admin"])
 
     def test_windows_firewall_rule_defaults_to_wpf_product_listener(self) -> None:
         report = windows_firewall_rule_report(
@@ -580,6 +581,63 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertTrue(report["rule"]["program"].endswith("HostessCompanion.Wpf.exe"))
         self.assertIn("Get-NetFirewallRule", report["powershell"]["script"])
         self.assertNotIn("New-NetFirewallRule", report["powershell"]["script"])
+        self.assertFalse(report["powershell"]["requires_admin"])
+
+    def test_windows_firewall_rule_apply_blocks_before_mutation_when_not_elevated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            out = root / "qcl082-apply.json"
+            commands: list[list[str]] = []
+
+            def fake_run(
+                command: list[str],
+                *,
+                allow_failure: bool = False,
+                cwd: Path | None = None,
+            ) -> subprocess.CompletedProcess[str]:
+                commands.append(command)
+                text = " ".join(command)
+                if "Get-NetConnectionProfile" in text:
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        firewall_profile_json(protocol="TCP", listener_port=9079),
+                        "",
+                    )
+                return subprocess.CompletedProcess(command, 0, "{}", "")
+
+            status = run_windows_firewall_rule(
+                probe_args(
+                    connectivity_probe_command="windows-firewall-rule",
+                    rule_profile="qcl-082-rmanvid1-media",
+                    action="apply",
+                    out=str(out),
+                    fail_on_error=True,
+                ),
+                run_captured_func=fake_run,
+                clock_func=fixed_datetime,
+                elevation_func=lambda: {
+                    "current_process_is_elevated": False,
+                    "user": "fixture",
+                    "source": "unit",
+                },
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+
+        joined_commands = [" ".join(command) for command in commands]
+        self.assertEqual(status, 2)
+        self.assertEqual(report["status"], "blocked")
+        self.assertTrue(report["powershell"]["requires_admin"])
+        self.assertTrue(report["elevation"]["blocked_before_mutation"])
+        self.assertFalse(report["action_result"]["attempted"])
+        self.assertIn("requires an elevated PowerShell", report["action_result"]["stderr"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.firewall_rule_requires_elevation",
+            [issue["issue_code"] for issue in report["issues"]],
+        )
+        self.assertIn("verification", report)
+        self.assertFalse(any("New-NetFirewallRule" in command for command in joined_commands))
+        self.assertTrue(any("Get-NetConnectionProfile" in command for command in joined_commands))
 
     def test_windows_firewall_rule_tcp_default_uses_wpf_product_name(self) -> None:
         report = windows_firewall_rule_report(

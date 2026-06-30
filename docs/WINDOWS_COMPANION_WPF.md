@@ -234,8 +234,12 @@ python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --out target\connectivity-probe\wpf-qcl080-udp-firewall-verify.json
 ```
 
-Use `--action apply` or `--action remove` for elevated lifecycle changes.
-Verification records `product_rule_verified` separately from generic
+Use `--action apply` or `--action remove` for elevated lifecycle changes. The
+CLI report includes an `elevation` preflight; when the current process is not
+elevated, Hostess blocks before mutation with
+`hostess.issue.connectivity_probe.firewall_rule_requires_elevation` and WPF
+renders that row instead of pretending the rule was applied. Verification
+records `product_rule_verified` separately from generic
 `allowed_on_active_profile`, so broad port-only rules and diagnostic Python
 rules do not satisfy product readiness.
 The plan report also carries the matching QCL-080 probe arguments, including
@@ -378,8 +382,10 @@ Direct rows:
 
 If the verification report has `product_rule_verified=false`, run the same
 Hostess CLI route with `--action apply` from an elevated PowerShell session,
-then rerun `--action verify`. WPF should project the resulting report; it must
-not create firewall rules through hidden UI logic.
+then rerun `--action verify`. A non-elevated apply produces a blocked report
+with `elevation.blocked_before_mutation=true` and no attempted mutation. WPF
+should project the resulting report; it must not create firewall rules through
+hidden UI logic.
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
