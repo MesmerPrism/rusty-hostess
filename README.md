@@ -162,8 +162,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   so WPF, Makepad, CLI automation, and future frontends can compare the same
   operator rows without owning artifact selection, validation, command
   authority, firewall semantics, topology readiness, or protocol promotion.
+- `tools/hostessctl/companion_operator_action_rows.py`: static WPF
+  operator-action rows, including PowerShell-shaped Hostess CLI recipes,
+  evidence artifacts, authority owners, and test coverage labels.
 - `tools/hostessctl/companion_operator_actions.py`: read-only WPF operator
-  action catalog report. It emits
+  action catalog report and validation facade. It emits
   `rusty.hostess.companion.operator_action_catalog.v1` so automation can
   inspect the same visible action ids, command properties, PowerShell-shaped
   Hostess CLI routes, evidence artifacts, authority owners, and test coverage

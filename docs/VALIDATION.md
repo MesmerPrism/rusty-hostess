@@ -121,6 +121,10 @@ python tools\hostessctl\hostessctl.py companion-report operator-actions `
 
 and compares every emitted action row with `OperatorActionCatalog`, so the
 machine-readable report and the human-visible WPF command catalog cannot drift.
+The Hostess-side report imports static rows from
+`tools\hostessctl\companion_operator_action_rows.py` and keeps schema,
+validation, and failure status in `companion_operator_actions.py`, so row
+ownership and report checks stay separable.
 Firewall controls are covered the same way: the WPF rule-profile selector must
 map to the CLI `--rule-profile` contract, and
 `HostessCompanion.Wpf.Tests` plans the QCL-082 profile through Hostess CLI to

@@ -136,8 +136,10 @@ generic code or sanitized sample fixtures.
   routes, PowerShell command strings, acceptance artifacts, and lease/elevation
   metadata for pending gates; it must not execute those commands or decide that
   a gate is cleared.
-- Keep `tools\hostessctl\companion_operator_actions.py` as the read-only
-  WPF operator-action report owner. It may emit
+- Keep `tools\hostessctl\companion_operator_action_rows.py` as the static WPF
+  operator-action row owner, and keep
+  `tools\hostessctl\companion_operator_actions.py` as the read-only
+  report/validation facade. The facade may emit
   `rusty.hostess.companion.operator_action_catalog.v1` so automation can
   inspect the same visible action ids, command properties, PowerShell-shaped
   Hostess CLI routes, evidence artifacts, authority owners, and test coverage

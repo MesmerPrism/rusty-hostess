@@ -30,6 +30,7 @@ try {
         "tools\hostessctl\broker_transport.py",
         "tools\hostessctl\cli_parser.py",
         "tools\hostessctl\companion_catalog.py",
+        "tools\hostessctl\companion_operator_action_rows.py",
         "tools\hostessctl\companion_operator_actions.py",
         "tools\hostessctl\companion_readiness.py",
         "tools\hostessctl\companion_report_projection.py",

@@ -12,6 +12,9 @@ from tools.hostessctl.companion_operator_actions import (
     run_companion_operator_actions,
     validate_companion_operator_action_catalog,
 )
+from tools.hostessctl.companion_operator_action_rows import (
+    operator_actions_for_frontend as operator_action_rows_for_frontend,
+)
 
 
 class FixedClock:
@@ -32,6 +35,7 @@ class CompanionOperatorActionCatalogTests(unittest.TestCase):
         self.assertEqual(validation["status"], "pass")
         self.assertEqual(report["frontend"], "wpf")
         self.assertEqual(report["summary"]["action_count"], 12)
+        self.assertEqual(report["actions"], operator_action_rows_for_frontend("wpf"))
         self.assertTrue(report["summary"]["all_hostess_cli_segments_name_out"])
         self.assertFalse(report["issues"])
         action_ids = {action["action_id"] for action in report["actions"]}

@@ -107,6 +107,10 @@ transport semantics. `MainWindowViewModel` remains the XAML-compatible
 coordinator and service requester.
 `OperatorActionCatalog` maps each visible WPF command to its Hostess
 CLI-equivalent route, evidence artifact, authority owner, and test coverage.
+Hostess keeps the machine-readable row source split as
+`tools/hostessctl/companion_operator_action_rows.py`, while
+`tools/hostessctl/companion_operator_actions.py` owns report assembly and
+validation.
 The equivalent machine-readable catalog is
 `hostessctl companion-report operator-actions --frontend wpf`, which emits
 `rusty.hostess.companion.operator_action_catalog.v1` without executing the

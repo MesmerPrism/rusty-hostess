@@ -78,7 +78,10 @@ The same test suite runs
 --frontend wpf --out target\companion-report\wpf-operator-actions-test.json
 --fail-on-error` and compares the emitted
 `rusty.hostess.companion.operator_action_catalog.v1` rows with the WPF catalog,
-so automation can inspect the operator action surface without clicking UI.
+so automation can inspect the operator action surface without clicking UI. The
+Hostess report loads its static rows from
+`tools\hostessctl\companion_operator_action_rows.py` and keeps schema/status
+validation in `companion_operator_actions.py`.
 Catalog routes are PowerShell-shaped Hostess CLI commands, not bare route
 fragments: they advertise `python tools\hostessctl\hostessctl.py ...`, use
 PowerShell variables or splats for repeated arguments, and avoid pipe-delimited
