@@ -229,7 +229,10 @@ def direct_wifi_product_media_plan(
                 "run through its generated UAC handoff when elevation is needed."
             ),
         },
-        "lease": product_plan.quest_lease_metadata("direct-Wi-Fi product media validation"),
+        "lease": product_plan.quest_lease_metadata(
+            "direct-Wi-Fi product media validation",
+            serial=value(args, "serial", "<quest-serial>"),
+        ),
         "dependencies": [
             {
                 "gate_id": "transport.direct_wifi_live_topology",
@@ -386,7 +389,10 @@ def product_args(
         qcl082_report_out=paths["qcl082_report"],
         protocol_matrix_out=paths["protocol_matrix_out"],
         quest_lease_id=value(args, "quest_lease_id", product_plan.DEFAULT_QUEST_LEASE_ID),
-        quest_lease_resource=value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE),
+        quest_lease_resource=product_plan.quest_lease_resource_value(
+            value(args, "serial", "<quest-serial>"),
+            value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE),
+        ),
         fail_on_error=False,
     )
 
@@ -526,7 +532,10 @@ def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> 
     adb = value(args, "adb", lifecycle_plan.DEFAULT_ADB)
     serial = value(args, "serial", "<quest-serial>")
     quest_lease_id = value(args, "quest_lease_id", product_plan.DEFAULT_QUEST_LEASE_ID)
-    quest_lease_resource = value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE)
+    quest_lease_resource = product_plan.quest_lease_resource_value(
+        serial,
+        value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE),
+    )
     return [
         plan_command(
             "write_qcl040_wifi_direct_lifecycle_plan",

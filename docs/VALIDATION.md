@@ -533,8 +533,10 @@ the follow-on QCL-082 fold-in and protocol-matrix/projection routes consume the
 generated artifacts. A valid `quest:<serial>` lease is necessary but not
 sufficient: the route also requires `--topology-report` to resolve to a
 promoted direct-Wi-Fi topology report and `--firewall-report` to resolve to a
-verified product Hostess/WPF listener firewall report. If either dependency is
-missing or unready, Hostess writes a blocked receiver result with
+verified product Hostess/WPF listener firewall report. The receiver lease
+serial must match the promoted topology report `device.serial`; a mismatch is
+treated as an unready product-media dependency before any live side effect. If
+any dependency is missing or unready, Hostess writes a blocked receiver result with
 `close_reason=blocked_missing_product_media_dependencies`, does not write the
 start-source request, does not arm the receiver, and does not start the live
 Android command.

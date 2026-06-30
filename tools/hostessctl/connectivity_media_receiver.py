@@ -43,6 +43,11 @@ QUEST_LEASE_PLACEHOLDERS = {
     "<quest-lease-id>",
     "LEASE_ID_FROM_RESERVE_OUTPUT",
 }
+QUEST_SERIAL_PLACEHOLDERS = {
+    "",
+    "<quest-serial>",
+    "QUEST_SERIAL_FROM_ADB_DEVICES",
+}
 DEFAULT_QCL082_START_SOURCE_COMMAND = "command.media_stream.start_source"
 DEFAULT_QCL082_START_SOURCE_REQUEST_ID = "request.hostess.qcl082.media_stream.start_source"
 DEFAULT_QCL082_START_SOURCE_EVIDENCE_ID = "evidence.hostess.qcl082.media_stream.start_source"
@@ -76,11 +81,15 @@ def quest_lease_summary_from_args(args: Any) -> dict[str, Any]:
     resource = str(getattr(args, "quest_lease_resource", "") or "").strip()
     if not resource and serial and "<" not in serial:
         resource = f"{QUEST_LEASE_RESOURCE_PREFIX}{serial}"
+    resource_serial = quest_serial_from_resource(resource)
+    command_serial = concrete_quest_serial(serial)
     lease_id = str(getattr(args, "quest_lease_id", "") or "").strip()
     reserved_before = bool(getattr(args, "quest_lease_reserved_before_live_steps", False))
     issue_codes: list[str] = []
     if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX) or "<" in resource:
         issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_resource_invalid")
+    if command_serial and resource_serial and command_serial != resource_serial:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_serial_mismatch")
     if lease_id in QUEST_LEASE_PLACEHOLDERS or "<" in lease_id:
         issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_id_missing")
     if not reserved_before:
@@ -88,6 +97,11 @@ def quest_lease_summary_from_args(args: Any) -> dict[str, Any]:
     return {
         "manager": AGENT_BOARD_MANAGER,
         "resource": resource,
+        "quest_serial": resource_serial,
+        "command_serial": command_serial,
+        "command_serial_matches_resource": bool(
+            not command_serial or (resource_serial and command_serial == resource_serial)
+        ),
         "lease_id": lease_id,
         "reserved_before_live_steps": reserved_before,
         "released_after_live_steps": False,
@@ -102,6 +116,7 @@ def media_receiver_quest_lease_summary(sidecar: dict[str, Any]) -> dict[str, Any
     lease = object_value(sidecar.get("lease") or sidecar.get("quest_lease"))
     manager = str(lease.get("manager") or "").strip()
     resource = str(lease.get("resource") or "").strip()
+    resource_serial = quest_serial_from_resource(resource)
     lease_id = str(lease.get("lease_id") or lease.get("id") or "").strip()
     reserved_before = lease.get("reserved_before_live_steps") is True
     issue_codes: list[str] = []
@@ -116,6 +131,7 @@ def media_receiver_quest_lease_summary(sidecar: dict[str, Any]) -> dict[str, Any
     return {
         "manager": manager,
         "resource": resource,
+        "quest_serial": resource_serial,
         "lease_id": lease_id,
         "reserved_before_live_steps": reserved_before,
         "released_after_live_steps": lease.get("released_after_live_steps") is True,
@@ -126,6 +142,26 @@ def media_receiver_quest_lease_summary(sidecar: dict[str, Any]) -> dict[str, Any
             lease.get("adb_server_lifecycle_policy") or adb_server_lifecycle_policy()
         ),
     }
+
+
+def quest_serial_from_resource(resource: str) -> str:
+    if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX):
+        return ""
+    return concrete_quest_serial(resource[len(QUEST_LEASE_RESOURCE_PREFIX) :])
+
+
+def concrete_quest_serial(raw: str) -> str:
+    serial = str(raw or "").strip()
+    return "" if serial in QUEST_SERIAL_PLACEHOLDERS or "<" in serial else serial
+
+
+def topology_device_serial(report: dict[str, Any]) -> str:
+    device = object_value(report.get("device"))
+    for key in ("serial", "adb_serial"):
+        serial = concrete_quest_serial(str(device.get(key) or ""))
+        if serial:
+            return serial
+    return ""
 
 
 def blocked_receiver_capture_result(
@@ -207,6 +243,7 @@ def media_live_dependency_preflight_from_args(args: Any) -> dict[str, Any]:
     topology_path = str(getattr(args, "topology_report", "") or "").strip()
     firewall_path = str(getattr(args, "firewall_report", "") or "").strip()
     capture_kind = str(getattr(args, "capture_kind", "live_broker_stream") or "live_broker_stream")
+    quest_lease = quest_lease_summary_from_args(args)
     topology_report = read_json_file(Path(topology_path)) if topology_path else {}
     firewall_report = read_json_file(Path(firewall_path)) if firewall_path else {}
     topology = media_product_topology_summary(
@@ -216,6 +253,7 @@ def media_live_dependency_preflight_from_args(args: Any) -> dict[str, Any]:
         media_transport_ok=True,
         runtime_ok=True,
         capture_kind=capture_kind,
+        quest_lease=quest_lease,
     )
     firewall = media_product_listener_firewall_summary(
         firewall_report,
@@ -1238,6 +1276,7 @@ def qcl082_media_stream_receiver_capture_body(
         media_transport_ok=binary_transport_ok,
         runtime_ok=runtime_ok,
         capture_kind=capture_kind,
+        quest_lease=quest_lease,
     )
     product_listener_firewall = media_product_listener_firewall_summary(
         firewall_report,
@@ -1609,11 +1648,13 @@ def media_product_topology_summary(
     media_transport_ok: bool,
     runtime_ok: bool,
     capture_kind: str,
+    quest_lease: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     report = object_value(topology_report)
     topology = object_value(report.get("topology"))
     transport = object_value(report.get("transport"))
     promotion = object_value(report.get("promotion"))
+    lease = object_value(quest_lease)
     owner = str(topology.get("owner") or "")
     network_provider = str(topology.get("network_provider") or "")
     endpoint_direction = str(topology.get("endpoint_direction") or "")
@@ -1622,17 +1663,30 @@ def media_product_topology_summary(
     topology_status = str(report.get("status") or "")
     topology_probe_id = str(report.get("probe_id") or "")
     topology_promotion_allowed = promotion.get("allowed") is True
+    device_serial = topology_device_serial(report)
+    receiver_quest_serial = str(lease.get("quest_serial") or quest_serial_from_resource(str(lease.get("resource") or "")))
     direct_wifi = any(
         "wifi_direct" in normalize_topology_token(value)
         for value in [owner, network_provider, endpoint_direction, transport_family, route]
     )
     report_present = bool(report)
+    requires_serial_binding = bool(
+        report_present
+        and direct_wifi
+        and topology_promotion_allowed
+        and capture_kind in LIVE_CAPTURE_KINDS
+    )
+    serial_binding_ok = bool(
+        not requires_serial_binding
+        or (device_serial and receiver_quest_serial and device_serial == receiver_quest_serial)
+    )
     ready = (
         report_present
         and direct_wifi
         and topology_status == "pass"
         and topology_promotion_allowed
         and media_promotion_allowed
+        and serial_binding_ok
     )
     if not report_present:
         check_status_value = "skipped"
@@ -1642,6 +1696,41 @@ def media_product_topology_summary(
         check_status_value = "pass"
         evidence = "RMANVID1 TCP receiver capture is paired with promoted direct-Wi-Fi topology evidence"
         issue_codes = []
+    elif (
+        direct_wifi
+        and topology_promotion_allowed
+        and media_promotion_allowed
+        and requires_serial_binding
+        and not device_serial
+    ):
+        check_status_value = "blocked"
+        evidence = "direct-Wi-Fi topology is promoted but does not expose device.serial for product media lease binding"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_device_serial_missing"
+        ]
+    elif (
+        direct_wifi
+        and topology_promotion_allowed
+        and media_promotion_allowed
+        and requires_serial_binding
+        and not receiver_quest_serial
+    ):
+        check_status_value = "blocked"
+        evidence = "live receiver capture lease does not expose a Quest serial for product media topology binding"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_receiver_quest_lease_serial_missing"
+        ]
+    elif (
+        direct_wifi
+        and topology_promotion_allowed
+        and media_promotion_allowed
+        and requires_serial_binding
+    ):
+        check_status_value = "blocked"
+        evidence = "live receiver capture Quest lease serial does not match promoted direct-Wi-Fi topology device.serial"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_lease_serial_mismatch"
+        ]
     elif direct_wifi and not topology_promotion_allowed:
         check_status_value = "warn"
         evidence = "direct-Wi-Fi topology is present but not promoted for product media"
@@ -1677,6 +1766,10 @@ def media_product_topology_summary(
         "topology_transport_family": transport_family,
         "topology_promotion_allowed": topology_promotion_allowed,
         "direct_wifi_topology": direct_wifi,
+        "requires_serial_binding": requires_serial_binding,
+        "topology_device_serial": device_serial,
+        "media_receiver_quest_serial": receiver_quest_serial,
+        "topology_lease_serial_matches": serial_binding_ok,
         "media_transport_ok": media_transport_ok,
         "media_runtime_ok": runtime_ok,
         "media_promotion_allowed": media_promotion_allowed,

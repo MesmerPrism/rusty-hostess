@@ -92,6 +92,7 @@ def qcl082_product_media_direct_wifi_plan(
 ) -> dict[str, Any]:
     """Return the CLI/WPF-equivalent product-media-over-direct-Wi-Fi plan."""
 
+    serial = value(args, "serial", "<quest-serial>")
     paths = product_media_plan_paths(args)
     topology = topology_dependency(paths["promoted_topology_report"])
     firewall = firewall_dependency(paths["firewall_report"])
@@ -174,12 +175,13 @@ def qcl082_product_media_direct_wifi_plan(
             "requires_promoted_direct_wifi_topology": True,
             "requires_product_listener_firewall": True,
             "requires_quest_lease_for_live_steps": True,
+            "requires_media_lease_matches_topology_serial": True,
             "adb_server_lifecycle_policy": (
                 "Use adb-server:lifecycle only for disruptive daemon lifecycle "
                 "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
             ),
         },
-        "lease": quest_lease_metadata("QCL-082 product TCP media over direct Wi-Fi"),
+        "lease": quest_lease_metadata("QCL-082 product TCP media over direct Wi-Fi", serial=serial),
         "dependencies": [
             {
                 "gate_id": "transport.direct_wifi_live_topology",
@@ -266,7 +268,10 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
     adb = value(args, "adb", DEFAULT_ADB)
     serial = value(args, "serial", "<quest-serial>")
     quest_lease_id = value(args, "quest_lease_id", DEFAULT_QUEST_LEASE_ID)
-    quest_lease_resource = value(args, "quest_lease_resource", DEFAULT_QUEST_LEASE_RESOURCE)
+    quest_lease_resource = quest_lease_resource_value(
+        serial,
+        value(args, "quest_lease_resource", DEFAULT_QUEST_LEASE_RESOURCE),
+    )
     program = value(args, "program", str(DEFAULT_WPF_FIREWALL_PROGRAM))
     bind_host = value(args, "bind_host", "0.0.0.0")
     port = str(int_value(value(args, "port", DEFAULT_QCL082_RMANVID1_MEDIA_PORT)) or DEFAULT_QCL082_RMANVID1_MEDIA_PORT)
@@ -588,14 +593,15 @@ def report_if_path_exists(path_text: str) -> dict[str, Any]:
     return read_json_file(Path(path_text))
 
 
-def quest_lease_metadata(task: str) -> dict[str, Any]:
+def quest_lease_metadata(task: str, *, serial: str = "<quest-serial>") -> dict[str, Any]:
+    resource = quest_lease_resource_value(serial, DEFAULT_QUEST_LEASE_RESOURCE)
     return {
         "manager": "Agent Board",
-        "resource": QUEST_LEASE_RESOURCE,
+        "resource": resource,
         "duration": QUEST_LEASE_DURATION,
         "task": task,
         "reserve_command": (
-            f"& '{AGENT_BOARD_SCRIPT}' reserve '{QUEST_LEASE_RESOURCE}' "
+            f"& '{AGENT_BOARD_SCRIPT}' reserve '{resource}' "
             f"--duration {QUEST_LEASE_DURATION} --task '{task}'"
         ),
         "release_command": f"& '{AGENT_BOARD_SCRIPT}' release '<quest-lease-id>' --result done",
@@ -604,6 +610,14 @@ def quest_lease_metadata(task: str) -> dict[str, Any]:
             "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
         ),
     }
+
+
+def quest_lease_resource_value(serial: str, resource: str) -> str:
+    resource_text = str(resource or DEFAULT_QUEST_LEASE_RESOURCE).strip()
+    serial_text = str(serial or "<quest-serial>").strip()
+    if ("<" in resource_text or resource_text == DEFAULT_QUEST_LEASE_RESOURCE) and "<" not in serial_text:
+        return f"quest:{serial_text}" if not serial_text.startswith("quest:") else serial_text
+    return resource_text
 
 
 def value(args: argparse.Namespace, name: str, default: Any) -> str:

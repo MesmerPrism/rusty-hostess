@@ -173,6 +173,25 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("--quest-lease-resource", command_text)
         self.assertIn("--quest-lease-reserved-before-live-steps", command_text)
 
+    def test_qcl082_product_media_direct_wifi_plan_binds_lease_resource_to_serial(self) -> None:
+        report = qcl082_product_media_direct_wifi_plan(
+            probe_args(
+                connectivity_probe_command="qcl082-product-media-plan",
+                out="unused.json",
+                promoted_topology_report="target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+                firewall_report="target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                serial="3487C10H3M017Q",
+            ),
+            observed_at=fixed_datetime(),
+        )
+
+        command_text = "\n".join(action["command"] for action in report["commands"])
+        self.assertEqual(report["lease"]["resource"], "quest:3487C10H3M017Q")
+        self.assertTrue(report["policy"]["requires_media_lease_matches_topology_serial"])
+        self.assertIn("--serial '3487C10H3M017Q'", command_text)
+        self.assertIn("--quest-lease-resource 'quest:3487C10H3M017Q'", command_text)
+
     def test_qcl082_product_media_direct_wifi_plan_detects_ready_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -510,6 +529,7 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
             )
             topology_report["promotion"]["allowed"] = True
             topology_report["promotion"]["reason"] = "unit test promoted direct-Wi-Fi topology"
+            topology_report["device"]["serial"] = "TESTQUESTSERIAL"
             topology_path.write_text(json.dumps(topology_report), encoding="utf-8")
             report = fixture_report(
                 probe_args(
@@ -531,6 +551,60 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertTrue(product_gate["observed"]["product_gate_proven"])
         self.assertTrue(report["measurements"]["media_product_topology_ready"])
         self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_blocks_product_gate_when_topology_serial_mismatches_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            topology_path = root / "qcl041-live-wifi-direct-lifecycle.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            sidecar_path.write_text(
+                json.dumps(media_stream_receiver_sidecar(capture_kind="live_broker_stream")),
+                encoding="utf-8",
+            )
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            lifecycle_artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            lifecycle_artifact["device"]["serial"] = "OTHERQUESTSERIAL"
+            lifecycle_artifact["lease"]["resource"] = "quest:OTHERQUESTSERIAL"
+            lifecycle_path.write_text(json.dumps(lifecycle_artifact), encoding="utf-8")
+            run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(topology_path),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                    media_stream_topology_report=str(topology_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+        product_gate = check(report, "protocol.media_product_topology_gate")
+
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(product_gate["status"], "blocked")
+        self.assertFalse(product_gate["observed"]["product_gate_proven"])
+        self.assertEqual(product_gate["observed"]["topology_device_serial"], "OTHERQUESTSERIAL")
+        self.assertEqual(product_gate["observed"]["media_receiver_quest_serial"], "TESTQUESTSERIAL")
+        self.assertFalse(product_gate["observed"]["topology_lease_serial_matches"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_lease_serial_mismatch",
+            product_gate["issue_codes"],
+        )
+        self.assertFalse(report["media_stream_receiver_capture"]["product_topology"]["ready"])
         self.assertEqual(validation["status"], "pass")
 
     def test_qcl082_rmanvid1_receiver_capture_accepts_verified_product_tcp_firewall(self) -> None:
@@ -776,6 +850,7 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
                     runtime_status=str(root / "runtime-status.json"),
                     topology_report=str(root / "missing-topology.json"),
                     firewall_report=str(root / "missing-firewall.json"),
+                    serial="TESTQUESTSERIAL",
                     quest_lease_id="unit-test-quest-lease",
                     quest_lease_resource="quest:TESTQUESTSERIAL",
                     quest_lease_reserved_before_live_steps=True,
@@ -909,6 +984,86 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
         self.assertTrue(report["media_stream_receiver_capture"]["product_listener_firewall"]["ready"])
         self.assertTrue(report["media_stream_receiver_capture"]["quest_lease"]["valid"])
+
+    def test_qcl082_product_media_live_session_blocks_when_topology_serial_mismatches_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            request_path = root / "media-stream-start-source.request.json"
+            bridge_path = root / "media-stream-start-source.bridge-evidence.json"
+            execution_path = root / "media-stream-start-source.live-android-execution.json"
+            validation_path = root / "media-stream-start-source.validation-report.json"
+            logcat_path = root / "media-stream-start-source.logcat.txt"
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            topology_path = root / "qcl041-live-wifi-direct-lifecycle.json"
+            firewall_path = root / "qcl082-tcp-firewall-verify.json"
+            lifecycle_artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            lifecycle_artifact["device"]["serial"] = "OTHERQUESTSERIAL"
+            lifecycle_artifact["lease"]["resource"] = "quest:OTHERQUESTSERIAL"
+            lifecycle_path.write_text(json.dumps(lifecycle_artifact), encoding="utf-8")
+            run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(topology_path),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            firewall_path.write_text(json.dumps(media_stream_firewall_report()), encoding="utf-8")
+            runner_called = {"value": False}
+
+            def fake_live_android_runner(*_: object, **__: object) -> int:
+                runner_called["value"] = True
+                return 0
+
+            status = run_qcl082_product_media_live_session(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-live-session",
+                    out=str(result_path),
+                    start_source_request_out=str(request_path),
+                    bridge_evidence_out=str(bridge_path),
+                    execution_out=str(execution_path),
+                    validation_out=str(validation_path),
+                    logcat_out=str(logcat_path),
+                    capture_out=str(capture_path),
+                    sidecar_out=str(sidecar_path),
+                    bind_host="127.0.0.1",
+                    port=free_tcp_port(),
+                    timeout_seconds=0.01,
+                    capture_kind="live_broker_stream",
+                    topology_report=str(topology_path),
+                    firewall_report=str(firewall_path),
+                    adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                    serial="TESTQUESTSERIAL",
+                    quest_lease_id="unit-test-quest-lease",
+                    quest_lease_resource="quest:TESTQUESTSERIAL",
+                    quest_lease_reserved_before_live_steps=True,
+                    fail_on_error=True,
+                ),
+                live_android_runner=fake_live_android_runner,
+            )
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+
+        topology = receipt["dependency_preflight"]["topology"]
+        self.assertEqual(status, 2)
+        self.assertFalse(runner_called["value"])
+        self.assertFalse(request_path.exists())
+        self.assertFalse(capture_path.exists())
+        self.assertFalse(sidecar_path.exists())
+        self.assertEqual(receipt["close_reason"], "blocked_missing_product_media_dependencies")
+        self.assertFalse(receipt["live_session"]["receiver_armed_before_command"])
+        self.assertTrue(receipt["live_session"]["quest_lease"]["valid"])
+        self.assertFalse(receipt["live_session"]["dependency_preflight"]["ready"])
+        self.assertEqual(topology["topology_device_serial"], "OTHERQUESTSERIAL")
+        self.assertEqual(topology["media_receiver_quest_serial"], "TESTQUESTSERIAL")
+        self.assertFalse(topology["topology_lease_serial_matches"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_lease_serial_mismatch",
+            receipt["issue_codes"],
+        )
 
     def test_qcl082_product_media_live_session_blocks_without_quest_lease(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -547,7 +547,10 @@ artifact. The older explicit path flags remain lower-level compatibility
 inputs. Product TCP media over direct Wi-Fi is a separate gate: the receiver
 report must also be paired with a promoted QCL-040/QCL-041 direct-Wi-Fi
 topology report before the WPF transport summary can mark that product path
-proven.
+proven. For live captures, the receiver's Agent Board `quest:<serial>` lease
+must also match the promoted topology report `device.serial`; otherwise the
+generic QCL-082 media row may remain broker/runtime evidence, but the product
+TCP media over direct-Wi-Fi gate stays blocked.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ
