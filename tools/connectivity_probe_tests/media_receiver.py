@@ -46,10 +46,12 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("transport.product_tcp_media_over_direct_wifi", report["product_gates"])
         self.assertIn("qcl040_normalize_qcl040_wifi_direct_lifecycle_report", action_ids)
         self.assertIn("qcl041_normalize_qcl041_wifi_direct_lifecycle_report", action_ids)
+        self.assertIn("qcl082_run_qcl082_product_media_live_session", action_ids)
         self.assertIn("qcl082_capture_rmanvid1_over_promoted_direct_wifi", action_ids)
         self.assertIn("build_protocol_matrix_after_qcl082_product_media", action_ids)
         self.assertIn("wifi-direct-lifecycle-plan", command_text)
         self.assertIn("qcl082-product-media-plan", command_text)
+        self.assertIn("qcl082-product-media-live-session", command_text)
         self.assertIn("rmanvid1-receiver-capture", command_text)
         self.assertIn("protocol-matrix", command_text)
         self.assertIn("companion-report projection", command_text)
@@ -153,10 +155,12 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertEqual(report["lease"]["resource"], "quest:<quest-serial>")
         self.assertIn("write_qcl082_media_stream_start_source_request", action_ids)
         self.assertIn("run_qcl082_media_stream_start_source", action_ids)
+        self.assertIn("run_qcl082_product_media_live_session", action_ids)
         self.assertIn("capture_rmanvid1_over_promoted_direct_wifi", action_ids)
         self.assertIn("promote_qcl082_rmanvid1_capture", action_ids)
         self.assertIn("emit-bridge-command-request", command_text)
         self.assertIn("run-bridge-command-live-android", command_text)
+        self.assertIn("qcl082-product-media-live-session", command_text)
         self.assertIn("rmanvid1-receiver-capture", command_text)
         self.assertIn("--media-stream-topology-report", command_text)
         self.assertIn("--media-stream-firewall-report", command_text)
@@ -705,3 +709,111 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(check(report, "protocol.media_receiver_capture")["status"], "pass")
         self.assertEqual(check(report, "protocol.media_timestamp_policy")["status"], "pass")
+
+    def test_qcl082_product_media_live_session_arms_receiver_before_command(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            request_path = root / "media-stream-start-source.request.json"
+            bridge_path = root / "media-stream-start-source.bridge-evidence.json"
+            execution_path = root / "media-stream-start-source.live-android-execution.json"
+            validation_path = root / "media-stream-start-source.validation-report.json"
+            logcat_path = root / "media-stream-start-source.logcat.txt"
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            topology_path = root / "qcl041-live-wifi-direct-lifecycle.json"
+            firewall_path = root / "qcl082-tcp-firewall-verify.json"
+            lifecycle_path.write_text(
+                json.dumps(wifi_direct_lifecycle_artifact(probe_id="QCL-041")),
+                encoding="utf-8",
+            )
+            run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(topology_path),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            firewall_path.write_text(json.dumps(media_stream_firewall_report()), encoding="utf-8")
+            port = free_tcp_port()
+
+            def fake_live_android_runner(live_args: argparse.Namespace, **_: object) -> int:
+                Path(live_args.out).write_text(
+                    json.dumps({"schema": "fake.bridge", "status": "pass"}),
+                    encoding="utf-8",
+                )
+                Path(live_args.execution_out).write_text(
+                    json.dumps(
+                        {
+                            "$schema": "rusty.hostess.bridge_command.live_android_execution_evidence.v1",
+                            "status": "pass",
+                            "command": "command.media_stream.start_source",
+                            "command_execution": {
+                                "$schema": "rusty.hostess.bridge_command.execution_evidence.v1",
+                                "status": "pass",
+                                "broker_messages": [media_stream_runtime_ack()],
+                            },
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                Path(live_args.validation_out).write_text(json.dumps({"status": "pass"}), encoding="utf-8")
+                Path(live_args.logcat_out).write_text("fake logcat\n", encoding="utf-8")
+                send_rmanvid1_loopback_payload(port, rmanvid1_capture_bytes())
+                return 0
+
+            status = run_qcl082_product_media_live_session(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-live-session",
+                    out=str(result_path),
+                    start_source_request_out=str(request_path),
+                    bridge_evidence_out=str(bridge_path),
+                    execution_out=str(execution_path),
+                    validation_out=str(validation_path),
+                    logcat_out=str(logcat_path),
+                    capture_out=str(capture_path),
+                    sidecar_out=str(sidecar_path),
+                    bind_host="127.0.0.1",
+                    port=port,
+                    timeout_seconds=2.0,
+                    max_packets=4,
+                    max_bytes=1048576,
+                    capture_kind="live_broker_stream",
+                    topology_report=str(topology_path),
+                    firewall_report=str(firewall_path),
+                    adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                    serial="TESTQUESTSERIAL",
+                    fail_on_error=True,
+                ),
+                live_android_runner=fake_live_android_runner,
+            )
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+            request = json.loads(request_path.read_text(encoding="utf-8"))
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(execution_path),
+                    media_stream_topology_report=str(topology_path),
+                    media_stream_firewall_report=str(firewall_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        self.assertEqual(status, 0)
+        self.assertEqual(request["command"], "command.media_stream.start_source")
+        self.assertEqual(receipt["status"], "pass")
+        self.assertEqual(
+            receipt["live_session"]["schema"],
+            "rusty.hostess.media_stream.rmanvid1_live_session.v1",
+        )
+        self.assertTrue(receipt["live_session"]["receiver_armed_before_command"])
+        self.assertEqual(receipt["live_session"]["live_command_returncode"], 0)
+        self.assertEqual(receipt["capture_stats"]["packet_count"], 4)
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
+        self.assertTrue(report["media_stream_receiver_capture"]["product_listener_firewall"]["ready"])

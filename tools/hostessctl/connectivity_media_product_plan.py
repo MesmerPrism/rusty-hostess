@@ -41,6 +41,9 @@ DEFAULT_START_SOURCE_EXECUTION = (
 DEFAULT_START_SOURCE_VALIDATION = (
     r"target\connectivity-probe\media-stream-start-source.validation-report.json"
 )
+DEFAULT_START_SOURCE_LOGCAT = (
+    r"target\connectivity-probe\media-stream-start-source.logcat.txt"
+)
 DEFAULT_RUNTIME_STATUS_REPORT = (
     r"target\connectivity-probe\qcl082-media-stream-runtime-status.json"
 )
@@ -233,6 +236,11 @@ def product_media_plan_paths(args: argparse.Namespace) -> dict[str, str]:
             "start_source_validation_out",
             DEFAULT_START_SOURCE_VALIDATION,
         ),
+        "start_source_logcat_out": value(
+            args,
+            "start_source_logcat_out",
+            DEFAULT_START_SOURCE_LOGCAT,
+        ),
         "runtime_status_report_out": value(
             args,
             "runtime_status_report_out",
@@ -320,6 +328,44 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
                 f"--out {ps_quote(paths['firewall_report'])} --fail-on-error"
             ),
             [paths["firewall_report"]],
+        ),
+        plan_command(
+            "run_qcl082_product_media_live_session",
+            "tools.hostessctl.connectivity_media_receiver",
+            "Run orchestrated QCL-082 product media session",
+            (
+                "python tools\\hostessctl\\hostessctl.py "
+                "connectivity-probe qcl082-product-media-live-session "
+                "--bridge-command command.media_stream.start_source "
+                f"--start-source-request-out {ps_quote(paths['start_source_request_out'])} "
+                f"--bridge-evidence-out {ps_quote(paths['start_source_bridge_evidence_out'])} "
+                f"--execution-out {ps_quote(paths['start_source_execution_out'])} "
+                f"--validation-out {ps_quote(paths['start_source_validation_out'])} "
+                f"--logcat-out {ps_quote(paths['start_source_logcat_out'])} "
+                f"--bind-host {ps_quote(bind_host)} --port {port} "
+                f"--capture-out {ps_quote(paths['capture_out'])} "
+                f"--sidecar-out {ps_quote(paths['sidecar_out'])} "
+                f"--topology-report {ps_quote(paths['promoted_topology_report'])} "
+                f"--firewall-report {ps_quote(paths['firewall_report'])} "
+                f"--capture-kind {capture_kind} --max-packets {max_packets} "
+                f"--adb {ps_quote(adb)} --serial {ps_quote(serial)} "
+                f"--out {ps_quote(paths['receiver_result_out'])} --fail-on-error"
+            ),
+            [
+                paths["start_source_request_out"],
+                paths["start_source_bridge_evidence_out"],
+                paths["start_source_execution_out"],
+                paths["start_source_validation_out"],
+                paths["capture_out"],
+                paths["sidecar_out"],
+                paths["receiver_result_out"],
+            ],
+            requires_quest_lease=True,
+            mutates_device=True,
+            depends_on=[
+                "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_listener_firewall",
+            ],
         ),
         plan_command(
             "capture_rmanvid1_over_promoted_direct_wifi",

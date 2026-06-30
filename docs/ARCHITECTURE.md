@@ -419,7 +419,14 @@ evidence by arming bounded TCP `RMANVID1` captures, parsing stream headers and
 packet records, writing receiver sidecar queue/drop/close counters, pairing
 that evidence with broker runtime status when available, and optionally joining
 a topology report through the explicit product TCP media over direct-Wi-Fi
-gate;
+gate. It also owns the orchestrated
+`connectivity-probe qcl082-product-media-live-session` route, which binds the
+same receiver and bridge-command helpers so the TCP listener is already armed
+before the Quest/Manifold `start_source` command is sent. That route writes the
+request, bridge evidence, live execution, validation, logcat, capture, sidecar,
+and receiver-result artifacts, but it still does not apply firewall rules,
+collect Wi-Fi Direct lifecycle evidence, choose Android camera/display sources,
+or promote QCL-082 by itself;
 `connectivity_media_product_plan.py` owns the read-only QCL-082 product-media
 direct-Wi-Fi plan artifact. It binds the existing Hostess CLI routes,
 dependency gates, Quest lease policy, PowerShell command strings, and

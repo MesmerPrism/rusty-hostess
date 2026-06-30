@@ -219,8 +219,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/connectivity_media_receiver.py`: QCL-082 Hostess
   receiver-counter helpers for bounded `RMANVID1` stream-header and packet
   parsing, bounded TCP receiver capture, receiver sidecar counters,
-  runtime-status pairing, optional direct-Wi-Fi topology report pairing, and
-  no-decode binary media evidence.
+  runtime-status pairing, optional direct-Wi-Fi topology report pairing, the
+  orchestrated product-media live session that arms the receiver before the
+  Quest/Manifold source command, and no-decode binary media evidence.
 - `tools/hostessctl/connectivity_media_product_plan.py`: read-only QCL-082
   product-media direct-Wi-Fi plan artifacts. It binds the existing
   start_source, runtime-status, product firewall, RMANVID1 capture, QCL-082

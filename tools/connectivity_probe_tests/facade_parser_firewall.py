@@ -481,6 +481,65 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.max_bytes, 1048576)
         self.assertTrue(args.fail_on_error)
 
+    def test_parser_accepts_qcl082_product_media_live_session_command(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "qcl082-product-media-live-session",
+                "--out",
+                "target\\connectivity-probe\\media-stream-receiver-result.json",
+                "--bridge-command",
+                "command.media_stream.start_source",
+                "--start-source-request-out",
+                "target\\connectivity-probe\\media-stream-start-source.request.json",
+                "--bridge-evidence-out",
+                "target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json",
+                "--execution-out",
+                "target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+                "--validation-out",
+                "target\\connectivity-probe\\media-stream-start-source.validation-report.json",
+                "--logcat-out",
+                "target\\connectivity-probe\\media-stream-start-source.logcat.txt",
+                "--capture-out",
+                "target\\connectivity-probe\\media-stream.rmanvid1",
+                "--sidecar-out",
+                "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+                "--topology-report",
+                "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+                "--firewall-report",
+                "target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                "--adb",
+                "S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                "--serial",
+                "3487C10H3M017Q",
+                "--port",
+                "9079",
+                "--capture-kind",
+                "live_broker_stream",
+                "--fail-on-error",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "qcl082-product-media-live-session")
+        self.assertEqual(args.bridge_command, "command.media_stream.start_source")
+        self.assertEqual(args.port, 9079)
+        self.assertEqual(args.capture_kind, "live_broker_stream")
+        self.assertEqual(args.serial, "3487C10H3M017Q")
+        self.assertEqual(
+            args.topology_report,
+            "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+        )
+        self.assertTrue(args.fail_on_error)
+
     def test_parser_accepts_qcl082_product_media_plan_command(self) -> None:
         args = build_hostessctl_parser(
             broker_package="broker",

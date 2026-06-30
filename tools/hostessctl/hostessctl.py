@@ -261,6 +261,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return connectivity_media_product_plan.run_qcl082_product_media_direct_wifi_plan(args)
         if args.connectivity_probe_command == "direct-wifi-product-media-plan":
             return connectivity_direct_wifi_product_media_plan.run_direct_wifi_product_media_plan(args)
+        if args.connectivity_probe_command == "qcl082-product-media-live-session":
+            return connectivity_media_receiver.run_qcl082_product_media_live_session(args)
         if args.connectivity_probe_command == "rmanvid1-receiver-capture":
             return connectivity_media_receiver.run_rmanvid1_receiver_capture(args)
         if args.connectivity_probe_command == "windows-firewall-rule":

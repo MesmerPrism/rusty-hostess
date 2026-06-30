@@ -867,6 +867,42 @@ static void TransportGateRowsExposeNextActions()
                     },
                     new CompanionTransportGateNextAction
                     {
+                        ActionId = "run_qcl082_product_media_live_session",
+                        Label = "Run QCL-082 product media live session",
+                        AuthorityOwner = "tools.hostessctl.connectivity_media_receiver",
+                        RequiresQuestLease = true,
+                        MutatesDevice = true,
+                        DependsOn =
+                        [
+                            "transport.direct_wifi_live_topology",
+                            "transport.product_tcp_media_listener_firewall",
+                        ],
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\media-stream-start-source.request.json",
+                            "target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json",
+                            "target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+                            "target\\connectivity-probe\\media-stream-start-source.validation-report.json",
+                            "target\\connectivity-probe\\media-stream.rmanvid1",
+                            "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+                            "target\\connectivity-probe\\media-stream-receiver-result.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Run QCL-082 product media live session",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json --bridge-evidence-out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --capture-out target\\connectivity-probe\\media-stream.rmanvid1 --sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --adb '<adb>' --serial '<quest-serial>'",
+                        },
+                        Lease = new CompanionTransportGateNextActionLease
+                        {
+                            Manager = "Agent Board",
+                            Resource = "quest:<quest-serial>",
+                            Duration = "45m",
+                            ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
                         ActionId = "capture_rmanvid1_over_promoted_direct_wifi",
                         Label = "Capture RMANVID1 receiver counters",
                         AuthorityOwner = "tools.hostessctl.connectivity_media_receiver",
@@ -1024,6 +1060,15 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media", StringComparison.Ordinal)
             && row.Evidence.Contains("--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
         "product media runtime-status action must consume the live Android execution artifact");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.run_qcl082_product_media_live_session"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_receiver", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream-start-source.request.json,target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json,target\\connectivity-probe\\media-stream-start-source.live-android-execution.json,target\\connectivity-probe\\media-stream-start-source.validation-report.json,target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("qcl082-product-media-live-session", StringComparison.Ordinal)
+            && row.Evidence.Contains("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)),
+        "product media live session action must show the orchestrated receiver-plus-command route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.capture_rmanvid1_over_promoted_direct_wifi"
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_receiver", StringComparison.Ordinal)
@@ -1379,6 +1424,12 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-082 live Android start_source command route");
     Assert(protocolMatrixAction.CliRoute.Contains("--execution-out $RuntimeStatus", StringComparison.Ordinal),
         "protocol matrix action must use the live Android execution artifact as the runtime-status source");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-live-session", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 orchestrated live media session route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--start-source-request-out $StartSourceRequest", StringComparison.Ordinal),
+        "protocol matrix action must pass the start_source request artifact into the live media session route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--logcat-out $StartSourceLogcat", StringComparison.Ordinal),
+        "protocol matrix action must preserve the live media session logcat sidecar path");
     Assert(protocolMatrixAction.CliRoute.Contains("media-stream-start-source.live-android-execution.json", StringComparison.Ordinal),
         "protocol matrix action must name the QCL-082 live Android execution sidecar");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-runtime-status", StringComparison.Ordinal),

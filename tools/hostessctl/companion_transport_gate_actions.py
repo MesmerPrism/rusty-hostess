@@ -40,6 +40,9 @@ QCL082_START_SOURCE_EXECUTION = (
 QCL082_START_SOURCE_VALIDATION = (
     r"target\connectivity-probe\media-stream-start-source.validation-report.json"
 )
+QCL082_START_SOURCE_LOGCAT = (
+    r"target\connectivity-probe\media-stream-start-source.logcat.txt"
+)
 QCL082_RUNTIME_STATUS_REPORT = (
     r"target\connectivity-probe\qcl082-media-stream-runtime-status.json"
 )
@@ -594,6 +597,58 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
             note=(
                 "This is command/source-state evidence only. Receiver counters "
                 "are still required for QCL-082 product media promotion."
+            ),
+        ),
+        next_action(
+            "run_qcl082_product_media_live_session",
+            "Arm the RMANVID1 receiver while the Quest media source command runs.",
+            authority_owner="tools.hostessctl.connectivity_media_receiver",
+            requires_elevation=False,
+            requires_quest_lease=True,
+            mutates_host=False,
+            mutates_device=True,
+            depends_on=[
+                "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_listener_firewall",
+            ],
+            command=powershell_command(
+                "Run QCL-082 product media live session",
+                (
+                    "python tools\\hostessctl\\hostessctl.py "
+                    "connectivity-probe qcl082-product-media-live-session "
+                    "--bridge-command command.media_stream.start_source "
+                    f"--start-source-request-out {QCL082_START_SOURCE_REQUEST} "
+                    f"--bridge-evidence-out {QCL082_START_SOURCE_BRIDGE_EVIDENCE} "
+                    f"--execution-out {QCL082_START_SOURCE_EXECUTION} "
+                    f"--validation-out {QCL082_START_SOURCE_VALIDATION} "
+                    f"--logcat-out {QCL082_START_SOURCE_LOGCAT} "
+                    "--bind-host 0.0.0.0 "
+                    "--port 9079 "
+                    "--capture-out target\\connectivity-probe\\media-stream.rmanvid1 "
+                    "--sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json "
+                    "--topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
+                    f"--firewall-report {QCL082_FIREWALL_VERIFY} "
+                    "--capture-kind live_broker_stream "
+                    "--max-packets 240 "
+                    "--adb '<adb>' --serial '<quest-serial>' "
+                    "--out target\\connectivity-probe\\media-stream-receiver-result.json "
+                    "--fail-on-error"
+                ),
+            ),
+            acceptance_artifacts=[
+                QCL082_START_SOURCE_REQUEST,
+                QCL082_START_SOURCE_BRIDGE_EVIDENCE,
+                QCL082_START_SOURCE_EXECUTION,
+                QCL082_START_SOURCE_VALIDATION,
+                r"target\connectivity-probe\media-stream.rmanvid1",
+                r"target\connectivity-probe\media-stream-receiver-sidecar.json",
+                r"target\connectivity-probe\media-stream-receiver-result.json",
+            ],
+            clears_gate=False,
+            lease=quest_lease_metadata("QCL-082 RMANVID1 product media live session"),
+            note=(
+                "This is the acceptance-quality live step because the TCP receiver "
+                "is already armed when the Quest command is sent."
             ),
         ),
         next_action(

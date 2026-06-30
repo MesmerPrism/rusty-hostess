@@ -10,6 +10,7 @@ public static class OperatorActionCatalog
         "$StartSourceBridgeEvidence = 'target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json'; " +
         "$RuntimeStatus = 'target\\connectivity-probe\\media-stream-start-source.live-android-execution.json'; " +
         "$StartSourceValidation = 'target\\connectivity-probe\\media-stream-start-source.validation-report.json'; " +
+        "$StartSourceLogcat = 'target\\connectivity-probe\\media-stream-start-source.logcat.txt'; " +
         "$FirewallVerify = '<qcl082-tcp-firewall-verify>'; " +
         "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
         "$Rmanvid1Capture = '<rmanvid1-capture>'; " +
@@ -39,6 +40,7 @@ public static class OperatorActionCatalog
         "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
         "connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +
+        "connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe rmanvid1-receiver-capture --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-rmanvid1-capture $Rmanvid1Capture --media-stream-receiver-sidecar $ReceiverSidecar --media-stream-runtime-status $RuntimeStatus --media-stream-topology-report $PromotedTopologyReport --media-stream-firewall-report $FirewallVerify; " +
         "connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback; " +

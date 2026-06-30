@@ -138,10 +138,12 @@ generic code or sanitized sample fixtures.
   a gate is cleared.
 - Keep `tools\hostessctl\connectivity_media_receiver.py` as the QCL-082
   Hostess receiver-counter owner. It may arm bounded TCP `RMANVID1` captures,
-  write raw capture/sidecar/result artifacts, parse packet counters, and join
-  product TCP listener firewall verification reports, but it must not own
-  Windows firewall rule lifecycle, Android camera/display source setup, or QCL
-  promotion policy.
+  write raw capture/sidecar/result artifacts, parse packet counters, and run
+  the orchestrated product-media live session that starts the receiver before
+  requesting the Quest/Manifold media source command. It may join product TCP
+  listener firewall verification reports, but it must not own Windows firewall
+  rule lifecycle, Android camera/display source setup, or QCL promotion
+  policy.
 - Keep `tools\hostessctl\connectivity_media_product_plan.py` as the read-only
   QCL-082 product-media direct-Wi-Fi plan artifact owner. It may bind the
   existing Hostess CLI routes, dependencies, lease policy, and acceptance

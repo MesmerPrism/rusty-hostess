@@ -754,6 +754,83 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
     connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
     connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_live_session = connectivity_probe_subcommands.add_parser(
+        "qcl082-product-media-live-session"
+    )
+    connectivity_probe_live_session.add_argument("--out", required=True)
+    connectivity_probe_live_session.add_argument("--start-source-request-out", required=True)
+    connectivity_probe_live_session.add_argument("--bridge-evidence-out", required=True)
+    connectivity_probe_live_session.add_argument("--execution-out", required=True)
+    connectivity_probe_live_session.add_argument("--validation-out", required=True)
+    connectivity_probe_live_session.add_argument("--logcat-out")
+    connectivity_probe_live_session.add_argument("--route-descriptor")
+    connectivity_probe_live_session.add_argument(
+        "--bridge-command",
+        default="command.media_stream.start_source",
+    )
+    connectivity_probe_live_session.add_argument("--request-id")
+    connectivity_probe_live_session.add_argument("--evidence-id")
+    connectivity_probe_live_session.add_argument(
+        "--route-id",
+        default="bridge_route.command.websocket.applied",
+    )
+    connectivity_probe_live_session.add_argument("--required-stage", action="append", default=[])
+    connectivity_probe_live_session.add_argument("--params-json")
+    connectivity_probe_live_session.add_argument("--params-json-file")
+    connectivity_probe_live_session.add_argument("--capture-out", required=True)
+    connectivity_probe_live_session.add_argument("--sidecar-out", required=True)
+    connectivity_probe_live_session.add_argument("--bind-host", default="0.0.0.0")
+    connectivity_probe_live_session.add_argument("--port", type=int, default=9079)
+    connectivity_probe_live_session.add_argument("--timeout-seconds", type=float, default=10.0)
+    connectivity_probe_live_session.add_argument("--max-packets", type=int, default=240)
+    connectivity_probe_live_session.add_argument("--max-bytes", type=int, default=67108864)
+    connectivity_probe_live_session.add_argument("--max-packet-bytes", type=int, default=4194304)
+    connectivity_probe_live_session.add_argument("--max-metadata-bytes", type=int, default=262144)
+    connectivity_probe_live_session.add_argument("--queue-capacity-packets", type=int, default=48)
+    connectivity_probe_live_session.add_argument(
+        "--capture-kind",
+        choices=["live_broker_stream", "live_quest_runtime_stream"],
+        default="live_broker_stream",
+    )
+    connectivity_probe_live_session.add_argument("--source-endpoint-source", default="")
+    connectivity_probe_live_session.add_argument("--source-remote-endpoint", default="")
+    connectivity_probe_live_session.add_argument("--session-id", default="")
+    connectivity_probe_live_session.add_argument("--topology-report", required=True)
+    connectivity_probe_live_session.add_argument("--firewall-report", required=True)
+    connectivity_probe_live_session.add_argument("--adb", required=True)
+    connectivity_probe_live_session.add_argument("--serial", required=True)
+    connectivity_probe_live_session.add_argument("--broker-package", default=broker_package)
+    connectivity_probe_live_session.add_argument("--broker-activity")
+    connectivity_probe_live_session.add_argument("--broker-host", default="127.0.0.1")
+    connectivity_probe_live_session.add_argument("--broker-port", type=int, default=broker_port)
+    connectivity_probe_live_session.add_argument("--broker-local-port", type=int, default=broker_local_forward_port)
+    connectivity_probe_live_session.add_argument("--broker-path", default="/manifold/v1/events")
+    connectivity_probe_live_session.add_argument("--connect-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_live_session.add_argument("--wait-seconds", type=float, default=15.0)
+    connectivity_probe_live_session.add_argument(
+        "--runtime-receipt-stream",
+        default="stream.hostess.makepad.bridge_command.receipt",
+    )
+    connectivity_probe_live_session.add_argument("--no-runtime-receipt-subscribe", action="store_true")
+    connectivity_probe_live_session.add_argument("--makepad-package", default=makepad_android_package)
+    connectivity_probe_live_session.add_argument("--makepad-activity", default=makepad_android_xr_activity)
+    connectivity_probe_live_session.add_argument("--broker-process-wait-seconds", type=float, default=8.0)
+    connectivity_probe_live_session.add_argument("--makepad-process-wait-seconds", type=float, default=8.0)
+    connectivity_probe_live_session.add_argument("--socket-wait-seconds", type=float, default=8.0)
+    connectivity_probe_live_session.add_argument("--launch-settle-seconds", type=float, default=8.0)
+    connectivity_probe_live_session.add_argument("--runtime-subscriber-retry-count", type=int, default=1)
+    connectivity_probe_live_session.add_argument(
+        "--runtime-subscriber-retry-wait-seconds",
+        type=float,
+        default=5.0,
+    )
+    connectivity_probe_live_session.add_argument("--live-command-join-timeout-seconds", type=float, default=30.0)
+    connectivity_probe_live_session.add_argument("--no-launch-broker", action="store_true")
+    connectivity_probe_live_session.add_argument("--no-launch-makepad", action="store_true")
+    connectivity_probe_live_session.add_argument("--no-wait-broker-process", action="store_true")
+    connectivity_probe_live_session.add_argument("--no-wait-makepad-process", action="store_true")
+    connectivity_probe_live_session.add_argument("--no-adb-forward-broker", action="store_true")
+    connectivity_probe_live_session.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_product_media_plan = connectivity_probe_subcommands.add_parser(
         "qcl082-product-media-plan"
     )

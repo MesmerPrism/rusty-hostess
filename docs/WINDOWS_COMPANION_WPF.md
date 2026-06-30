@@ -461,6 +461,18 @@ live headset commands, perform firewall mutation, parse media payloads, or
 replace the promoted direct-Wi-Fi lifecycle and QCL-082 RMANVID1 receiver
 evidence gates.
 
+When those dependencies are ready, the preferred live operator route is
+`connectivity-probe qcl082-product-media-live-session`. Hostess arms the
+bounded RMANVID1 TCP receiver before it sends the Quest/Manifold
+`start_source` command, then writes the same request, bridge evidence, live
+execution, validation, logcat, capture, sidecar, and receiver-result artifacts
+that automation uses. WPF only renders or requests that Hostess route; it must
+not split the timing-sensitive receiver/source orchestration into UI handlers.
+The route requires a `quest:<serial>` lease and serial-scoped ADB for live
+headset work, but it does not mutate firewall state and does not require
+`adb-server:lifecycle` unless the run also performs disruptive ADB daemon
+recovery or Wi-Fi ADB setup.
+
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script
 from an elevated PowerShell session. A non-elevated apply produces a blocked
@@ -474,6 +486,26 @@ python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --rule-profile qcl-082-rmanvid1-media `
   --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
   --out target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-live-session `
+  --bridge-command command.media_stream.start_source `
+  --start-source-request-out target\connectivity-probe\media-stream-start-source.request.json `
+  --bridge-evidence-out target\connectivity-probe\media-stream-start-source.bridge-evidence.json `
+  --execution-out target\connectivity-probe\media-stream-start-source.live-android-execution.json `
+  --validation-out target\connectivity-probe\media-stream-start-source.validation-report.json `
+  --logcat-out target\connectivity-probe\media-stream-start-source.logcat.txt `
+  --bind-host 0.0.0.0 `
+  --port 9079 `
+  --capture-out target\connectivity-probe\media-stream.rmanvid1 `
+  --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
+  --topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --capture-kind live_broker_stream `
+  --max-packets 240 `
+  --adb $Adb `
+  --serial $QuestSerial `
+  --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 
 python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-capture `

@@ -555,6 +555,7 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertIn("write_qcl082_media_stream_start_source_request", product_media_actions)
         self.assertIn("run_qcl082_media_stream_start_source", product_media_actions)
         self.assertIn("validate_qcl082_media_stream_runtime_status", product_media_actions)
+        self.assertIn("run_qcl082_product_media_live_session", product_media_actions)
         plan_action = product_media_actions["write_qcl082_product_media_direct_wifi_plan"]
         plan_command = plan_action["command"]["command"]
         self.assertEqual(
@@ -600,6 +601,19 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             "--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
             validate_command,
         )
+        live_session_action = product_media_actions["run_qcl082_product_media_live_session"]
+        live_session_command = live_session_action["command"]["command"]
+        self.assertEqual(
+            live_session_action["authority_owner"],
+            "tools.hostessctl.connectivity_media_receiver",
+        )
+        self.assertTrue(live_session_action["requires_quest_lease"])
+        self.assertTrue(live_session_action["mutates_device"])
+        self.assertIn("qcl082-product-media-live-session", live_session_command)
+        self.assertIn("--bridge-command command.media_stream.start_source", live_session_command)
+        self.assertIn("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", live_session_command)
+        self.assertIn("--execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", live_session_command)
+        self.assertEqual(live_session_action["lease"]["resource"], "quest:<quest-serial>")
         capture_command = product_media_actions["capture_rmanvid1_over_promoted_direct_wifi"]["command"]["command"]
         promote_command = product_media_actions["promote_qcl082_rmanvid1_capture"]["command"]["command"]
         self.assertIn(
