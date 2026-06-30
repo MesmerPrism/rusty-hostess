@@ -242,11 +242,12 @@ renders that row instead of pretending the rule was applied. Verification
 records `product_rule_verified` separately from generic
 `allowed_on_active_profile`, so broad port-only rules and diagnostic Python
 rules do not satisfy product readiness.
-When an operator needs an auditable admin handoff outside the WPF elevated
-button path, the same route can write a `.ps1` handoff with
-`--handoff-script-out`. The script calls Hostess CLI `--action apply` and then
-the matching `--action verify`; it does not embed separate firewall business
-logic.
+For mutating apply/remove requests, WPF asks the same route to write a `.ps1`
+admin handoff and matching verify report with `--handoff-script-out` and
+`--handoff-verify-out`. In a normal shell this returns a blocked preflight
+report plus the generated script; if WPF itself is already elevated, the same
+Hostess CLI route may perform the mutation. WPF does not own a private `runas`
+launcher or embed separate firewall business logic.
 The plan report also carries the matching QCL-080 probe arguments, including
 the WPF listener executable as `--udp-listener-helper`, so a human operator and
 CLI automation follow the same product-owned listener route.
@@ -385,15 +386,12 @@ missing/product-mismatched firewall evidence keeps the product gates visible
 instead of letting WPF infer readiness from separate TCP, firewall, and Wi-Fi
 Direct rows:
 
-If the verification report has `product_rule_verified=false`, run the same
-Hostess CLI route with `--action apply` from an elevated PowerShell session,
-then rerun `--action verify`. A non-elevated apply produces a blocked report
-with `elevation.blocked_before_mutation=true` and no attempted mutation. WPF
-should project the resulting report; it must not create firewall rules through
-hidden UI logic.
-For a CLI-generated admin handoff, add `--handoff-script-out` and
-`--handoff-verify-out` to the non-elevated apply command, then run the generated
-script from elevated PowerShell.
+If the verification report has `product_rule_verified=false`, generate the
+admin handoff from the same Hostess CLI route, then run the generated script
+from an elevated PowerShell session. A non-elevated apply produces a blocked
+report with `elevation.blocked_before_mutation=true`, no attempted mutation,
+and the handoff script/verify paths WPF projects for the operator. WPF must not
+create firewall rules through hidden UI logic.
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `

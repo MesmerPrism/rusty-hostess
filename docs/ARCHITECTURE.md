@@ -328,11 +328,11 @@ non-elevated shell emits
 `hostess.issue.connectivity_probe.firewall_rule_requires_elevation`, blocks
 before `New-NetFirewallRule` or removal, and still permits read-only
 verification when the rule shape is valid. WPF renders that row and can request
-the same CLI route through an explicit elevated action. The route can also write
-an operator-owned PowerShell handoff with `--handoff-script-out`; that script
-reruns the Hostess CLI from an elevated shell and then reruns the matching
-`verify` report, so firewall lifecycle remains Hostess-owned instead of moving
-rule creation into WPF or a handwritten admin snippet.
+the same CLI route with an operator-owned PowerShell handoff using
+`--handoff-script-out` and `--handoff-verify-out`. That script reruns the
+Hostess CLI from an elevated shell and then reruns the matching `verify`
+report, so firewall lifecycle remains Hostess-owned instead of moving rule
+creation into WPF, a hidden `runas` launcher, or a handwritten admin snippet.
 Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
 It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
 shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and

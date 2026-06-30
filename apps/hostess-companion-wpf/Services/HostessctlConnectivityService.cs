@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
-using System.Text;
 using System.Text.Json;
 using HostessCompanion.Wpf.Models;
 
@@ -100,8 +99,16 @@ public sealed class HostessctlConnectivityService
             report.Rule.RemoteAddress,
             report.Rule.Name,
             report.RuleProfile);
-        return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+        AddFirewallHandoffArguments(
+            arguments,
+            FirewallActionHandoffScriptPath(repoRoot, "apply"),
+            FirewallActionHandoffVerifyReportPath(repoRoot, "apply"));
+        await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
+        var applied = await ReadReportAsync<ConnectivityFirewallRuleReport>(reportPath, cancellationToken)
+            .ConfigureAwait(false);
+        applied.ReportPath = reportPath.FullName;
+        return applied;
     }
 
     public async Task<ConnectivityFirewallRuleReport> VerifyFirewallRuleAsync(
@@ -168,8 +175,16 @@ public sealed class HostessctlConnectivityService
             remoteAddress,
             ruleName,
             selectedRuleProfile);
-        return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
+        AddFirewallHandoffArguments(
+            arguments,
+            FirewallActionHandoffScriptPath(repoRoot, "remove"),
+            FirewallActionHandoffVerifyReportPath(repoRoot, "remove"));
+        await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
+        var report = await ReadReportAsync<ConnectivityFirewallRuleReport>(reportPath, cancellationToken)
+            .ConfigureAwait(false);
+        report.ReportPath = reportPath.FullName;
+        return report;
     }
 
     public async Task<ConnectivityProbeReport> RunFixedPortProbeAsync(
@@ -621,47 +636,6 @@ public sealed class HostessctlConnectivityService
         }
     }
 
-    private static async Task<ConnectivityFirewallRuleReport> RunElevatedHostessctlAsync(
-        DirectoryInfo repoRoot,
-        IReadOnlyList<string> arguments,
-        FileInfo expectedReport,
-        CancellationToken cancellationToken)
-    {
-        var script = string.Join(
-            " ",
-            [
-                "$ErrorActionPreference = 'Stop';",
-                $"Set-Location -LiteralPath {PowerShellString(repoRoot.FullName)};",
-                "& python tools/hostessctl/hostessctl.py " + string.Join(" ", arguments.Select(PowerShellString)) + ";",
-                "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
-            ]);
-        using var process = Process.Start(new ProcessStartInfo
-        {
-            FileName = "powershell.exe",
-            Arguments = "-NoProfile -ExecutionPolicy Bypass -EncodedCommand " + EncodePowerShell(script),
-            UseShellExecute = true,
-            Verb = "runas",
-            WindowStyle = ProcessWindowStyle.Normal,
-        }) ?? throw new InvalidOperationException("Failed to start elevated Hostess firewall action.");
-
-        await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        if (process.ExitCode != 0)
-        {
-            throw new InvalidOperationException($"elevated Hostess firewall action exited with {process.ExitCode}");
-        }
-        if (!expectedReport.Exists)
-        {
-            throw new InvalidOperationException(
-                $"Hostess firewall action did not write report: {expectedReport.FullName}");
-        }
-        var report = await ReadReportAsync<ConnectivityFirewallRuleReport>(
-                expectedReport,
-                cancellationToken)
-            .ConfigureAwait(false);
-        report.ReportPath = expectedReport.FullName;
-        return report;
-    }
-
     private static async Task<T> ReadReportAsync<T>(
         FileInfo reportPath,
         CancellationToken cancellationToken)
@@ -914,6 +888,33 @@ public sealed class HostessctlConnectivityService
             "connectivity-probe",
             $"wpf-firewall-rule-{action}.json"));
 
+    private static FileInfo FirewallActionHandoffScriptPath(DirectoryInfo repoRoot, string action) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"wpf-firewall-rule-{action}.admin-handoff.ps1"));
+
+    private static FileInfo FirewallActionHandoffVerifyReportPath(DirectoryInfo repoRoot, string action) =>
+        new(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"wpf-firewall-rule-{action}.verify.json"));
+
+    private static void AddFirewallHandoffArguments(
+        List<string> arguments,
+        FileInfo scriptPath,
+        FileInfo verifyReportPath)
+    {
+        Directory.CreateDirectory(scriptPath.Directory!.FullName);
+        Directory.CreateDirectory(verifyReportPath.Directory!.FullName);
+        arguments.Add("--handoff-script-out");
+        arguments.Add(scriptPath.FullName);
+        arguments.Add("--handoff-verify-out");
+        arguments.Add(verifyReportPath.FullName);
+    }
+
     private static List<string> FirewallRuleArguments(
         string action,
         FileInfo reportPath,
@@ -1033,8 +1034,4 @@ public sealed class HostessctlConnectivityService
         return string.IsNullOrWhiteSpace(token) ? "companion-report" : token;
     }
 
-    private static string EncodePowerShell(string script) =>
-        Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-
-    private static string PowerShellString(string value) => "'" + value.Replace("'", "''") + "'";
 }

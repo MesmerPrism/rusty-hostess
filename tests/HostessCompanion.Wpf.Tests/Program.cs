@@ -19,6 +19,7 @@ var tests = new (string Name, Action Test)[]
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall rows expose elevation preflight", FirewallRowsExposeElevationPreflight),
+    ("firewall service uses CLI admin handoff", FirewallServiceUsesCliAdminHandoff),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
     ("firewall QCL-082 profile plan uses CLI profile", FirewallQcl082ProfilePlanUsesCliProfile),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
@@ -714,7 +715,23 @@ static void FirewallRowsExposeElevationPreflight()
             Handoff = new ConnectivityFirewallElevationHandoff
             {
                 OperatorAction = "rerun from elevated PowerShell",
+                ScriptOut = "target\\connectivity-probe\\wpf-firewall-rule-apply.admin-handoff.ps1",
+                ScriptSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+                HostessActionCommand = "python tools/hostessctl/hostessctl.py connectivity-probe windows-firewall-rule --action apply",
+                HostessVerifyCommand = "python tools/hostessctl/hostessctl.py connectivity-probe windows-firewall-rule --action verify",
+                VerifyReportOut = "target\\connectivity-probe\\wpf-firewall-rule-apply.verify.json",
             },
+        },
+        AdminHandoff = new ConnectivityFirewallAdminHandoff
+        {
+            HandoffKind = "hostess_cli_elevated_firewall_lifecycle",
+            HandoffAction = "apply",
+            ScriptOut = "target\\connectivity-probe\\wpf-firewall-rule-apply.admin-handoff.ps1",
+            VerifyReportOut = "target\\connectivity-probe\\wpf-firewall-rule-apply.verify.json",
+            ScriptSha256 = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            HostessActionCommand = "python tools/hostessctl/hostessctl.py connectivity-probe windows-firewall-rule --action apply",
+            HostessVerifyCommand = "python tools/hostessctl/hostessctl.py connectivity-probe windows-firewall-rule --action verify",
+            OperatorNote = "Run the generated script from an elevated PowerShell session.",
         },
         ActionResult = new ConnectivityProcessResult
         {
@@ -729,8 +746,35 @@ static void FirewallRowsExposeElevationPreflight()
     Assert(elevation.Status == "blocked", "non-elevated firewall mutation must project blocked");
     Assert(elevation.IssueCodes.Contains("hostess.issue.connectivity_probe.firewall_rule_requires_elevation"),
         "missing elevation issue code");
+    Assert(elevation.Evidence.Contains("handoff_script=target\\connectivity-probe\\wpf-firewall-rule-apply.admin-handoff.ps1", StringComparison.Ordinal),
+        "blocked preflight must expose the generated admin handoff script");
+    Assert(elevation.Evidence.Contains("verify_report=target\\connectivity-probe\\wpf-firewall-rule-apply.verify.json", StringComparison.Ordinal),
+        "blocked preflight must expose the post-admin verify report");
+    Assert(elevation.Notes.Contains("hostess_action=python tools/hostessctl/hostessctl.py", StringComparison.Ordinal),
+        "blocked preflight must expose the Hostess CLI action command");
     Assert(rows.All(row => row.Name != "host.windows_firewall_rule_apply_process"),
         "blocked preflight must not project an attempted mutation process row");
+}
+
+static void FirewallServiceUsesCliAdminHandoff()
+{
+    var repoRoot = LocateHostessRepoRoot();
+    var servicePath = Path.Combine(
+        repoRoot.FullName,
+        "apps",
+        "hostess-companion-wpf",
+        "Services",
+        "HostessctlConnectivityService.cs");
+    var source = File.ReadAllText(servicePath);
+
+    Assert(!source.Contains("Verb = \"runas\"", StringComparison.Ordinal),
+        "WPF service must not own a hidden elevated firewall launcher");
+    Assert(!source.Contains("RunElevatedHostessctlAsync", StringComparison.Ordinal),
+        "WPF service must use Hostess CLI handoff instead of a private elevated runner");
+    Assert(source.Contains("--handoff-script-out", StringComparison.Ordinal),
+        "WPF apply/remove must request a Hostess-generated admin handoff script");
+    Assert(source.Contains("--handoff-verify-out", StringComparison.Ordinal),
+        "WPF apply/remove must request the matching Hostess verification report");
 }
 
 static void FirewallDefaultNamesStayProductScoped()

@@ -455,6 +455,9 @@ public sealed class ConnectivityFirewallRuleReport
     [JsonPropertyName("elevation")]
     public ConnectivityFirewallElevation Elevation { get; set; } = new();
 
+    [JsonPropertyName("admin_handoff")]
+    public ConnectivityFirewallAdminHandoff AdminHandoff { get; set; } = new();
+
     [JsonPropertyName("verification")]
     public ConnectivityFirewallVerification Verification { get; set; } = new();
 
@@ -540,6 +543,60 @@ public sealed class ConnectivityFirewallElevationHandoff
 
     [JsonPropertyName("powershell_command")]
     public string PowerShellCommand { get; set; } = "";
+
+    [JsonPropertyName("script_out")]
+    public string ScriptOut { get; set; } = "";
+
+    [JsonPropertyName("script_sha256")]
+    public string ScriptSha256 { get; set; } = "";
+
+    [JsonPropertyName("hostess_action_command")]
+    public string HostessActionCommand { get; set; } = "";
+
+    [JsonPropertyName("hostess_verify_command")]
+    public string HostessVerifyCommand { get; set; } = "";
+
+    [JsonPropertyName("verify_report_out")]
+    public string VerifyReportOut { get; set; } = "";
+
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
+}
+
+public sealed class ConnectivityFirewallAdminHandoff
+{
+    [JsonPropertyName("handoff_kind")]
+    public string HandoffKind { get; set; } = "";
+
+    [JsonPropertyName("handoff_action")]
+    public string HandoffAction { get; set; } = "";
+
+    [JsonPropertyName("script_out")]
+    public string ScriptOut { get; set; } = "";
+
+    [JsonPropertyName("action_report_out")]
+    public string ActionReportOut { get; set; } = "";
+
+    [JsonPropertyName("verify_report_out")]
+    public string VerifyReportOut { get; set; } = "";
+
+    [JsonPropertyName("script_sha256")]
+    public string ScriptSha256 { get; set; } = "";
+
+    [JsonPropertyName("hostess_action_command")]
+    public string HostessActionCommand { get; set; } = "";
+
+    [JsonPropertyName("hostess_verify_command")]
+    public string HostessVerifyCommand { get; set; } = "";
+
+    [JsonPropertyName("operator_note")]
+    public string OperatorNote { get; set; } = "";
+
+    [JsonPropertyName("hostess_action_args")]
+    public List<string> HostessActionArgs { get; set; } = [];
+
+    [JsonPropertyName("hostess_verify_args")]
+    public List<string> HostessVerifyArgs { get; set; } = [];
 
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];

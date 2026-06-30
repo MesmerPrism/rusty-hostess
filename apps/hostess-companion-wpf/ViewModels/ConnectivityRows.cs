@@ -447,10 +447,9 @@ public static class ConnectivityRows
             Evidence =
                 $"requires_admin={report.Elevation.RequiresAdmin}; " +
                 $"current_process_is_elevated={report.Elevation.CurrentProcessIsElevated}; " +
-                $"mutation_permitted={report.Elevation.MutationPermitted}",
-            Notes = string.IsNullOrWhiteSpace(report.Elevation.Handoff.OperatorAction)
-                ? report.Elevation.Handoff.PowerShellCommand
-                : report.Elevation.Handoff.OperatorAction,
+                $"mutation_permitted={report.Elevation.MutationPermitted}" +
+                FirewallHandoffEvidenceSuffix(report),
+            Notes = FirewallHandoffNotes(report),
             IssueCodes = report.Elevation.BlockedBeforeMutation
                 ? ["hostess.issue.connectivity_probe.firewall_rule_requires_elevation"]
                 : [],
@@ -504,6 +503,58 @@ public static class ConnectivityRows
         }
         return parts.Count == 0 ? "none" : string.Join(", ", parts);
     }
+
+    private static string FirewallHandoffEvidenceSuffix(ConnectivityFirewallRuleReport report)
+    {
+        var scriptOut = FirstNonEmpty(report.AdminHandoff.ScriptOut, report.Elevation.Handoff.ScriptOut);
+        var verifyOut = FirstNonEmpty(report.AdminHandoff.VerifyReportOut, report.Elevation.Handoff.VerifyReportOut);
+        var scriptSha = FirstNonEmpty(report.AdminHandoff.ScriptSha256, report.Elevation.Handoff.ScriptSha256);
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(scriptOut))
+        {
+            parts.Add($"handoff_script={scriptOut}");
+        }
+        if (!string.IsNullOrWhiteSpace(verifyOut))
+        {
+            parts.Add($"verify_report={verifyOut}");
+        }
+        if (!string.IsNullOrWhiteSpace(scriptSha))
+        {
+            parts.Add($"handoff_sha256={scriptSha}");
+        }
+        return parts.Count == 0 ? "" : "; " + string.Join("; ", parts);
+    }
+
+    private static string FirewallHandoffNotes(ConnectivityFirewallRuleReport report)
+    {
+        var note = FirstNonEmpty(
+            report.AdminHandoff.OperatorNote,
+            report.Elevation.Handoff.OperatorAction,
+            report.Elevation.Handoff.PowerShellCommand);
+        var actionCommand = FirstNonEmpty(
+            report.AdminHandoff.HostessActionCommand,
+            report.Elevation.Handoff.HostessActionCommand);
+        var verifyCommand = FirstNonEmpty(
+            report.AdminHandoff.HostessVerifyCommand,
+            report.Elevation.Handoff.HostessVerifyCommand);
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(note))
+        {
+            parts.Add(note);
+        }
+        if (!string.IsNullOrWhiteSpace(actionCommand))
+        {
+            parts.Add($"hostess_action={actionCommand}");
+        }
+        if (!string.IsNullOrWhiteSpace(verifyCommand))
+        {
+            parts.Add($"hostess_verify={verifyCommand}");
+        }
+        return string.Join("; ", parts);
+    }
+
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "";
 
     private static string StatusForRequirement(string status) => status switch
     {
