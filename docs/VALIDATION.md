@@ -468,7 +468,11 @@ serial-scoped ADB, requires a `quest:<serial>` lease for live headset work, and
 does not require an `adb-server:lifecycle` lease unless the run also performs
 disruptive ADB daemon recovery or Wi-Fi ADB setup. It does not mutate firewall
 state and does not clear product gates until the follow-on QCL-082 fold-in and
-protocol-matrix/projection routes consume the generated artifacts.
+protocol-matrix/projection routes consume the generated artifacts. The route
+blocks before arming the receiver or starting the live Android command unless
+`--quest-lease-id`, `--quest-lease-resource`, and
+`--quest-lease-reserved-before-live-steps` prove the operator reserved the
+Quest through Agent Board first.
 
 If verification reports `product_rule_verified=false`, run the same command
 with `--action apply` from an elevated PowerShell session, then rerun
@@ -531,20 +535,26 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --fail-on-error
 
 $QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$QuestLeaseId = 'LEASE_ID_FROM_RESERVE_OUTPUT'
+$QuestLeaseResource = "quest:$QuestSerial"
 $Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
 python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-plan `
   --out target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json `
   --promoted-topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --adb $Adb `
-  --serial $QuestSerial
+  --serial $QuestSerial `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource
 
 python tools\hostessctl\hostessctl.py connectivity-probe direct-wifi-product-media-plan `
   --out target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json `
   --qcl040-topology-report target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json `
   --qcl041-topology-report target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json `
-  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json
+  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource
 
 python tools\hostessctl\hostessctl.py emit-bridge-command-request `
   --bridge-command command.media_stream.start_source `
@@ -581,6 +591,9 @@ python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-li
   --max-packets 240 `
   --adb $Adb `
   --serial $QuestSerial `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource `
+  --quest-lease-reserved-before-live-steps `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 
@@ -601,6 +614,9 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
   --max-packets 240 `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource `
+  --quest-lease-reserved-before-live-steps `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 

@@ -53,6 +53,9 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("qcl082-product-media-plan", command_text)
         self.assertIn("qcl082-product-media-live-session", command_text)
         self.assertIn("rmanvid1-receiver-capture", command_text)
+        self.assertIn("--quest-lease-id", command_text)
+        self.assertIn("--quest-lease-resource", command_text)
+        self.assertIn("--quest-lease-reserved-before-live-steps", command_text)
         self.assertIn("protocol-matrix", command_text)
         self.assertIn("companion-report projection", command_text)
         self.assertIn("companion-report transport-gates", command_text)
@@ -164,6 +167,9 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("rmanvid1-receiver-capture", command_text)
         self.assertIn("--media-stream-receiver-result", command_text)
         self.assertIn("media-stream-receiver-result.json", command_text)
+        self.assertIn("--quest-lease-id", command_text)
+        self.assertIn("--quest-lease-resource", command_text)
+        self.assertIn("--quest-lease-reserved-before-live-steps", command_text)
 
     def test_qcl082_product_media_direct_wifi_plan_detects_ready_dependencies(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -820,6 +826,9 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
                     firewall_report=str(firewall_path),
                     adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
                     serial="TESTQUESTSERIAL",
+                    quest_lease_id="unit-test-quest-lease",
+                    quest_lease_resource="quest:TESTQUESTSERIAL",
+                    quest_lease_reserved_before_live_steps=True,
                     fail_on_error=True,
                 ),
                 live_android_runner=fake_live_android_runner,
@@ -843,9 +852,65 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         )
         self.assertTrue(receipt["live_session"]["receiver_armed_before_command"])
         self.assertEqual(receipt["live_session"]["live_command_returncode"], 0)
+        self.assertTrue(receipt["live_session"]["quest_lease"]["valid"])
         self.assertEqual(receipt["capture_stats"]["packet_count"], 4)
         self.assertIn("--media-stream-receiver-result", receipt["follow_on_qcl082_args"])
         self.assertIn(str(result_path), receipt["follow_on_qcl082_args"])
         self.assertEqual(report["status"], "pass")
         self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
         self.assertTrue(report["media_stream_receiver_capture"]["product_listener_firewall"]["ready"])
+        self.assertTrue(report["media_stream_receiver_capture"]["quest_lease"]["valid"])
+
+    def test_qcl082_product_media_live_session_blocks_without_quest_lease(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            request_path = root / "media-stream-start-source.request.json"
+            bridge_path = root / "media-stream-start-source.bridge-evidence.json"
+            execution_path = root / "media-stream-start-source.live-android-execution.json"
+            validation_path = root / "media-stream-start-source.validation-report.json"
+            logcat_path = root / "media-stream-start-source.logcat.txt"
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            result_path = root / "receiver-result.json"
+            runner_called = {"value": False}
+
+            def fake_live_android_runner(live_args: argparse.Namespace, **_: object) -> int:
+                runner_called["value"] = True
+                return 0
+
+            status = run_qcl082_product_media_live_session(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-live-session",
+                    out=str(result_path),
+                    start_source_request_out=str(request_path),
+                    bridge_evidence_out=str(bridge_path),
+                    execution_out=str(execution_path),
+                    validation_out=str(validation_path),
+                    logcat_out=str(logcat_path),
+                    capture_out=str(capture_path),
+                    sidecar_out=str(sidecar_path),
+                    bind_host="127.0.0.1",
+                    port=free_tcp_port(),
+                    timeout_seconds=0.01,
+                    capture_kind="live_broker_stream",
+                    topology_report=str(root / "qcl041-live-wifi-direct-lifecycle.json"),
+                    firewall_report=str(root / "qcl082-tcp-firewall-verify.json"),
+                    adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                    serial="TESTQUESTSERIAL",
+                    fail_on_error=True,
+                ),
+                live_android_runner=fake_live_android_runner,
+            )
+            receipt = json.loads(result_path.read_text(encoding="utf-8"))
+
+        self.assertEqual(status, 2)
+        self.assertFalse(runner_called["value"])
+        self.assertFalse(request_path.exists())
+        self.assertFalse(receipt["accepted_connection"])
+        self.assertEqual(receipt["close_reason"], "blocked_missing_quest_lease")
+        self.assertFalse(receipt["live_session"]["receiver_armed_before_command"])
+        self.assertFalse(receipt["live_session"]["quest_lease"]["valid"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_receiver_quest_lease_id_missing",
+            receipt["issue_codes"],
+        )

@@ -25,6 +25,8 @@ public static class OperatorActionCatalog
         "$TopologyFixtureReports = '<topology-fixture-reports>'; " +
         "$Adb = '<adb>'; " +
         "$QuestSerial = '<quest-serial>'; " +
+        "$QuestLeaseId = '<quest-lease-id>'; " +
+        "$QuestLeaseResource = 'quest:<quest-serial>'; " +
         "$Qcl040Preflight = '<qcl040-live-wifi-direct-preflight>'; " +
         "$Qcl041Preflight = '<qcl041-live-wifi-direct-preflight>'; " +
         "$LifecycleReport = '<wifi-direct-lifecycle-report>'; " +
@@ -43,15 +45,15 @@ public static class OperatorActionCatalog
         "$ProtocolMatrix = '<protocol-matrix>'; " +
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
-        "python $HostessCtl connectivity-probe qcl082-product-media-plan --out $ProductMediaPlan --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial; " +
-        "python $HostessCtl connectivity-probe direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan --qcl040-topology-report $Qcl040LifecycleReport --qcl041-topology-report $Qcl041LifecycleReport --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --adb $Adb --serial $QuestSerial; " +
+        "python $HostessCtl connectivity-probe qcl082-product-media-plan --out $ProductMediaPlan --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource; " +
+        "python $HostessCtl connectivity-probe direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan --qcl040-topology-report $Qcl040LifecycleReport --qcl041-topology-report $Qcl041LifecycleReport --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
         "python $HostessCtl emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out $StartSourceRequest; " +
         "python $HostessCtl run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
         "python $HostessCtl connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +
-        "python $HostessCtl connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --out $ReceiverResult; " +
-        "python $HostessCtl connectivity-probe rmanvid1-receiver-capture --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --out $ReceiverResult; " +
+        "python $HostessCtl connectivity-probe qcl082-product-media-live-session --bridge-command command.media_stream.start_source --start-source-request-out $StartSourceRequest --bridge-evidence-out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --logcat-out $StartSourceLogcat --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource --quest-lease-reserved-before-live-steps --out $ReceiverResult; " +
+        "python $HostessCtl connectivity-probe rmanvid1-receiver-capture --capture-kind live_broker_stream --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --quest-lease-id $QuestLeaseId --quest-lease-resource $QuestLeaseResource --quest-lease-reserved-before-live-steps --out $ReceiverResult; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence; " +

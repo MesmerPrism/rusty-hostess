@@ -754,6 +754,12 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--runtime-status", default="")
     connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
     connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
+    connectivity_probe_receiver_capture.add_argument("--quest-lease-id", default="")
+    connectivity_probe_receiver_capture.add_argument("--quest-lease-resource", default="")
+    connectivity_probe_receiver_capture.add_argument(
+        "--quest-lease-reserved-before-live-steps",
+        action="store_true",
+    )
     connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_live_session = connectivity_probe_subcommands.add_parser(
         "qcl082-product-media-live-session"
@@ -800,6 +806,12 @@ def build_hostessctl_parser(
     connectivity_probe_live_session.add_argument("--firewall-report", required=True)
     connectivity_probe_live_session.add_argument("--adb", required=True)
     connectivity_probe_live_session.add_argument("--serial", required=True)
+    connectivity_probe_live_session.add_argument("--quest-lease-id", default="")
+    connectivity_probe_live_session.add_argument("--quest-lease-resource", default="")
+    connectivity_probe_live_session.add_argument(
+        "--quest-lease-reserved-before-live-steps",
+        action="store_true",
+    )
     connectivity_probe_live_session.add_argument("--broker-package", default=broker_package)
     connectivity_probe_live_session.add_argument("--broker-activity")
     connectivity_probe_live_session.add_argument("--broker-host", default="127.0.0.1")
@@ -863,6 +875,8 @@ def build_hostessctl_parser(
     connectivity_probe_product_media_plan.add_argument("--receiver-result-out", default="")
     connectivity_probe_product_media_plan.add_argument("--qcl082-report-out", default="")
     connectivity_probe_product_media_plan.add_argument("--protocol-matrix-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--quest-lease-id", default="")
+    connectivity_probe_product_media_plan.add_argument("--quest-lease-resource", default="")
     connectivity_probe_product_media_plan.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_direct_wifi_product_media_plan = connectivity_probe_subcommands.add_parser(
         "direct-wifi-product-media-plan"
@@ -896,6 +910,8 @@ def build_hostessctl_parser(
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--protocol-matrix-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--projection-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--transport-gates-out", default="")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument("--quest-lease-id", default="")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument("--quest-lease-resource", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_wifi_direct_lifecycle_template = connectivity_probe_subcommands.add_parser(
         "wifi-direct-lifecycle-template"

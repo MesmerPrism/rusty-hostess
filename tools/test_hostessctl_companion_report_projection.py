@@ -613,6 +613,9 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertIn("--bridge-command command.media_stream.start_source", live_session_command)
         self.assertIn("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", live_session_command)
         self.assertIn("--execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", live_session_command)
+        self.assertIn("--quest-lease-id '<quest-lease-id>'", live_session_command)
+        self.assertIn("--quest-lease-resource 'quest:<quest-serial>'", live_session_command)
+        self.assertIn("--quest-lease-reserved-before-live-steps", live_session_command)
         self.assertIn("--out target\\connectivity-probe\\media-stream-receiver-result.json", live_session_command)
         self.assertEqual(live_session_action["lease"]["resource"], "quest:<quest-serial>")
         capture_command = product_media_actions["capture_rmanvid1_over_promoted_direct_wifi"]["command"]["command"]
@@ -621,6 +624,9 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             "--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
             capture_command,
         )
+        self.assertIn("--quest-lease-id '<quest-lease-id>'", capture_command)
+        self.assertIn("--quest-lease-resource 'quest:<quest-serial>'", capture_command)
+        self.assertIn("--quest-lease-reserved-before-live-steps", capture_command)
         self.assertIn("--out target\\connectivity-probe\\media-stream-receiver-result.json", capture_command)
         self.assertIn(
             "--media-stream-receiver-result target\\connectivity-probe\\media-stream-receiver-result.json",

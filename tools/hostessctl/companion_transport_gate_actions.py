@@ -461,7 +461,9 @@ def direct_wifi_product_media_acceptance_plan_action() -> dict[str, Any]:
                 f"--qcl041-topology-report {DIRECT_WIFI_QCL041_LIFECYCLE_OUTPUT} "
                 "--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
                 f"--firewall-report {QCL082_FIREWALL_VERIFY} "
-                "--qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json"
+                "--qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json "
+                "--quest-lease-id '<quest-lease-id>' "
+                "--quest-lease-resource 'quest:<quest-serial>'"
             ),
         ),
         acceptance_artifacts=[DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN],
@@ -491,7 +493,9 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     "connectivity-probe qcl082-product-media-plan "
                     f"--out {QCL082_PRODUCT_MEDIA_PLAN} "
                     f"--firewall-report {QCL082_FIREWALL_VERIFY} "
-                    "--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'"
+                    "--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
+                    "--quest-lease-id '<quest-lease-id>' "
+                    "--quest-lease-resource 'quest:<quest-serial>'"
                 ),
             ),
             acceptance_artifacts=[QCL082_PRODUCT_MEDIA_PLAN],
@@ -631,6 +635,9 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     "--capture-kind live_broker_stream "
                     "--max-packets 240 "
                     "--adb '<adb>' --serial '<quest-serial>' "
+                    "--quest-lease-id '<quest-lease-id>' "
+                    "--quest-lease-resource 'quest:<quest-serial>' "
+                    "--quest-lease-reserved-before-live-steps "
                     "--out target\\connectivity-probe\\media-stream-receiver-result.json "
                     "--fail-on-error"
                 ),
@@ -677,6 +684,9 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     f"--firewall-report {QCL082_FIREWALL_VERIFY} "
                     "--capture-kind live_broker_stream "
                     "--max-packets 240 "
+                    "--quest-lease-id '<quest-lease-id>' "
+                    "--quest-lease-resource 'quest:<quest-serial>' "
+                    "--quest-lease-reserved-before-live-steps "
                     "--out target\\connectivity-probe\\media-stream-receiver-result.json "
                     "--fail-on-error"
                 ),

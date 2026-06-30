@@ -64,6 +64,8 @@ DEFAULT_PROTOCOL_MATRIX = (
     r"target\connectivity-probe\qcl082-rmanvid1-receiver-capture.protocol-matrix.json"
 )
 DEFAULT_PROMOTED_TOPOLOGY_REPORT = "<promoted-qcl040-or-qcl041-topology-report>"
+DEFAULT_QUEST_LEASE_ID = "<quest-lease-id>"
+DEFAULT_QUEST_LEASE_RESOURCE = "quest:<quest-serial>"
 
 
 def run_qcl082_product_media_direct_wifi_plan(
@@ -263,6 +265,8 @@ def product_media_plan_paths(args: argparse.Namespace) -> dict[str, str]:
 def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str]) -> list[dict[str, Any]]:
     adb = value(args, "adb", DEFAULT_ADB)
     serial = value(args, "serial", "<quest-serial>")
+    quest_lease_id = value(args, "quest_lease_id", DEFAULT_QUEST_LEASE_ID)
+    quest_lease_resource = value(args, "quest_lease_resource", DEFAULT_QUEST_LEASE_RESOURCE)
     program = value(args, "program", str(DEFAULT_WPF_FIREWALL_PROGRAM))
     bind_host = value(args, "bind_host", "0.0.0.0")
     port = str(int_value(value(args, "port", DEFAULT_QCL082_RMANVID1_MEDIA_PORT)) or DEFAULT_QCL082_RMANVID1_MEDIA_PORT)
@@ -349,6 +353,9 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
                 f"--capture-kind {capture_kind} --max-packets {max_packets} "
                 f"--adb {ps_quote(adb)} --serial {ps_quote(serial)} "
+                f"--quest-lease-id {ps_quote(quest_lease_id)} "
+                f"--quest-lease-resource {ps_quote(quest_lease_resource)} "
+                "--quest-lease-reserved-before-live-steps "
                 f"--out {ps_quote(paths['receiver_result_out'])} --fail-on-error"
             ),
             [
@@ -380,6 +387,9 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
                 f"--topology-report {ps_quote(paths['promoted_topology_report'])} "
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
                 f"--capture-kind {capture_kind} --max-packets {max_packets} "
+                f"--quest-lease-id {ps_quote(quest_lease_id)} "
+                f"--quest-lease-resource {ps_quote(quest_lease_resource)} "
+                "--quest-lease-reserved-before-live-steps "
                 f"--out {ps_quote(paths['receiver_result_out'])} --fail-on-error"
             ),
             [

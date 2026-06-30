@@ -466,6 +466,11 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "target\\connectivity-probe\\qcl082-tcp-firewall-verify.json",
                 "--capture-kind",
                 "live_broker_stream",
+                "--quest-lease-id",
+                "unit-test-quest-lease",
+                "--quest-lease-resource",
+                "quest:3487C10H3M017Q",
+                "--quest-lease-reserved-before-live-steps",
                 "--max-packets",
                 "8",
                 "--max-bytes",
@@ -481,6 +486,9 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.bind_host, "0.0.0.0")
         self.assertEqual(args.port, 9079)
         self.assertEqual(args.capture_kind, "live_broker_stream")
+        self.assertEqual(args.quest_lease_id, "unit-test-quest-lease")
+        self.assertEqual(args.quest_lease_resource, "quest:3487C10H3M017Q")
+        self.assertTrue(args.quest_lease_reserved_before_live_steps)
         self.assertEqual(args.topology_report, "target\\connectivity-probe\\qcl040-topology.json")
         self.assertEqual(args.firewall_report, "target\\connectivity-probe\\qcl082-tcp-firewall-verify.json")
         self.assertEqual(args.max_packets, 8)
@@ -530,6 +538,11 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "9079",
                 "--capture-kind",
                 "live_broker_stream",
+                "--quest-lease-id",
+                "unit-test-quest-lease",
+                "--quest-lease-resource",
+                "quest:3487C10H3M017Q",
+                "--quest-lease-reserved-before-live-steps",
                 "--fail-on-error",
             ]
         )
@@ -540,6 +553,9 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.port, 9079)
         self.assertEqual(args.capture_kind, "live_broker_stream")
         self.assertEqual(args.serial, "3487C10H3M017Q")
+        self.assertEqual(args.quest_lease_id, "unit-test-quest-lease")
+        self.assertEqual(args.quest_lease_resource, "quest:3487C10H3M017Q")
+        self.assertTrue(args.quest_lease_reserved_before_live_steps)
         self.assertEqual(
             args.topology_report,
             "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
@@ -571,6 +587,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "3487C10H3M017Q",
                 "--capture-kind",
                 "live_broker_stream",
+                "--quest-lease-id",
+                "unit-test-quest-lease",
+                "--quest-lease-resource",
+                "quest:3487C10H3M017Q",
             ]
         )
 
@@ -590,6 +610,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         )
         self.assertEqual(args.serial, "3487C10H3M017Q")
         self.assertEqual(args.capture_kind, "live_broker_stream")
+        self.assertEqual(args.quest_lease_id, "unit-test-quest-lease")
+        self.assertEqual(args.quest_lease_resource, "quest:3487C10H3M017Q")
 
     def test_parser_accepts_direct_wifi_product_media_plan_command(self) -> None:
         args = build_hostessctl_parser(
@@ -628,6 +650,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "3487C10H3M017Q",
                 "--capture-kind",
                 "live_broker_stream",
+                "--quest-lease-id",
+                "unit-test-quest-lease",
+                "--quest-lease-resource",
+                "quest:3487C10H3M017Q",
             ]
         )
 
@@ -647,6 +673,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         )
         self.assertEqual(args.serial, "3487C10H3M017Q")
         self.assertEqual(args.capture_kind, "live_broker_stream")
+        self.assertEqual(args.quest_lease_id, "unit-test-quest-lease")
+        self.assertEqual(args.quest_lease_resource, "quest:3487C10H3M017Q")
 
     def test_parser_accepts_bluetooth_probe(self) -> None:
         args = build_hostessctl_parser(

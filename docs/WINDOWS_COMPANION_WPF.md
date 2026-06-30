@@ -229,6 +229,8 @@ logic in button handlers. The product UDP rule uses the WPF executable, fixed
 UDP port `18767`, the selected Windows profile, and `LocalSubnet`:
 
 ```powershell
+$QuestLeaseId = 'LEASE_ID_FROM_RESERVE_OUTPUT'
+$QuestLeaseResource = "quest:$QuestSerial"
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --action verify `
   --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
@@ -446,19 +448,25 @@ acceptance artifacts WPF renders, but it does not run headset commands or clear
 the pending gates:
 
 ```powershell
+$QuestLeaseId = 'LEASE_ID_FROM_RESERVE_OUTPUT'
+$QuestLeaseResource = "quest:$QuestSerial"
 python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-plan `
   --out target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json `
   --promoted-topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --adb $Adb `
-  --serial $QuestSerial
+  --serial $QuestSerial `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource
 
 python tools\hostessctl\hostessctl.py connectivity-probe direct-wifi-product-media-plan `
   --out target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json `
   --qcl040-topology-report target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json `
   --qcl041-topology-report target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json `
-  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json
+  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource
 ```
 
 WPF may render the direct-Wi-Fi product-media acceptance plan and its
@@ -483,7 +491,10 @@ flags remain a lower-level compatibility route.
 The route requires a `quest:<serial>` lease and serial-scoped ADB for live
 headset work, but it does not mutate firewall state and does not require
 `adb-server:lifecycle` unless the run also performs disruptive ADB daemon
-recovery or Wi-Fi ADB setup.
+recovery or Wi-Fi ADB setup. Hostess blocks before arming the receiver or
+starting the live Android command unless the command includes
+`--quest-lease-id`, `--quest-lease-resource`, and
+`--quest-lease-reserved-before-live-steps`.
 
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script
@@ -517,6 +528,9 @@ python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-li
   --max-packets 240 `
   --adb $Adb `
   --serial $QuestSerial `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource `
+  --quest-lease-reserved-before-live-steps `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 
@@ -530,6 +544,9 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
   --max-packets 240 `
+  --quest-lease-id $QuestLeaseId `
+  --quest-lease-resource $QuestLeaseResource `
+  --quest-lease-reserved-before-live-steps `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 

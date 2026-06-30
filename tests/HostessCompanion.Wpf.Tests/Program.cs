@@ -1445,6 +1445,12 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must use the live Android execution artifact as the runtime-status source");
     Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-live-session", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 orchestrated live media session route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--quest-lease-id $QuestLeaseId", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 product-media quest lease id");
+    Assert(protocolMatrixAction.CliRoute.Contains("--quest-lease-resource $QuestLeaseResource", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 product-media quest lease resource");
+    Assert(protocolMatrixAction.CliRoute.Contains("--quest-lease-reserved-before-live-steps", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 product-media reserved-before-live lease flag");
     Assert(protocolMatrixAction.CliRoute.Contains("--start-source-request-out $StartSourceRequest", StringComparison.Ordinal),
         "protocol matrix action must pass the start_source request artifact into the live media session route");
     Assert(protocolMatrixAction.CliRoute.Contains("--logcat-out $StartSourceLogcat", StringComparison.Ordinal),

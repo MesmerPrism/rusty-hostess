@@ -1242,7 +1242,7 @@ def media_stream_runtime_ack(*, high_rate_json_payload: bool = False) -> dict[st
 
 
 def media_stream_receiver_sidecar(*, capture_kind: str = "fixture_rmanvid1_capture") -> dict[str, Any]:
-    return {
+    sidecar = {
         "schema": "rusty.hostess.media_stream.receiver_capture_sidecar.v1",
         "capture_kind": capture_kind,
         "receiver": {
@@ -1266,6 +1266,20 @@ def media_stream_receiver_sidecar(*, capture_kind: str = "fixture_rmanvid1_captu
             "session_id": "session.media_stream.test",
         },
     }
+    if capture_kind.startswith("live_"):
+        sidecar["lease"] = {
+            "manager": "Agent Board",
+            "resource": "quest:TESTQUESTSERIAL",
+            "lease_id": "unit-test-quest-lease",
+            "reserved_before_live_steps": True,
+            "released_after_live_steps": False,
+            "adb_server_lifecycle_lease_used": False,
+            "adb_server_lifecycle_policy": (
+                "Use adb-server:lifecycle only for disruptive daemon lifecycle "
+                "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
+            ),
+        }
+    return sidecar
 
 
 def wifi_direct_lifecycle_artifact(

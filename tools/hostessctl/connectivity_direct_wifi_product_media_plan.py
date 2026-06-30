@@ -385,6 +385,8 @@ def product_args(
         receiver_result_out="",
         qcl082_report_out=paths["qcl082_report"],
         protocol_matrix_out=paths["protocol_matrix_out"],
+        quest_lease_id=value(args, "quest_lease_id", product_plan.DEFAULT_QUEST_LEASE_ID),
+        quest_lease_resource=value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE),
         fail_on_error=False,
     )
 
@@ -523,6 +525,8 @@ def plan_issues(*dependencies: dict[str, Any]) -> list[dict[str, Any]]:
 def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> list[dict[str, Any]]:
     adb = value(args, "adb", lifecycle_plan.DEFAULT_ADB)
     serial = value(args, "serial", "<quest-serial>")
+    quest_lease_id = value(args, "quest_lease_id", product_plan.DEFAULT_QUEST_LEASE_ID)
+    quest_lease_resource = value(args, "quest_lease_resource", product_plan.DEFAULT_QUEST_LEASE_RESOURCE)
     return [
         plan_command(
             "write_qcl040_wifi_direct_lifecycle_plan",
@@ -560,7 +564,9 @@ def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> 
                 f"--out {ps_quote(paths['qcl082_product_plan_out'])} "
                 f"--promoted-topology-report {ps_quote(paths['promoted_topology_report'])} "
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
-                f"--adb {ps_quote(adb)} --serial {ps_quote(serial)}"
+                f"--adb {ps_quote(adb)} --serial {ps_quote(serial)} "
+                f"--quest-lease-id {ps_quote(quest_lease_id)} "
+                f"--quest-lease-resource {ps_quote(quest_lease_resource)}"
             ),
             [paths["qcl082_product_plan_out"]],
         ),

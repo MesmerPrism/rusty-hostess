@@ -35,6 +35,13 @@ RECEIVER_CAPTURE_SIDECAR_SCHEMA = "rusty.hostess.media_stream.receiver_capture_s
 RECEIVER_CAPTURE_RESULT_SCHEMA = "rusty.hostess.media_stream.rmanvid1_receiver_capture_result.v1"
 RECEIVER_LIVE_SESSION_SCHEMA = "rusty.hostess.media_stream.rmanvid1_live_session.v1"
 RECEIVER_CAPTURE_ENDPOINT_SOURCE = "hostess-rmanvid1-receiver-counter-canary"
+AGENT_BOARD_MANAGER = "Agent Board"
+QUEST_LEASE_RESOURCE_PREFIX = "quest:"
+QUEST_LEASE_PLACEHOLDERS = {
+    "",
+    "<quest-lease-id>",
+    "LEASE_ID_FROM_RESERVE_OUTPUT",
+}
 DEFAULT_QCL082_START_SOURCE_COMMAND = "command.media_stream.start_source"
 DEFAULT_QCL082_START_SOURCE_REQUEST_ID = "request.hostess.qcl082.media_stream.start_source"
 DEFAULT_QCL082_START_SOURCE_EVIDENCE_ID = "evidence.hostess.qcl082.media_stream.start_source"
@@ -56,8 +63,148 @@ PRODUCT_TCP_MEDIA_DIRECT_WIFI_GATE = "product_tcp_media_over_direct_wifi"
 PRODUCT_TCP_MEDIA_LISTENER_FIREWALL_GATE = "product_tcp_media_listener_firewall_verified"
 
 
+def adb_server_lifecycle_policy() -> str:
+    return (
+        "Use adb-server:lifecycle only for disruptive daemon lifecycle/recovery "
+        "or Wi-Fi ADB setup. This route uses serial-scoped ADB."
+    )
+
+
+def quest_lease_summary_from_args(args: Any) -> dict[str, Any]:
+    serial = str(getattr(args, "serial", "") or "").strip()
+    resource = str(getattr(args, "quest_lease_resource", "") or "").strip()
+    if not resource and serial and "<" not in serial:
+        resource = f"{QUEST_LEASE_RESOURCE_PREFIX}{serial}"
+    lease_id = str(getattr(args, "quest_lease_id", "") or "").strip()
+    reserved_before = bool(getattr(args, "quest_lease_reserved_before_live_steps", False))
+    issue_codes: list[str] = []
+    if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX) or "<" in resource:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_resource_invalid")
+    if lease_id in QUEST_LEASE_PLACEHOLDERS or "<" in lease_id:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_id_missing")
+    if not reserved_before:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_not_reserved")
+    return {
+        "manager": AGENT_BOARD_MANAGER,
+        "resource": resource,
+        "lease_id": lease_id,
+        "reserved_before_live_steps": reserved_before,
+        "released_after_live_steps": False,
+        "valid": not issue_codes,
+        "issue_codes": issue_codes,
+        "adb_server_lifecycle_lease_used": False,
+        "adb_server_lifecycle_policy": adb_server_lifecycle_policy(),
+    }
+
+
+def media_receiver_quest_lease_summary(sidecar: dict[str, Any]) -> dict[str, Any]:
+    lease = object_value(sidecar.get("lease") or sidecar.get("quest_lease"))
+    manager = str(lease.get("manager") or "").strip()
+    resource = str(lease.get("resource") or "").strip()
+    lease_id = str(lease.get("lease_id") or lease.get("id") or "").strip()
+    reserved_before = lease.get("reserved_before_live_steps") is True
+    issue_codes: list[str] = []
+    if manager != AGENT_BOARD_MANAGER:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_missing")
+    if not resource.startswith(QUEST_LEASE_RESOURCE_PREFIX) or "<" in resource:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_resource_invalid")
+    if lease_id in QUEST_LEASE_PLACEHOLDERS or "<" in lease_id:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_id_missing")
+    if not reserved_before:
+        issue_codes.append("hostess.issue.connectivity_probe.media_receiver_quest_lease_not_reserved")
+    return {
+        "manager": manager,
+        "resource": resource,
+        "lease_id": lease_id,
+        "reserved_before_live_steps": reserved_before,
+        "released_after_live_steps": lease.get("released_after_live_steps") is True,
+        "valid": not issue_codes,
+        "issue_codes": issue_codes,
+        "adb_server_lifecycle_lease_used": lease.get("adb_server_lifecycle_lease_used") is True,
+        "adb_server_lifecycle_policy": str(
+            lease.get("adb_server_lifecycle_policy") or adb_server_lifecycle_policy()
+        ),
+    }
+
+
+def blocked_receiver_capture_result(
+    args: Any,
+    *,
+    capture_kind: str,
+    quest_lease: dict[str, Any],
+    live_session: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    capture_path = str(getattr(args, "capture_out", "") or "")
+    sidecar_path = str(getattr(args, "sidecar_out", "") or "")
+    issue_codes = sorted(set(str(code) for code in quest_lease.get("issue_codes", []) if str(code)))
+    return {
+        "schema": RECEIVER_CAPTURE_RESULT_SCHEMA,
+        "status": "fail",
+        "capture_kind": capture_kind,
+        "live_capture": capture_kind in LIVE_CAPTURE_KINDS,
+        "capture_path": capture_path,
+        "sidecar_path": sidecar_path,
+        "runtime_status_path": str(getattr(args, "runtime_status", "") or getattr(args, "execution_out", "") or ""),
+        "topology_report_path": str(getattr(args, "topology_report", "") or ""),
+        "firewall_report_path": str(getattr(args, "firewall_report", "") or ""),
+        "local_endpoint": "",
+        "remote_endpoint": "",
+        "accepted_connection": False,
+        "close_reason": "blocked_missing_quest_lease",
+        "elapsed_ms": 0.0,
+        "bytes_written": 0,
+        "issue_codes": issue_codes,
+        "socket_error": "",
+        "capture_stats": {
+            "schema": RECEIVER_CAPTURE_STATS_SCHEMA,
+            "status": "fail",
+            "capture_path": capture_path,
+            "packet_count": 0,
+            "issue_codes": issue_codes,
+        },
+        "receiver_sidecar": {
+            "schema": RECEIVER_CAPTURE_SIDECAR_SCHEMA,
+            "capture_kind": capture_kind,
+            "live_capture": capture_kind in LIVE_CAPTURE_KINDS,
+            "receiver": {
+                "local_endpoint": "",
+                "close_reason": "blocked_missing_quest_lease",
+                "queue_capacity_packets": None,
+                "max_queue_depth_observed": None,
+                "dropped_frames": None,
+                "backpressure_events": None,
+            },
+            "source": {
+                "endpoint_source": endpoint_source_for_capture_kind(capture_kind),
+                "runtime_status_path": str(getattr(args, "execution_out", "") or ""),
+                "topology_report_path": str(getattr(args, "topology_report", "") or ""),
+                "firewall_report_path": str(getattr(args, "firewall_report", "") or ""),
+            },
+            "lease": quest_lease,
+        },
+        "quest_lease": quest_lease,
+        "live_session": live_session or {},
+    }
+
+
 def run_rmanvid1_receiver_capture(args: Any) -> int:
     """Run the CLI-owned bounded TCP receiver capture route."""
+
+    capture_kind = str(getattr(args, "capture_kind", "fixture_loopback_receiver") or "fixture_loopback_receiver")
+    quest_lease = quest_lease_summary_from_args(args)
+    if capture_kind in LIVE_CAPTURE_KINDS and not quest_lease["valid"]:
+        result = blocked_receiver_capture_result(
+            args,
+            capture_kind=capture_kind,
+            quest_lease=quest_lease,
+        )
+        out = Path(getattr(args, "out"))
+        result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if getattr(args, "fail_on_error", False):
+            return 2
+        return 0
 
     result = capture_rmanvid1_receiver_stream(
         bind_host=str(getattr(args, "bind_host", "0.0.0.0") or "0.0.0.0"),
@@ -85,7 +232,7 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
             getattr(args, "queue_capacity_packets", DEFAULT_RMANVID1_RECEIVER_QUEUE_CAPACITY)
             or DEFAULT_RMANVID1_RECEIVER_QUEUE_CAPACITY
         ),
-        capture_kind=str(getattr(args, "capture_kind", "fixture_loopback_receiver") or "fixture_loopback_receiver"),
+        capture_kind=capture_kind,
         source_endpoint_source=str(getattr(args, "source_endpoint_source", "") or ""),
         source_remote_endpoint=str(getattr(args, "source_remote_endpoint", "") or ""),
         command_id=str(getattr(args, "command_id", "") or ""),
@@ -93,6 +240,7 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
         runtime_status_path=str(getattr(args, "runtime_status", "") or ""),
         topology_report_path=str(getattr(args, "topology_report", "") or ""),
         firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
+        quest_lease=quest_lease,
     )
     out = Path(getattr(args, "out"))
     result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
@@ -113,6 +261,40 @@ def run_qcl082_product_media_live_session(
     live_android_runner: Any | None = None,
 ) -> int:
     """Arm the RMANVID1 receiver while the Quest start_source command runs."""
+
+    quest_lease = quest_lease_summary_from_args(args)
+    if not quest_lease["valid"]:
+        live_session = {
+            "schema": RECEIVER_LIVE_SESSION_SCHEMA,
+            "bridge_command": str(getattr(args, "bridge_command", "") or DEFAULT_QCL082_START_SOURCE_COMMAND),
+            "request_path": str(getattr(args, "start_source_request_out", "") or ""),
+            "bridge_evidence_path": str(getattr(args, "bridge_evidence_out", "") or ""),
+            "execution_path": str(getattr(args, "execution_out", "") or ""),
+            "validation_path": str(getattr(args, "validation_out", "") or ""),
+            "logcat_path": str(getattr(args, "logcat_out", "") or ""),
+            "receiver_armed_before_command": False,
+            "receiver_local_endpoint": "",
+            "live_command_returncode": None,
+            "live_command_finished": False,
+            "live_command_error": "blocked before live steps because quest lease evidence is missing",
+            "requires_quest_lease": True,
+            "requires_adb_server_lifecycle_lease": False,
+            "quest_lease": quest_lease,
+            "adb_server_lifecycle_policy": adb_server_lifecycle_policy(),
+        }
+        result = blocked_receiver_capture_result(
+            args,
+            capture_kind=str(getattr(args, "capture_kind", "live_broker_stream") or "live_broker_stream"),
+            quest_lease=quest_lease,
+            live_session=live_session,
+        )
+        out = Path(getattr(args, "out"))
+        result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        if getattr(args, "fail_on_error", False):
+            return 2
+        return 0
 
     request = bridge_command_request_artifact(
         bridge_command=str(
@@ -202,6 +384,7 @@ def run_qcl082_product_media_live_session(
         runtime_status_path=str(getattr(args, "execution_out", "") or ""),
         topology_report_path=str(getattr(args, "topology_report", "") or ""),
         firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
+        quest_lease=quest_lease,
         listening_callback=on_listening,
     )
 
@@ -237,10 +420,8 @@ def run_qcl082_product_media_live_session(
         "live_command_error": str(live_state["error"] or ""),
         "requires_quest_lease": True,
         "requires_adb_server_lifecycle_lease": False,
-        "adb_server_lifecycle_policy": (
-            "Use adb-server:lifecycle only for disruptive daemon lifecycle/recovery "
-            "or Wi-Fi ADB setup. This route uses serial-scoped ADB."
-        ),
+        "quest_lease": quest_lease,
+        "adb_server_lifecycle_policy": adb_server_lifecycle_policy(),
     }
 
     out = Path(getattr(args, "out"))
@@ -309,6 +490,7 @@ def receiver_result_follow_on_paths(result: dict[str, Any]) -> dict[str, str]:
     sidecar = object_value(result.get("receiver_sidecar"))
     source = object_value(sidecar.get("source"))
     live_session = object_value(result.get("live_session"))
+    quest_lease = object_value(result.get("quest_lease") or sidecar.get("lease"))
 
     def first_text(*values: Any) -> str:
         for value in values:
@@ -333,6 +515,7 @@ def receiver_result_follow_on_paths(result: dict[str, Any]) -> dict[str, str]:
             result.get("firewall_report_path"),
             source.get("firewall_report_path"),
         ),
+        "quest_lease_valid": "true" if quest_lease.get("valid") is True else "false",
         "receiver_result_schema": first_text(result.get("schema")),
         "receiver_live_session_schema": first_text(live_session.get("schema")),
         "receiver_armed_before_command": "true"
@@ -361,6 +544,7 @@ def capture_rmanvid1_receiver_stream(
     runtime_status_path: str = "",
     topology_report_path: str = "",
     firewall_report_path: str = "",
+    quest_lease: dict[str, Any] | None = None,
     listening_callback: Any | None = None,
 ) -> dict[str, Any]:
     """Listen for one RMANVID1 TCP stream and write bounded capture artifacts."""
@@ -448,6 +632,7 @@ def capture_rmanvid1_receiver_stream(
         runtime_status_path=runtime_status_path,
         topology_report_path=topology_report_path,
         firewall_report_path=firewall_report_path,
+        quest_lease=quest_lease,
     )
     sidecar_path.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -489,6 +674,7 @@ def capture_rmanvid1_receiver_stream(
         "socket_error": socket_error,
         "capture_stats": capture_stats,
         "receiver_sidecar": sidecar,
+        "quest_lease": object_value(quest_lease),
         "follow_on_qcl082_args": follow_on_args,
     }
     return result
@@ -595,6 +781,7 @@ def receiver_capture_sidecar(
     runtime_status_path: str,
     topology_report_path: str,
     firewall_report_path: str,
+    quest_lease: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     arrival_count = len(receiver_arrivals_ns)
     queue_depth = 1 if packet_count > 0 else 0
@@ -634,6 +821,7 @@ def receiver_capture_sidecar(
             "topology_report_path": topology_report_path,
             "firewall_report_path": firewall_report_path,
         },
+        "lease": object_value(quest_lease),
     }
 
 
@@ -850,6 +1038,8 @@ def qcl082_media_stream_receiver_capture_body(
     )
     capture_kind = str(sidecar.get("capture_kind") or "fixture_rmanvid1_capture")
     live_capture = bool(sidecar.get("live_capture")) or capture_kind in LIVE_CAPTURE_KINDS
+    quest_lease = media_receiver_quest_lease_summary(sidecar)
+    quest_lease_ok = not live_capture or quest_lease["valid"]
     broker_or_quest_source = source_endpoint in {MEDIA_STREAM_RUNTIME_ENDPOINT_SOURCE, "quest-runtime"}
     high_rate_json = bool(
         sidecar.get("high_rate_json_payload")
@@ -913,6 +1103,7 @@ def qcl082_media_stream_receiver_capture_body(
         and timestamp_policy_ok
         and backpressure_policy_ok
         and runtime_ok
+        and quest_lease_ok
         and receiver_measurements_present
         and not high_rate_json
     )
@@ -939,6 +1130,8 @@ def qcl082_media_stream_receiver_capture_body(
         backpressure_policy_ok,
         product_topology,
         product_listener_firewall,
+        quest_lease,
+        live_capture,
     )
 
     checks = [
@@ -1085,6 +1278,21 @@ def qcl082_media_stream_receiver_capture_body(
             },
         ),
         check_row(
+            "protocol.media_receiver_quest_lease",
+            "pass" if quest_lease_ok else "blocked",
+            (
+                "live receiver capture carries an accepted Agent Board quest lease"
+                if quest_lease_ok and live_capture
+                else (
+                    "fixture receiver capture does not require a Quest lease"
+                    if not live_capture
+                    else "live receiver capture is missing accepted Agent Board quest lease evidence"
+                )
+            ),
+            observed=quest_lease,
+            issue_codes=list(quest_lease.get("issue_codes") or []) if live_capture else [],
+        ),
+        check_row(
             "protocol.media_product_topology_gate",
             str(product_topology["check_status"]),
             str(product_topology["evidence"]),
@@ -1147,6 +1355,7 @@ def qcl082_media_stream_receiver_capture_body(
             "media_decode_error_count": int_or_none(receiver.get("decode_error_count")) or 0,
             "media_backpressure_events": backpressure_events,
             "media_frame_timestamp_gap_ms_p95": receiver.get("timestamp_gap_ms_p95"),
+            "media_receiver_quest_lease_valid": quest_lease_ok,
             "media_product_topology_ready": product_topology["ready"],
             "media_product_listener_firewall_verified": product_listener_firewall["ready"],
         },
@@ -1183,6 +1392,7 @@ def qcl082_media_stream_receiver_capture_body(
             "stream": capture_stats,
             "product_topology": product_topology,
             "product_listener_firewall": product_listener_firewall,
+            "quest_lease": quest_lease,
             "receiver": {
                 "queue_capacity_packets": queue_capacity,
                 "max_queue_depth_observed": max_queue_depth,
@@ -1204,6 +1414,8 @@ def receiver_capture_issues(
     backpressure_policy_ok: bool,
     product_topology: dict[str, Any],
     product_listener_firewall: dict[str, Any],
+    quest_lease: dict[str, Any],
+    live_capture: bool,
 ) -> list[dict[str, Any]]:
     issues = [
         issue_row(
@@ -1237,6 +1449,15 @@ def receiver_capture_issues(
                 "receiver capture sidecar is missing bounded queue/drop/backpressure/close evidence",
             )
         )
+    if live_capture and not quest_lease.get("valid"):
+        for issue_code in quest_lease.get("issue_codes", []) or []:
+            issues.append(
+                issue_row(
+                    str(issue_code),
+                    "error",
+                    "live QCL-082 receiver capture is missing accepted Agent Board quest lease evidence",
+                )
+            )
     for issue_code in product_topology.get("issue_codes", []) or []:
         issues.append(
             issue_row(
