@@ -114,6 +114,7 @@ from tools.hostessctl.connectivity_topology_live import (
     live_direct_wifi_topology_report,
 )
 from tools.hostessctl.connectivity_topology_lifecycle import (
+    run_wifi_direct_lifecycle_template,
     wifi_direct_lifecycle_probe_report,
 )
 from tools.hostessctl.connectivity_probe_fixtures import (

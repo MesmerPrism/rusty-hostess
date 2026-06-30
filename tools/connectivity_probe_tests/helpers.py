@@ -44,6 +44,8 @@ from tools.hostessctl.connectivity_probe import (
 from tools.hostessctl.connectivity_topology_live import live_direct_wifi_topology_report
 from tools.hostessctl.connectivity_topology_lifecycle import (
     WIFI_DIRECT_LIFECYCLE_SCHEMA,
+    run_wifi_direct_lifecycle_template,
+    wifi_direct_lifecycle_template_artifact,
 )
 
 

@@ -193,6 +193,55 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_wifi_direct_lifecycle_template_is_non_promoting_source_contract(self) -> None:
+        artifact = wifi_direct_lifecycle_template_artifact(
+            probe_id="QCL-041",
+            observed_at=fixed_datetime(),
+        )
+
+        self.assertEqual(artifact["$schema"], WIFI_DIRECT_LIFECYCLE_SCHEMA)
+        self.assertEqual(artifact["probe_id"], "QCL-041")
+        self.assertEqual(artifact["peer_class"], "windows")
+        self.assertEqual(artifact["evidence_tier"], "template")
+        self.assertFalse(artifact["live_evidence"])
+        self.assertTrue(artifact["contract"]["non_promoting_template"])
+        self.assertEqual(artifact["lifecycle"]["socket_exchange"]["protocol"], "tcp")
+        self.assertEqual(artifact["lifecycle"]["socket_exchange"]["payload_class"], "bounded_tcp_probe")
+
+    def test_wifi_direct_lifecycle_template_route_normalizes_to_blocked_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            template_path = root / "qcl041-lifecycle-template.json"
+            topology_path = root / "qcl041-live-topology.json"
+
+            template_status = run_wifi_direct_lifecycle_template(
+                argparse.Namespace(probe_id="QCL-041", out=str(template_path)),
+                clock_func=fixed_datetime,
+            )
+            normalize_status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(topology_path),
+                    wifi_direct_lifecycle_report=str(template_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(topology_path.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        source_check = check(report, "wifi_direct.lifecycle_source")
+        self.assertEqual(template_status, 0)
+        self.assertEqual(normalize_status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(source_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_lifecycle_not_live",
+            source_check["issue_codes"],
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_live_same_wifi_report_does_not_pass_on_one_way_host_ping(self) -> None:
         report = live_same_wifi_report(
             probe_args(mode="live", host_ip="192.0.2.10"),

@@ -380,6 +380,28 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         for probe_id, action_id, artifact_name in [
             (
                 "QCL-040",
+                "template_qcl040_wifi_direct_lifecycle_source",
+                "qcl040-wifi-direct-lifecycle-template.json",
+            ),
+            (
+                "QCL-041",
+                "template_qcl041_wifi_direct_lifecycle_source",
+                "qcl041-wifi-direct-lifecycle-template.json",
+            ),
+        ]:
+            action = direct_wifi_actions[action_id]
+            command = action["command"]["command"]
+            self.assertEqual(action["authority_owner"], "tools.hostessctl.connectivity_topology_lifecycle")
+            self.assertFalse(action["requires_quest_lease"])
+            self.assertFalse(action["mutates_host"])
+            self.assertFalse(action["mutates_device"])
+            self.assertFalse(action["clears_gate_when_accepted"])
+            self.assertIn("wifi-direct-lifecycle-template", command)
+            self.assertIn(f"--probe-id {probe_id}", command)
+            self.assertIn(artifact_name, command)
+        for probe_id, action_id, artifact_name in [
+            (
+                "QCL-040",
                 "normalize_qcl040_wifi_direct_lifecycle_report",
                 "qcl040-live-wifi-direct-lifecycle.json",
             ),

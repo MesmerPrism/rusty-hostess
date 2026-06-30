@@ -18,6 +18,8 @@ public static class OperatorActionCatalog
         "$Qcl040Preflight = '<qcl040-live-wifi-direct-preflight>'; " +
         "$Qcl041Preflight = '<qcl041-live-wifi-direct-preflight>'; " +
         "$LifecycleReport = '<wifi-direct-lifecycle-report>'; " +
+        "$Qcl040LifecycleTemplate = 'target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-template.json'; " +
+        "$Qcl041LifecycleTemplate = 'target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-template.json'; " +
         "$Qcl040LifecycleReport = 'target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json'; " +
         "$Qcl041LifecycleReport = 'target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json'; " +
         "$ProtocolMatrix = '<protocol-matrix>'; " +
@@ -37,6 +39,8 @@ public static class OperatorActionCatalog
         "connectivity-probe run --mode fixture --probe-id QCL-041 --fixture-profile qcl-041-wifi-direct-windows-peer-pass; " +
         "connectivity-probe run --mode live --probe-id QCL-040 --adb $Adb --serial $QuestSerial --out $Qcl040Preflight; " +
         "connectivity-probe run --mode live --probe-id QCL-041 --adb $Adb --serial $QuestSerial --out $Qcl041Preflight; " +
+        "connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-040 --out $Qcl040LifecycleTemplate; " +
+        "connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-041 --out $Qcl041LifecycleTemplate; " +
         "connectivity-probe run --mode fixture --probe-id QCL-040 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl040LifecycleReport --fail-on-error; " +
         "connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport --out $Qcl041LifecycleReport --fail-on-error; " +
         "connectivity-probe protocol-matrix --suite-run --input $TopologyFixtureReports --latest-artifact-dir --latest-probe-id QCL-000|QCL-010|QCL-011|QCL-020|QCL-030|QCL-040|QCL-041|QCL-050|QCL-051|QCL-080|QCL-081|QCL-082|QCL-083|QCL-084|QCL-079 --latest-device-link-dir --latest-stream-capability-dir --latest-stream-probe-id QCL-080; " +

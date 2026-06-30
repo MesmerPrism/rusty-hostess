@@ -742,6 +742,15 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
     connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
     connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_wifi_direct_lifecycle_template = connectivity_probe_subcommands.add_parser(
+        "wifi-direct-lifecycle-template"
+    )
+    connectivity_probe_wifi_direct_lifecycle_template.add_argument("--out", required=True)
+    connectivity_probe_wifi_direct_lifecycle_template.add_argument(
+        "--probe-id",
+        choices=["QCL-040", "QCL-041"],
+        required=True,
+    )
     connectivity_probe_run.add_argument("--adb")
     connectivity_probe_run.add_argument("--serial")
     connectivity_probe_run.add_argument("--wifi-interface", default="wlan0")

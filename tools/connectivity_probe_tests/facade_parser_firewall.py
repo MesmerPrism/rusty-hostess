@@ -188,6 +188,34 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
             "target\\connectivity-probe\\qcl041-lifecycle.json",
         )
 
+    def test_parser_accepts_wifi_direct_lifecycle_template_route(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "wifi-direct-lifecycle-template",
+                "--probe-id",
+                "QCL-040",
+                "--out",
+                "target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-template.json",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "wifi-direct-lifecycle-template")
+        self.assertEqual(args.probe_id, "QCL-040")
+        self.assertEqual(
+            args.out,
+            "target\\connectivity-probe\\qcl040-wifi-direct-lifecycle-template.json",
+        )
+
     def test_parser_accepts_pc_hotspot_probe(self) -> None:
         args = build_hostessctl_parser(
             broker_package="broker",

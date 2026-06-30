@@ -259,6 +259,18 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 "bounded socket exchange, and cleanup evidence."
             ),
         ),
+        wifi_direct_lifecycle_template_action(
+            action_id="template_qcl040_wifi_direct_lifecycle_source",
+            probe_id="QCL-040",
+            output=r"target\connectivity-probe\qcl040-wifi-direct-lifecycle-template.json",
+            label="Write the QCL-040 Wi-Fi Direct lifecycle source-artifact template.",
+        ),
+        wifi_direct_lifecycle_template_action(
+            action_id="template_qcl041_wifi_direct_lifecycle_source",
+            probe_id="QCL-041",
+            output=r"target\connectivity-probe\qcl041-wifi-direct-lifecycle-template.json",
+            label="Write the QCL-041 Wi-Fi Direct lifecycle source-artifact template.",
+        ),
         wifi_direct_lifecycle_action(
             action_id="normalize_qcl040_wifi_direct_lifecycle_report",
             probe_id="QCL-040",
@@ -278,6 +290,40 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
             ),
         ),
     ]
+
+
+def wifi_direct_lifecycle_template_action(
+    *,
+    action_id: str,
+    probe_id: str,
+    output: str,
+    label: str,
+) -> dict[str, Any]:
+    return next_action(
+        action_id,
+        label,
+        authority_owner="tools.hostessctl.connectivity_topology_lifecycle",
+        requires_elevation=False,
+        requires_quest_lease=False,
+        mutates_host=False,
+        mutates_device=False,
+        command=powershell_command(
+            f"Write {probe_id} lifecycle source template",
+            (
+                "python tools\\hostessctl\\hostessctl.py "
+                "connectivity-probe wifi-direct-lifecycle-template "
+                f"--probe-id {probe_id} "
+                f"--out {output}"
+            ),
+        ),
+        acceptance_artifacts=[output],
+        clears_gate=False,
+        note=(
+            "This only writes the expected source-artifact shape for a future "
+            "leased lifecycle harness. The template is non-promoting and must "
+            "be replaced by live evidence before normalization can clear the gate."
+        ),
+    )
 
 
 def wifi_direct_lifecycle_action(

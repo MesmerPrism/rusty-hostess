@@ -1057,6 +1057,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise live QCL-041 Wi-Fi Direct preflight");
     Assert(protocolMatrixAction.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
         "protocol matrix action must use PowerShell variables for serial-scoped ADB placeholders");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-040 --out $Qcl040LifecycleTemplate", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle source template route");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-041 --out $Qcl041LifecycleTemplate", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-041 Wi-Fi Direct lifecycle source template route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-040 --wifi-direct-lifecycle-report $LifecycleReport", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle normalization route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport", StringComparison.Ordinal),

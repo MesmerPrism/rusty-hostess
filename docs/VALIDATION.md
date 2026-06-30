@@ -251,8 +251,13 @@ owner:
 
 ```powershell
 $ProbeId = 'QCL-041'
+$LifecycleTemplate = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-template.json'
 $LifecycleReport = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-source.json'
 $TopologyReport = 'target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json'
+python tools\hostessctl\hostessctl.py connectivity-probe wifi-direct-lifecycle-template `
+  --probe-id $ProbeId `
+  --out $LifecycleTemplate
+
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id $ProbeId `
@@ -260,6 +265,11 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --out $TopologyReport `
   --fail-on-error
 ```
+
+The template route is a local contract aid only: it writes the expected source
+artifact shape with `live_evidence=false` and blocked phases, so the normalizer
+keeps `transport.direct_wifi_live_topology` pending until a leased live harness
+replaces it with real evidence.
 
 Use `QCL-040` plus `qcl040-*` artifact names for Android-phone peer lifecycle
 evidence, or `QCL-041` plus `qcl041-*` artifact names for Windows-peer

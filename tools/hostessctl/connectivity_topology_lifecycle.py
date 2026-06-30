@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from datetime import datetime
+import json
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -43,6 +44,134 @@ def wifi_direct_lifecycle_probe_report(
     report = base_report(args, observed_at=observed_at, probe_id=probe_id)
     report.update(wifi_direct_lifecycle_body(artifact, artifact_path=str(artifact_path), probe_id=probe_id))
     return report
+
+
+def run_wifi_direct_lifecycle_template(
+    args: argparse.Namespace,
+    *,
+    clock_func: Any | None = None,
+) -> int:
+    """Write a non-promoting source artifact template for future lifecycle harnesses."""
+
+    clock = clock_func or (lambda: datetime.now(UTC))
+    probe_id = str(getattr(args, "probe_id", "") or "QCL-041").upper()
+    if probe_id not in LIVE_DIRECT_WIFI_PROBE_IDS:
+        raise SystemExit("Wi-Fi Direct lifecycle templates support QCL-040 or QCL-041")
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    artifact = wifi_direct_lifecycle_template_artifact(
+        probe_id=probe_id,
+        observed_at=clock(),
+    )
+    out.write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return 0
+
+
+def wifi_direct_lifecycle_template_artifact(
+    *,
+    probe_id: str,
+    observed_at: datetime,
+) -> dict[str, Any]:
+    """Return the source-artifact shape expected from a real Wi-Fi Direct harness."""
+
+    windows_peer = probe_id == "QCL-041"
+    peer_class = "windows" if windows_peer else "android_phone"
+    peer_phase = "windows_wifi_direct_api" if windows_peer else "android_phone_peer"
+    required_phases = [
+        "feature",
+        peer_phase,
+        "permission_state",
+        "peer_discovery",
+        "group_formation",
+        "socket_exchange",
+        "cleanup",
+    ]
+    return {
+        "$schema": WIFI_DIRECT_LIFECYCLE_SCHEMA,
+        "schema_version": 1,
+        "probe_id": probe_id,
+        "peer_class": peer_class,
+        "evidence_tier": "template",
+        "capture_kind": "template_wifi_direct_lifecycle",
+        "live_evidence": False,
+        "observed_at_utc": isoformat_utc(observed_at),
+        "contract": {
+            "required_phases": required_phases,
+            "promotes_when": (
+                "live_evidence is true, evidence_tier is a live tier, peer class "
+                "matches the probe, and all lifecycle phases pass"
+            ),
+            "non_promoting_template": True,
+        },
+        "topology": {
+            "owner": "wifi_direct",
+            "network_provider": "wifi_direct",
+            "endpoint_direction": "peer_to_peer_group",
+            "peer_class": peer_class,
+        },
+        "device": {
+            "model": "Quest",
+            "wifi_direct_role": "group_owner_or_client",
+        },
+        "host": {
+            "os": "windows" if windows_peer else "android_phone_peer",
+            "toolchain_profile": "hostessctl.connectivity_probe.wifi_direct_lifecycle_template",
+        },
+        "lifecycle": {
+            "feature": lifecycle_template_phase(
+                "Quest Wi-Fi Direct feature observed by the leased harness"
+            ),
+            peer_phase: lifecycle_template_phase(
+                (
+                    "Windows Wi-Fi Direct API/adapter observed by the leased harness"
+                    if windows_peer
+                    else "Android-phone Wi-Fi Direct peer observed by the leased harness"
+                )
+            ),
+            "permission_state": lifecycle_template_phase(
+                "Wi-Fi Direct runtime permissions accepted"
+            ),
+            "peer_discovery": lifecycle_template_phase(
+                "Wi-Fi Direct peer discovery completed with at least one peer"
+            ),
+            "group_formation": lifecycle_template_phase(
+                "Wi-Fi Direct group formation completed with recorded roles"
+            ),
+            "socket_exchange": lifecycle_template_phase(
+                "Bounded TCP probe exchanged across the Wi-Fi Direct group",
+                protocol="tcp",
+                payload_class="bounded_tcp_probe",
+                bounded=True,
+                messages_sent=0,
+                messages_received=0,
+            ),
+            "cleanup": lifecycle_template_phase(
+                "Wi-Fi Direct group cleanup completed",
+                completed=False,
+            ),
+        },
+        "measurements": {
+            "tcp_connect_ms": None,
+            "wifi_direct_peer_count": 0,
+            "group_formation_ms": None,
+        },
+    }
+
+
+def lifecycle_template_phase(summary: str, **extra: Any) -> dict[str, Any]:
+    phase = {
+        "status": "blocked",
+        "evidence": f"pending live harness evidence: {summary}",
+        "required": True,
+    }
+    phase.update(extra)
+    return phase
+
+
+def isoformat_utc(value: datetime) -> str:
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
 def wifi_direct_lifecycle_body(
@@ -307,6 +436,8 @@ def cleanup_completed(lifecycle: dict[str, Any]) -> bool:
 
 __all__ = [
     "WIFI_DIRECT_LIFECYCLE_SCHEMA",
+    "run_wifi_direct_lifecycle_template",
     "wifi_direct_lifecycle_body",
     "wifi_direct_lifecycle_probe_report",
+    "wifi_direct_lifecycle_template_artifact",
 ]

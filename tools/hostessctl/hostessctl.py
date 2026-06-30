@@ -248,6 +248,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":
             return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
+        if args.connectivity_probe_command == "wifi-direct-lifecycle-template":
+            return connectivity_probe.run_wifi_direct_lifecycle_template(args)
         if args.connectivity_probe_command == "rmanvid1-receiver-capture":
             return connectivity_media_receiver.run_rmanvid1_receiver_capture(args)
         if args.connectivity_probe_command == "windows-firewall-rule":
