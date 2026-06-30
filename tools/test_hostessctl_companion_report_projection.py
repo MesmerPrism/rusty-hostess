@@ -26,6 +26,7 @@ from tools.hostessctl.connectivity_probe import (
     fixture_report,
     live_websocket_report,
 )
+from tools.hostessctl.connectivity_firewall import CONNECTIVITY_FIREWALL_RULE_SCHEMA
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import build_protocol_evidence_matrix
 
@@ -826,6 +827,53 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         }
         self.assertNotIn("transport.product_tcp_media_listener_firewall", remaining_gate_ids)
 
+    def test_projection_clears_listener_firewall_gate_from_standalone_firewall_verify_report(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            firewall_path = root / "qcl082-product-firewall-verify.json"
+            firewall_path.write_text(
+                json.dumps(qcl082_product_tcp_firewall_verify_report()),
+                encoding="utf-8",
+            )
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.product-firewall-verify",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[
+                        str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-040-wifi-direct-phone-peer-pass.json"),
+                    ],
+                    firewall_rule=[str(firewall_path)],
+                    protocol_matrix=[],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=False,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(report["source_artifacts"][1]["role"], "firewall_rule_report")
+        firewall_row = find_row(report, "firewall_rule.qcl-082-rmanvid1-media.verify")
+        self.assertEqual(firewall_row["status"], "pass")
+        self.assertEqual(firewall_row["authority_owner"], "tools.hostessctl.connectivity_firewall")
+        self.assertEqual(
+            firewall_row["details"]["product_gate"],
+            "product_tcp_media_listener_firewall_verified",
+        )
+        self.assertTrue(firewall_row["details"]["product_gate_proven"])
+        coverage = find_row(report, "transport_coverage.summary")
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.product_tcp_media_listener_firewall", remaining_gate_ids)
+        self.assertIn("transport.direct_wifi_live_topology", remaining_gate_ids)
+        self.assertIn("transport.product_tcp_media_over_direct_wifi", remaining_gate_ids)
+
 
 def suite_run_fixture() -> dict[str, Any]:
     return {
@@ -996,6 +1044,45 @@ def qcl082_product_tcp_firewall_report() -> dict[str, Any]:
             "allowed": True,
             "target": "quest.device_link binary media stream capability descriptor",
             "reason": "unit fixture promoted product TCP media listener firewall",
+        },
+        "issues": [],
+    }
+
+
+def qcl082_product_tcp_firewall_verify_report() -> dict[str, Any]:
+    program = (
+        "S:\\Work\\repos\\active\\rusty-hostess\\apps\\hostess-companion-wpf\\bin\\"
+        "Debug\\net9.0-windows\\HostessCompanion.Wpf.exe"
+    )
+    return {
+        "schema": CONNECTIVITY_FIREWALL_RULE_SCHEMA,
+        "observed_at_utc": "2026-06-29T00:00:00Z",
+        "status": "pass",
+        "action": "verify",
+        "rule_profile": "qcl-082-rmanvid1-media",
+        "probe_usage": {
+            "probe_id": "QCL-082",
+            "family": "media",
+        },
+        "rule": {
+            "name": "Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079",
+            "program": program,
+            "protocol": "TCP",
+            "local_port": 9079,
+            "profiles": ["Public"],
+            "remote_address": "LocalSubnet",
+        },
+        "verification": {
+            "product_rule_verified": True,
+            "allowed_on_active_profile": True,
+            "issue_codes": [],
+            "listener_firewall": {
+                "program": program,
+                "protocol": "TCP",
+                "port": 9079,
+                "product_rule_verified": True,
+                "allowed_on_active_profile": True,
+            },
         },
         "issues": [],
     }

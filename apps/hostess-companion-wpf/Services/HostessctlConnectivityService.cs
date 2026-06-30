@@ -449,6 +449,12 @@ public sealed class HostessctlConnectivityService
                 suite.SuiteRunId,
                 cancellationToken)
             .ConfigureAwait(false);
+        var qcl082FirewallVerifyReport = await RunQcl082ProductFirewallVerifyAsync(
+                repoRoot,
+                suite.SuiteRunId,
+                string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+                cancellationToken)
+            .ConfigureAwait(false);
         var qcl079WebSocketReport = await RunQcl079ManifoldWebSocketIfAvailableAsync(
                 repoRoot,
                 suite.SuiteRunId,
@@ -550,6 +556,7 @@ public sealed class HostessctlConnectivityService
                 repoRoot,
                 suite,
                 matrix,
+                qcl082FirewallVerifyReport,
                 cancellationToken)
             .ConfigureAwait(false);
         var transportGates = await RunCompanionTransportGateReportAsync(
@@ -653,6 +660,7 @@ public sealed class HostessctlConnectivityService
         DirectoryInfo repoRoot,
         ConnectivitySuiteRunReport suite,
         ConnectivityProtocolEvidenceMatrix matrix,
+        FileInfo? qcl082FirewallVerifyReport,
         CancellationToken cancellationToken)
     {
         var projectionPath = new FileInfo(Path.Combine(
@@ -679,6 +687,11 @@ public sealed class HostessctlConnectivityService
             projectionPath.FullName,
             "--fail-on-error",
         };
+        if (qcl082FirewallVerifyReport is not null)
+        {
+            arguments.Add("--firewall-rule");
+            arguments.Add(qcl082FirewallVerifyReport.FullName);
+        }
 
         await RunHostessctlAsync(repoRoot, arguments, projectionPath, cancellationToken)
             .ConfigureAwait(false);
@@ -805,6 +818,32 @@ public sealed class HostessctlConnectivityService
                 ],
                 reportPath,
                 cancellationToken)
+            .ConfigureAwait(false);
+        return reportPath;
+    }
+
+    private static async Task<FileInfo> RunQcl082ProductFirewallVerifyAsync(
+        DirectoryInfo repoRoot,
+        string suiteRunId,
+        string program,
+        CancellationToken cancellationToken)
+    {
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"{suiteRunId}.qcl082-product-firewall-verify.json"));
+        var arguments = FirewallRuleArguments(
+            "verify",
+            reportPath,
+            string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
+            "TCP",
+            DefaultQcl082Rmanvid1MediaPort,
+            "Public",
+            "LocalSubnet",
+            "",
+            FirewallRuleProfileQcl082Rmanvid1Media);
+        await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
         return reportPath;
     }

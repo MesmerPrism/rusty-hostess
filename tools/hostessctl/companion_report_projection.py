@@ -10,6 +10,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from tools.hostessctl.connectivity_firewall import CONNECTIVITY_FIREWALL_RULE_SCHEMA
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.connectivity_probe import CONNECTIVITY_PROBE_SCHEMA
 from tools.hostessctl.device_link_report import QUEST_DEVICE_LINK_SCHEMA
@@ -85,6 +86,8 @@ def build_companion_report_projection(
             rows.extend(project_device_link_rows(payload, source))
         elif projected_role == "connectivity_probe_report":
             rows.extend(project_connectivity_probe_rows(payload, source))
+        elif projected_role == "firewall_rule_report":
+            rows.extend(project_firewall_rule_rows(payload, source))
         elif projected_role == "protocol_evidence_matrix":
             rows.extend(project_protocol_matrix_rows(payload, source))
         elif projected_role == "connectivity_suite_run":
@@ -133,6 +136,8 @@ def selected_source_paths(args: argparse.Namespace) -> list[tuple[str, Path]]:
         append_source("device_link_report", Path(raw))
     for raw in argument_values(getattr(args, "connectivity_probe", None)):
         append_source("connectivity_probe_report", Path(raw))
+    for raw in argument_values(getattr(args, "firewall_rule", None)):
+        append_source("firewall_rule_report", Path(raw))
     protocol_matrix_paths = [
         Path(raw)
         for raw in argument_values(getattr(args, "protocol_matrix", None))
@@ -714,6 +719,72 @@ def project_connectivity_suite_rows(
     return rows
 
 
+def project_firewall_rule_rows(
+    report: dict[str, Any],
+    source: dict[str, Any],
+) -> list[dict[str, Any]]:
+    rule = object_value(report.get("rule"))
+    verification = object_value(report.get("verification"))
+    listener = object_value(verification.get("listener_firewall"))
+    rule_profile = str(report.get("rule_profile") or "")
+    probe_usage = object_value(report.get("probe_usage"))
+    probe_id = str(probe_usage.get("probe_id") or "host")
+    product_gate_proven = firewall_product_listener_gate_proven(report)
+    details = {
+        "probe_id": probe_id,
+        "action": report.get("action"),
+        "rule_profile": rule_profile,
+        "family": str(rule.get("protocol") or listener.get("protocol") or "").lower(),
+        "protocol": str(rule.get("protocol") or listener.get("protocol") or ""),
+        "route": "windows_firewall_rule",
+        "program": rule.get("program") or listener.get("program"),
+        "name": rule.get("name"),
+        "local_port": rule.get("local_port") or listener.get("port"),
+        "remote_address": rule.get("remote_address"),
+        "product_rule_verified": verification.get("product_rule_verified") is True,
+        "allowed_on_active_profile": verification.get("allowed_on_active_profile") is True,
+        "product_gate": "product_tcp_media_listener_firewall_verified",
+        "product_gate_proven": product_gate_proven,
+    }
+    rows = [
+        row(
+            f"firewall_rule.{safe_token(rule_profile or probe_id)}.{safe_token(report.get('action'))}",
+            "firewall",
+            "firewall_rule",
+            f"Firewall rule: {rule_profile or probe_id}",
+            "pass" if product_gate_proven else report_status(report),
+            source,
+            authority_owner="tools.hostessctl.connectivity_firewall",
+            evidence=(
+                f"{rule.get('name') or ''}: "
+                f"{rule.get('program') or ''}, "
+                f"{rule.get('protocol') or listener.get('protocol') or ''} "
+                f"{rule.get('local_port') or listener.get('port') or ''}"
+            ).strip(" ,"),
+            notes=str(rule.get("scope_note") or ""),
+            issue_codes=string_list(verification.get("issue_codes")),
+            details=details,
+        )
+    ]
+    for report_issue in list_objects(report.get("issues")):
+        code = str(report_issue.get("issue_code") or "firewall_rule.issue")
+        rows.append(
+            row(
+                f"firewall_rule.issue.{safe_token(rule_profile or probe_id)}.{safe_token(code)}",
+                "issue",
+                "source_issue",
+                code,
+                status_from_severity(str(report_issue.get("severity") or "")),
+                source,
+                authority_owner="tools.hostessctl.connectivity_firewall",
+                evidence=str(report_issue.get("message") or ""),
+                issue_codes=[code],
+                details=report_issue,
+            )
+        )
+    return rows
+
+
 def row(
     row_id: str,
     section: str,
@@ -849,6 +920,8 @@ def classify_source_payload(payload: dict[str, Any]) -> str:
         return "device_link_report"
     if schema == CONNECTIVITY_PROBE_SCHEMA:
         return "connectivity_probe_report"
+    if schema == CONNECTIVITY_FIREWALL_RULE_SCHEMA:
+        return "firewall_rule_report"
     if schema == PROTOCOL_EVIDENCE_MATRIX_SCHEMA:
         return "protocol_evidence_matrix"
     if schema == CONNECTIVITY_SUITE_RUN_SCHEMA:
@@ -892,6 +965,20 @@ def source_summary(role: str, payload: dict[str, Any]) -> dict[str, Any]:
             "promotion_allowed": promotion.get("allowed"),
             "check_count": len(list_objects(payload.get("checks"))),
             "issue_count": len(list_objects(payload.get("issues"))),
+        }
+    if role == "firewall_rule_report":
+        rule = object_value(payload.get("rule"))
+        verification = object_value(payload.get("verification"))
+        probe_usage = object_value(payload.get("probe_usage"))
+        return {
+            "probe_id": probe_usage.get("probe_id"),
+            "status": payload.get("status"),
+            "action": payload.get("action"),
+            "rule_profile": payload.get("rule_profile"),
+            "rule_name": rule.get("name"),
+            "protocol": rule.get("protocol"),
+            "local_port": rule.get("local_port"),
+            "product_rule_verified": verification.get("product_rule_verified"),
         }
     if role == "connectivity_suite_run":
         summary = object_value(payload.get("summary"))
@@ -962,6 +1049,32 @@ def status_for_protocol_gate(status: str) -> str:
     if status == "missing":
         return "warn"
     return status or "unknown"
+
+
+def firewall_product_listener_gate_proven(report: dict[str, Any]) -> bool:
+    rule = object_value(report.get("rule"))
+    verification = object_value(report.get("verification"))
+    listener = object_value(verification.get("listener_firewall"))
+    protocol = str(rule.get("protocol") or listener.get("protocol") or "").upper()
+    local_port = int_value(rule.get("local_port") or listener.get("port"))
+    program = str(rule.get("program") or listener.get("program") or "")
+    return (
+        str(report.get("status") or "") == "pass"
+        and str(report.get("action") or "") == "verify"
+        and str(report.get("rule_profile") or "") == "qcl-082-rmanvid1-media"
+        and verification.get("product_rule_verified") is True
+        and verification.get("allowed_on_active_profile") is True
+        and protocol == "TCP"
+        and local_port == 9079
+        and "HostessCompanion.Wpf" in program
+    )
+
+
+def int_value(value: Any) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
 
 
 def issue(

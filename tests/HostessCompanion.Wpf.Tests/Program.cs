@@ -451,6 +451,20 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         Assert(run.Projection.Rows.Any(row => row.RowId == $"connectivity_probe.transport.{probeId}"),
             $"projection must include transport row {probeId}");
     }
+    var firewallArtifact = $"{run.Suite.SuiteRunId}.qcl082-product-firewall-verify.json";
+    Assert(run.Projection.SourceArtifacts.Any(source =>
+            source.Role == "firewall_rule_report"
+            && source.Path.EndsWith(firewallArtifact, StringComparison.Ordinal)),
+        "projection must include the read-only QCL-082 product firewall verify report");
+    var firewallRow = run.Projection.Rows.Single(row =>
+        row.RowId == "firewall_rule.qcl-082-rmanvid1-media.verify");
+    Assert(firewallRow.AuthorityOwner == "tools.hostessctl.connectivity_firewall",
+        "QCL-082 firewall projection row must keep Hostess firewall ownership");
+    Assert(firewallRow.Details.GetProperty("product_gate").GetString()
+        == "product_tcp_media_listener_firewall_verified",
+        "QCL-082 firewall projection row must name only the listener firewall product gate");
+    var firewallGateProven = firewallRow.Details.TryGetProperty("product_gate_proven", out var gateProven)
+        && gateProven.ValueKind == JsonValueKind.True;
     var coverage = run.Projection.Rows.Single(row => row.RowId == "transport_coverage.summary");
     Assert(coverage.Evidence.Contains("websocket", StringComparison.Ordinal),
         "projection coverage must keep WebSocket command route visible");
@@ -499,21 +513,32 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "generated coverage must state direct Wi-Fi still needs live topology evidence");
     Assert(remainingGateIds.Contains("transport.product_tcp_media_over_direct_wifi"),
         "generated coverage must state product TCP media over direct Wi-Fi still needs live evidence");
-    Assert(remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"),
-        "generated coverage must state product TCP media still needs verified Hostess/WPF firewall evidence");
+    if (firewallGateProven)
+    {
+        Assert(!remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"),
+            "verified product firewall report must clear only the listener firewall gate");
+    }
+    else
+    {
+        Assert(remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"),
+            "unverified product firewall report must leave listener firewall evidence pending");
+    }
     var transportGateRows = ConnectivityRows.ForTransportGateReport(run.TransportGates);
     Assert(transportGateRows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.run_qcl040_live_wifi_direct_preflight"
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)),
         "transport gate rows must project direct-Wi-Fi Quest lease requirements");
-    Assert(transportGateRows.Any(row =>
-            row.Name == "transport.product_tcp_media_listener_firewall.run_qcl082_firewall_admin_handoff"
-            && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)),
-        "transport gate rows must project QCL-082 firewall elevation requirements");
-    Assert(transportGateRows.Any(row =>
-            row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
-            && row.Evidence.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal)),
-        "transport gate rows must project the product firewall verify CLI route");
+    if (remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"))
+    {
+        Assert(transportGateRows.Any(row =>
+                row.Name == "transport.product_tcp_media_listener_firewall.run_qcl082_firewall_admin_handoff"
+                && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)),
+            "transport gate rows must project QCL-082 firewall elevation requirements");
+        Assert(transportGateRows.Any(row =>
+                row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
+                && row.Evidence.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal)),
+            "transport gate rows must project the product firewall verify CLI route");
+    }
     if (RustyQuestMediaStreamSessionPlanExists())
     {
         var sourceContractArtifact = $"{run.Suite.SuiteRunId}.qcl082-media-stream-session-plan.json";

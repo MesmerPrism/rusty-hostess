@@ -57,20 +57,23 @@ command-stage truth; WPF only renders and drills into the evidence.
 The equivalent source-owned read-only projection route is
 `hostessctl companion-report projection`. It emits
 `rusty.hostess.companion.report_projection.v1` from explicit device-link,
-connectivity-probe, protocol-matrix, and suite-run source artifacts. The route
-is a row-normalizing view contract for WPF, Makepad, CLI automation, and future
-frontends; it does not select latest artifacts, validate QCL source evidence,
-run probes, change firewall/device state, declare topology readiness, or
-re-evaluate protocol promotion gates.
+connectivity-probe, firewall-rule, protocol-matrix, and suite-run source
+artifacts. The route is a row-normalizing view contract for WPF, Makepad, CLI
+automation, and future frontends; it does not select latest artifacts, validate
+QCL source evidence, run probes, change firewall/device state, declare topology
+readiness, or re-evaluate protocol promotion gates.
 The WPF Protocol Matrix action first requests the fixture suite, generates
 QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixture reports, optionally
 refreshes the QCL-082 source-contract report from the sibling Rusty Quest
 media-stream session plan when that branch is present, accepts broker/runtime
-status artifacts through the same Hostess CLI route, then requests the Hostess
+status artifacts through the same Hostess CLI route, runs a read-only
+`qcl-082-rmanvid1-media` Windows Firewall verify report for the Hostess/WPF
+executable, then requests the Hostess
 protocol-matrix route with those topology reports as explicit inputs. That
 preserves the CLI route's latest-artifact selection and promotion policy before
 WPF passes the suite and matrix artifacts into
-`companion-report projection --include-protocol-matrix-inputs`. The CLI
+`companion-report projection --include-protocol-matrix-inputs --firewall-rule`.
+The CLI
 projection route derives selected device-link and connectivity-probe inputs
 from the matrix, so WPF does not parse matrix sources or own artifact
 selection. QCL-000 fixture WebSocket evidence is visible as candidate evidence;
@@ -261,9 +264,10 @@ The product listener firewall gate is distinct: QCL-082 emits
 `protocol.media_product_listener_firewall_gate` from a supplied
 `connectivity-probe windows-firewall-rule --action verify --rule-profile
 qcl-082-rmanvid1-media`
-report, and `transport.product_tcp_media_listener_firewall` clears only when
-that report verifies a product-scoped Hostess/WPF executable rule for the
-RMANVID1 TCP listener port. The current product rule name is
+report, or the projection route can consume the same standalone firewall report
+through `--firewall-rule`. `transport.product_tcp_media_listener_firewall`
+clears only when that report verifies a product-scoped Hostess/WPF executable
+rule for the RMANVID1 TCP listener port. The current product rule name is
 `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079`. Diagnostic Python
 listener allowances stay diagnostic evidence and do not satisfy product
 readiness.

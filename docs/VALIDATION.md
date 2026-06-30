@@ -124,7 +124,10 @@ That route emits `rusty.hostess.companion.report_projection.v1` and only copies
 source artifact rows into a frontend-neutral operator view. Individual
 connectivity-probe rows can show topology and promotion gates, but use
 `connectivity-probe protocol-matrix` first when the view needs latest-artifact
-selection or protocol-promotion state.
+selection or protocol-promotion state. After a QCL-082 firewall verify report
+exists, add `--firewall-rule target\connectivity-probe\qcl082-product-firewall-verify.json`
+to project the standalone product listener firewall gate evidence through the
+same report route.
 The transport coverage summary row is shaped in
 `tools\hostessctl\companion_report_transport_coverage.py`; it is still covered
 through `tools.test_hostessctl_companion_report_projection` because the row is
@@ -136,6 +139,12 @@ gate is cleared only by a QCL-082 receiver report that carries
 `protocol.media_product_topology_gate` with
 `product_gate=product_tcp_media_over_direct_wifi` and
 `product_gate_proven=true`.
+The product TCP listener firewall gate is separate: it clears only from a
+QCL-082 receiver report with `protocol.media_product_listener_firewall_gate` or
+a standalone `--firewall-rule` report that verifies the
+`qcl-082-rmanvid1-media` Hostess/WPF executable rule. That standalone firewall
+proof must not clear live direct-Wi-Fi topology or product media over direct
+Wi-Fi.
 When QCL-079 is present, the WebSocket term gate changes from command-only
 coverage to command receipts plus generic WebSocket protocol-fit coverage, but
 the generic gate remains pending until broker-owned or Quest-runtime endpoint

@@ -158,10 +158,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/companion_report_projection.py`: frontend-neutral
   read-only report projection. It emits
   `rusty.hostess.companion.report_projection.v1` from explicit device-link,
-  connectivity-probe, protocol-matrix, and suite-run artifacts so WPF, Makepad,
-  CLI automation, and future frontends can compare the same operator rows
-  without owning artifact selection, validation, command authority, topology
-  readiness, or protocol promotion.
+  connectivity-probe, firewall-rule, protocol-matrix, and suite-run artifacts
+  so WPF, Makepad, CLI automation, and future frontends can compare the same
+  operator rows without owning artifact selection, validation, command
+  authority, firewall semantics, topology readiness, or protocol promotion.
 - `tools/hostessctl/companion_report_transport_coverage.py`: transport
   coverage row helper for companion-report projection. It derives the
   `transport_coverage.summary` row from already-projected source rows so TCP,
@@ -387,12 +387,13 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   operator report views; source artifacts still own validity, latest-artifact
   selection, and protocol promotion. With
   `--include-protocol-matrix-inputs`, the route derives matrix-selected
-  device-link and connectivity-probe artifacts itself; WPF feeds suite-run and
-  protocol-matrix reports into the route instead of parsing matrix sources in
-  UI code. The WPF protocol-matrix flow also passes QCL-020/QCL-030/QCL-040/
-  QCL-041 topology fixtures as explicit matrix inputs so TCP/WebSocket/direct
-  Wi-Fi coverage is visible without promoting topology fixtures as data
-  protocols. The resulting `transport_coverage.summary.details.term_gates`
+  device-link and connectivity-probe artifacts itself; WPF feeds suite-run,
+  protocol-matrix, and read-only QCL-082 product firewall verify reports into
+  the route instead of parsing matrix sources or firewall evidence in UI code.
+  The WPF protocol-matrix flow also passes QCL-020/QCL-030/QCL-040/QCL-041
+  topology fixtures as explicit matrix inputs so TCP/WebSocket/direct Wi-Fi
+  coverage is visible without promoting topology fixtures as data protocols.
+  The resulting `transport_coverage.summary.details.term_gates`
   scopes WebSocket to Manifold command/session receipts, or to command receipts
   plus QCL-079 generic WebSocket when that row is present; TCP is scoped to
   QCL-010/QCL-011 echo plus QCL-082 binary media, and Wi-Fi Direct is scoped
@@ -404,8 +405,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   receiver report carries the explicit `protocol.media_product_topology_gate`
   proof from a paired topology report. Product TCP media listener readiness is
   separate again: `transport.product_tcp_media_listener_firewall` clears only
-  when the same QCL-082 receiver report carries
-  `protocol.media_product_listener_firewall_gate` from a verified
+  when a QCL-082 receiver report carries
+  `protocol.media_product_listener_firewall_gate` or the projection route
+  consumes a standalone `--firewall-rule` artifact from a verified
   `connectivity-probe windows-firewall-rule --action verify --rule-profile
   qcl-082-rmanvid1-media` report for the Hostess/WPF executable using the scoped
   `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079` rule. Topology report

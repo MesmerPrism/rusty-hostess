@@ -317,8 +317,10 @@ The Protocol Matrix action keeps that split explicit. WPF first requests the
 fixture suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation
 fixture reports, refreshes the QCL-082 Rusty Quest media-stream source-contract
 report when the sibling plan exists, accepts QCL-082 broker/runtime status
-artifacts when present, then shells to the CLI roll-up with explicit topology
-inputs and the shared latest-artifact resolver. QCL-000 fixture WebSocket
+artifacts when present, and generates a read-only QCL-082 product firewall
+verify report for the Hostess/WPF executable. It then shells to the CLI roll-up
+with explicit topology inputs and the shared latest-artifact resolver. QCL-000
+fixture WebSocket
 evidence remains candidate-only; QCL-000 promotion comes from a live
 `rusty.quest.device_link.v1` companion-session artifact. QCL-079 generic
 WebSocket host-loopback evidence is also candidate-only; it answers protocol
@@ -478,6 +480,7 @@ python tools\hostessctl\hostessctl.py companion-report projection `
   --frontend wpf `
   --protocol-matrix target\connectivity-probe\wpf-connectivity-suite.protocol-matrix.json `
   --include-protocol-matrix-inputs `
+  --firewall-rule target\connectivity-probe\wpf-connectivity-suite.qcl082-product-firewall-verify.json `
   --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
   --out target\companion-report\wpf-connectivity-suite.projection.json `
   --fail-on-error
@@ -495,8 +498,11 @@ Manifold command/session receipt route, or to command receipts plus QCL-079
 generic protocol fit when that evidence is present. TCP stays scoped to
 QCL-010/QCL-011 echo plus QCL-082 binary media, and Wi-Fi Direct stays scoped
 to QCL-040/QCL-041 topology. `remaining_live_gates` names the still-open
-generic WebSocket, live
-direct-Wi-Fi topology, and product TCP media over direct-Wi-Fi gates.
+generic WebSocket, live direct-Wi-Fi topology, product TCP media over
+direct-Wi-Fi, and product TCP listener firewall gates as applicable. A
+standalone verified `--firewall-rule` report can clear only the product TCP
+listener firewall gate; it does not clear live direct-Wi-Fi topology or product
+media over direct Wi-Fi.
 
 Live QCL-040/QCL-041 now has a CLI-equivalent Wi-Fi Direct preflight route, but
 that report is intentionally non-promoting until the Quest/peer harness records

@@ -176,6 +176,27 @@ class HostessCtlCliParserTests(unittest.TestCase):
         self.assertEqual(args.out, "target/companion-report/wpf.transport-gates.json")
         self.assertTrue(args.fail_on_pending)
 
+    def test_companion_report_projection_accepts_firewall_rule_report(self) -> None:
+        args = self.build_parser().parse_args(
+            [
+                "companion-report",
+                "projection",
+                "--frontend",
+                "wpf",
+                "--firewall-rule",
+                "target/connectivity-probe/qcl082-product-firewall-verify.json",
+                "--out",
+                "target/companion-report/wpf.projection.json",
+            ]
+        )
+
+        self.assertEqual(args.command, "companion-report")
+        self.assertEqual(args.companion_report_command, "projection")
+        self.assertEqual(
+            args.firewall_rule,
+            ["target/connectivity-probe/qcl082-product-firewall-verify.json"],
+        )
+
     def test_pmb_physical_live_defaults_to_low_latency_breath_scale_profile(self) -> None:
         args = self.build_parser().parse_args(
             [
