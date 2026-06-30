@@ -41,6 +41,7 @@ try {
         "tools\hostessctl\connectivity_data_protocols.py",
         "tools\hostessctl\connectivity_firewall.py",
         "tools\hostessctl\connectivity_lan.py",
+        "tools\hostessctl\connectivity_media_product_plan.py",
         "tools\hostessctl\connectivity_probe.py",
         "tools\hostessctl\connectivity_probe_common.py",
         "tools\hostessctl\connectivity_probe_fixtures.py",

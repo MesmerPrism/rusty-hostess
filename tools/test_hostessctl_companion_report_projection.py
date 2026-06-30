@@ -446,9 +446,20 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         product_media_actions = {
             action["action_id"]: action for action in product_media_gate["next_actions"]
         }
+        self.assertIn("write_qcl082_product_media_direct_wifi_plan", product_media_actions)
         self.assertIn("write_qcl082_media_stream_start_source_request", product_media_actions)
         self.assertIn("run_qcl082_media_stream_start_source", product_media_actions)
         self.assertIn("validate_qcl082_media_stream_runtime_status", product_media_actions)
+        plan_action = product_media_actions["write_qcl082_product_media_direct_wifi_plan"]
+        plan_command = plan_action["command"]["command"]
+        self.assertEqual(
+            plan_action["authority_owner"],
+            "tools.hostessctl.connectivity_media_product_plan",
+        )
+        self.assertFalse(plan_action["requires_quest_lease"])
+        self.assertIn("qcl082-product-media-plan", plan_command)
+        self.assertIn("--promoted-topology-report", plan_command)
+        self.assertIn("qcl082-product-media-direct-wifi-plan.json", plan_command)
         write_action = product_media_actions["write_qcl082_media_stream_start_source_request"]
         write_command = write_action["command"]["command"]
         self.assertEqual(write_action["authority_owner"], "tools.hostessctl.bridge_command_routes")

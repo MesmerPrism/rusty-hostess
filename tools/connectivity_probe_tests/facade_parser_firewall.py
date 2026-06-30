@@ -440,6 +440,51 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.max_bytes, 1048576)
         self.assertTrue(args.fail_on_error)
 
+    def test_parser_accepts_qcl082_product_media_plan_command(self) -> None:
+        args = build_hostessctl_parser(
+            broker_package="broker",
+            broker_port=8765,
+            broker_local_forward_port=18765,
+            makepad_android_package="makepad",
+            makepad_android_xr_activity="makepad/.Xr",
+            makepad_provider_package="makepad",
+            makepad_provider_activity="makepad/.Xr",
+        ).parse_args(
+            [
+                "connectivity-probe",
+                "qcl082-product-media-plan",
+                "--out",
+                "target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json",
+                "--promoted-topology-report",
+                "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+                "--firewall-report",
+                "target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                "--adb",
+                "S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                "--serial",
+                "3487C10H3M017Q",
+                "--capture-kind",
+                "live_broker_stream",
+            ]
+        )
+
+        self.assertEqual(args.command, "connectivity-probe")
+        self.assertEqual(args.connectivity_probe_command, "qcl082-product-media-plan")
+        self.assertEqual(
+            args.out,
+            "target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json",
+        )
+        self.assertEqual(
+            args.promoted_topology_report,
+            "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+        )
+        self.assertEqual(
+            args.firewall_report,
+            "target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+        )
+        self.assertEqual(args.serial, "3487C10H3M017Q")
+        self.assertEqual(args.capture_kind, "live_broker_stream")
+
     def test_parser_accepts_bluetooth_probe(self) -> None:
         args = build_hostessctl_parser(
             broker_package="broker",

@@ -413,6 +413,20 @@ missing/product-mismatched firewall evidence keeps the product gates visible
 instead of letting WPF infer readiness from separate TCP, firewall, and Wi-Fi
 Direct rows:
 
+Before a live product-media attempt, write the read-only Hostess plan artifact.
+It binds the same PowerShell commands, dependencies, Quest lease policy, and
+acceptance artifacts WPF renders, but it does not run headset commands or clear
+the pending gates:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-plan `
+  --out target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json `
+  --promoted-topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --adb $Adb `
+  --serial $QuestSerial
+```
+
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script
 from an elevated PowerShell session. A non-elevated apply produces a blocked

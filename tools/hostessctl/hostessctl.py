@@ -22,6 +22,7 @@ from tools.hostessctl import companion_readiness  # noqa: E402
 from tools.hostessctl import companion_report_projection  # noqa: E402
 from tools.hostessctl import companion_transport_gates  # noqa: E402
 from tools.hostessctl import companion_session  # noqa: E402
+from tools.hostessctl import connectivity_media_product_plan  # noqa: E402
 from tools.hostessctl import connectivity_media_receiver  # noqa: E402
 from tools.hostessctl import connectivity_probe  # noqa: E402
 from tools.hostessctl import connectivity_suite  # noqa: E402
@@ -252,6 +253,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return connectivity_probe.run_connectivity_probe(args, run_captured_func=run_captured)
         if args.connectivity_probe_command == "wifi-direct-lifecycle-template":
             return connectivity_probe.run_wifi_direct_lifecycle_template(args)
+        if args.connectivity_probe_command == "qcl082-product-media-plan":
+            return connectivity_media_product_plan.run_qcl082_product_media_direct_wifi_plan(args)
         if args.connectivity_probe_command == "rmanvid1-receiver-capture":
             return connectivity_media_receiver.run_rmanvid1_receiver_capture(args)
         if args.connectivity_probe_command == "windows-firewall-rule":

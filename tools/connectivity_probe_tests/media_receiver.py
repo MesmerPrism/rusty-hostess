@@ -1,9 +1,90 @@
 from __future__ import annotations
 
 from tools.connectivity_probe_tests.helpers import *
+from tools.hostessctl.connectivity_media_product_plan import (
+    PRODUCT_MEDIA_DIRECT_WIFI_PLAN_SCHEMA,
+    qcl082_product_media_direct_wifi_plan,
+    run_qcl082_product_media_direct_wifi_plan,
+)
 
 
 class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
+    def test_qcl082_product_media_direct_wifi_plan_lists_cli_owned_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            out = root / "qcl082-product-media-direct-wifi-plan.json"
+            status = run_qcl082_product_media_direct_wifi_plan(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-plan",
+                    out=str(out),
+                    promoted_topology_report="target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+                    firewall_report="target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                    adb="S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe",
+                    serial="<quest-serial>",
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+
+        action_ids = [action["action_id"] for action in report["commands"]]
+        command_text = "\n".join(action["command"] for action in report["commands"])
+
+        self.assertEqual(status, 0)
+        self.assertEqual(report["schema"], PRODUCT_MEDIA_DIRECT_WIFI_PLAN_SCHEMA)
+        self.assertEqual(report["status"], "planned")
+        self.assertEqual(report["product_gate"], "product_tcp_media_over_direct_wifi")
+        self.assertFalse(report["readiness"]["ready_for_receiver_capture"])
+        self.assertEqual(report["lease"]["resource"], "quest:<quest-serial>")
+        self.assertIn("write_qcl082_media_stream_start_source_request", action_ids)
+        self.assertIn("run_qcl082_media_stream_start_source", action_ids)
+        self.assertIn("capture_rmanvid1_over_promoted_direct_wifi", action_ids)
+        self.assertIn("promote_qcl082_rmanvid1_capture", action_ids)
+        self.assertIn("emit-bridge-command-request", command_text)
+        self.assertIn("run-bridge-command-live-android", command_text)
+        self.assertIn("rmanvid1-receiver-capture", command_text)
+        self.assertIn("--media-stream-topology-report", command_text)
+        self.assertIn("--media-stream-firewall-report", command_text)
+
+    def test_qcl082_product_media_direct_wifi_plan_detects_ready_dependencies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-lifecycle.json"
+            topology_path = root / "qcl041-live-wifi-direct-lifecycle.json"
+            firewall_path = root / "qcl082-tcp-firewall-verify.json"
+            lifecycle_path.write_text(
+                json.dumps(wifi_direct_lifecycle_artifact(probe_id="QCL-041")),
+                encoding="utf-8",
+            )
+            run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(topology_path),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            firewall_path.write_text(json.dumps(media_stream_firewall_report()), encoding="utf-8")
+            report = qcl082_product_media_direct_wifi_plan(
+                probe_args(
+                    connectivity_probe_command="qcl082-product-media-plan",
+                    out=str(root / "plan.json"),
+                    promoted_topology_report=str(topology_path),
+                    firewall_report=str(firewall_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        dependencies = {
+            dependency["gate_id"]: dependency
+            for dependency in report["dependencies"]
+        }
+        self.assertTrue(dependencies["transport.direct_wifi_live_topology"]["ready"])
+        self.assertTrue(dependencies["transport.product_tcp_media_listener_firewall"]["ready"])
+        self.assertTrue(report["readiness"]["ready_for_receiver_capture"])
+        self.assertEqual(check({"checks": report["checks"]}, "qcl082.product_media_direct_wifi_dependency")["status"], "pass")
+        self.assertEqual(check({"checks": report["checks"]}, "qcl082.product_media_listener_firewall_dependency")["status"], "pass")
+
     def test_qcl082_media_stream_session_plan_validates_source_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             plan_path = Path(tmpdir) / "display-composite-mediaprojection-h264.plan.json"

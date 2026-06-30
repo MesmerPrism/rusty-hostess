@@ -753,6 +753,38 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
     connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
     connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
+    connectivity_probe_product_media_plan = connectivity_probe_subcommands.add_parser(
+        "qcl082-product-media-plan"
+    )
+    connectivity_probe_product_media_plan.add_argument("--out", required=True)
+    connectivity_probe_product_media_plan.add_argument("--plan-id", default="")
+    connectivity_probe_product_media_plan.add_argument(
+        "--adb",
+        default=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+    )
+    connectivity_probe_product_media_plan.add_argument("--serial", default="<quest-serial>")
+    connectivity_probe_product_media_plan.add_argument("--program", default="")
+    connectivity_probe_product_media_plan.add_argument("--bind-host", default="0.0.0.0")
+    connectivity_probe_product_media_plan.add_argument("--port", type=int, default=9079)
+    connectivity_probe_product_media_plan.add_argument("--max-packets", type=int, default=240)
+    connectivity_probe_product_media_plan.add_argument(
+        "--capture-kind",
+        choices=["live_broker_stream", "live_quest_runtime_stream"],
+        default="live_broker_stream",
+    )
+    connectivity_probe_product_media_plan.add_argument("--start-source-request-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--start-source-bridge-evidence-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--start-source-execution-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--start-source-validation-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--runtime-status-report-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--promoted-topology-report", default="")
+    connectivity_probe_product_media_plan.add_argument("--firewall-report", default="")
+    connectivity_probe_product_media_plan.add_argument("--capture-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--sidecar-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--receiver-result-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--qcl082-report-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--protocol-matrix-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_wifi_direct_lifecycle_template = connectivity_probe_subcommands.add_parser(
         "wifi-direct-lifecycle-template"
     )

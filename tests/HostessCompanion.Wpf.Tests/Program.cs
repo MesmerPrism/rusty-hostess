@@ -606,6 +606,7 @@ static void TransportGateRowsExposeNextActions()
                     GateId = "transport.product_tcp_media_over_direct_wifi",
                     NextActionIds =
                     [
+                        "write_qcl082_product_media_direct_wifi_plan",
                         "write_qcl082_media_stream_start_source_request",
                         "run_qcl082_media_stream_start_source",
                         "validate_qcl082_media_stream_runtime_status",
@@ -696,6 +697,22 @@ static void TransportGateRowsExposeNextActions()
                 Evidence = "needs product TCP media over promoted direct Wi-Fi",
                 NextActions =
                 [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "write_qcl082_product_media_direct_wifi_plan",
+                        Label = "Write QCL-082 product media plan",
+                        AuthorityOwner = "tools.hostessctl.connectivity_media_product_plan",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Write QCL-082 product media plan",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-plan --out target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                        },
+                    },
                     new CompanionTransportGateNextAction
                     {
                         ActionId = "write_qcl082_media_stream_start_source_request",
@@ -869,6 +886,13 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("--probe-id QCL-041", StringComparison.Ordinal)
             && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
         "QCL-041 lifecycle normalizer must be visible as a CLI-equivalent WPF action");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_product_media_direct_wifi_plan"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_product_plan", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("qcl082-product-media-plan", StringComparison.Ordinal)
+            && row.Evidence.Contains("--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'", StringComparison.Ordinal)),
+        "product media plan action must render the CLI-owned direct-Wi-Fi media plan artifact");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_media_stream_start_source_request"
             && row.Notes.Contains("authority_owner=tools.hostessctl.bridge_command_routes", StringComparison.Ordinal)
@@ -1225,6 +1249,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-079 Manifold WebSocket route evidence input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-session-plan", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 media-stream source-contract input");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-plan", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 product-media direct-Wi-Fi plan route");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-direct-wifi-plan.json", StringComparison.Ordinal),
+        "protocol matrix action must name the QCL-082 product-media plan artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("emit-bridge-command-request", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 bridge-command request generator");
     Assert(protocolMatrixAction.CliRoute.Contains("--bridge-command command.media_stream.start_source", StringComparison.Ordinal),

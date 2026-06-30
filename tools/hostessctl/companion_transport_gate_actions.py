@@ -37,6 +37,9 @@ QCL082_START_SOURCE_VALIDATION = (
 QCL082_RUNTIME_STATUS_REPORT = (
     r"target\connectivity-probe\qcl082-media-stream-runtime-status.json"
 )
+QCL082_PRODUCT_MEDIA_PLAN = (
+    r"target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json"
+)
 
 
 def operator_next_actions_summary(
@@ -378,6 +381,32 @@ def wifi_direct_lifecycle_action(
 
 def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
     return [
+        next_action(
+            "write_qcl082_product_media_direct_wifi_plan",
+            "Write the CLI-owned QCL-082 product-media direct-Wi-Fi plan artifact.",
+            authority_owner="tools.hostessctl.connectivity_media_product_plan",
+            requires_elevation=False,
+            requires_quest_lease=False,
+            mutates_host=False,
+            mutates_device=False,
+            command=powershell_command(
+                "Write QCL-082 product media plan",
+                (
+                    "python tools\\hostessctl\\hostessctl.py "
+                    "connectivity-probe qcl082-product-media-plan "
+                    f"--out {QCL082_PRODUCT_MEDIA_PLAN} "
+                    f"--firewall-report {QCL082_FIREWALL_VERIFY} "
+                    "--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'"
+                ),
+            ),
+            acceptance_artifacts=[QCL082_PRODUCT_MEDIA_PLAN],
+            clears_gate=False,
+            note=(
+                "This read-only plan ties together the Hostess-owned start_source, "
+                "runtime-status, firewall, RMANVID1 receiver, QCL-082 fold-in, "
+                "and protocol-matrix routes. It does not replace live evidence."
+            ),
+        ),
         next_action(
             "write_qcl082_media_stream_start_source_request",
             "Write the inspectable media-stream start_source command request artifact.",

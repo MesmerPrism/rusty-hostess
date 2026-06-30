@@ -221,6 +221,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   parsing, bounded TCP receiver capture, receiver sidecar counters,
   runtime-status pairing, optional direct-Wi-Fi topology report pairing, and
   no-decode binary media evidence.
+- `tools/hostessctl/connectivity_media_product_plan.py`: read-only QCL-082
+  product-media direct-Wi-Fi plan artifacts. It binds the existing
+  start_source, runtime-status, product firewall, RMANVID1 capture, QCL-082
+  fold-in, protocol-matrix, lease, and acceptance-artifact routes for WPF/CLI
+  parity without running the live steps or clearing gates.
 - `tools/hostessctl/connectivity_topology.py`: QCL-020/QCL-030/QCL-040/QCL-041
   topology fixture report helpers for Wi-Fi ADB stability, Quest
   LocalOnlyHotspot, and Wi-Fi Direct phone/Windows peer limits. These fixtures

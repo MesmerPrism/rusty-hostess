@@ -4,6 +4,7 @@ public static class OperatorActionCatalog
 {
     private const string ProtocolMatrixCliRoute =
         "$MediaStreamSessionPlan = '<rusty-quest-media-stream-plan>'; " +
+        "$ProductMediaPlan = 'target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json'; " +
         "$StartSourceRequest = 'target\\connectivity-probe\\media-stream-start-source.request.json'; " +
         "$StartSourceBridgeEvidence = 'target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json'; " +
         "$RuntimeStatus = 'target\\connectivity-probe\\media-stream-start-source.live-android-execution.json'; " +
@@ -28,6 +29,7 @@ public static class OperatorActionCatalog
         "$ProtocolMatrix = '<protocol-matrix>'; " +
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
+        "connectivity-probe qcl082-product-media-plan --out $ProductMediaPlan --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
         "emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out $StartSourceRequest; " +
         "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +

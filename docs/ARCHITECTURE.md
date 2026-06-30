@@ -396,6 +396,12 @@ packet records, writing receiver sidecar queue/drop/close counters, pairing
 that evidence with broker runtime status when available, and optionally joining
 a topology report through the explicit product TCP media over direct-Wi-Fi
 gate;
+`connectivity_media_product_plan.py` owns the read-only QCL-082 product-media
+direct-Wi-Fi plan artifact. It binds the existing Hostess CLI routes,
+dependency gates, Quest lease policy, PowerShell command strings, and
+acceptance artifacts into one WPF/CLI-equivalent report before a human or agent
+runs the live steps; it does not run headset commands, mutate firewall/device
+state, parse media, or declare promotion;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
