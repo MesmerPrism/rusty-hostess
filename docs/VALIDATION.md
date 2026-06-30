@@ -373,6 +373,28 @@ with `--action apply` from an elevated PowerShell session, then rerun
 that report is useful operator evidence but does not clear the firewall gate.
 The scoped rule name is part of the QCL-082 product contract and must stay
 distinct from the default QCL-010 TCP echo rule.
+For an auditable admin handoff, generate the elevated script from a normal
+shell first; this writes the blocked report plus a PowerShell script that calls
+the same Hostess CLI apply route and then the matching verify route:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action apply `
+  --rule-profile qcl-082-rmanvid1-media `
+  --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --out target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-apply.json `
+  --handoff-script-out target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-apply.ps1 `
+  --handoff-verify-out target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json
+```
+
+Validate generated handoff snippets with the bureau checker before documenting
+or reusing them:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\agent-bureau\scripts\Test-AgentPowerShell.ps1 `
+  -Path target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-apply.ps1 `
+  -AsJson
+```
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run `

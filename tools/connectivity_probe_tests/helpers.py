@@ -698,6 +698,8 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "ping_count": 2,
         "ping_timeout_seconds": 1.0,
         "fail_on_error": False,
+        "handoff_script_out": "",
+        "handoff_verify_out": "",
         "bluetooth_payload_source": "passive",
         "bluetooth_helper": "",
         "bluetooth_message_count": 3,

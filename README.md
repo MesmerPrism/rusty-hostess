@@ -405,7 +405,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   qcl-082-rmanvid1-media` report for the Hostess/WPF executable using the scoped
   `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079` rule. Topology report
   views can still pass explicit connectivity-probe reports through the same
-  route instead of re-normalizing evidence in the UI.
+  route instead of re-normalizing evidence in the UI. Non-elevated apply/remove
+  attempts block before mutation and can emit an auditable elevated Hostess CLI
+  handoff script with `--handoff-script-out`; that script still calls
+  `connectivity-probe windows-firewall-rule` for apply and verify instead of
+  embedding a separate firewall implementation.
 - `tools/hostessctl/hostessctl.py companion-report transport-gates`: emits a
   read-only `rusty.hostess.companion.transport_gate_report.v1` from a
   companion-report projection. Use `--fail-on-pending` in automation when a run

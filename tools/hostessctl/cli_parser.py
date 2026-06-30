@@ -872,6 +872,8 @@ def build_hostessctl_parser(
     connectivity_probe_firewall.add_argument("--apply", action="store_true")
     connectivity_probe_firewall.add_argument("--verify", action="store_true")
     connectivity_probe_firewall.add_argument("--remove", action="store_true")
+    connectivity_probe_firewall.add_argument("--handoff-script-out")
+    connectivity_probe_firewall.add_argument("--handoff-verify-out")
     connectivity_probe_firewall.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_stream_capability = connectivity_probe_subcommands.add_parser("stream-capability")
     connectivity_probe_stream_capability.add_argument("--input", required=True)

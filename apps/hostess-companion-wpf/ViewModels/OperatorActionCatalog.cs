@@ -60,7 +60,7 @@ public static class OperatorActionCatalog
             "wpf.connectivity.firewall.apply",
             "Apply firewall rule",
             "ApplyFirewallRuleCommand",
-            "connectivity-probe windows-firewall-rule --action apply --rule-profile custom|qcl-010-tcp-echo|qcl-080-udp-freshness|qcl-082-rmanvid1-media",
+            "connectivity-probe windows-firewall-rule --action apply --rule-profile custom|qcl-010-tcp-echo|qcl-080-udp-freshness|qcl-082-rmanvid1-media [--handoff-script-out <admin.ps1> --handoff-verify-out <verify-report>]",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),

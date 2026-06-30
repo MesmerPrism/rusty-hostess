@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import getpass
+import hashlib
 import json
 import os
 from datetime import datetime
@@ -20,6 +21,7 @@ from tools.hostessctl.runtime import run_captured as default_run_captured
 
 
 CONNECTIVITY_FIREWALL_RULE_SCHEMA = "rusty.quest.connectivity_windows_firewall_rule.v1"
+HOSTESS_REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_QCL010_TCP_ECHO_PORT = 18766
 DEFAULT_QCL080_UDP_FRESHNESS_PORT = 18767
 DEFAULT_QCL082_RMANVID1_MEDIA_PORT = 9079
@@ -35,7 +37,7 @@ FIREWALL_RULE_PROFILE_CHOICES = (
     FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA,
 )
 DEFAULT_WPF_FIREWALL_PROGRAM = (
-    Path(__file__).resolve().parents[2]
+    HOSTESS_REPO_ROOT
     / "apps"
     / "hostess-companion-wpf"
     / "bin"
@@ -63,6 +65,7 @@ def run_windows_firewall_rule(
         (elevation_func or current_process_elevation)(),
         powershell_command=str(object_value(report.get("powershell")).get("command") or ""),
     )
+    attach_firewall_admin_handoff(report, args)
 
     if action in MUTATING_FIREWALL_ACTIONS:
         result_key = "apply_result" if action == "apply" else "remove_result"
@@ -139,6 +142,170 @@ def run_windows_firewall_rule(
     if getattr(args, "fail_on_error", False) and report["status"] not in {"pass", "planned"}:
         return 2
     return 0
+
+
+def attach_firewall_admin_handoff(report: dict[str, Any], args: argparse.Namespace) -> None:
+    """Attach and optionally write the operator-owned elevated firewall handoff."""
+
+    handoff = firewall_admin_handoff_report(report, args)
+    report["admin_handoff"] = handoff
+    elevation = object_value(report.get("elevation"))
+    elevation_handoff = object_value(elevation.get("handoff"))
+    elevation_handoff.update(
+        {
+            "script_out": handoff["script_out"],
+            "script_sha256": handoff["script_sha256"],
+            "hostess_action_command": handoff["hostess_action_command"],
+            "hostess_verify_command": handoff["hostess_verify_command"],
+            "verify_report_out": handoff["verify_report_out"],
+        }
+    )
+    elevation["handoff"] = elevation_handoff
+    report["elevation"] = elevation
+
+    script_out = str(handoff.get("script_out") or "").strip()
+    if script_out:
+        path = Path(script_out)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(str(handoff["script"]), encoding="utf-8", newline="\n")
+
+
+def firewall_admin_handoff_report(report: dict[str, Any], args: argparse.Namespace) -> dict[str, Any]:
+    action = str(report.get("action") or "plan").strip().lower()
+    handoff_action = action if action in MUTATING_FIREWALL_ACTIONS else "apply"
+    action_report_out = str(getattr(args, "out", "") or "").strip()
+    verify_report_out = str(getattr(args, "handoff_verify_out", "") or "").strip()
+    if not verify_report_out:
+        verify_report_out = default_firewall_handoff_verify_report_path(
+            action_report_out,
+            handoff_action=handoff_action,
+        )
+    script_out = str(getattr(args, "handoff_script_out", "") or "").strip()
+
+    action_args = hostess_firewall_rule_cli_args(
+        report,
+        action=handoff_action,
+        out=action_report_out,
+        fail_on_error=True,
+    )
+    verify_args = hostess_firewall_rule_cli_args(
+        report,
+        action="verify",
+        out=verify_report_out,
+        fail_on_error=(handoff_action == "apply"),
+    )
+    script = build_firewall_admin_handoff_script(
+        action_args=action_args,
+        verify_args=verify_args,
+    )
+    return {
+        "handoff_kind": "hostess_cli_elevated_firewall_lifecycle",
+        "handoff_action": handoff_action,
+        "script_out": script_out,
+        "action_report_out": action_report_out,
+        "verify_report_out": verify_report_out,
+        "script_sha256": hashlib.sha256(script.encode("utf-8")).hexdigest(),
+        "script": script,
+        "hostess_action_args": action_args,
+        "hostess_verify_args": verify_args,
+        "hostess_action_command": " ".join(action_args),
+        "hostess_verify_command": " ".join(verify_args),
+        "operator_note": (
+            "Run the generated script from an elevated PowerShell session, then use "
+            "the verify report as QCL-082 product listener firewall evidence."
+            if handoff_action == "apply"
+            else "Run the generated script from an elevated PowerShell session."
+        ),
+    }
+
+
+def default_firewall_handoff_verify_report_path(action_report_out: str, *, handoff_action: str) -> str:
+    if action_report_out:
+        path = Path(action_report_out)
+        suffix = "".join(path.suffixes) or ".json"
+        name = path.name
+        if suffix and name.endswith(suffix):
+            stem = name[: -len(suffix)]
+        else:
+            stem = path.stem
+        return str(path.with_name(f"{stem}.verify{suffix}"))
+    return f"target/connectivity-probe/firewall-{handoff_action}.verify.json"
+
+
+def hostess_firewall_rule_cli_args(
+    report: dict[str, Any],
+    *,
+    action: str,
+    out: str,
+    fail_on_error: bool,
+) -> list[str]:
+    rule = object_value(report.get("rule"))
+    args = [
+        "python",
+        "tools/hostessctl/hostessctl.py",
+        "connectivity-probe",
+        "windows-firewall-rule",
+        "--action",
+        str(action),
+        "--rule-profile",
+        str(report.get("rule_profile") or FIREWALL_RULE_PROFILE_CUSTOM),
+        "--program",
+        python_cli_path_arg(str(rule.get("program") or "")),
+        "--protocol",
+        normalize_firewall_protocol(str(rule.get("protocol") or "TCP")),
+        "--port",
+        str(int(rule.get("local_port") or 0)),
+        "--profile",
+        ",".join(str(profile) for profile in object_list(rule.get("profiles"))) or "Public",
+        "--remote-address",
+        str(rule.get("remote_address") or "LocalSubnet"),
+        "--rule-name",
+        str(rule.get("name") or ""),
+    ]
+    if out:
+        args.extend(["--out", python_cli_path_arg(out)])
+    if fail_on_error:
+        args.append("--fail-on-error")
+    return args
+
+
+def build_firewall_admin_handoff_script(
+    *,
+    action_args: list[str],
+    verify_args: list[str],
+) -> str:
+    lines = [
+        "$ErrorActionPreference = 'Stop'",
+        f"Set-Location -LiteralPath {ps_string_literal(str(HOSTESS_REPO_ROOT))}",
+        power_shell_invocation(action_args),
+        "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+    ]
+    if verify_args:
+        lines.extend(
+            [
+                power_shell_invocation(verify_args),
+                "if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }",
+            ]
+        )
+    return "\n".join(lines) + "\n"
+
+
+def power_shell_invocation(args: list[str]) -> str:
+    if not args:
+        return ""
+    return "& " + " ".join(ps_string_literal(arg) for arg in args)
+
+
+def object_list(value: Any) -> list[Any]:
+    if isinstance(value, list):
+        return value
+    if value is None:
+        return []
+    return [value]
+
+
+def python_cli_path_arg(value: str) -> str:
+    return str(value or "").replace("\\", "/")
 
 
 def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[str, Any]:
@@ -793,28 +960,36 @@ __all__ = [
     "FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS",
     "FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA",
     "active_windows_network_categories",
+    "attach_firewall_admin_handoff",
+    "build_firewall_admin_handoff_script",
     "build_windows_firewall_rule_remove_script",
     "build_windows_firewall_rule_script",
     "build_windows_firewall_rule_verify_script",
     "collect_windows_network_profile",
     "connectivity_probe_usage_args",
     "current_process_elevation",
+    "default_firewall_handoff_verify_report_path",
     "default_firewall_program",
     "default_firewall_rule_name",
     "diagnostic_python_program_path",
+    "firewall_admin_handoff_report",
     "firewall_action_requires_admin",
     "firewall_blocked_action_result",
     "firewall_elevation_report",
     "firewall_rule_action",
     "firewall_rule_probe_id",
     "firewall_rule_profile_defaults",
+    "hostess_firewall_rule_cli_args",
     "MUTATING_FIREWALL_ACTIONS",
     "network_profile_summary",
     "normalize_firewall_program_path",
     "normalize_firewall_profiles",
     "normalize_firewall_protocol",
     "normalize_firewall_rule_profile",
+    "object_list",
+    "power_shell_invocation",
     "ps_string_literal",
+    "python_cli_path_arg",
     "run_windows_firewall_rule",
     "verify_windows_firewall_rule_report",
     "windows_firewall_listener_status",

@@ -515,6 +515,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "qcl-082-rmanvid1-media",
                 "--action",
                 "verify",
+                "--handoff-script-out",
+                "target/qcl082-firewall-admin.ps1",
+                "--handoff-verify-out",
+                "target/qcl082-firewall-verify.json",
                 "--out",
                 "target/qcl082-firewall.json",
             ]
@@ -524,6 +528,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.rule_profile, "qcl-082-rmanvid1-media")
         self.assertIsNone(args.protocol)
         self.assertIsNone(args.port)
+        self.assertEqual(args.handoff_script_out, "target/qcl082-firewall-admin.ps1")
+        self.assertEqual(args.handoff_verify_out, "target/qcl082-firewall-verify.json")
 
     def test_windows_firewall_rule_plan_scopes_program_port_profile_and_subnet(self) -> None:
         report = windows_firewall_rule_report(
@@ -638,6 +644,69 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertIn("verification", report)
         self.assertFalse(any("New-NetFirewallRule" in command for command in joined_commands))
         self.assertTrue(any("Get-NetConnectionProfile" in command for command in joined_commands))
+
+    def test_windows_firewall_rule_apply_writes_elevated_handoff_script(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            out = root / "qcl082-apply.json"
+            script_out = root / "qcl082-admin-apply.ps1"
+            verify_out = root / "qcl082-verify.json"
+            commands: list[list[str]] = []
+
+            def fake_run(
+                command: list[str],
+                *,
+                allow_failure: bool = False,
+                cwd: Path | None = None,
+            ) -> subprocess.CompletedProcess[str]:
+                commands.append(command)
+                text = " ".join(command)
+                if "Get-NetConnectionProfile" in text:
+                    return subprocess.CompletedProcess(
+                        command,
+                        0,
+                        firewall_profile_json(protocol="TCP", listener_port=9079),
+                        "",
+                    )
+                return subprocess.CompletedProcess(command, 0, "{}", "")
+
+            status = run_windows_firewall_rule(
+                probe_args(
+                    connectivity_probe_command="windows-firewall-rule",
+                    rule_profile="qcl-082-rmanvid1-media",
+                    action="apply",
+                    out=str(out),
+                    handoff_script_out=str(script_out),
+                    handoff_verify_out=str(verify_out),
+                    fail_on_error=True,
+                ),
+                run_captured_func=fake_run,
+                clock_func=fixed_datetime,
+                elevation_func=lambda: {
+                    "current_process_is_elevated": False,
+                    "user": "fixture",
+                    "source": "unit",
+                },
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            script = script_out.read_text(encoding="utf-8")
+
+        self.assertEqual(status, 2)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["action_result"]["attempted"])
+        self.assertEqual(report["admin_handoff"]["handoff_action"], "apply")
+        self.assertEqual(report["admin_handoff"]["script_out"], str(script_out))
+        self.assertEqual(report["admin_handoff"]["verify_report_out"], str(verify_out))
+        self.assertEqual(report["elevation"]["handoff"]["script_out"], str(script_out))
+        self.assertEqual(len(report["admin_handoff"]["script_sha256"]), 64)
+        self.assertIn("Set-Location -LiteralPath", script)
+        self.assertIn("tools/hostessctl/hostessctl.py", script)
+        self.assertIn("--action' 'apply", script)
+        self.assertIn("--action' 'verify", script)
+        self.assertIn("--rule-profile' 'qcl-082-rmanvid1-media", script)
+        self.assertIn(str(verify_out).replace("\\", "/").replace("'", "''"), script)
+        self.assertNotIn("New-NetFirewallRule", script)
+        self.assertTrue(any("Get-NetConnectionProfile" in " ".join(command) for command in commands))
 
     def test_windows_firewall_rule_tcp_default_uses_wpf_product_name(self) -> None:
         report = windows_firewall_rule_report(
