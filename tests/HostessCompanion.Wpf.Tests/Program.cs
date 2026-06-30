@@ -603,6 +603,7 @@ static void TransportGateRowsExposeNextActions()
                     GateId = "transport.direct_wifi_live_topology",
                     NextActionIds =
                     [
+                        "write_direct_wifi_product_media_acceptance_plan",
                         "plan_qcl040_wifi_direct_lifecycle",
                         "plan_qcl041_wifi_direct_lifecycle",
                         "run_qcl041_live_wifi_direct_preflight",
@@ -616,6 +617,7 @@ static void TransportGateRowsExposeNextActions()
                     NextActionIds =
                     [
                         "write_qcl082_product_media_direct_wifi_plan",
+                        "write_direct_wifi_product_media_acceptance_plan",
                         "write_qcl082_media_stream_start_source_request",
                         "run_qcl082_media_stream_start_source",
                         "validate_qcl082_media_stream_runtime_status",
@@ -659,6 +661,21 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Shell = "powershell",
                             Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out target\\connectivity-probe\\qcl041-wifi-direct-lifecycle-plan.json",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "write_direct_wifi_product_media_acceptance_plan",
+                        Label = "Write direct-Wi-Fi product-media acceptance plan",
+                        AuthorityOwner = "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -735,6 +752,22 @@ static void TransportGateRowsExposeNextActions()
                             Label = "Write QCL-082 product media plan",
                             Shell = "powershell",
                             Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe qcl082-product-media-plan --out target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json --promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "write_direct_wifi_product_media_acceptance_plan",
+                        Label = "Write direct-Wi-Fi product-media acceptance plan",
+                        AuthorityOwner = "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Write direct-Wi-Fi product-media acceptance plan",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe direct-wifi-product-media-plan --out target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json --qcl041-topology-report target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -900,6 +933,14 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("wifi-direct-lifecycle-plan", StringComparison.Ordinal)),
         "direct Wi-Fi lifecycle plan must be visible as a non-mutating CLI-equivalent WPF action");
     Assert(rows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.write_direct_wifi_product_media_acceptance_plan"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_direct_wifi_product_media_plan", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("direct-wifi-product-media-plan", StringComparison.Ordinal)
+            && row.Evidence.Contains("--qcl082-report", StringComparison.Ordinal)),
+        "direct Wi-Fi gate must render the combined read-only product-media acceptance plan");
+    Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.normalize_qcl040_wifi_direct_lifecycle_report"
             && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_topology_lifecycle", StringComparison.Ordinal)
@@ -924,6 +965,13 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("qcl082-product-media-plan", StringComparison.Ordinal)
             && row.Evidence.Contains("--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>'", StringComparison.Ordinal)),
         "product media plan action must render the CLI-owned direct-Wi-Fi media plan artifact");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.write_direct_wifi_product_media_acceptance_plan"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_direct_wifi_product_media_plan", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("direct-wifi-product-media-plan", StringComparison.Ordinal)
+            && row.Evidence.Contains("--firewall-report", StringComparison.Ordinal)),
+        "product media gate must render the combined read-only direct-Wi-Fi acceptance plan");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_media_stream_start_source_request"
             && row.Notes.Contains("authority_owner=tools.hostessctl.bridge_command_routes", StringComparison.Ordinal)
@@ -1288,6 +1336,12 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-082 product-media direct-Wi-Fi plan route");
     Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-direct-wifi-plan.json", StringComparison.Ordinal),
         "protocol matrix action must name the QCL-082 product-media plan artifact");
+    Assert(protocolMatrixAction.CliRoute.Contains("direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan", StringComparison.Ordinal),
+        "protocol matrix action must advertise the combined direct-Wi-Fi product-media acceptance plan route");
+    Assert(protocolMatrixAction.CliRoute.Contains("direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal),
+        "protocol matrix action must name the combined direct-Wi-Fi product-media acceptance plan artifact");
+    Assert(protocolMatrixAction.CliRoute.Contains("--qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json", StringComparison.Ordinal),
+        "protocol matrix action must pass QCL-082 product-media evidence into the combined acceptance plan");
     Assert(protocolMatrixAction.CliRoute.Contains("emit-bridge-command-request", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 bridge-command request generator");
     Assert(protocolMatrixAction.CliRoute.Contains("--bridge-command command.media_stream.start_source", StringComparison.Ordinal),
@@ -1334,6 +1388,8 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the pending transport gate automation switch");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.quest.connectivity_topology_probe.v1", StringComparison.Ordinal),
         "protocol matrix action must advertise topology probe evidence");
+    Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.direct_wifi_product_media_acceptance_plan.v1", StringComparison.Ordinal),
+        "protocol matrix action must advertise direct-Wi-Fi product-media acceptance plan evidence");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.companion.report_projection.v1", StringComparison.Ordinal),
         "protocol matrix action must render the shared companion-report projection artifact");
     Assert(protocolMatrixAction.EvidenceArtifact.Contains("rusty.hostess.companion.transport_gate_report.v1", StringComparison.Ordinal),

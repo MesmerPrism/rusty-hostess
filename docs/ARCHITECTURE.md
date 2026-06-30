@@ -411,6 +411,12 @@ dependency gates, Quest lease policy, PowerShell command strings, and
 acceptance artifacts into one WPF/CLI-equivalent report before a human or agent
 runs the live steps; it does not run headset commands, mutate firewall/device
 state, parse media, or declare promotion;
+`connectivity_direct_wifi_product_media_plan.py` owns the read-only acceptance
+plan that composes the QCL-040/QCL-041 lifecycle plans, promoted direct-Wi-Fi
+topology candidates, product Hostess/WPF TCP listener firewall evidence, and
+QCL-082 RMANVID1 product-media report into one WPF/CLI-equivalent checklist.
+It is not a new topology, firewall, media, or promotion authority and does not
+run ADB, mutate Wi-Fi Direct, mutate firewall state, or parse media payloads;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct

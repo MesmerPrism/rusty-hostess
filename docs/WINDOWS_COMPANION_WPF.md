@@ -439,7 +439,20 @@ python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-pl
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --adb $Adb `
   --serial $QuestSerial
+
+python tools\hostessctl\hostessctl.py connectivity-probe direct-wifi-product-media-plan `
+  --out target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json `
+  --qcl040-topology-report target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json `
+  --qcl041-topology-report target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json `
+  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json
 ```
+
+WPF may render the direct-Wi-Fi product-media acceptance plan and its
+`next_step`, but the plan is only a CLI-equivalent checklist. It does not run
+live headset commands, perform firewall mutation, parse media payloads, or
+replace the promoted direct-Wi-Fi lifecycle and QCL-082 RMANVID1 receiver
+evidence gates.
 
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script

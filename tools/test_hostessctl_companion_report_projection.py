@@ -377,6 +377,20 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         direct_wifi_actions = {
             action["action_id"]: action for action in direct_wifi_gate["next_actions"]
         }
+        acceptance_action = direct_wifi_actions["write_direct_wifi_product_media_acceptance_plan"]
+        acceptance_command = acceptance_action["command"]["command"]
+        self.assertEqual(
+            acceptance_action["authority_owner"],
+            "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+        )
+        self.assertFalse(acceptance_action["requires_quest_lease"])
+        self.assertFalse(acceptance_action["mutates_host"])
+        self.assertFalse(acceptance_action["mutates_device"])
+        self.assertFalse(acceptance_action["clears_gate_when_accepted"])
+        self.assertIn("direct-wifi-product-media-plan", acceptance_command)
+        self.assertIn("direct-wifi-product-media-acceptance-plan.json", acceptance_command)
+        self.assertIn("--qcl041-topology-report", acceptance_command)
+        self.assertIn("--qcl082-report", acceptance_command)
         for probe_id, action_id, artifact_name in [
             (
                 "QCL-040",
@@ -470,6 +484,7 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             action["action_id"]: action for action in product_media_gate["next_actions"]
         }
         self.assertIn("write_qcl082_product_media_direct_wifi_plan", product_media_actions)
+        self.assertIn("write_direct_wifi_product_media_acceptance_plan", product_media_actions)
         self.assertIn("write_qcl082_media_stream_start_source_request", product_media_actions)
         self.assertIn("run_qcl082_media_stream_start_source", product_media_actions)
         self.assertIn("validate_qcl082_media_stream_runtime_status", product_media_actions)
@@ -483,6 +498,15 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertIn("qcl082-product-media-plan", plan_command)
         self.assertIn("--promoted-topology-report", plan_command)
         self.assertIn("qcl082-product-media-direct-wifi-plan.json", plan_command)
+        combined_action = product_media_actions["write_direct_wifi_product_media_acceptance_plan"]
+        combined_command = combined_action["command"]["command"]
+        self.assertEqual(
+            combined_action["authority_owner"],
+            "tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+        )
+        self.assertIn("direct-wifi-product-media-plan", combined_command)
+        self.assertIn("--firewall-report", combined_command)
+        self.assertIn("--qcl082-report", combined_command)
         write_action = product_media_actions["write_qcl082_media_stream_start_source_request"]
         write_command = write_action["command"]["command"]
         self.assertEqual(write_action["authority_owner"], "tools.hostessctl.bridge_command_routes")

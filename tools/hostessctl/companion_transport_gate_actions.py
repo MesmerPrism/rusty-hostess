@@ -46,6 +46,9 @@ QCL082_RUNTIME_STATUS_REPORT = (
 QCL082_PRODUCT_MEDIA_PLAN = (
     r"target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json"
 )
+DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN = (
+    r"target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json"
+)
 
 
 def operator_next_actions_summary(
@@ -221,6 +224,7 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 "adb-server:lifecycle only for disruptive daemon lifecycle work."
             ),
         ),
+        direct_wifi_product_media_acceptance_plan_action(),
         wifi_direct_lifecycle_plan_action(
             action_id="plan_qcl040_wifi_direct_lifecycle",
             probe_id="QCL-040",
@@ -433,6 +437,40 @@ def wifi_direct_lifecycle_action(
     )
 
 
+def direct_wifi_product_media_acceptance_plan_action() -> dict[str, Any]:
+    return next_action(
+        "write_direct_wifi_product_media_acceptance_plan",
+        "Write the read-only direct-Wi-Fi product-media acceptance plan.",
+        authority_owner="tools.hostessctl.connectivity_direct_wifi_product_media_plan",
+        requires_elevation=False,
+        requires_quest_lease=False,
+        mutates_host=False,
+        mutates_device=False,
+        command=powershell_command(
+            "Write direct-Wi-Fi product-media acceptance plan",
+            (
+                "python tools\\hostessctl\\hostessctl.py "
+                "connectivity-probe direct-wifi-product-media-plan "
+                f"--out {DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN} "
+                "--qcl040-lifecycle-report '<qcl040-live-wifi-direct-lifecycle-source>' "
+                "--qcl041-lifecycle-report '<qcl041-live-wifi-direct-lifecycle-source>' "
+                f"--qcl040-topology-report {DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT} "
+                f"--qcl041-topology-report {DIRECT_WIFI_QCL041_LIFECYCLE_OUTPUT} "
+                "--promoted-topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
+                f"--firewall-report {QCL082_FIREWALL_VERIFY} "
+                "--qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json"
+            ),
+        ),
+        acceptance_artifacts=[DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN],
+        clears_gate=False,
+        note=(
+            "This read-only bundle composes the lifecycle, product TCP media, "
+            "firewall, matrix, and WPF projection routes. It does not replace "
+            "leased direct-Wi-Fi or RMANVID1 receiver evidence."
+        ),
+    )
+
+
 def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
     return [
         next_action(
@@ -461,6 +499,7 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                 "and protocol-matrix routes. It does not replace live evidence."
             ),
         ),
+        direct_wifi_product_media_acceptance_plan_action(),
         next_action(
             "write_qcl082_media_stream_start_source_request",
             "Write the inspectable media-stream start_source command request artifact.",

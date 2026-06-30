@@ -511,6 +511,13 @@ python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-pl
   --adb $Adb `
   --serial $QuestSerial
 
+python tools\hostessctl\hostessctl.py connectivity-probe direct-wifi-product-media-plan `
+  --out target\connectivity-probe\direct-wifi-product-media-acceptance-plan.json `
+  --qcl040-topology-report target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json `
+  --qcl041-topology-report target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json `
+  --qcl082-report target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json
+
 python tools\hostessctl\hostessctl.py emit-bridge-command-request `
   --bridge-command command.media_stream.start_source `
   --request-id request.hostess.qcl082.media_stream.start_source `
@@ -565,6 +572,13 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.protocol-matrix.json `
   --fail-on-error
 ```
+
+The direct-Wi-Fi product-media acceptance plan is read-only. It composes the
+existing lifecycle, topology, firewall, RMANVID1 receiver, protocol-matrix,
+projection, and transport-gate routes so WPF and CLI automation inspect the
+same remaining checklist; it does not run ADB, mutate Wi-Fi Direct, apply
+firewall rules, parse media payloads, or clear pending gates without the
+supplied evidence artifacts.
 
 If the paired topology report is still experimental or unpromoted, the QCL-082
 report remains valid for generic binary-media evidence but the

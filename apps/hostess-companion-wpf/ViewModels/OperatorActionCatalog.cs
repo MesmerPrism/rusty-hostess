@@ -5,6 +5,7 @@ public static class OperatorActionCatalog
     private const string ProtocolMatrixCliRoute =
         "$MediaStreamSessionPlan = '<rusty-quest-media-stream-plan>'; " +
         "$ProductMediaPlan = 'target\\connectivity-probe\\qcl082-product-media-direct-wifi-plan.json'; " +
+        "$DirectWifiProductMediaPlan = 'target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json'; " +
         "$StartSourceRequest = 'target\\connectivity-probe\\media-stream-start-source.request.json'; " +
         "$StartSourceBridgeEvidence = 'target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json'; " +
         "$RuntimeStatus = 'target\\connectivity-probe\\media-stream-start-source.live-android-execution.json'; " +
@@ -32,6 +33,7 @@ public static class OperatorActionCatalog
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
         "connectivity-probe qcl082-product-media-plan --out $ProductMediaPlan --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --adb $Adb --serial $QuestSerial; " +
+        "connectivity-probe direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan --qcl040-topology-report $Qcl040LifecycleReport --qcl041-topology-report $Qcl041LifecycleReport --promoted-topology-report $PromotedTopologyReport --firewall-report $FirewallVerify --qcl082-report target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
         "emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out $StartSourceRequest; " +
         "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
@@ -149,7 +151,7 @@ public static class OperatorActionCatalog
             "Build protocol matrix",
             "RunProtocolMatrixCommand",
             ProtocolMatrixCliRoute,
-            "rusty.quest.device_link.protocol_evidence_matrix.v1; rusty.quest.connectivity_topology_probe.v1; rusty.hostess.companion.report_projection.v1; rusty.hostess.companion.transport_gate_report.v1",
+            "rusty.quest.device_link.protocol_evidence_matrix.v1; rusty.quest.connectivity_topology_probe.v1; rusty.hostess.direct_wifi_product_media_acceptance_plan.v1; rusty.hostess.companion.report_projection.v1; rusty.hostess.companion.transport_gate_report.v1",
             "Hostess / Rusty Quest / Manifold",
             "tools.test_hostessctl_protocol_evidence_matrix; tools.test_hostessctl_companion_report_projection; HostessCompanion.Wpf.Tests"),
         new(
