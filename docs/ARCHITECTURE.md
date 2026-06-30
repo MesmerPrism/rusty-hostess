@@ -439,9 +439,12 @@ streams. Its media-stream plan route consumes Rusty Quest
 `rusty.quest.media_stream_session.v1` plans from the camera/display streaming
 work and projects them into the same QCL-082 report schema. Its broker/runtime
 status route consumes `rusty.quest.media_stream.android_runtime_status.v1` or a
-Manifold command ACK carrying `media_stream_runtime`, proving command
-acceptance, selected source/runtime state, consent or lab-only gating, and
-binary-plane policy from the broker side. Its receiver-counter route can first
+Manifold command ACK carrying `media_stream_runtime`; it also accepts the
+Hostess `rusty.hostess.bridge_command.live_android_execution_evidence.v1`
+sidecar when that sidecar contains the broker command ACK from
+`run-bridge-command-live-android`. That proves command acceptance, selected
+source/runtime state, consent or lab-only gating, and binary-plane policy from
+the broker side. Its receiver-counter route can first
 arm a bounded TCP listener that writes a raw `RMANVID1` capture and sidecar,
 then parse that byte stream without decoding H.264, validate packet boundaries
 and timestamps, and require queue capacity, drops, backpressure, and close

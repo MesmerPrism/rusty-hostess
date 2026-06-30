@@ -483,6 +483,29 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --out target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
   --fail-on-error
 
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+New-Item -ItemType Directory -Force target\connectivity-probe | Out-Null
+@'
+{
+  "$schema": "rusty.hostess.bridge_command.request.v1",
+  "request_id": "request.hostess.qcl082.media_stream.start_source",
+  "evidence_id": "evidence.hostess.qcl082.media_stream.start_source",
+  "route_id": "bridge_route.command.websocket.applied",
+  "command": "command.media_stream.start_source",
+  "params": {},
+  "required_evidence_stages": ["sent", "transport_ok", "authority_accepted"]
+}
+'@ | Set-Content -Encoding UTF8 target\connectivity-probe\media-stream-start-source.request.json
+
+python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
+  --input target\connectivity-probe\media-stream-start-source.request.json `
+  --out target\connectivity-probe\media-stream-start-source.bridge-evidence.json `
+  --execution-out target\connectivity-probe\media-stream-start-source.live-android-execution.json `
+  --validation-out target\connectivity-probe\media-stream-start-source.validation-report.json `
+  --adb $Adb `
+  --serial $QuestSerial
+
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --action verify `
   --rule-profile qcl-082-rmanvid1-media `
@@ -495,7 +518,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --port 9079 `
   --capture-out target\connectivity-probe\media-stream.rmanvid1 `
   --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
@@ -508,7 +531,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --probe-id QCL-082 `
   --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
   --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --media-stream-topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
   --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
@@ -529,13 +552,15 @@ firewall report is missing, scoped to Python, or not product-verified, the
 or warn and WPF keeps `transport.product_tcp_media_listener_firewall` pending.
 
 The runtime-status-only route remains useful for broker command/source policy
-checks:
+checks. It accepts either the direct `rusty.manifold.command.ack.v1` artifact
+or the Hostess `rusty.hostess.bridge_command.live_android_execution_evidence.v1`
+sidecar emitted by `run-bridge-command-live-android`:
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id QCL-082 `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
   --fail-on-error
 ```

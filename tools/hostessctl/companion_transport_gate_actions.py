@@ -24,6 +24,19 @@ DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT = (
 DIRECT_WIFI_QCL041_LIFECYCLE_OUTPUT = (
     r"target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json"
 )
+QCL082_START_SOURCE_REQUEST = r"target\connectivity-probe\media-stream-start-source.request.json"
+QCL082_START_SOURCE_BRIDGE_EVIDENCE = (
+    r"target\connectivity-probe\media-stream-start-source.bridge-evidence.json"
+)
+QCL082_START_SOURCE_EXECUTION = (
+    r"target\connectivity-probe\media-stream-start-source.live-android-execution.json"
+)
+QCL082_START_SOURCE_VALIDATION = (
+    r"target\connectivity-probe\media-stream-start-source.validation-report.json"
+)
+QCL082_RUNTIME_STATUS_REPORT = (
+    r"target\connectivity-probe\qcl082-media-stream-runtime-status.json"
+)
 
 
 def operator_next_actions_summary(
@@ -366,6 +379,104 @@ def wifi_direct_lifecycle_action(
 def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
     return [
         next_action(
+            "write_qcl082_media_stream_start_source_request",
+            "Write the inspectable media-stream start_source command request artifact.",
+            authority_owner="tools.hostessctl.bridge_command_routes",
+            requires_elevation=False,
+            requires_quest_lease=False,
+            mutates_host=False,
+            mutates_device=False,
+            command=powershell_command(
+                "Write QCL-082 start_source request",
+                (
+                    "New-Item -ItemType Directory -Force target\\connectivity-probe | Out-Null; "
+                    "@'\n"
+                    "{\n"
+                    "  \"$schema\": \"rusty.hostess.bridge_command.request.v1\",\n"
+                    "  \"request_id\": \"request.hostess.qcl082.media_stream.start_source\",\n"
+                    "  \"evidence_id\": \"evidence.hostess.qcl082.media_stream.start_source\",\n"
+                    "  \"route_id\": \"bridge_route.command.websocket.applied\",\n"
+                    "  \"command\": \"command.media_stream.start_source\",\n"
+                    "  \"params\": {},\n"
+                    "  \"required_evidence_stages\": [\"sent\", \"transport_ok\", \"authority_accepted\"]\n"
+                    "}\n"
+                    f"'@ | Set-Content -Encoding UTF8 {QCL082_START_SOURCE_REQUEST}"
+                ),
+            ),
+            acceptance_artifacts=[QCL082_START_SOURCE_REQUEST],
+            clears_gate=False,
+            note=(
+                "The request artifact is low-rate command/control JSON. It is "
+                "input to the Manifold bridge-command route, not media payload."
+            ),
+        ),
+        next_action(
+            "run_qcl082_media_stream_start_source",
+            "Start the Quest media-stream source through the Manifold broker command route.",
+            authority_owner="tools.hostessctl.bridge_command_live_android_routes",
+            requires_elevation=False,
+            requires_quest_lease=True,
+            mutates_host=True,
+            mutates_device=True,
+            depends_on=[
+                "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_listener_firewall",
+            ],
+            command=powershell_command(
+                "Run QCL-082 media-stream start_source",
+                (
+                    "python tools\\hostessctl\\hostessctl.py "
+                    "run-bridge-command-live-android "
+                    f"--input {QCL082_START_SOURCE_REQUEST} "
+                    f"--out {QCL082_START_SOURCE_BRIDGE_EVIDENCE} "
+                    f"--execution-out {QCL082_START_SOURCE_EXECUTION} "
+                    f"--validation-out {QCL082_START_SOURCE_VALIDATION} "
+                    "--adb S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe "
+                    "--serial '<quest-serial>'"
+                ),
+            ),
+            acceptance_artifacts=[
+                QCL082_START_SOURCE_REQUEST,
+                QCL082_START_SOURCE_BRIDGE_EVIDENCE,
+                QCL082_START_SOURCE_EXECUTION,
+                QCL082_START_SOURCE_VALIDATION,
+            ],
+            clears_gate=False,
+            lease=quest_lease_metadata("QCL-082 media-stream start_source"),
+            note=(
+                "The live Android execution artifact contains the Manifold "
+                "command ACK and can be supplied directly to "
+                "--media-stream-runtime-status."
+            ),
+        ),
+        next_action(
+            "validate_qcl082_media_stream_runtime_status",
+            "Validate the media-stream command ACK/runtime status before receiver capture.",
+            authority_owner="tools.hostessctl.connectivity_media",
+            requires_elevation=False,
+            requires_quest_lease=False,
+            mutates_host=False,
+            mutates_device=False,
+            command=powershell_command(
+                "Validate QCL-082 media runtime status",
+                (
+                    "python tools\\hostessctl\\hostessctl.py "
+                    "connectivity-probe run "
+                    "--mode fixture "
+                    "--probe-id QCL-082 "
+                    f"--media-stream-runtime-status {QCL082_START_SOURCE_EXECUTION} "
+                    f"--out {QCL082_RUNTIME_STATUS_REPORT} "
+                    "--fail-on-error"
+                ),
+            ),
+            acceptance_artifacts=[QCL082_RUNTIME_STATUS_REPORT],
+            clears_gate=False,
+            note=(
+                "This is command/source-state evidence only. Receiver counters "
+                "are still required for QCL-082 product media promotion."
+            ),
+        ),
+        next_action(
             "capture_rmanvid1_over_promoted_direct_wifi",
             "Capture bounded RMANVID1 TCP media with topology and firewall evidence attached.",
             authority_owner="tools.hostessctl.connectivity_media_receiver",
@@ -386,7 +497,7 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     "--port 9079 "
                     "--capture-out target\\connectivity-probe\\media-stream.rmanvid1 "
                     "--sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json "
-                    "--runtime-status target\\connectivity-probe\\media-stream-runtime-status.json "
+                    f"--runtime-status {QCL082_START_SOURCE_EXECUTION} "
                     "--topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
                     f"--firewall-report {QCL082_FIREWALL_VERIFY} "
                     "--capture-kind live_broker_stream "
@@ -420,7 +531,7 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                     "--probe-id QCL-082 "
                     "--media-stream-rmanvid1-capture target\\connectivity-probe\\media-stream.rmanvid1 "
                     "--media-stream-receiver-sidecar target\\connectivity-probe\\media-stream-receiver-sidecar.json "
-                    "--media-stream-runtime-status target\\connectivity-probe\\media-stream-runtime-status.json "
+                    f"--media-stream-runtime-status {QCL082_START_SOURCE_EXECUTION} "
                     "--media-stream-topology-report '<promoted-qcl040-or-qcl041-topology-report>' "
                     f"--media-stream-firewall-report {QCL082_FIREWALL_VERIFY} "
                     "--out target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json "

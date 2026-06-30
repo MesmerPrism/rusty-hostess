@@ -4,7 +4,10 @@ public static class OperatorActionCatalog
 {
     private const string ProtocolMatrixCliRoute =
         "$MediaStreamSessionPlan = '<rusty-quest-media-stream-plan>'; " +
-        "$RuntimeStatus = '<broker-media-stream-runtime-status>'; " +
+        "$StartSourceRequest = 'target\\connectivity-probe\\media-stream-start-source.request.json'; " +
+        "$StartSourceBridgeEvidence = 'target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json'; " +
+        "$RuntimeStatus = 'target\\connectivity-probe\\media-stream-start-source.live-android-execution.json'; " +
+        "$StartSourceValidation = 'target\\connectivity-probe\\media-stream-start-source.validation-report.json'; " +
         "$FirewallVerify = '<qcl082-tcp-firewall-verify>'; " +
         "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
         "$Rmanvid1Capture = '<rmanvid1-capture>'; " +
@@ -26,6 +29,7 @@ public static class OperatorActionCatalog
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
+        "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
         "connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +
         "connectivity-probe rmanvid1-receiver-capture --capture-out $Rmanvid1Capture --sidecar-out $ReceiverSidecar --runtime-status $RuntimeStatus --topology-report $PromotedTopologyReport --firewall-report $FirewallVerify; " +

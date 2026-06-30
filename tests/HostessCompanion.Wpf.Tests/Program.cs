@@ -604,7 +604,14 @@ static void TransportGateRowsExposeNextActions()
                 new CompanionTransportGateActionSummary
                 {
                     GateId = "transport.product_tcp_media_over_direct_wifi",
-                    NextActionIds = ["capture_rmanvid1_over_promoted_direct_wifi"],
+                    NextActionIds =
+                    [
+                        "write_qcl082_media_stream_start_source_request",
+                        "run_qcl082_media_stream_start_source",
+                        "validate_qcl082_media_stream_runtime_status",
+                        "capture_rmanvid1_over_promoted_direct_wifi",
+                        "promote_qcl082_rmanvid1_capture",
+                    ],
                 },
                 new CompanionTransportGateActionSummary
                 {
@@ -691,6 +698,72 @@ static void TransportGateRowsExposeNextActions()
                 [
                     new CompanionTransportGateNextAction
                     {
+                        ActionId = "write_qcl082_media_stream_start_source_request",
+                        Label = "Write QCL-082 start_source request",
+                        AuthorityOwner = "tools.hostessctl.bridge_command_routes",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\media-stream-start-source.request.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Write QCL-082 start_source request",
+                            Shell = "powershell",
+                            Command = "New-Item -ItemType Directory -Force target\\connectivity-probe | Out-Null; @'\n{ \"$schema\": \"rusty.hostess.bridge_command.request.v1\", \"command\": \"command.media_stream.start_source\" }\n'@ | Set-Content -Encoding UTF8 target\\connectivity-probe\\media-stream-start-source.request.json",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "run_qcl082_media_stream_start_source",
+                        Label = "Run QCL-082 media-stream start_source",
+                        AuthorityOwner = "tools.hostessctl.bridge_command_live_android_routes",
+                        RequiresQuestLease = true,
+                        MutatesHost = true,
+                        MutatesDevice = true,
+                        DependsOn =
+                        [
+                            "transport.direct_wifi_live_topology",
+                            "transport.product_tcp_media_listener_firewall",
+                        ],
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\media-stream-start-source.request.json",
+                            "target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json",
+                            "target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+                            "target\\connectivity-probe\\media-stream-start-source.validation-report.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Run QCL-082 media-stream start_source",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py run-bridge-command-live-android --input target\\connectivity-probe\\media-stream-start-source.request.json --out target\\connectivity-probe\\media-stream-start-source.bridge-evidence.json --execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --validation-out target\\connectivity-probe\\media-stream-start-source.validation-report.json --adb S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe --serial '<quest-serial>'",
+                        },
+                        Lease = new CompanionTransportGateNextActionLease
+                        {
+                            Manager = "Agent Board",
+                            Resource = "quest:<quest-serial>",
+                            Duration = "45m",
+                            ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "validate_qcl082_media_stream_runtime_status",
+                        Label = "Validate QCL-082 media runtime status",
+                        AuthorityOwner = "tools.hostessctl.connectivity_media",
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl082-media-stream-runtime-status.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Validate QCL-082 media runtime status",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --out target\\connectivity-probe\\qcl082-media-stream-runtime-status.json --fail-on-error",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
                         ActionId = "capture_rmanvid1_over_promoted_direct_wifi",
                         Label = "Capture RMANVID1 receiver counters",
                         AuthorityOwner = "tools.hostessctl.connectivity_media_receiver",
@@ -711,7 +784,7 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Label = "Capture RMANVID1 receiver counters",
                             Shell = "powershell",
-                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
                         },
                         Lease = new CompanionTransportGateNextActionLease
                         {
@@ -719,6 +792,23 @@ static void TransportGateRowsExposeNextActions()
                             Resource = "quest:<quest-serial>",
                             Duration = "45m",
                             ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "promote_qcl082_rmanvid1_capture",
+                        Label = "Build QCL-082 product media report",
+                        AuthorityOwner = "tools.hostessctl.connectivity_probe",
+                        ClearsGateWhenAccepted = true,
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Build QCL-082 product media report",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-082 --media-stream-rmanvid1-capture target\\connectivity-probe\\media-stream.rmanvid1 --media-stream-receiver-sidecar target\\connectivity-probe\\media-stream-receiver-sidecar.json --media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json --media-stream-topology-report '<promoted-qcl040-or-qcl041-topology-report>' --media-stream-firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json --out target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json --fail-on-error",
                         },
                     },
                 ],
@@ -780,13 +870,42 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
         "QCL-041 lifecycle normalizer must be visible as a CLI-equivalent WPF action");
     Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_media_stream_start_source_request"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.bridge_command_routes", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("rusty.hostess.bridge_command.request.v1", StringComparison.Ordinal)
+            && row.Evidence.Contains("command.media_stream.start_source", StringComparison.Ordinal)),
+        "product media request action must render the inspectable bridge-command request artifact");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.run_qcl082_media_stream_start_source"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.bridge_command_live_android_routes", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_host=True", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
+            && row.Notes.Contains("lease_resource=quest:<quest-serial>", StringComparison.Ordinal)
+            && row.Evidence.Contains("run-bridge-command-live-android", StringComparison.Ordinal)
+            && row.Evidence.Contains("--execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
+        "product media start_source action must show the leased live Android bridge route");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.validate_qcl082_media_stream_runtime_status"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media", StringComparison.Ordinal)
+            && row.Evidence.Contains("--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
+        "product media runtime-status action must consume the live Android execution artifact");
+    Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.capture_rmanvid1_over_promoted_direct_wifi"
             && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_receiver", StringComparison.Ordinal)
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
             && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
             && row.Notes.Contains("depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)
-            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
         "product media next action must show dependency and acceptance-artifact evidence");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.promote_qcl082_rmanvid1_capture"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_probe", StringComparison.Ordinal)
+            && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
+            && row.Evidence.Contains("--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)),
+        "product media promotion action must render the QCL-082 fold-in route");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
             && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)
@@ -1105,6 +1224,12 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-079 Manifold WebSocket route evidence input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-session-plan", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 media-stream source-contract input");
+    Assert(protocolMatrixAction.CliRoute.Contains("run-bridge-command-live-android", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 live Android start_source command route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--execution-out $RuntimeStatus", StringComparison.Ordinal),
+        "protocol matrix action must use the live Android execution artifact as the runtime-status source");
+    Assert(protocolMatrixAction.CliRoute.Contains("media-stream-start-source.live-android-execution.json", StringComparison.Ordinal),
+        "protocol matrix action must name the QCL-082 live Android execution sidecar");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-runtime-status", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 broker runtime-status input");
     Assert(protocolMatrixAction.CliRoute.Contains("rmanvid1-receiver-capture", StringComparison.Ordinal),

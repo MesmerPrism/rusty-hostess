@@ -102,6 +102,44 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         )
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_media_stream_runtime_status_accepts_live_android_execution(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            status_path = Path(tmpdir) / "media-stream-start-source.live-android-execution.json"
+            status_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": "rusty.hostess.bridge_command.live_android_execution_evidence.v1",
+                        "status": "pass",
+                        "command": "command.media_stream.start_source",
+                        "command_execution": {
+                            "$schema": "rusty.hostess.bridge_command.execution_evidence.v1",
+                            "status": "pass",
+                            "broker_messages": [media_stream_runtime_ack()],
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = fixture_report(
+                probe_args(probe_id="QCL-082", media_stream_runtime_status=str(status_path)),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["probe_id"], "QCL-082")
+        self.assertEqual(report["status"], "warn")
+        self.assertEqual(check(report, "protocol.media_stream_runtime_status")["status"], "pass")
+        self.assertEqual(check(report, "protocol.media_stream_command_ack")["status"], "pass")
+        self.assertEqual(
+            report["media_stream_runtime_status"]["artifact_path"],
+            str(status_path),
+        )
+        self.assertEqual(
+            report["media_stream_runtime_status"]["command_id"],
+            "command.media_stream.start_source",
+        )
+        self.assertEqual(validation["status"], "pass")
+
     def test_qcl082_media_stream_runtime_status_rejects_high_rate_json_media(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             status_path = Path(tmpdir) / "media-stream-runtime-status.json"

@@ -438,6 +438,46 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
                 for action in firewall_gate["next_actions"]
             )
         )
+        product_media_gate = next(
+            gate
+            for gate in gate_report["remaining_live_gates"]
+            if gate["gate_id"] == "transport.product_tcp_media_over_direct_wifi"
+        )
+        product_media_actions = {
+            action["action_id"]: action for action in product_media_gate["next_actions"]
+        }
+        self.assertIn("write_qcl082_media_stream_start_source_request", product_media_actions)
+        self.assertIn("run_qcl082_media_stream_start_source", product_media_actions)
+        self.assertIn("validate_qcl082_media_stream_runtime_status", product_media_actions)
+        start_action = product_media_actions["run_qcl082_media_stream_start_source"]
+        start_command = start_action["command"]["command"]
+        self.assertEqual(
+            start_action["authority_owner"],
+            "tools.hostessctl.bridge_command_live_android_routes",
+        )
+        self.assertTrue(start_action["requires_quest_lease"])
+        self.assertTrue(start_action["mutates_host"])
+        self.assertTrue(start_action["mutates_device"])
+        self.assertIn("run-bridge-command-live-android", start_command)
+        self.assertIn("--input target\\connectivity-probe\\media-stream-start-source.request.json", start_command)
+        self.assertIn("--execution-out target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", start_command)
+        self.assertIn("--serial '<quest-serial>'", start_command)
+        self.assertEqual(start_action["lease"]["resource"], "quest:<quest-serial>")
+        validate_command = product_media_actions["validate_qcl082_media_stream_runtime_status"]["command"]["command"]
+        self.assertIn(
+            "--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+            validate_command,
+        )
+        capture_command = product_media_actions["capture_rmanvid1_over_promoted_direct_wifi"]["command"]["command"]
+        promote_command = product_media_actions["promote_qcl082_rmanvid1_capture"]["command"]["command"]
+        self.assertIn(
+            "--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+            capture_command,
+        )
+        self.assertIn(
+            "--media-stream-runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json",
+            promote_command,
+        )
 
     def test_transport_gate_report_can_fail_on_pending_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

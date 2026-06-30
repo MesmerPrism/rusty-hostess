@@ -365,13 +365,41 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 Broker/runtime status artifacts from the same branch use a second
 CLI-equivalent route. This is broker-owned candidate evidence for command
 acceptance, source/runtime state, consent or lab-only gating, and binary-plane
-policy; it still does not promote QCL-082 without measured receiver counters:
+policy; it still does not promote QCL-082 without measured receiver counters.
+When using the connected-Quest route, first write the inspectable
+`rusty.hostess.bridge_command.request.v1` command artifact and run the
+Manifold bridge command. The resulting live Android execution sidecar carries
+the accepted command ACK and can be supplied directly to
+`--media-stream-runtime-status`:
 
 ```powershell
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+New-Item -ItemType Directory -Force target\connectivity-probe | Out-Null
+@'
+{
+  "$schema": "rusty.hostess.bridge_command.request.v1",
+  "request_id": "request.hostess.qcl082.media_stream.start_source",
+  "evidence_id": "evidence.hostess.qcl082.media_stream.start_source",
+  "route_id": "bridge_route.command.websocket.applied",
+  "command": "command.media_stream.start_source",
+  "params": {},
+  "required_evidence_stages": ["sent", "transport_ok", "authority_accepted"]
+}
+'@ | Set-Content -Encoding UTF8 target\connectivity-probe\media-stream-start-source.request.json
+
+python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
+  --input target\connectivity-probe\media-stream-start-source.request.json `
+  --out target\connectivity-probe\media-stream-start-source.bridge-evidence.json `
+  --execution-out target\connectivity-probe\media-stream-start-source.live-android-execution.json `
+  --validation-out target\connectivity-probe\media-stream-start-source.validation-report.json `
+  --adb $Adb `
+  --serial $QuestSerial
+
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id QCL-082 `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
   --fail-on-error
 ```
@@ -408,7 +436,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --port 9079 `
   --capture-out target\connectivity-probe\media-stream.rmanvid1 `
   --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
   --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
@@ -421,7 +449,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --probe-id QCL-082 `
   --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
   --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-start-source.live-android-execution.json `
   --media-stream-topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
   --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `

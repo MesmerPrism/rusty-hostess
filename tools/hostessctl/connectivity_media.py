@@ -620,7 +620,7 @@ def qcl082_media_stream_runtime_status_body(
             source_gate_ok,
         ]
     )
-    status = "fail" if core_failed else ("warn" if not binary_counters_present else "pass")
+    status = "fail" if core_failed else "warn"
 
     issues: list[dict[str, Any]] = []
     if not command_ack_ok:
@@ -874,6 +874,11 @@ def qcl082_media_stream_runtime_status_body(
 def media_stream_runtime_sections(
     artifact: dict[str, Any],
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    command_ack = media_stream_command_ack_from_artifact(artifact)
+    if command_ack:
+        runtime_result = object_value(command_ack.get("media_stream_runtime"))
+        runtime_status = object_value(runtime_result.get("runtime_status")) or runtime_result
+        return runtime_result, runtime_status, command_ack
     if object_value(artifact.get("media_stream_runtime")):
         runtime_result = object_value(artifact.get("media_stream_runtime"))
         runtime_status = object_value(runtime_result.get("runtime_status")) or runtime_result
@@ -881,6 +886,32 @@ def media_stream_runtime_sections(
     runtime_result = artifact
     runtime_status = object_value(artifact.get("runtime_status")) or artifact
     return runtime_result, runtime_status, {}
+
+
+def media_stream_command_ack_from_artifact(artifact: dict[str, Any]) -> dict[str, Any]:
+    if media_stream_command_ack_candidate(artifact):
+        return artifact
+
+    command_execution = object_value(artifact.get("command_execution"))
+    for source in [command_execution, artifact]:
+        for message in list_value(source.get("broker_messages")):
+            if media_stream_command_ack_candidate(message):
+                return message
+    return {}
+
+
+def media_stream_command_ack_candidate(row: dict[str, Any]) -> bool:
+    runtime_result = object_value(row.get("media_stream_runtime"))
+    if not runtime_result:
+        return False
+    command_id = str(row.get("command") or row.get("command_id") or runtime_result.get("command_id") or "")
+    schema = str(row.get("schema") or "")
+    row_type = str(row.get("type") or "")
+    return (
+        schema == "rusty.manifold.command.ack.v1"
+        or row_type == "command_ack"
+        or command_id.startswith(MEDIA_STREAM_COMMAND_PREFIX)
+    )
 
 
 def media_stream_source_runtime(
