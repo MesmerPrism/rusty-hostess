@@ -216,6 +216,10 @@ rejects malformed action metadata, including missing authority owners,
 non-boolean elevation/lease/mutation/gate-clearing flags, empty acceptance
 artifacts, and malformed dependency gate IDs, so WPF never treats an
 underspecified operator recipe as accepted guidance.
+WPF loads the same sidecar JSON written by `--validation-out` and renders a
+`transport_gates.validation_sidecar` row with sidecar status, error count,
+warning count, source projection, and remaining-gate count. That row is
+projection-only; the Hostess CLI sidecar remains the validation authority.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps those PowerShell command strings,
 output artifacts, elevation boundaries, Quest lease metadata, QCL-079 generic

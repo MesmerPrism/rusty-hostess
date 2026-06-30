@@ -306,6 +306,21 @@ public static class ConnectivityRows
             },
             new()
             {
+                Name = "transport_gates.validation_sidecar",
+                Status = TransportGateValidationStatus(report),
+                Evidence = TransportGateValidationEvidence(report),
+                Notes = TransportGateValidationNotes(report),
+                IssueCodes = TransportGateValidationIssueCodes(report),
+                Observed = report.ValidationReport is null
+                    ? JsonSerializer.SerializeToElement(new
+                    {
+                        validation_report_loaded = false,
+                        validation_report = report.ValidationReportPath,
+                    })
+                    : ToObservedElement(report.ValidationReport),
+            },
+            new()
+            {
                 Name = "transport_gates.data_protocols",
                 Status = TransportGateDataProtocolStatus(report.DataProtocols),
                 Evidence = TransportGateDataProtocolEvidence(report.DataProtocols),
@@ -618,6 +633,67 @@ public static class ConnectivityRows
             parts.Add($"completion_blockers={string.Join(",", report.Summary.CompletionBlockers)}");
         }
         return string.Join("; ", parts);
+    }
+
+    private static string TransportGateValidationStatus(CompanionTransportGateReport report)
+    {
+        if (report.ValidationReport is null)
+        {
+            return string.IsNullOrWhiteSpace(report.ValidationReportPath) ? "unknown" : "warn";
+        }
+        if (!string.Equals(report.ValidationReport.Status, "pass", StringComparison.OrdinalIgnoreCase))
+        {
+            return "fail";
+        }
+        return report.ValidationReport.Warnings.Count == 0 ? "pass" : "warn";
+    }
+
+    private static string TransportGateValidationEvidence(CompanionTransportGateReport report)
+    {
+        if (report.ValidationReport is null)
+        {
+            return "validation_report_loaded=False";
+        }
+        return
+            $"status={report.ValidationReport.Status}; " +
+            $"errors={report.ValidationReport.Errors.Count}; " +
+            $"warnings={report.ValidationReport.Warnings.Count}; " +
+            $"remaining_gates={report.ValidationReport.RemainingGateCount}; " +
+            $"data_protocols_promoted={report.ValidationReport.AllRequiredDataProtocolsPromoted}; " +
+            $"complete={report.ValidationReport.AllWpfTransportAndProtocolGatesClear}";
+    }
+
+    private static string TransportGateValidationNotes(CompanionTransportGateReport report)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(report.ValidationReportPath))
+        {
+            parts.Add($"validation_report={report.ValidationReportPath}");
+        }
+        if (report.ValidationReport is not null)
+        {
+            if (!string.IsNullOrWhiteSpace(report.ValidationReport.ReportId))
+            {
+                parts.Add($"report_id={report.ValidationReport.ReportId}");
+            }
+            if (!string.IsNullOrWhiteSpace(report.ValidationReport.SourceProjection))
+            {
+                parts.Add($"source_projection={report.ValidationReport.SourceProjection}");
+            }
+        }
+        return string.Join("; ", parts);
+    }
+
+    private static List<string> TransportGateValidationIssueCodes(CompanionTransportGateReport report)
+    {
+        if (report.ValidationReport is null)
+        {
+            return [];
+        }
+        return report.ValidationReport.Errors
+            .Concat(report.ValidationReport.Warnings)
+            .Where(issue => !string.IsNullOrWhiteSpace(issue))
+            .ToList();
     }
 
     private static string TransportGateDataProtocolStatus(

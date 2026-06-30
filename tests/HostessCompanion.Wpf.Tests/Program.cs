@@ -426,6 +426,14 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "transport gate validation sidecar must be written");
     Assert(run.TransportGates.ValidationReportPath.EndsWith(".transport-gates.validation-report.json", StringComparison.Ordinal),
         "transport gate validation sidecar path must be run-scoped");
+    Assert(run.TransportGates.ValidationReport is not null,
+        "transport gate validation sidecar must be loaded for WPF inspection");
+    Assert(run.TransportGates.ValidationReport!.Schema == "rusty.hostess.companion.transport_gate_report.validation.v1",
+        "transport gate validation sidecar schema must be preserved");
+    Assert(run.TransportGates.ValidationReport.ReportId == run.TransportGates.ReportId,
+        "transport gate validation sidecar must identify the loaded transport-gate report");
+    Assert(run.TransportGates.ValidationReport.SourceProjection == run.Projection.ReportPath,
+        "transport gate validation sidecar must identify the loaded projection artifact");
     Assert(run.Projection.Schema == "rusty.hostess.companion.report_projection.v1",
         "service must return the companion-report projection schema");
     Assert(run.TransportGates.Schema == "rusty.hostess.companion.transport_gate_report.v1",
@@ -628,6 +636,19 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("validation_report=target/companion-report/transport-gates.validation-report.json", StringComparison.Ordinal)
             && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols,transport.general_websocket_capability,transport.direct_wifi_live_topology,transport.product_tcp_media_over_direct_wifi,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)),
         "transport gate summary row must expose report artifacts and strict protocol-plus-transport completion blockers");
+    Assert(rows.Any(row =>
+            row.Name == "transport_gates.validation_sidecar"
+            && row.Status == "warn"
+            && row.Evidence.Contains("status=pass", StringComparison.Ordinal)
+            && row.Evidence.Contains("errors=0", StringComparison.Ordinal)
+            && row.Evidence.Contains("warnings=5", StringComparison.Ordinal)
+            && row.Evidence.Contains("remaining_gates=4", StringComparison.Ordinal)
+            && row.Evidence.Contains("data_protocols_promoted=False", StringComparison.Ordinal)
+            && row.Evidence.Contains("complete=False", StringComparison.Ordinal)
+            && row.Notes.Contains("validation_report=target/companion-report/transport-gates.validation-report.json", StringComparison.Ordinal)
+            && row.Notes.Contains("source_projection=target/companion-report/projection.json", StringComparison.Ordinal)
+            && row.IssueCodes.Contains("required data protocols are not all promoted")),
+        "transport gate validation sidecar row must expose Hostess validation status and warnings");
     Assert(rows.Any(row =>
             row.Name == "transport_gates.data_protocols"
             && row.Status == "warn"

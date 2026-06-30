@@ -762,6 +762,13 @@ public sealed class HostessctlConnectivityService
             .ConfigureAwait(false);
         report.ReportPath = reportPath.FullName;
         report.ValidationReportPath = validationPath.FullName;
+        if (validationPath.Exists)
+        {
+            report.ValidationReport = await ReadReportAsync<CompanionTransportGateValidationReport>(
+                    validationPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
+        }
         return report;
     }
 

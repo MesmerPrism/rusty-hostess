@@ -11,6 +11,24 @@ internal static class TransportGateReportFixtures
             ReportId = "transport-gates.test",
             ReportPath = "target/companion-report/transport-gates.json",
             ValidationReportPath = "target/companion-report/transport-gates.validation-report.json",
+            ValidationReport = new CompanionTransportGateValidationReport
+            {
+                Schema = "rusty.hostess.companion.transport_gate_report.validation.v1",
+                Status = "pass",
+                ReportId = "transport-gates.test",
+                SourceProjection = "target/companion-report/projection.json",
+                RemainingGateCount = 4,
+                AllRequiredDataProtocolsPromoted = false,
+                AllWpfTransportAndProtocolGatesClear = false,
+                Warnings =
+                [
+                    "required data protocols are not all promoted",
+                    "transport gate remains pending: transport.general_websocket_capability",
+                    "transport gate remains pending: transport.direct_wifi_live_topology",
+                    "transport gate remains pending: transport.product_tcp_media_over_direct_wifi",
+                    "transport gate remains pending: transport.product_tcp_media_listener_firewall",
+                ],
+            },
             Authority = new CompanionTransportGateAuthority
             {
                 ProjectionOnly = true,

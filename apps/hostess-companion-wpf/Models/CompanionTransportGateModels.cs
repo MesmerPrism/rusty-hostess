@@ -43,6 +43,39 @@ public sealed class CompanionTransportGateReport
 
     [JsonIgnore]
     public string ValidationReportPath { get; set; } = "";
+
+    [JsonIgnore]
+    public CompanionTransportGateValidationReport? ValidationReport { get; set; }
+}
+
+public sealed class CompanionTransportGateValidationReport
+{
+    [JsonPropertyName("$schema")]
+    public string Schema { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("report_id")]
+    public string ReportId { get; set; } = "";
+
+    [JsonPropertyName("source_projection")]
+    public string SourceProjection { get; set; } = "";
+
+    [JsonPropertyName("remaining_gate_count")]
+    public int RemainingGateCount { get; set; }
+
+    [JsonPropertyName("all_required_data_protocols_promoted")]
+    public bool AllRequiredDataProtocolsPromoted { get; set; }
+
+    [JsonPropertyName("all_wpf_transport_and_protocol_gates_clear")]
+    public bool AllWpfTransportAndProtocolGatesClear { get; set; }
+
+    [JsonPropertyName("errors")]
+    public List<string> Errors { get; set; } = [];
+
+    [JsonPropertyName("warnings")]
+    public List<string> Warnings { get; set; } = [];
 }
 
 public sealed class CompanionTransportGateAuthority

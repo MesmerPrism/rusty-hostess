@@ -97,7 +97,10 @@ gate's `next_actions` only as operator-visible guidance; Hostess CLI remains
 the owner of the PowerShell command text, elevation flags, Quest lease
 requirements, mutation flags, dependency gates, gate-clearing markers, and
 acceptance artifacts. The Hostess validation sidecar rejects malformed
-next-action metadata before WPF renders those rows.
+next-action metadata before WPF renders those rows. WPF loads that sidecar and
+projects its status, warning count, error count, source projection, and
+remaining-gate count for operator inspection, but it does not recalculate the
+validation policy.
 `tools.test_hostessctl_companion_transport_gate_actions` validates that the
 source-owned next-action catalog keeps QCL-079 generic WebSocket,
 direct-Wi-Fi, and QCL-082 product-media commands PowerShell-shaped,
