@@ -58,6 +58,8 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("--quest-lease-reserved-before-live-steps", command_text)
         self.assertIn("protocol-matrix", command_text)
         self.assertIn("companion-report projection", command_text)
+        self.assertIn("--firewall-rule", command_text)
+        self.assertIn("--direct-wifi-product-media-plan", command_text)
         self.assertIn("companion-report transport-gates", command_text)
 
     def test_direct_wifi_product_media_acceptance_plan_detects_ready_artifacts(self) -> None:

@@ -508,11 +508,24 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "generated acceptance plan must keep unpromoted direct-Wi-Fi topology planned");
     Assert(directWifiDependencyRow.Details.GetProperty("network_provider").GetString() == "wifi_direct",
         "direct-Wi-Fi acceptance dependency must keep Wi-Fi Direct visible to the projection");
+    var productMediaDependencyRow = run.Projection.Rows.Single(row =>
+        row.RowId == "direct_wifi_product_media_plan.dependency.transport.product_tcp_media_over_direct_wifi");
+    Assert(productMediaDependencyRow.Status == "planned",
+        "generated acceptance plan must keep product TCP media over direct Wi-Fi planned");
+    Assert(productMediaDependencyRow.Details.GetProperty("network_provider").GetString() == "wifi_direct",
+        "product media dependency must preserve the direct-Wi-Fi topology requirement");
+    Assert(productMediaDependencyRow.Details.GetProperty("route").GetString() == "rmanvid1_receiver_capture",
+        "product media dependency must preserve the receiver-capture route");
     var directWifiPlanRows = ConnectivityRows.ForCompanionReportProjection(run.Projection);
     Assert(directWifiPlanRows.Any(row =>
             row.Name == "direct_wifi_product_media_plan.summary"
             && row.Evidence.Contains("topology=", StringComparison.Ordinal)),
         "WPF row projection must render the generated direct-Wi-Fi product-media acceptance plan");
+    Assert(directWifiPlanRows.Any(row =>
+            row.Name == "direct_wifi_product_media_plan.dependency.transport.product_tcp_media_over_direct_wifi"
+            && row.Observed.GetProperty("Details").GetProperty("network_provider").GetString() == "wifi_direct"
+            && row.Observed.GetProperty("Details").GetProperty("route").GetString() == "rmanvid1_receiver_capture"),
+        "WPF row projection must preserve the product-media direct-Wi-Fi dependency details");
     Assert(directWifiPlanRows.Any(row =>
             row.Name == "direct_wifi_product_media_plan.command.qcl082_run_qcl082_product_media_live_session"
             && row.Evidence.Contains("qcl082-product-media-live-session", StringComparison.Ordinal)
@@ -1270,6 +1283,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must render a companion-report projection");
     Assert(protocolMatrixAction.CliRoute.Contains("--include-protocol-matrix-inputs", StringComparison.Ordinal),
         "protocol matrix action must include protocol-matrix inputs in the report projection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--firewall-rule $FirewallVerify", StringComparison.Ordinal),
+        "protocol matrix action must preserve the QCL-082 firewall report in the report projection");
+    Assert(protocolMatrixAction.CliRoute.Contains("--direct-wifi-product-media-plan $DirectWifiProductMediaPlan", StringComparison.Ordinal),
+        "protocol matrix action must preserve the direct-Wi-Fi product-media acceptance plan in the report projection");
     Assert(protocolMatrixAction.CliRoute.Contains("companion-report transport-gates", StringComparison.Ordinal),
         "protocol matrix action must render the transport gate status artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("--fail-on-error", StringComparison.Ordinal),

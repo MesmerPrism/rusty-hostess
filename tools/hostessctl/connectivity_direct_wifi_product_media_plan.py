@@ -605,6 +605,8 @@ def follow_on_projection_commands(paths: dict[str, str]) -> list[dict[str, Any]]
             (
                 "python tools\\hostessctl\\hostessctl.py companion-report projection "
                 f"--protocol-matrix {ps_quote(paths['protocol_matrix_out'])} "
+                f"--firewall-rule {ps_quote(paths['firewall_report'])} "
+                f"--direct-wifi-product-media-plan {ps_quote(paths['acceptance_plan_out'])} "
                 f"--out {ps_quote(paths['projection_out'])} "
                 "--include-protocol-matrix-inputs"
             ),

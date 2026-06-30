@@ -71,6 +71,11 @@ class CompanionOperatorActionCatalogTests(unittest.TestCase):
         self.assertTrue(protocol_action["mutates_host"])
         self.assertTrue(protocol_action["mutates_device"])
         self.assertIn("companion-report projection", protocol_action["cli_route"])
+        self.assertIn("--firewall-rule $FirewallVerify", protocol_action["cli_route"])
+        self.assertIn(
+            "--direct-wifi-product-media-plan $DirectWifiProductMediaPlan",
+            protocol_action["cli_route"],
+        )
         self.assertIn("companion-report transport-gates", protocol_action["cli_route"])
         self.assertIn("--fail-on-error", protocol_action["cli_route"])
         self.assertIn("--fail-on-pending", protocol_action["cli_route"])
