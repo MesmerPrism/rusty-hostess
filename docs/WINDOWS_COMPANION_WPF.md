@@ -693,6 +693,12 @@ serial-scoped. Per-action rows also render the Hostess authority owner,
 dependency gates, and acceptance artifacts, so operators can see that QCL-082
 product media depends on promoted direct-Wi-Fi topology plus product listener
 firewall evidence before the CLI route can clear the gate.
+The same WPF rows preserve the transport-gates `data_protocols` summary and
+`completion_blockers`, including
+`all_required_data_protocols_promoted` and
+`all_wpf_transport_and_protocol_gates_clear`, so the human view does not lose
+the stricter data-protocol completion state that automation can enforce with
+`--fail-on-incomplete`.
 The WPF Protocol Matrix button now materializes this report immediately after
 `companion-report projection` and appends its summary, term-gate, pending-gate,
 and next-action rows to the Connectivity page. It does not use

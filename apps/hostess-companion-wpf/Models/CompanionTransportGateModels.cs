@@ -23,6 +23,9 @@ public sealed class CompanionTransportGateReport
     [JsonPropertyName("summary")]
     public CompanionTransportGateSummary Summary { get; set; } = new();
 
+    [JsonPropertyName("data_protocols")]
+    public CompanionTransportGateDataProtocols DataProtocols { get; set; } = new();
+
     [JsonPropertyName("operator_next_actions")]
     public CompanionTransportGateOperatorActions OperatorNextActions { get; set; } = new();
 
@@ -80,6 +83,15 @@ public sealed class CompanionTransportGateSummary
     [JsonPropertyName("all_transport_gates_clear")]
     public bool AllTransportGatesClear { get; set; }
 
+    [JsonPropertyName("all_required_data_protocols_promoted")]
+    public bool AllRequiredDataProtocolsPromoted { get; set; }
+
+    [JsonPropertyName("all_wpf_transport_and_protocol_gates_clear")]
+    public bool AllWpfTransportAndProtocolGatesClear { get; set; }
+
+    [JsonPropertyName("completion_blockers")]
+    public List<string> CompletionBlockers { get; set; } = [];
+
     [JsonPropertyName("remaining_gate_count")]
     public int RemainingGateCount { get; set; }
 
@@ -91,6 +103,48 @@ public sealed class CompanionTransportGateSummary
 
     [JsonPropertyName("term_gate_ids")]
     public List<string> TermGateIds { get; set; } = [];
+}
+
+public sealed class CompanionTransportGateDataProtocols
+{
+    [JsonPropertyName("protocol_matrix_present")]
+    public bool ProtocolMatrixPresent { get; set; }
+
+    [JsonPropertyName("row_id")]
+    public string RowId { get; set; } = "";
+
+    [JsonPropertyName("status")]
+    public string Status { get; set; } = "";
+
+    [JsonPropertyName("source_artifact")]
+    public string SourceArtifact { get; set; } = "";
+
+    [JsonPropertyName("source_path")]
+    public string SourcePath { get; set; } = "";
+
+    [JsonPropertyName("all_required_data_protocols_promoted")]
+    public bool AllRequiredDataProtocolsPromoted { get; set; }
+
+    [JsonPropertyName("required_promoted_count")]
+    public int RequiredPromotedCount { get; set; }
+
+    [JsonPropertyName("promoted_count")]
+    public int PromotedCount { get; set; }
+
+    [JsonPropertyName("required_count")]
+    public int RequiredCount { get; set; }
+
+    [JsonPropertyName("candidate_count")]
+    public int CandidateCount { get; set; }
+
+    [JsonPropertyName("missing_gate_count")]
+    public int MissingGateCount { get; set; }
+
+    [JsonPropertyName("issue_count")]
+    public int IssueCount { get; set; }
+
+    [JsonPropertyName("issue_codes")]
+    public List<string> IssueCodes { get; set; } = [];
 }
 
 public sealed class CompanionTransportGateOperatorActions

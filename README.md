@@ -456,7 +456,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   read-only `rusty.hostess.companion.transport_gate_report.v1` from a
   companion-report projection. Use `--fail-on-pending` in automation when a run
   must stop until WPF-visible gates such as product TCP media over direct Wi-Fi
-  or the product TCP media listener firewall are proven.
+  or the product TCP media listener firewall are proven. Use
+  `--fail-on-incomplete` when the run must also require promoted data
+  protocols; WPF preserves the same `data_protocols` and
+  `completion_blockers` fields as operator rows instead of reducing the report
+  to pending live gates only.
 - `tools/hostessctl/hostessctl.py connectivity-probe run`: emits a
   `rusty.quest.connectivity_topology_probe.v1` report for the Quest
   connectivity lab. Fixture mode covers QCL-000 USB ADB command-feedback and

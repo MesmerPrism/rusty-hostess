@@ -294,13 +294,24 @@ public static class ConnectivityRows
                 Status = string.IsNullOrWhiteSpace(report.Status) ? "unknown" : report.Status,
                 Evidence =
                     $"{report.ReportId}: {report.Summary.RemainingGateCount} remaining gates; " +
+                    $"data_protocols_promoted={report.Summary.AllRequiredDataProtocolsPromoted}; " +
+                    $"complete={report.Summary.AllWpfTransportAndProtocolGatesClear}; " +
                     $"source={report.SourceProjection.ProjectionId}",
-                Notes = report.ReportPath,
+                Notes = TransportGateSummaryNotes(report),
                 IssueCodes = report.Issues
                     .Select(issue => issue.IssueCode)
                     .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
                     .ToList(),
                 Observed = ToObservedElement(report),
+            },
+            new()
+            {
+                Name = "transport_gates.data_protocols",
+                Status = TransportGateDataProtocolStatus(report.DataProtocols),
+                Evidence = TransportGateDataProtocolEvidence(report.DataProtocols),
+                Notes = TransportGateDataProtocolNotes(report),
+                IssueCodes = TransportGateDataProtocolIssueCodes(report.DataProtocols),
+                Observed = ToObservedElement(report.DataProtocols),
             },
             new()
             {
@@ -589,6 +600,75 @@ public static class ConnectivityRows
             parts.Add($"lease_release={action.Lease.ReleaseCommand}");
         }
         return string.Join("; ", parts);
+    }
+
+    private static string TransportGateSummaryNotes(CompanionTransportGateReport report)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(report.ReportPath))
+        {
+            parts.Add(report.ReportPath);
+        }
+        if (report.Summary.CompletionBlockers.Count > 0)
+        {
+            parts.Add($"completion_blockers={string.Join(",", report.Summary.CompletionBlockers)}");
+        }
+        return string.Join("; ", parts);
+    }
+
+    private static string TransportGateDataProtocolStatus(
+        CompanionTransportGateDataProtocols dataProtocols)
+    {
+        if (!dataProtocols.ProtocolMatrixPresent)
+        {
+            return "warn";
+        }
+        return dataProtocols.AllRequiredDataProtocolsPromoted ? "pass" : "warn";
+    }
+
+    private static string TransportGateDataProtocolEvidence(
+        CompanionTransportGateDataProtocols dataProtocols) =>
+        "protocol_matrix_present=" + dataProtocols.ProtocolMatrixPresent +
+        $"; all_required_data_protocols_promoted={dataProtocols.AllRequiredDataProtocolsPromoted}" +
+        $"; required={dataProtocols.RequiredPromotedCount}/{dataProtocols.RequiredCount}" +
+        $"; promoted={dataProtocols.PromotedCount}" +
+        $"; candidates={dataProtocols.CandidateCount}" +
+        $"; missing_gates={dataProtocols.MissingGateCount}";
+
+    private static string TransportGateDataProtocolNotes(
+        CompanionTransportGateReport report)
+    {
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(report.DataProtocols.SourcePath))
+        {
+            parts.Add($"source={report.DataProtocols.SourcePath}");
+        }
+        if (!string.IsNullOrWhiteSpace(report.DataProtocols.SourceArtifact))
+        {
+            parts.Add($"source_artifact={report.DataProtocols.SourceArtifact}");
+        }
+        if (report.Summary.CompletionBlockers.Count > 0)
+        {
+            parts.Add($"completion_blockers={string.Join(",", report.Summary.CompletionBlockers)}");
+        }
+        return string.Join("; ", parts);
+    }
+
+    private static List<string> TransportGateDataProtocolIssueCodes(
+        CompanionTransportGateDataProtocols dataProtocols)
+    {
+        var issueCodes = dataProtocols.IssueCodes
+            .Where(issueCode => !string.IsNullOrWhiteSpace(issueCode))
+            .ToList();
+        if (!dataProtocols.ProtocolMatrixPresent)
+        {
+            issueCodes.Add("hostess.issue.transport_gates.protocol_matrix_missing");
+        }
+        else if (!dataProtocols.AllRequiredDataProtocolsPromoted)
+        {
+            issueCodes.Add("hostess.issue.transport_gates.required_data_protocols_not_promoted");
+        }
+        return issueCodes;
     }
 
     private static string StatusForRequirement(string status) => status switch

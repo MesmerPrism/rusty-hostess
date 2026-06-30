@@ -205,6 +205,12 @@ Board lease metadata with the `quest:<quest-serial>` resource, reserve command,
 release command, duration, and the `adb-server:lifecycle` policy.
 Headset-bound commands use serial-scoped ADB; reserve `adb-server:lifecycle`
 only for disruptive daemon lifecycle recovery.
+`HostessCompanion.Wpf.Tests` also checks that the WPF transport-gate model and
+row projection preserve `data_protocols`,
+`all_required_data_protocols_promoted`,
+`all_wpf_transport_and_protocol_gates_clear`, and `completion_blockers`, so the
+human Connectivity page shows the same strict protocol-plus-transport
+completion state that `--fail-on-incomplete` enforces for automation.
 The WPF Protocol Matrix action follows that sequence: it runs the fixture
 suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixtures,
 refreshes the QCL-082 Rusty Quest media-stream source-contract report through

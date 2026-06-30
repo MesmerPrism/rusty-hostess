@@ -612,6 +612,16 @@ static void TransportGateRowsExposeNextActions()
         },
         Summary = new CompanionTransportGateSummary
         {
+            AllTransportGatesClear = false,
+            AllRequiredDataProtocolsPromoted = false,
+            AllWpfTransportAndProtocolGatesClear = false,
+            CompletionBlockers =
+            [
+                "protocol_matrix.required_data_protocols",
+                "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_over_direct_wifi",
+                "transport.product_tcp_media_listener_firewall",
+            ],
             RemainingGateCount = 3,
             RemainingGateIds =
             [
@@ -621,6 +631,22 @@ static void TransportGateRowsExposeNextActions()
             ],
             TermGateCount = 1,
             TermGateIds = ["wifi_direct"],
+        },
+        DataProtocols = new CompanionTransportGateDataProtocols
+        {
+            ProtocolMatrixPresent = true,
+            RowId = "protocol_matrix.summary",
+            Status = "warn",
+            SourceArtifact = "protocol_matrix",
+            SourcePath = "target/connectivity-probe/protocol-matrix.json",
+            AllRequiredDataProtocolsPromoted = false,
+            RequiredPromotedCount = 4,
+            RequiredCount = 5,
+            PromotedCount = 7,
+            CandidateCount = 1,
+            MissingGateCount = 1,
+            IssueCount = 1,
+            IssueCodes = ["hostess.issue.protocol_evidence_matrix.required_protocol_not_promoted"],
         },
         OperatorNextActions = new CompanionTransportGateOperatorActions
         {
@@ -978,10 +1004,38 @@ static void TransportGateRowsExposeNextActions()
         ],
     };
 
+    var serializedReport = JsonSerializer.Serialize(report);
+    Assert(serializedReport.Contains("\"data_protocols\"", StringComparison.Ordinal),
+        "transport gate report JSON must preserve data_protocols");
+    Assert(serializedReport.Contains("\"completion_blockers\"", StringComparison.Ordinal),
+        "transport gate report JSON must preserve completion_blockers");
+    var roundTripped = JsonSerializer.Deserialize<CompanionTransportGateReport>(serializedReport)
+        ?? throw new InvalidOperationException("transport gate report round-trip failed");
+    Assert(roundTripped.DataProtocols.RequiredPromotedCount == 4,
+        "transport gate report model must deserialize data_protocol counters");
+    Assert(roundTripped.Summary.CompletionBlockers.Contains("protocol_matrix.required_data_protocols"),
+        "transport gate report model must deserialize completion blockers");
+
     var rows = ConnectivityRows.ForTransportGateReport(report);
 
     Assert(rows.Any(row => row.Name == "hostess.companion_transport_gates" && row.Status == "warn"),
         "transport gate report summary row must stay visible");
+    Assert(rows.Any(row =>
+            row.Name == "hostess.companion_transport_gates"
+            && row.Evidence.Contains("data_protocols_promoted=False", StringComparison.Ordinal)
+            && row.Evidence.Contains("complete=False", StringComparison.Ordinal)
+            && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols,transport.direct_wifi_live_topology,transport.product_tcp_media_over_direct_wifi,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)),
+        "transport gate summary row must expose strict protocol-plus-transport completion blockers");
+    Assert(rows.Any(row =>
+            row.Name == "transport_gates.data_protocols"
+            && row.Status == "warn"
+            && row.Evidence.Contains("protocol_matrix_present=True", StringComparison.Ordinal)
+            && row.Evidence.Contains("all_required_data_protocols_promoted=False", StringComparison.Ordinal)
+            && row.Evidence.Contains("required=4/5", StringComparison.Ordinal)
+            && row.Notes.Contains("source=target/connectivity-probe/protocol-matrix.json", StringComparison.Ordinal)
+            && row.Notes.Contains("completion_blockers=protocol_matrix.required_data_protocols", StringComparison.Ordinal)
+            && row.IssueCodes.Contains("hostess.issue.transport_gates.required_data_protocols_not_promoted")),
+        "transport gate rows must preserve Hostess data-protocol completion evidence");
     Assert(rows.Any(row =>
             row.Name == "transport_gates.operator_next_actions"
             && row.Evidence.Contains("shell=powershell", StringComparison.Ordinal)),
