@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,69 @@ RUNTIME_RECEIPT_TYPES = {
     "command_runtime_receipt",
     "bridge_route_receipt",
 }
+
+
+def run_emit_bridge_command_request(args: argparse.Namespace) -> int:
+    params = bridge_command_request_params(args)
+    request = bridge_command_request_artifact(
+        bridge_command=str(args.bridge_command),
+        request_id=str(getattr(args, "request_id", "") or ""),
+        evidence_id=str(getattr(args, "evidence_id", "") or ""),
+        route_id=str(getattr(args, "route_id", "") or DEFAULT_COMMAND_ROUTE_ID),
+        required_stages=getattr(args, "required_stage", None) or None,
+        params=params,
+    )
+    out = Path(args.out)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(json.dumps(request, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    load_bridge_command_request(out)
+    return 0
+
+
+def bridge_command_request_artifact(
+    *,
+    bridge_command: str,
+    request_id: str = "",
+    evidence_id: str = "",
+    route_id: str = DEFAULT_COMMAND_ROUTE_ID,
+    required_stages: list[str] | None = None,
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    command = bridge_command.strip()
+    if not command:
+        raise ValueError("bridge command request command is required")
+    slug = bridge_command_slug(command)
+    return {
+        "$schema": BRIDGE_COMMAND_REQUEST_SCHEMA,
+        "request_id": request_id or f"request.hostess.bridge_command.{slug}",
+        "evidence_id": evidence_id or f"evidence.hostess.bridge_command.{slug}",
+        "route_id": route_id or DEFAULT_COMMAND_ROUTE_ID,
+        "command": command,
+        "params": params or {},
+        "required_evidence_stages": required_stages or list(DEFAULT_REQUIRED_STAGES),
+    }
+
+
+def bridge_command_request_params(args: argparse.Namespace) -> dict[str, Any]:
+    params_json = str(getattr(args, "params_json", "") or "")
+    params_json_file = str(getattr(args, "params_json_file", "") or "")
+    if params_json and params_json_file:
+        raise ValueError("--params-json and --params-json-file are mutually exclusive")
+    if params_json_file:
+        value = load_json_object(Path(params_json_file))
+    elif params_json:
+        value = json.loads(params_json)
+        if not isinstance(value, dict):
+            raise ValueError("--params-json must decode to a JSON object")
+    else:
+        value = {}
+    return value
+
+
+def bridge_command_slug(command: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9_.-]+", "_", command.strip())
+    slug = slug.replace(".", "_").replace("-", "_").strip("_")
+    return slug or "request"
 
 
 def run_bridge_command(
@@ -530,6 +594,8 @@ __all__ = [
     "BRIDGE_COMMAND_REQUEST_SCHEMA",
     "DEFAULT_COMMAND_ROUTE_ID",
     "DEFAULT_RUNTIME_RECEIPT_STREAM",
+    "bridge_command_request_artifact",
     "execute_bridge_command_request",
+    "run_emit_bridge_command_request",
     "run_bridge_command",
 ]

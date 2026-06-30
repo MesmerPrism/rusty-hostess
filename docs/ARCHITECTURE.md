@@ -156,13 +156,13 @@ aliasing are isolated from route orchestration. Projected Motion Breath broker
 publication and receipt listening live in
 `tools/hostessctl/pmb_broker_bridge.py`.
 Bridge command execution lives in
-`tools/hostessctl/bridge_command_routes.py`. It consumes a UI-neutral
-`rusty.hostess.bridge_command.request.v1` command request, sends the Manifold
-command envelope through `broker_transport.py`, subscribes to the selected
-runtime receipt stream, waits for authority ACK and runtime/applied receipts,
-and emits bridge-route evidence. It is the shared backend route that WPF,
-Makepad, and future UI shells should call instead of adding UI-local command
-acceptance logic.
+`tools/hostessctl/bridge_command_routes.py`. It emits and consumes UI-neutral
+`rusty.hostess.bridge_command.request.v1` command request artifacts, sends the
+Manifold command envelope through `broker_transport.py`, subscribes to the
+selected runtime receipt stream, waits for authority ACK and runtime/applied
+receipts, and emits bridge-route evidence. It is the shared backend route that
+WPF, Makepad, and future UI shells should call instead of adding UI-local
+command request shaping or acceptance logic.
 The Hostess Makepad broker-stream runtime consumer lives in
 `apps/hostess-t-makepad/src/manifold_bridge_command_subscriber.rs`. It
 subscribes to `stream.hostess.makepad.bridge_command`, reuses

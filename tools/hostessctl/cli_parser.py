@@ -374,6 +374,16 @@ def build_hostessctl_parser(
     bridge_route_evidence.add_argument("--route-descriptor")
     bridge_route_evidence.add_argument("--required-stage", action="append", default=[])
 
+    bridge_command_request = subcommands.add_parser("emit-bridge-command-request")
+    bridge_command_request.add_argument("--bridge-command", required=True)
+    bridge_command_request.add_argument("--out", required=True)
+    bridge_command_request.add_argument("--request-id")
+    bridge_command_request.add_argument("--evidence-id")
+    bridge_command_request.add_argument("--route-id", default="bridge_route.command.websocket.applied")
+    bridge_command_request.add_argument("--required-stage", action="append", default=[])
+    bridge_command_request.add_argument("--params-json")
+    bridge_command_request.add_argument("--params-json-file")
+
     bridge_command = subcommands.add_parser("run-bridge-command")
     bridge_command.add_argument("--input", required=True)
     bridge_command.add_argument("--out", required=True)

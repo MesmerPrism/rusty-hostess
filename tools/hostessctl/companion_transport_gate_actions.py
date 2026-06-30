@@ -389,18 +389,16 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
             command=powershell_command(
                 "Write QCL-082 start_source request",
                 (
-                    "New-Item -ItemType Directory -Force target\\connectivity-probe | Out-Null; "
-                    "@'\n"
-                    "{\n"
-                    "  \"$schema\": \"rusty.hostess.bridge_command.request.v1\",\n"
-                    "  \"request_id\": \"request.hostess.qcl082.media_stream.start_source\",\n"
-                    "  \"evidence_id\": \"evidence.hostess.qcl082.media_stream.start_source\",\n"
-                    "  \"route_id\": \"bridge_route.command.websocket.applied\",\n"
-                    "  \"command\": \"command.media_stream.start_source\",\n"
-                    "  \"params\": {},\n"
-                    "  \"required_evidence_stages\": [\"sent\", \"transport_ok\", \"authority_accepted\"]\n"
-                    "}\n"
-                    f"'@ | Set-Content -Encoding UTF8 {QCL082_START_SOURCE_REQUEST}"
+                    "python tools\\hostessctl\\hostessctl.py "
+                    "emit-bridge-command-request "
+                    "--bridge-command command.media_stream.start_source "
+                    "--request-id request.hostess.qcl082.media_stream.start_source "
+                    "--evidence-id evidence.hostess.qcl082.media_stream.start_source "
+                    "--route-id bridge_route.command.websocket.applied "
+                    "--required-stage sent "
+                    "--required-stage transport_ok "
+                    "--required-stage authority_accepted "
+                    f"--out {QCL082_START_SOURCE_REQUEST}"
                 ),
             ),
             acceptance_artifacts=[QCL082_START_SOURCE_REQUEST],

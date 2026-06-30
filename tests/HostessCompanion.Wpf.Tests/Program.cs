@@ -709,7 +709,7 @@ static void TransportGateRowsExposeNextActions()
                         {
                             Label = "Write QCL-082 start_source request",
                             Shell = "powershell",
-                            Command = "New-Item -ItemType Directory -Force target\\connectivity-probe | Out-Null; @'\n{ \"$schema\": \"rusty.hostess.bridge_command.request.v1\", \"command\": \"command.media_stream.start_source\" }\n'@ | Set-Content -Encoding UTF8 target\\connectivity-probe\\media-stream-start-source.request.json",
+                            Command = "python tools\\hostessctl\\hostessctl.py emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out target\\connectivity-probe\\media-stream-start-source.request.json",
                         },
                     },
                     new CompanionTransportGateNextAction
@@ -873,8 +873,9 @@ static void TransportGateRowsExposeNextActions()
             row.Name == "transport.product_tcp_media_over_direct_wifi.write_qcl082_media_stream_start_source_request"
             && row.Notes.Contains("authority_owner=tools.hostessctl.bridge_command_routes", StringComparison.Ordinal)
             && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)
-            && row.Evidence.Contains("rusty.hostess.bridge_command.request.v1", StringComparison.Ordinal)
-            && row.Evidence.Contains("command.media_stream.start_source", StringComparison.Ordinal)),
+            && row.Evidence.Contains("emit-bridge-command-request", StringComparison.Ordinal)
+            && row.Evidence.Contains("--bridge-command command.media_stream.start_source", StringComparison.Ordinal)
+            && row.Evidence.Contains("--required-stage authority_accepted", StringComparison.Ordinal)),
         "product media request action must render the inspectable bridge-command request artifact");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_over_direct_wifi.run_qcl082_media_stream_start_source"
@@ -1224,6 +1225,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-079 Manifold WebSocket route evidence input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-session-plan", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 media-stream source-contract input");
+    Assert(protocolMatrixAction.CliRoute.Contains("emit-bridge-command-request", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 bridge-command request generator");
+    Assert(protocolMatrixAction.CliRoute.Contains("--bridge-command command.media_stream.start_source", StringComparison.Ordinal),
+        "protocol matrix action must generate the QCL-082 start_source request through Hostess CLI");
     Assert(protocolMatrixAction.CliRoute.Contains("run-bridge-command-live-android", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 live Android start_source command route");
     Assert(protocolMatrixAction.CliRoute.Contains("--execution-out $RuntimeStatus", StringComparison.Ordinal),

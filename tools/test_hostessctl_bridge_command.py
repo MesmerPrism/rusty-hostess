@@ -8,8 +8,12 @@ from pathlib import Path
 
 from tools.hostessctl.bridge_command_routes import (
     BRIDGE_COMMAND_EXECUTION_SCHEMA,
+    BRIDGE_COMMAND_REQUEST_SCHEMA,
     DEFAULT_RUNTIME_RECEIPT_STREAM,
+    bridge_command_request_artifact,
     execute_bridge_command_request,
+    load_bridge_command_request,
+    run_emit_bridge_command_request,
     run_bridge_command,
 )
 from tools.hostessctl.bridge_route_evidence import (
@@ -25,6 +29,49 @@ DAMAGED_FIXTURES = REPO_ROOT / "fixtures" / "damaged"
 
 
 class HostessCtlBridgeCommandTests(unittest.TestCase):
+    def test_emit_bridge_command_request_writes_loadable_request_artifact(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "media-stream-start-source.request.json"
+            status = run_emit_bridge_command_request(
+                emit_bridge_command_request_args(
+                    out,
+                    bridge_command="command.media_stream.start_source",
+                    request_id="request.hostess.qcl082.media_stream.start_source",
+                    evidence_id="evidence.hostess.qcl082.media_stream.start_source",
+                    required_stage=["sent", "transport_ok", "authority_accepted"],
+                )
+            )
+
+            request = read_json(out)
+            loaded = load_bridge_command_request(out)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(request["$schema"], BRIDGE_COMMAND_REQUEST_SCHEMA)
+        self.assertEqual(request["command"], "command.media_stream.start_source")
+        self.assertEqual(request["params"], {})
+        self.assertEqual(
+            request["required_evidence_stages"],
+            ["sent", "transport_ok", "authority_accepted"],
+        )
+        self.assertEqual(loaded, request)
+
+    def test_bridge_command_request_artifact_defaults_stable_ids(self) -> None:
+        request = bridge_command_request_artifact(
+            bridge_command="quest.projection_target.set_scale",
+            params={"scale": 1.25},
+        )
+
+        self.assertEqual(request["$schema"], BRIDGE_COMMAND_REQUEST_SCHEMA)
+        self.assertEqual(
+            request["request_id"],
+            "request.hostess.bridge_command.quest_projection_target_set_scale",
+        )
+        self.assertEqual(
+            request["evidence_id"],
+            "evidence.hostess.bridge_command.quest_projection_target_set_scale",
+        )
+        self.assertEqual(request["params"], {"scale": 1.25})
+
     def test_fake_websocket_command_produces_applied_bridge_evidence(self) -> None:
         request = read_json(BRIDGE_COMMAND_FIXTURES / "hostess-websocket-command-request.json")
         expected = read_json(BRIDGE_COMMAND_FIXTURES / "hostess-websocket-command-applied-evidence.json")
@@ -176,6 +223,53 @@ class HostessCtlBridgeCommandTests(unittest.TestCase):
         self.assertEqual(args.wait_seconds, 0.5)
         self.assertEqual(args.runtime_receipt_stream, DEFAULT_RUNTIME_RECEIPT_STREAM)
         self.assertFalse(args.no_runtime_receipt_subscribe)
+
+    def test_parser_accepts_emit_bridge_command_request(self) -> None:
+        args = build_parser().parse_args(
+            [
+                "emit-bridge-command-request",
+                "--bridge-command",
+                "command.media_stream.start_source",
+                "--out",
+                "request.json",
+                "--request-id",
+                "request.hostess.qcl082.media_stream.start_source",
+                "--evidence-id",
+                "evidence.hostess.qcl082.media_stream.start_source",
+                "--required-stage",
+                "sent",
+                "--required-stage",
+                "authority_accepted",
+                "--params-json",
+                "{}",
+            ]
+        )
+
+        self.assertEqual(args.command, "emit-bridge-command-request")
+        self.assertEqual(args.bridge_command, "command.media_stream.start_source")
+        self.assertEqual(args.out, "request.json")
+        self.assertEqual(args.required_stage, ["sent", "authority_accepted"])
+        self.assertEqual(args.params_json, "{}")
+
+
+def emit_bridge_command_request_args(
+    out: Path,
+    *,
+    bridge_command: str,
+    request_id: str = "",
+    evidence_id: str = "",
+    required_stage: list[str] | None = None,
+) -> argparse.Namespace:
+    return argparse.Namespace(
+        bridge_command=bridge_command,
+        out=str(out),
+        request_id=request_id,
+        evidence_id=evidence_id,
+        route_id="bridge_route.command.websocket.applied",
+        required_stage=required_stage or [],
+        params_json=None,
+        params_json_file=None,
+    )
 
 
 def bridge_command_args(source_path: Path, out: Path, *, wait_seconds: float = 1.0) -> argparse.Namespace:

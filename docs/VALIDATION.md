@@ -485,18 +485,15 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 
 $QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 $Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
-New-Item -ItemType Directory -Force target\connectivity-probe | Out-Null
-@'
-{
-  "$schema": "rusty.hostess.bridge_command.request.v1",
-  "request_id": "request.hostess.qcl082.media_stream.start_source",
-  "evidence_id": "evidence.hostess.qcl082.media_stream.start_source",
-  "route_id": "bridge_route.command.websocket.applied",
-  "command": "command.media_stream.start_source",
-  "params": {},
-  "required_evidence_stages": ["sent", "transport_ok", "authority_accepted"]
-}
-'@ | Set-Content -Encoding UTF8 target\connectivity-probe\media-stream-start-source.request.json
+python tools\hostessctl\hostessctl.py emit-bridge-command-request `
+  --bridge-command command.media_stream.start_source `
+  --request-id request.hostess.qcl082.media_stream.start_source `
+  --evidence-id evidence.hostess.qcl082.media_stream.start_source `
+  --route-id bridge_route.command.websocket.applied `
+  --required-stage sent `
+  --required-stage transport_ok `
+  --required-stage authority_accepted `
+  --out target\connectivity-probe\media-stream-start-source.request.json
 
 python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
   --input target\connectivity-probe\media-stream-start-source.request.json `

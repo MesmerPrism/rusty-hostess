@@ -125,10 +125,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   waits for socket/process readiness, then delegates command execution to
   `bridge_command_routes.py` and records setup actions in a Hostess sidecar.
 - `tools/hostessctl/bridge_command_routes.py`: frontend-neutral bridge command
-  execution over the Manifold broker WebSocket route. It consumes a command
-  request JSON, sends a Manifold command envelope, waits for authority/runtime
-  receipts, and emits bridge-route evidence for WPF, Makepad, and future UI
-  shells.
+  request generation and execution over the Manifold broker WebSocket route.
+  It emits/consumes command request JSON, sends a Manifold command envelope,
+  waits for authority/runtime receipts, and emits bridge-route evidence for
+  WPF, Makepad, and future UI shells.
 - `tools/hostessctl/bridge_route_evidence.py`: UI-neutral bridge-route
   evidence normalization and validation. WPF, Makepad, and future frontends can
   feed Hostess stage observations into the same Manifold bridge-route evidence

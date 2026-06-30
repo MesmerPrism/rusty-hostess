@@ -29,6 +29,7 @@ public static class OperatorActionCatalog
         "$Projection = '<projection>'; " +
         "$TransportGates = '<transport-gates>'; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-session-plan $MediaStreamSessionPlan; " +
+        "emit-bridge-command-request --bridge-command command.media_stream.start_source --request-id request.hostess.qcl082.media_stream.start_source --evidence-id evidence.hostess.qcl082.media_stream.start_source --route-id bridge_route.command.websocket.applied --required-stage sent --required-stage transport_ok --required-stage authority_accepted --out $StartSourceRequest; " +
         "run-bridge-command-live-android --input $StartSourceRequest --out $StartSourceBridgeEvidence --execution-out $RuntimeStatus --validation-out $StartSourceValidation --adb $Adb --serial $QuestSerial; " +
         "connectivity-probe run --probe-id QCL-082 --media-stream-runtime-status $RuntimeStatus; " +
         "connectivity-probe windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media --program $HostessCompanionWpfExe --out $FirewallVerify; " +

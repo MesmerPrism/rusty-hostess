@@ -449,6 +449,13 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertIn("write_qcl082_media_stream_start_source_request", product_media_actions)
         self.assertIn("run_qcl082_media_stream_start_source", product_media_actions)
         self.assertIn("validate_qcl082_media_stream_runtime_status", product_media_actions)
+        write_action = product_media_actions["write_qcl082_media_stream_start_source_request"]
+        write_command = write_action["command"]["command"]
+        self.assertEqual(write_action["authority_owner"], "tools.hostessctl.bridge_command_routes")
+        self.assertFalse(write_action["requires_quest_lease"])
+        self.assertIn("emit-bridge-command-request", write_command)
+        self.assertIn("--bridge-command command.media_stream.start_source", write_command)
+        self.assertIn("--required-stage authority_accepted", write_command)
         start_action = product_media_actions["run_qcl082_media_stream_start_source"]
         start_command = start_action["command"]["command"]
         self.assertEqual(

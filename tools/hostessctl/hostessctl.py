@@ -223,6 +223,8 @@ def dispatch_command(args: argparse.Namespace) -> int:
         return run_manifold_value_recording(args)
     if args.command == "emit-bridge-route-evidence":
         return emit_bridge_route_evidence(args)
+    if args.command == "emit-bridge-command-request":
+        return bridge_command_routes.run_emit_bridge_command_request(args)
     if args.command == "run-bridge-command":
         return run_bridge_command(args)
     if args.command == "run-bridge-command-live-android":
