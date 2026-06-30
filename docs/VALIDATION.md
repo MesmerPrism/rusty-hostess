@@ -250,19 +250,24 @@ through the same CLI route instead of treating the WPF UI as the promotion
 owner:
 
 ```powershell
+$ProbeId = 'QCL-041'
 $LifecycleReport = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-source.json'
+$TopologyReport = 'target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
-  --probe-id QCL-041 `
+  --probe-id $ProbeId `
   --wifi-direct-lifecycle-report $LifecycleReport `
-  --out target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json `
+  --out $TopologyReport `
   --fail-on-error
 ```
 
-That output clears only `transport.direct_wifi_live_topology` when feature,
-peer/API, permission, discovery, group formation, bounded TCP socket exchange,
-and cleanup checks all pass. Product TCP media over that topology still needs
-the separate QCL-082 RMANVID1 receiver/listener report.
+Use `QCL-040` plus `qcl040-*` artifact names for Android-phone peer lifecycle
+evidence, or `QCL-041` plus `qcl041-*` artifact names for Windows-peer
+lifecycle evidence. That output clears only
+`transport.direct_wifi_live_topology` when feature, peer/API, permission,
+discovery, group formation, bounded TCP socket exchange, and cleanup checks all
+pass. Product TCP media over that topology still needs the separate QCL-082
+RMANVID1 receiver/listener report.
 
 LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
 host-loopback live reports. These are dependency/protocol checks, not Quest
@@ -280,11 +285,12 @@ Windows adapter inspection. It does not mutate Wi-Fi Direct state and it does
 not clear `transport.direct_wifi_live_topology` by itself:
 
 ```powershell
+$QuestSerial = '<quest-serial>'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-041 `
   --adb S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe `
-  --serial <quest-serial> `
+  --serial $QuestSerial `
   --out target\connectivity-probe\qcl041-live-wifi-direct-preflight.json
 ```
 

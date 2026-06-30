@@ -593,7 +593,12 @@ static void TransportGateRowsExposeNextActions()
                 new CompanionTransportGateActionSummary
                 {
                     GateId = "transport.direct_wifi_live_topology",
-                    NextActionIds = ["run_qcl041_live_wifi_direct_preflight"],
+                    NextActionIds =
+                    [
+                        "run_qcl041_live_wifi_direct_preflight",
+                        "normalize_qcl040_wifi_direct_lifecycle_report",
+                        "normalize_qcl041_wifi_direct_lifecycle_report",
+                    ],
                 },
                 new CompanionTransportGateActionSummary
                 {
@@ -637,6 +642,38 @@ static void TransportGateRowsExposeNextActions()
                             ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
                         },
                     },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "normalize_qcl040_wifi_direct_lifecycle_report",
+                        Label = "Build QCL-040 lifecycle topology report",
+                        AuthorityOwner = "tools.hostessctl.connectivity_topology_lifecycle",
+                        ClearsGateWhenAccepted = true,
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-040 --wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>' --out target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json --fail-on-error",
+                        },
+                    },
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "normalize_qcl041_wifi_direct_lifecycle_report",
+                        Label = "Build QCL-041 lifecycle topology report",
+                        AuthorityOwner = "tools.hostessctl.connectivity_topology_lifecycle",
+                        ClearsGateWhenAccepted = true,
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>' --out target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json --fail-on-error",
+                        },
+                    },
                 ],
             },
             new CompanionTransportGate
@@ -677,6 +714,20 @@ static void TransportGateRowsExposeNextActions()
             && row.Notes.Contains("lease_resource=quest:<quest-serial>", StringComparison.Ordinal)
             && row.Notes.Contains("lease_release=& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done", StringComparison.Ordinal)),
         "direct Wi-Fi next action must show Quest lease resource, release command, and non-lifecycle ADB policy");
+    Assert(rows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.normalize_qcl040_wifi_direct_lifecycle_report"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
+            && row.Evidence.Contains("--probe-id QCL-040", StringComparison.Ordinal)
+            && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
+        "QCL-040 lifecycle normalizer must be visible as a CLI-equivalent WPF action");
+    Assert(rows.Any(row =>
+            row.Name == "transport.direct_wifi_live_topology.normalize_qcl041_wifi_direct_lifecycle_report"
+            && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
+            && row.Evidence.Contains("--probe-id QCL-041", StringComparison.Ordinal)
+            && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
+        "QCL-041 lifecycle normalizer must be visible as a CLI-equivalent WPF action");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
             && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)

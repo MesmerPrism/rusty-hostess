@@ -374,6 +374,32 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
                 for action in direct_wifi_gate["next_actions"]
             )
         )
+        direct_wifi_actions = {
+            action["action_id"]: action for action in direct_wifi_gate["next_actions"]
+        }
+        for probe_id, action_id, artifact_name in [
+            (
+                "QCL-040",
+                "normalize_qcl040_wifi_direct_lifecycle_report",
+                "qcl040-live-wifi-direct-lifecycle.json",
+            ),
+            (
+                "QCL-041",
+                "normalize_qcl041_wifi_direct_lifecycle_report",
+                "qcl041-live-wifi-direct-lifecycle.json",
+            ),
+        ]:
+            action = direct_wifi_actions[action_id]
+            command = action["command"]["command"]
+            self.assertEqual(action["authority_owner"], "tools.hostessctl.connectivity_topology_lifecycle")
+            self.assertFalse(action["requires_quest_lease"])
+            self.assertFalse(action["mutates_host"])
+            self.assertFalse(action["mutates_device"])
+            self.assertTrue(action["clears_gate_when_accepted"])
+            self.assertIn("--mode fixture", command)
+            self.assertIn(f"--probe-id {probe_id}", command)
+            self.assertIn("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", command)
+            self.assertIn(artifact_name, command)
         firewall_gate = next(
             gate
             for gate in gate_report["remaining_live_gates"]

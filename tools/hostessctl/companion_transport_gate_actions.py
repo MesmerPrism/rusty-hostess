@@ -18,7 +18,10 @@ QCL082_FIREWALL_VERIFY = (
     r"target\connectivity-probe\qcl082-tcp-firewall-admin-handoff-verify.json"
 )
 DIRECT_WIFI_LIFECYCLE_INPUT = r"<wifi-direct-lifecycle-report>"
-DIRECT_WIFI_LIFECYCLE_OUTPUT = (
+DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT = (
+    r"target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json"
+)
+DIRECT_WIFI_QCL041_LIFECYCLE_OUTPUT = (
     r"target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json"
 )
 
@@ -256,35 +259,62 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 "bounded socket exchange, and cleanup evidence."
             ),
         ),
-        next_action(
-            "normalize_qcl041_wifi_direct_lifecycle_report",
-            "Normalize leased Wi-Fi Direct lifecycle evidence into a promoted topology report.",
-            authority_owner="tools.hostessctl.connectivity_topology_lifecycle",
-            requires_elevation=False,
-            requires_quest_lease=False,
-            mutates_host=False,
-            mutates_device=False,
-            command=powershell_command(
-                "Build QCL-041 lifecycle topology report",
-                (
-                    "python tools\\hostessctl\\hostessctl.py "
-                    "connectivity-probe run "
-                    "--mode fixture "
-                    "--probe-id QCL-041 "
-                    f"--wifi-direct-lifecycle-report '{DIRECT_WIFI_LIFECYCLE_INPUT}' "
-                    f"--out {DIRECT_WIFI_LIFECYCLE_OUTPUT} "
-                    "--fail-on-error"
-                ),
+        wifi_direct_lifecycle_action(
+            action_id="normalize_qcl040_wifi_direct_lifecycle_report",
+            probe_id="QCL-040",
+            output=DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT,
+            label=(
+                "Normalize leased Android-phone Wi-Fi Direct lifecycle evidence "
+                "into a promoted topology report."
             ),
-            acceptance_artifacts=[DIRECT_WIFI_LIFECYCLE_OUTPUT],
-            clears_gate=True,
-            note=(
-                "The input lifecycle report must come from a leased Quest run and "
-                "prove peer discovery, group formation, bounded TCP socket "
-                "exchange, and cleanup. This route only normalizes evidence."
+        ),
+        wifi_direct_lifecycle_action(
+            action_id="normalize_qcl041_wifi_direct_lifecycle_report",
+            probe_id="QCL-041",
+            output=DIRECT_WIFI_QCL041_LIFECYCLE_OUTPUT,
+            label=(
+                "Normalize leased Windows-peer Wi-Fi Direct lifecycle evidence "
+                "into a promoted topology report."
             ),
         ),
     ]
+
+
+def wifi_direct_lifecycle_action(
+    *,
+    action_id: str,
+    probe_id: str,
+    output: str,
+    label: str,
+) -> dict[str, Any]:
+    return next_action(
+        action_id,
+        label,
+        authority_owner="tools.hostessctl.connectivity_topology_lifecycle",
+        requires_elevation=False,
+        requires_quest_lease=False,
+        mutates_host=False,
+        mutates_device=False,
+        command=powershell_command(
+            f"Build {probe_id} lifecycle topology report",
+            (
+                "python tools\\hostessctl\\hostessctl.py "
+                "connectivity-probe run "
+                "--mode fixture "
+                f"--probe-id {probe_id} "
+                f"--wifi-direct-lifecycle-report '{DIRECT_WIFI_LIFECYCLE_INPUT}' "
+                f"--out {output} "
+                "--fail-on-error"
+            ),
+        ),
+        acceptance_artifacts=[output],
+        clears_gate=True,
+        note=(
+            "The input lifecycle report must come from a leased Quest run and "
+            "prove peer discovery, group formation, bounded TCP socket exchange, "
+            "and cleanup. This route only normalizes evidence."
+        ),
+    )
 
 
 def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
