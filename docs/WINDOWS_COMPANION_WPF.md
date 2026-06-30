@@ -528,7 +528,11 @@ PowerShell route automation will use. The action metadata distinguishes
 non-elevated handoff generation from elevated firewall mutation, marks
 Quest-bound direct-Wi-Fi and product-media actions with `requires_quest_lease`,
 projects the Hostess-owned Agent Board reserve/release command metadata, and
-keeps ordinary ADB commands serial-scoped.
+keeps ordinary ADB commands serial-scoped. Per-action rows also render the
+Hostess authority owner, dependency gates, and acceptance artifacts, so
+operators can see that QCL-082 product media depends on promoted direct-Wi-Fi
+topology plus product listener firewall evidence before the CLI route can clear
+the gate.
 The WPF Protocol Matrix button now materializes this report immediately after
 `companion-report projection` and appends its summary, term-gate, pending-gate,
 and next-action rows to the Connectivity page. It does not use

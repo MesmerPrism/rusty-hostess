@@ -555,6 +555,8 @@ public static class ConnectivityRows
     {
         var parts = new List<string>
         {
+            $"authority_owner={action.AuthorityOwner}",
+            $"available_now={action.AvailableNow}",
             $"requires_quest_lease={action.RequiresQuestLease}",
             $"requires_elevation={action.RequiresElevation}",
             $"requires_adb_server_lifecycle_lease={action.RequiresAdbServerLifecycleLease}",
@@ -562,6 +564,18 @@ public static class ConnectivityRows
             $"mutates_device={action.MutatesDevice}",
             $"clears_gate={action.ClearsGateWhenAccepted}",
         };
+        if (action.DependsOn.Count > 0)
+        {
+            parts.Add($"depends_on={string.Join(",", action.DependsOn)}");
+        }
+        if (action.AcceptanceArtifacts.Count > 0)
+        {
+            parts.Add($"acceptance_artifacts={string.Join(",", action.AcceptanceArtifacts)}");
+        }
+        if (!string.IsNullOrWhiteSpace(action.Command.Label))
+        {
+            parts.Add($"command_label={action.Command.Label}");
+        }
         if (!string.IsNullOrWhiteSpace(action.Lease.Resource))
         {
             parts.Add($"lease_resource={action.Lease.Resource}");

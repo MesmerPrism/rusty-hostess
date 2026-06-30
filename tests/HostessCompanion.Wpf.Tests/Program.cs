@@ -573,10 +573,11 @@ static void TransportGateRowsExposeNextActions()
         },
         Summary = new CompanionTransportGateSummary
         {
-            RemainingGateCount = 2,
+            RemainingGateCount = 3,
             RemainingGateIds =
             [
                 "transport.direct_wifi_live_topology",
+                "transport.product_tcp_media_over_direct_wifi",
                 "transport.product_tcp_media_listener_firewall",
             ],
             TermGateCount = 1,
@@ -599,6 +600,11 @@ static void TransportGateRowsExposeNextActions()
                         "normalize_qcl040_wifi_direct_lifecycle_report",
                         "normalize_qcl041_wifi_direct_lifecycle_report",
                     ],
+                },
+                new CompanionTransportGateActionSummary
+                {
+                    GateId = "transport.product_tcp_media_over_direct_wifi",
+                    NextActionIds = ["capture_rmanvid1_over_promoted_direct_wifi"],
                 },
                 new CompanionTransportGateActionSummary
                 {
@@ -678,6 +684,47 @@ static void TransportGateRowsExposeNextActions()
             },
             new CompanionTransportGate
             {
+                GateId = "transport.product_tcp_media_over_direct_wifi",
+                Status = "pending_live_evidence",
+                Evidence = "needs product TCP media over promoted direct Wi-Fi",
+                NextActions =
+                [
+                    new CompanionTransportGateNextAction
+                    {
+                        ActionId = "capture_rmanvid1_over_promoted_direct_wifi",
+                        Label = "Capture RMANVID1 receiver counters",
+                        AuthorityOwner = "tools.hostessctl.connectivity_media_receiver",
+                        RequiresQuestLease = true,
+                        MutatesDevice = true,
+                        DependsOn =
+                        [
+                            "transport.direct_wifi_live_topology",
+                            "transport.product_tcp_media_listener_firewall",
+                        ],
+                        AcceptanceArtifacts =
+                        [
+                            "target\\connectivity-probe\\media-stream.rmanvid1",
+                            "target\\connectivity-probe\\media-stream-receiver-sidecar.json",
+                            "target\\connectivity-probe\\media-stream-receiver-result.json",
+                        ],
+                        Command = new CompanionTransportGateNextActionCommand
+                        {
+                            Label = "Capture RMANVID1 receiver counters",
+                            Shell = "powershell",
+                            Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe rmanvid1-receiver-capture --topology-report '<promoted-qcl040-or-qcl041-topology-report>' --firewall-report target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                        },
+                        Lease = new CompanionTransportGateNextActionLease
+                        {
+                            Manager = "Agent Board",
+                            Resource = "quest:<quest-serial>",
+                            Duration = "45m",
+                            ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
+                        },
+                    },
+                ],
+            },
+            new CompanionTransportGate
+            {
                 GateId = "transport.product_tcp_media_listener_firewall",
                 Status = "pending_live_evidence",
                 Evidence = "needs product listener firewall rule",
@@ -717,6 +764,8 @@ static void TransportGateRowsExposeNextActions()
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.normalize_qcl040_wifi_direct_lifecycle_report"
             && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_topology_lifecycle", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json", StringComparison.Ordinal)
             && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
             && row.Evidence.Contains("--probe-id QCL-040", StringComparison.Ordinal)
             && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
@@ -724,10 +773,20 @@ static void TransportGateRowsExposeNextActions()
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.normalize_qcl041_wifi_direct_lifecycle_report"
             && row.Notes.Contains("requires_quest_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_topology_lifecycle", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\qcl041-live-wifi-direct-lifecycle.json", StringComparison.Ordinal)
             && row.Notes.Contains("clears_gate=True", StringComparison.Ordinal)
             && row.Evidence.Contains("--probe-id QCL-041", StringComparison.Ordinal)
             && row.Evidence.Contains("--wifi-direct-lifecycle-report '<wifi-direct-lifecycle-report>'", StringComparison.Ordinal)),
         "QCL-041 lifecycle normalizer must be visible as a CLI-equivalent WPF action");
+    Assert(rows.Any(row =>
+            row.Name == "transport.product_tcp_media_over_direct_wifi.capture_rmanvid1_over_promoted_direct_wifi"
+            && row.Notes.Contains("authority_owner=tools.hostessctl.connectivity_media_receiver", StringComparison.Ordinal)
+            && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
+            && row.Notes.Contains("mutates_device=True", StringComparison.Ordinal)
+            && row.Notes.Contains("depends_on=transport.direct_wifi_live_topology,transport.product_tcp_media_listener_firewall", StringComparison.Ordinal)
+            && row.Notes.Contains("acceptance_artifacts=target\\connectivity-probe\\media-stream.rmanvid1,target\\connectivity-probe\\media-stream-receiver-sidecar.json,target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)),
+        "product media next action must show dependency and acceptance-artifact evidence");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
             && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)
@@ -996,8 +1055,14 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise live QCL-040 Wi-Fi Direct preflight");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-041", StringComparison.Ordinal),
         "protocol matrix action must advertise live QCL-041 Wi-Fi Direct preflight");
-    Assert(protocolMatrixAction.CliRoute.Contains("--input <topology-fixture-reports>", StringComparison.Ordinal),
-        "protocol matrix action must advertise explicit topology fixture report inputs");
+    Assert(protocolMatrixAction.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
+        "protocol matrix action must use PowerShell variables for serial-scoped ADB placeholders");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-040 --wifi-direct-lifecycle-report $LifecycleReport", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle normalization route");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-041 --wifi-direct-lifecycle-report $LifecycleReport", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-041 Wi-Fi Direct lifecycle normalization route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--input $TopologyFixtureReports", StringComparison.Ordinal),
+        "protocol matrix action must advertise explicit topology fixture report inputs through a PowerShell variable");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-000", StringComparison.Ordinal),
         "protocol matrix action must include WebSocket command route evidence QCL-000");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-010", StringComparison.Ordinal),
@@ -1082,11 +1147,15 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(firewallActions.Length == 4,
         "firewall controls must expose plan/apply/verify/remove operator action descriptors");
     Assert(firewallActions.All(action =>
-            action.CliRoute.StartsWith("connectivity-probe windows-firewall-rule --action ", StringComparison.Ordinal)),
+            action.CliRoute.Contains("connectivity-probe windows-firewall-rule --action ", StringComparison.Ordinal)),
         "firewall controls must stay backed by the windows-firewall-rule CLI route");
     Assert(firewallActions.All(action =>
             action.CliRoute.Contains("--rule-profile", StringComparison.Ordinal)),
         "firewall controls must advertise the CLI rule profile route");
+    Assert(firewallActions.Any(action =>
+            action.CliRoute.Contains("--handoff-script-out $AdminHandoffScript", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--handoff-verify-out $VerifyReport", StringComparison.Ordinal)),
+        "firewall mutation controls must advertise PowerShell-variable handoff outputs");
     Assert(firewallActions.All(action =>
             action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
         "firewall controls must advertise the emitted windows firewall evidence schema");

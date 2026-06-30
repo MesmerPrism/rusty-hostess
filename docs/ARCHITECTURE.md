@@ -279,7 +279,10 @@ Transport gate status automation lives in
 `next_actions` with PowerShell-compatible Hostess CLI routes, acceptance
 artifacts, elevation flags, host/device mutation flags, and structured Agent
 Board `quest:<quest-serial>` lease reserve/release metadata supplied by
-`companion_transport_gate_actions.py`. Those actions are operator guidance and
+`companion_transport_gate_actions.py`. WPF renders the same authority owner,
+dependency gates, and acceptance artifacts from the report, including the
+QCL-082 product-media dependency on promoted direct-Wi-Fi topology plus the
+product listener firewall gate. Those actions are operator guidance and
 automation inputs; the route still does not run
 probes, choose latest artifacts, mutate firewall/device state, parse media, or
 promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
