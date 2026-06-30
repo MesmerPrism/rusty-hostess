@@ -275,6 +275,7 @@ def build_firewall_admin_handoff_script(
     verify_args: list[str],
 ) -> str:
     lines = [
+        "#Requires -RunAsAdministrator",
         "$ErrorActionPreference = 'Stop'",
         f"Set-Location -LiteralPath {ps_string_literal(str(HOSTESS_REPO_ROOT))}",
         power_shell_invocation(action_args),

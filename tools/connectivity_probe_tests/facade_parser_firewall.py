@@ -699,6 +699,7 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(report["admin_handoff"]["verify_report_out"], str(verify_out))
         self.assertEqual(report["elevation"]["handoff"]["script_out"], str(script_out))
         self.assertEqual(len(report["admin_handoff"]["script_sha256"]), 64)
+        self.assertIn("#Requires -RunAsAdministrator", script)
         self.assertIn("Set-Location -LiteralPath", script)
         self.assertIn("tools/hostessctl/hostessctl.py", script)
         self.assertIn("--action' 'apply", script)
