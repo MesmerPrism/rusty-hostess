@@ -408,6 +408,69 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             gate_report["operator_next_actions"]["gate_count"],
             3,
         )
+        operator_action_gates = {
+            gate["gate_id"]: set(gate["next_action_ids"])
+            for gate in gate_report["operator_next_actions"]["gates"]
+        }
+        self.assertEqual(
+            set(gate_report["summary"]["remaining_gate_ids"]),
+            set(operator_action_gates.keys()),
+        )
+        websocket_gate = next(
+            gate
+            for gate in gate_report["remaining_live_gates"]
+            if gate["gate_id"] == "transport.general_websocket_capability"
+        )
+        websocket_actions = {
+            action["action_id"]: action for action in websocket_gate["next_actions"]
+        }
+        self.assertIn("run_qcl079_host_loopback_websocket", websocket_actions)
+        self.assertIn("run_qcl079_broker_owned_websocket", websocket_actions)
+        self.assertEqual(
+            operator_action_gates["transport.general_websocket_capability"],
+            set(websocket_actions.keys()),
+        )
+        host_loopback = websocket_actions["run_qcl079_host_loopback_websocket"]
+        host_loopback_command = host_loopback["command"]["command"]
+        self.assertEqual(
+            host_loopback["authority_owner"],
+            "tools.hostessctl.connectivity_websocket",
+        )
+        self.assertFalse(host_loopback["requires_elevation"])
+        self.assertFalse(host_loopback["requires_quest_lease"])
+        self.assertFalse(host_loopback["requires_adb_server_lifecycle_lease"])
+        self.assertFalse(host_loopback["mutates_host"])
+        self.assertFalse(host_loopback["mutates_device"])
+        self.assertFalse(host_loopback["clears_gate_when_accepted"])
+        self.assertEqual(host_loopback["command"]["shell"], "powershell")
+        self.assertIn("connectivity-probe run", host_loopback_command)
+        self.assertIn("--probe-id QCL-079", host_loopback_command)
+        self.assertIn("--websocket-source host-loopback", host_loopback_command)
+        self.assertIn("qcl079-live-host-loopback.json", host_loopback_command)
+        broker_websocket = websocket_actions["run_qcl079_broker_owned_websocket"]
+        broker_command = broker_websocket["command"]["command"]
+        self.assertEqual(
+            broker_websocket["authority_owner"],
+            "tools.hostessctl.connectivity_websocket",
+        )
+        self.assertFalse(broker_websocket["requires_elevation"])
+        self.assertFalse(broker_websocket["requires_quest_lease"])
+        self.assertFalse(broker_websocket["requires_adb_server_lifecycle_lease"])
+        self.assertFalse(broker_websocket["mutates_host"])
+        self.assertFalse(broker_websocket["mutates_device"])
+        self.assertTrue(broker_websocket["clears_gate_when_accepted"])
+        self.assertEqual(broker_websocket["command"]["shell"], "powershell")
+        self.assertIn("--websocket-source broker-owned-websocket", broker_command)
+        self.assertIn(
+            "--websocket-route-descriptor '<manifold-stream-websocket-route>'",
+            broker_command,
+        )
+        self.assertIn(
+            "--websocket-route-evidence '<manifold-stream-websocket-evidence>'",
+            broker_command,
+        )
+        self.assertIn("qcl079-live-broker-owned-websocket.json", broker_command)
+        self.assertIn("--fail-on-error", broker_command)
         direct_wifi_gate = next(
             gate
             for gate in gate_report["remaining_live_gates"]
