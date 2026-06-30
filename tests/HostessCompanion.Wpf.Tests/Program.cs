@@ -21,6 +21,7 @@ var tests = new (string Name, Action Test)[]
     ("transport gate rows expose next actions", TransportGateRowsExposeNextActions),
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("connectivity service forwards promoted direct wifi topology input", ConnectivityServiceForwardsPromotedDirectWifiTopologyInput),
+    ("connectivity service forwards QCL-082 product media input", ConnectivityServiceForwardsQcl082ProductMediaInput),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall rows expose elevation preflight", FirewallRowsExposeElevationPreflight),
     ("firewall service uses CLI admin handoff", FirewallServiceUsesCliAdminHandoff),
@@ -648,8 +649,14 @@ static void ConnectivityServiceForwardsPromotedDirectWifiTopologyInput()
     FileInfo? planPath = null;
     try
     {
-        WriteDirectWifiTopologyReport(promotedTopologyPath, "QCL-041", promoted: true);
-        WriteDirectWifiTopologyReport(candidateTopologyPath, "QCL-041", promoted: false);
+        DirectWifiProductMediaPlanTestArtifacts.WriteDirectWifiTopologyReport(
+            promotedTopologyPath,
+            "QCL-041",
+            promoted: true);
+        DirectWifiProductMediaPlanTestArtifacts.WriteDirectWifiTopologyReport(
+            candidateTopologyPath,
+            "QCL-041",
+            promoted: false);
 
         var matrix = new ConnectivityProtocolEvidenceMatrix
         {
@@ -735,39 +742,126 @@ static void ConnectivityServiceForwardsPromotedDirectWifiTopologyInput()
     }
 }
 
-static void WriteDirectWifiTopologyReport(string path, string probeId, bool promoted)
+static void ConnectivityServiceForwardsQcl082ProductMediaInput()
 {
-    var peerClass = probeId == "QCL-041" ? "windows" : "android_phone";
-    var report = new
+    var repoRoot = LocateHostessRepoRoot();
+    var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+    var suiteRunId = $"wpf-qcl082-product-media-forwarding-{stamp}";
+    var artifactDir = Path.Combine(repoRoot.FullName, "target", "connectivity-probe");
+    var reportDir = Path.Combine(repoRoot.FullName, "target", "companion-report");
+    Directory.CreateDirectory(artifactDir);
+    Directory.CreateDirectory(reportDir);
+
+    var promotedTopologyPath = Path.Combine(artifactDir, $"{suiteRunId}.qcl041-promoted-wifi-direct-lifecycle.json");
+    var candidateProductMediaPath = Path.Combine(artifactDir, $"{suiteRunId}.qcl082-candidate-product-media.json");
+    var promotedProductMediaPath = Path.Combine(artifactDir, $"{suiteRunId}.qcl082-promoted-product-media.json");
+    FileInfo? planPath = null;
+    try
     {
-        schema = "rusty.quest.connectivity_topology_probe.v1",
-        probe_id = probeId,
-        status = "pass",
-        topology = new
+        DirectWifiProductMediaPlanTestArtifacts.WriteDirectWifiTopologyReport(
+            promotedTopologyPath,
+            "QCL-041",
+            promoted: true);
+        DirectWifiProductMediaPlanTestArtifacts.WriteQcl082ProductMediaReport(
+            candidateProductMediaPath,
+            promoted: false);
+        DirectWifiProductMediaPlanTestArtifacts.WriteQcl082ProductMediaReport(
+            promotedProductMediaPath,
+            promoted: true);
+
+        var matrix = new ConnectivityProtocolEvidenceMatrix
         {
-            owner = "wifi_direct",
-            network_provider = "wifi_direct",
-            endpoint_direction = "peer_to_peer_group",
-            peer_class = peerClass,
-        },
-        transport = new
+            MatrixId = $"{suiteRunId}.matrix",
+            ReportPath = Path.Combine(artifactDir, $"{suiteRunId}.protocol-matrix.json"),
+            Inputs =
+            [
+                new ConnectivityProtocolEvidenceInput
+                {
+                    Role = "connectivity_probe_report",
+                    Path = candidateProductMediaPath,
+                    Schema = "rusty.quest.connectivity_probe.v1",
+                    Status = "pass",
+                },
+                new ConnectivityProtocolEvidenceInput
+                {
+                    Role = "connectivity_probe_report",
+                    Path = Path.GetRelativePath(repoRoot.FullName, promotedTopologyPath),
+                    Schema = "rusty.quest.connectivity_topology_probe.v1",
+                    Status = "pass",
+                },
+                new ConnectivityProtocolEvidenceInput
+                {
+                    Role = "connectivity_probe_report",
+                    Path = promotedProductMediaPath,
+                    Schema = "rusty.quest.connectivity_probe.v1",
+                    Status = "pass",
+                },
+            ],
+        };
+        var suite = new ConnectivitySuiteRunReport
         {
-            family = "wifi_direct",
-            route = "wifi_direct_lifecycle_artifact",
-            payload_class = "bounded_tcp_probe",
-        },
-        promotion = new
+            SuiteRunId = suiteRunId,
+            ReportPath = Path.Combine(artifactDir, $"{suiteRunId}.suite.json"),
+        };
+        var method = typeof(HostessctlConnectivityService).GetMethod(
+                "RunDirectWifiProductMediaPlanAsync",
+                BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("missing RunDirectWifiProductMediaPlanAsync method");
+        var task = (Task<FileInfo>)method.Invoke(
+                null,
+                new object?[]
+                {
+                    repoRoot,
+                    suite,
+                    matrix,
+                    new List<FileInfo>(),
+                    null,
+                    new FileInfo(Path.Combine(reportDir, $"{suiteRunId}.projection.json")),
+                    new FileInfo(Path.Combine(reportDir, $"{suiteRunId}.transport-gates.json")),
+                    "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+                    CancellationToken.None,
+                })!
+            ?? throw new InvalidOperationException("direct-Wi-Fi product-media plan task was empty");
+        planPath = task.GetAwaiter().GetResult();
+
+        using var document = JsonDocument.Parse(File.ReadAllText(planPath.FullName));
+        var root = document.RootElement;
+        var artifacts = root.GetProperty("artifacts");
+        Assert(artifacts.GetProperty("promoted_topology_report").GetString() == promotedTopologyPath,
+            "WPF acceptance-plan route must still forward promoted direct-Wi-Fi topology");
+        Assert(artifacts.GetProperty("qcl082_report").GetString() == promotedProductMediaPath,
+            "WPF acceptance-plan route must forward the promoted QCL-082 product-media report path");
+        var readiness = root.GetProperty("readiness");
+        Assert(readiness.GetProperty("direct_wifi_topology_ready").GetBoolean(),
+            "promoted topology input must satisfy topology readiness");
+        Assert(readiness.GetProperty("product_tcp_media_over_direct_wifi_ready").GetBoolean(),
+            "promoted product-media input must satisfy QCL-082 product media readiness");
+        Assert(readiness.GetProperty("all_remaining_transport_gates_ready").GetBoolean(),
+            "topology plus product media evidence must satisfy remaining product transport readiness");
+        var productMediaDependency = root.GetProperty("dependencies")
+            .EnumerateArray()
+            .Single(dependency =>
+                dependency.GetProperty("gate_id").GetString() == "transport.product_tcp_media_over_direct_wifi");
+        Assert(productMediaDependency.GetProperty("summary").GetProperty("report_path").GetString()
+            == promotedProductMediaPath,
+            "Hostess plan must not select the non-promoting QCL-082 candidate report");
+    }
+    finally
+    {
+        foreach (var path in new[]
         {
-            allowed = promoted,
-            target = "experimental topology descriptor",
-            reason = promoted
-                ? "Live Wi-Fi Direct topology lifecycle is complete"
-                : "fixture-only Wi-Fi Direct topology remains candidate evidence",
-        },
-    };
-    File.WriteAllText(
-        path,
-        JsonSerializer.Serialize(report, new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine);
+            promotedTopologyPath,
+            candidateProductMediaPath,
+            promotedProductMediaPath,
+            planPath?.FullName,
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+    }
 }
 
 static void TransportGateRowsExposeNextActions()

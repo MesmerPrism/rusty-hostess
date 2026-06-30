@@ -829,6 +829,8 @@ public sealed class HostessctlConnectivityService
             "connectivity-probe",
             $"{suite.SuiteRunId}.direct-wifi-product-media-acceptance-plan.json"));
         Directory.CreateDirectory(reportPath.Directory!.FullName);
+        var qcl082ProductMediaReport = Qcl082ProductMediaReportSelector.Select(repoRoot, matrix)
+            ?? DefaultQcl082ProductMediaReportPath(repoRoot);
 
         var arguments = new List<string>
         {
@@ -839,7 +841,7 @@ public sealed class HostessctlConnectivityService
             "--program",
             program,
             "--qcl082-report",
-            DefaultQcl082ProductMediaReportPath(repoRoot).FullName,
+            qcl082ProductMediaReport.FullName,
             "--protocol-matrix-out",
             matrix.ReportPath,
             "--projection-out",
