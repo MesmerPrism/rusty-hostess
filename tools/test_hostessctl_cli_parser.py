@@ -178,6 +178,25 @@ class HostessCtlCliParserTests(unittest.TestCase):
         self.assertTrue(args.fail_on_pending)
         self.assertTrue(args.fail_on_incomplete)
 
+    def test_companion_report_operator_actions_cli_route(self) -> None:
+        args = self.build_parser().parse_args(
+            [
+                "companion-report",
+                "operator-actions",
+                "--frontend",
+                "wpf",
+                "--out",
+                "target/companion-report/wpf.operator-actions.json",
+                "--fail-on-error",
+            ]
+        )
+
+        self.assertEqual(args.command, "companion-report")
+        self.assertEqual(args.companion_report_command, "operator-actions")
+        self.assertEqual(args.frontend, "wpf")
+        self.assertEqual(args.out, "target/companion-report/wpf.operator-actions.json")
+        self.assertTrue(args.fail_on_error)
+
     def test_companion_report_projection_accepts_firewall_rule_report(self) -> None:
         args = self.build_parser().parse_args(
             [

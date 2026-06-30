@@ -641,6 +641,12 @@ def build_hostessctl_parser(
     companion_report_transport_gates.add_argument("--fail-on-error", action="store_true")
     companion_report_transport_gates.add_argument("--fail-on-pending", action="store_true")
     companion_report_transport_gates.add_argument("--fail-on-incomplete", action="store_true")
+    companion_report_operator_actions = companion_report_subcommands.add_parser("operator-actions")
+    companion_report_operator_actions.add_argument("--out", required=True)
+    companion_report_operator_actions.add_argument("--validation-out")
+    companion_report_operator_actions.add_argument("--report-id")
+    companion_report_operator_actions.add_argument("--frontend", choices=["wpf"], default="wpf")
+    companion_report_operator_actions.add_argument("--fail-on-error", action="store_true")
 
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(

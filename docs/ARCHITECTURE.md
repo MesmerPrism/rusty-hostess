@@ -107,6 +107,12 @@ transport semantics. `MainWindowViewModel` remains the XAML-compatible
 coordinator and service requester.
 `OperatorActionCatalog` maps each visible WPF command to its Hostess
 CLI-equivalent route, evidence artifact, authority owner, and test coverage.
+The equivalent machine-readable catalog is
+`hostessctl companion-report operator-actions --frontend wpf`, which emits
+`rusty.hostess.companion.operator_action_catalog.v1` without executing the
+advertised routes. `HostessCompanion.Wpf.Tests` compares every WPF catalog row
+with that CLI report so human-visible buttons, automation recipes, evidence
+artifacts, and authority labels stay locked together.
 Session browsing follows the same rule through `companion-session history`,
 which emits `rusty.hostess.companion.session_history.v1`; WPF loads selected
 session artifacts after that route has supplied the report index.

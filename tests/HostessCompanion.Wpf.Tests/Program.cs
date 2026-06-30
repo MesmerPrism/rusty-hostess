@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using System.Text.Json;
@@ -23,6 +24,7 @@ var tests = new (string Name, Action Test)[]
     ("firewall service uses CLI admin handoff", FirewallServiceUsesCliAdminHandoff),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
     ("firewall QCL-082 profile plan uses CLI profile", FirewallQcl082ProfilePlanUsesCliProfile),
+    ("operator action CLI report matches WPF catalog", OperatorActionCliReportMatchesWpfCatalog),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
     ("page viewmodels project backend reports", PageViewModelsProjectBackendReports),
@@ -1568,6 +1570,87 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "firewall controls must advertise the emitted windows firewall evidence schema");
 }
 
+static void OperatorActionCliReportMatchesWpfCatalog()
+{
+    var repoRoot = LocateHostessRepoRoot();
+    var outPath = Path.Combine(
+        repoRoot.FullName,
+        "target",
+        "companion-report",
+        "wpf-operator-actions-test.json");
+    Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+    var startInfo = new ProcessStartInfo
+    {
+        FileName = "python",
+        WorkingDirectory = repoRoot.FullName,
+        RedirectStandardOutput = true,
+        RedirectStandardError = true,
+        UseShellExecute = false,
+    };
+    foreach (var argument in new[]
+    {
+        "tools\\hostessctl\\hostessctl.py",
+        "companion-report",
+        "operator-actions",
+        "--frontend",
+        "wpf",
+        "--out",
+        outPath,
+        "--fail-on-error",
+    })
+    {
+        startInfo.ArgumentList.Add(argument);
+    }
+
+    using var process = Process.Start(startInfo)
+        ?? throw new InvalidOperationException("could not start hostessctl operator-actions report");
+    var stdoutTask = process.StandardOutput.ReadToEndAsync();
+    var stderrTask = process.StandardError.ReadToEndAsync();
+    if (!process.WaitForExit(30_000))
+    {
+        process.Kill(entireProcessTree: true);
+        throw new TimeoutException("hostessctl operator-actions report timed out");
+    }
+    var stdout = stdoutTask.GetAwaiter().GetResult();
+    var stderr = stderrTask.GetAwaiter().GetResult();
+    Assert(process.ExitCode == 0,
+        $"hostessctl operator-actions exited with {process.ExitCode}: {stderr}{stdout}");
+    Assert(File.Exists(outPath), "operator action CLI report must be written");
+
+    using var document = JsonDocument.Parse(File.ReadAllText(outPath));
+    var root = document.RootElement;
+    Assert(JsonString(root, "$schema") == "rusty.hostess.companion.operator_action_catalog.v1",
+        "operator action CLI report must use the expected schema");
+    Assert(JsonString(root, "status") == "pass", "operator action CLI report must pass validation");
+    Assert(JsonString(root, "frontend") == "wpf", "operator action CLI report must be WPF-scoped");
+    var authority = root.GetProperty("authority");
+    Assert(authority.GetProperty("catalog_only").GetBoolean(),
+        "operator action CLI report must be catalog-only");
+
+    var reportActions = root.GetProperty("actions")
+        .EnumerateArray()
+        .ToDictionary(action => JsonString(action, "action_id"), StringComparer.Ordinal);
+    Assert(reportActions.Count == OperatorActionCatalog.All.Count,
+        "operator action CLI report must expose every WPF action");
+    foreach (var action in OperatorActionCatalog.All)
+    {
+        Assert(reportActions.TryGetValue(action.ActionId, out var reportAction),
+            $"operator action CLI report missing {action.ActionId}");
+        Assert(JsonString(reportAction, "title") == action.Title,
+            $"operator action title mismatch for {action.ActionId}");
+        Assert(JsonString(reportAction, "ui_command_property") == action.UiCommandProperty,
+            $"operator action command property mismatch for {action.ActionId}");
+        Assert(JsonString(reportAction, "cli_route") == action.CliRoute,
+            $"operator action CLI route mismatch for {action.ActionId}");
+        Assert(JsonString(reportAction, "evidence_artifact") == action.EvidenceArtifact,
+            $"operator action evidence artifact mismatch for {action.ActionId}");
+        Assert(JsonString(reportAction, "authority_owner") == action.AuthorityOwner,
+            $"operator action authority owner mismatch for {action.ActionId}");
+        Assert(JsonString(reportAction, "test_coverage") == action.TestCoverage,
+            $"operator action test coverage mismatch for {action.ActionId}");
+    }
+}
+
 static IEnumerable<string> HostessCliSegments(string cliRoute)
 {
     return cliRoute
@@ -1575,6 +1658,13 @@ static IEnumerable<string> HostessCliSegments(string cliRoute)
         .Where(segment =>
             segment.Contains("python tools\\hostessctl\\hostessctl.py", StringComparison.Ordinal)
             || segment.Contains("python $HostessCtl", StringComparison.Ordinal));
+}
+
+static string JsonString(JsonElement element, string propertyName)
+{
+    return element.TryGetProperty(propertyName, out var value)
+        ? value.GetString() ?? string.Empty
+        : string.Empty;
 }
 
 static ConnectivityProtocolEvidenceRow PromotedProtocolRow(

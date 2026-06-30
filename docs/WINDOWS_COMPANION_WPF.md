@@ -73,6 +73,12 @@ The durable action map lives in
 `apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs`; the WPF test
 suite reflects over `MainWindowViewModel` commands and fails when a command is
 added without a CLI-equivalent route and evidence artifact.
+The same test suite runs
+`python tools\hostessctl\hostessctl.py companion-report operator-actions
+--frontend wpf --out target\companion-report\wpf-operator-actions-test.json
+--fail-on-error` and compares the emitted
+`rusty.hostess.companion.operator_action_catalog.v1` rows with the WPF catalog,
+so automation can inspect the operator action surface without clicking UI.
 Catalog routes are PowerShell-shaped Hostess CLI commands, not bare route
 fragments: they advertise `python tools\hostessctl\hostessctl.py ...`, use
 PowerShell variables or splats for repeated arguments, and avoid pipe-delimited
