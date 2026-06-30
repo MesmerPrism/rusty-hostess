@@ -1320,13 +1320,25 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
             $"CLI route must advertise the Hostess CLI entrypoint for {action.ActionId}");
         Assert(!Regex.IsMatch(action.CliRoute, @"[A-Za-z0-9_)-]\|[A-Za-z0-9_(]"),
             $"CLI route must not use pipe-delimited option shorthand for {action.ActionId}");
+        foreach (var routeSegment in HostessCliSegments(action.CliRoute))
+        {
+            Assert(Regex.IsMatch(routeSegment, @"(^|\s)--out(\s|$)"),
+                $"Hostess CLI route segment must name a primary --out artifact for {action.ActionId}: {routeSegment}");
+        }
         Assert(!string.IsNullOrWhiteSpace(action.EvidenceArtifact), $"missing evidence artifact for {action.ActionId}");
         Assert(!string.IsNullOrWhiteSpace(action.TestCoverage), $"missing test coverage for {action.ActionId}");
     }
     Assert(
         OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "RefreshCommand"
+            && action.CliRoute.Contains("companion-readiness --out $ReadinessReport", StringComparison.Ordinal)
+            && action.CliRoute.Contains("companion-catalog --out $CatalogReport", StringComparison.Ordinal)),
+        "readiness refresh must name the readiness and catalog report artifacts");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "RunSessionCommand"
             && action.CliRoute.Contains("companion-session run", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--out $SessionReport", StringComparison.Ordinal)
             && action.CliRoute.Contains("--wait-seconds 30", StringComparison.Ordinal)
             && action.CliRoute.Contains("--fallback-wait-seconds 30", StringComparison.Ordinal)
             && action.CliRoute.Contains("--runtime-subscriber-retry-count 8", StringComparison.Ordinal)
@@ -1335,8 +1347,31 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(
         OperatorActionCatalog.All.Any(action =>
             action.UiCommandProperty == "LoadSessionHistoryCommand"
-            && action.CliRoute.Contains("companion-session history", StringComparison.Ordinal)),
+            && action.CliRoute.Contains("companion-session history --out $SessionHistory", StringComparison.Ordinal)),
         "session history must stay backed by the companion-session history CLI route");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "RunProbeCommand"
+            && action.CliRoute.Contains("run-bridge-command-live-android --input $PrimaryInput --out $PrimaryEvidence --adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
+            && action.CliRoute.Contains("run-bridge-command-android --input $FallbackInput --out $FallbackEvidence --adb $Adb --serial $QuestSerial", StringComparison.Ordinal)),
+        "safe bridge probe must name input, output, ADB, and serial placeholders for both primary and fallback CLI routes");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "VerifyConnectivityCommand"
+            && action.CliRoute.Contains("$ProbeId = '<QCL-010-or-QCL-080>'", StringComparison.Ordinal)
+            && action.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-080 --out $ConnectivityReport", StringComparison.Ordinal)
+            && action.CliRoute.Contains("connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--udp-listener-helper $HostessCompanionWpfExe", StringComparison.Ordinal)
+            && action.CliRoute.Contains("connectivity-probe stream-capability --input $ConnectivityReport --out $StreamCapability", StringComparison.Ordinal)),
+        "connectivity verification must name probe inputs plus probe report and stream-capability descriptor artifacts");
+    Assert(
+        OperatorActionCatalog.All.Any(action =>
+            action.UiCommandProperty == "RunConnectivitySuiteCommand"
+            && action.CliRoute.Contains("connectivity-probe run-suite --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--artifact-dir $ConnectivitySuiteArtifacts", StringComparison.Ordinal)
+            && action.CliRoute.Contains("--listener-program $HostessCompanionWpfExe", StringComparison.Ordinal)),
+        "connectivity suite must name its suite-run artifact, artifact directory, and product listener input");
     var protocolMatrixAction = OperatorActionCatalog.All.Single(action =>
         action.UiCommandProperty == "RunProtocolMatrixCommand");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe protocol-matrix", StringComparison.Ordinal),
@@ -1521,6 +1556,9 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(firewallActions.All(action =>
             action.CliRoute.Contains("--rule-profile", StringComparison.Ordinal)),
         "firewall controls must advertise the CLI rule profile route");
+    Assert(firewallActions.All(action =>
+            Regex.IsMatch(action.CliRoute, @"(^|\s)--out\s+\$Firewall(?:Plan|Apply|Verify|Remove)(\s|$)")),
+        "firewall controls must name primary firewall report artifacts");
     Assert(firewallActions.Any(action =>
             action.CliRoute.Contains("--handoff-script-out $AdminHandoffScript", StringComparison.Ordinal)
             && action.CliRoute.Contains("--handoff-verify-out $VerifyReport", StringComparison.Ordinal)),
@@ -1528,6 +1566,15 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(firewallActions.All(action =>
             action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
         "firewall controls must advertise the emitted windows firewall evidence schema");
+}
+
+static IEnumerable<string> HostessCliSegments(string cliRoute)
+{
+    return cliRoute
+        .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+        .Where(segment =>
+            segment.Contains("python tools\\hostessctl\\hostessctl.py", StringComparison.Ordinal)
+            || segment.Contains("python $HostessCtl", StringComparison.Ordinal));
 }
 
 static ConnectivityProtocolEvidenceRow PromotedProtocolRow(

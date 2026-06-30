@@ -90,7 +90,10 @@ public static class OperatorActionCatalog
             "wpf.readiness.refresh",
             "Refresh readiness and catalog",
             "RefreshCommand",
-            HostessCtl + "companion-readiness; " + HostessCtl + "companion-catalog",
+            "$ReadinessReport = 'target\\companion-readiness\\wpf-readiness.json'; " +
+            "$CatalogReport = 'target\\companion-catalog\\wpf-catalog.json'; " +
+            HostessCtl + "companion-readiness --out $ReadinessReport; " +
+            HostessCtl + "companion-catalog --out $CatalogReport",
             "rusty.hostess.companion.readiness_report.v1; rusty.hostess.companion.catalog.v1",
             "Hostess",
             "tools.test_hostessctl_companion_readiness; tools.test_hostessctl_companion_catalog; HostessCompanion.Wpf.Tests"),
@@ -98,7 +101,8 @@ public static class OperatorActionCatalog
             "wpf.session.run",
             "Run companion session",
             "RunSessionCommand",
-            HostessCtl + "companion-session run --frontend wpf --profile hostess-makepad-quest " +
+            "$SessionReport = 'target\\companion-session\\wpf-session.json'; " +
+            HostessCtl + "companion-session run --out $SessionReport --frontend wpf --profile hostess-makepad-quest " +
             "--wait-seconds 30 --fallback-wait-seconds 30 --authority-wait-seconds 30 " +
             "--broker-process-wait-seconds 20 --makepad-process-wait-seconds 20 " +
             "--socket-wait-seconds 20 --launch-settle-seconds 8 " +
@@ -110,7 +114,8 @@ public static class OperatorActionCatalog
             "wpf.session.history",
             "Load session history",
             "LoadSessionHistoryCommand",
-            HostessCtl + "companion-session history",
+            "$SessionHistory = 'target\\companion-session\\history.json'; " +
+            HostessCtl + "companion-session history --out $SessionHistory",
             "rusty.hostess.companion.session_history.v1",
             "Hostess",
             "tools.test_hostessctl_companion_session; HostessCompanion.Wpf.Tests"),
@@ -126,9 +131,14 @@ public static class OperatorActionCatalog
             "wpf.command.safe_probe",
             "Run safe bridge probe",
             "RunProbeCommand",
-            "$PrimaryEvidence = '<broker-stream-evidence>'; $FallbackEvidence = '<app-private-evidence>'; " +
-            HostessCtl + "run-bridge-command-live-android --out $PrimaryEvidence; " +
-            "if ($LASTEXITCODE -ne 0) { " + HostessCtl + "run-bridge-command-android --out $FallbackEvidence }",
+            "$PrimaryEvidence = 'target\\companion-command\\wpf-broker-stream-probe-evidence.json'; " +
+            "$PrimaryInput = 'fixtures\\bridge-command\\hostess-broker-stream-command-request.json'; " +
+            "$FallbackEvidence = 'target\\companion-command\\wpf-app-private-probe-evidence.json'; " +
+            "$FallbackInput = 'fixtures\\bridge-command\\hostess-android-hotload-command-request.json'; " +
+            "$Adb = '<adb>'; " +
+            "$QuestSerial = '<quest-serial>'; " +
+            HostessCtl + "run-bridge-command-live-android --input $PrimaryInput --out $PrimaryEvidence --adb $Adb --serial $QuestSerial; " +
+            "if ($LASTEXITCODE -ne 0) { " + HostessCtl + "run-bridge-command-android --input $FallbackInput --out $FallbackEvidence --adb $Adb --serial $QuestSerial }",
             "rusty.hostess.bridge_command.live_android_execution_evidence.v1",
             "Hostess / Manifold / Rusty Quest",
             "tools.test_hostessctl_bridge_command_live_android; HostessCompanion.Wpf.Tests"),
@@ -136,7 +146,8 @@ public static class OperatorActionCatalog
             "wpf.connectivity.firewall.plan",
             "Plan firewall rule",
             "PlanFirewallRuleCommand",
-            HostessCtl + "connectivity-probe windows-firewall-rule --action plan --rule-profile '<rule-profile>'",
+            "$FirewallPlan = 'target\\connectivity-probe\\wpf-firewall-rule-plan.json'; " +
+            HostessCtl + "connectivity-probe windows-firewall-rule --action plan --rule-profile '<rule-profile>' --out $FirewallPlan",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
@@ -144,7 +155,10 @@ public static class OperatorActionCatalog
             "wpf.connectivity.firewall.apply",
             "Apply firewall rule",
             "ApplyFirewallRuleCommand",
-            "$AdminHandoffScript = '<admin.ps1>'; $VerifyReport = '<verify-report>'; " + HostessCtl + "connectivity-probe windows-firewall-rule --action apply --rule-profile '<rule-profile>' --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
+            "$FirewallApply = 'target\\connectivity-probe\\wpf-firewall-rule-apply.json'; " +
+            "$AdminHandoffScript = 'target\\connectivity-probe\\wpf-firewall-rule-apply.admin-handoff.ps1'; " +
+            "$VerifyReport = 'target\\connectivity-probe\\wpf-firewall-rule-apply.verify.json'; " +
+            HostessCtl + "connectivity-probe windows-firewall-rule --action apply --rule-profile '<rule-profile>' --out $FirewallApply --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
@@ -152,7 +166,8 @@ public static class OperatorActionCatalog
             "wpf.connectivity.firewall.verify",
             "Verify firewall rule",
             "VerifyFirewallRuleCommand",
-            HostessCtl + "connectivity-probe windows-firewall-rule --action verify --rule-profile '<rule-profile>'",
+            "$FirewallVerify = 'target\\connectivity-probe\\wpf-firewall-rule-verify.json'; " +
+            HostessCtl + "connectivity-probe windows-firewall-rule --action verify --rule-profile '<rule-profile>' --out $FirewallVerify",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
@@ -160,7 +175,19 @@ public static class OperatorActionCatalog
             "wpf.connectivity.verify",
             "Verify connectivity",
             "VerifyConnectivityCommand",
-            HostessCtl + "connectivity-probe run --probe-id '<QCL-010-or-QCL-080>'; " + HostessCtl + "connectivity-probe stream-capability",
+            "$ConnectivityReport = 'target\\connectivity-probe\\wpf-connectivity-verify.json'; " +
+            "$StreamCapability = 'target\\connectivity-probe\\wpf-connectivity-verify.stream-capability.json'; " +
+            "$ProbeId = '<QCL-010-or-QCL-080>'; " +
+            "$Adb = '<adb>'; " +
+            "$QuestSerial = '<quest-serial>'; " +
+            "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
+            "$TcpEchoPort = 18766; " +
+            "$UdpPort = 18767; " +
+            "if ($ProbeId -eq 'QCL-080') { " +
+            HostessCtl + "connectivity-probe run --mode live --probe-id QCL-080 --out $ConnectivityReport --adb $Adb --serial $QuestSerial --udp-port $UdpPort --udp-sender-source makepad-runtime --udp-listener-helper $HostessCompanionWpfExe; " +
+            HostessCtl + "connectivity-probe stream-capability --input $ConnectivityReport --out $StreamCapability } " +
+            "else { " +
+            HostessCtl + "connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport --adb $Adb --serial $QuestSerial --tcp-echo-port $TcpEchoPort }",
             "rusty.hostess.connectivity_probe.v1; rusty.quest.device_link.stream_capability.v1",
             "Hostess / Rusty Quest",
             "tools.test_hostessctl_connectivity_probe; tools.test_hostessctl_device_link_report; HostessCompanion.Wpf.Tests"),
@@ -168,7 +195,12 @@ public static class OperatorActionCatalog
             "wpf.connectivity.suite",
             "Run connectivity suite",
             "RunConnectivitySuiteCommand",
-            HostessCtl + "connectivity-probe run-suite",
+            "$ConnectivitySuite = 'target\\connectivity-probe\\wpf-connectivity-suite.json'; " +
+            "$ConnectivitySuiteArtifacts = 'target\\connectivity-probe\\wpf-connectivity-suite-artifacts'; " +
+            "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
+            "$Adb = '<adb>'; " +
+            "$QuestSerial = '<quest-serial>'; " +
+            HostessCtl + "connectivity-probe run-suite --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite --artifact-dir $ConnectivitySuiteArtifacts --listener-program $HostessCompanionWpfExe --listener-protocol '<TCP-or-UDP>' --listener-port '<port>' --adb $Adb --serial $QuestSerial",
             "rusty.quest.device_link.install_environment_suite_run.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_suite; HostessCompanion.Wpf.Tests"),
@@ -184,7 +216,10 @@ public static class OperatorActionCatalog
             "wpf.connectivity.firewall.remove",
             "Remove firewall rule",
             "RemoveFirewallRuleCommand",
-            "$AdminHandoffScript = '<admin.ps1>'; $VerifyReport = '<verify-report>'; " + HostessCtl + "connectivity-probe windows-firewall-rule --action remove --rule-profile '<rule-profile>' --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
+            "$FirewallRemove = 'target\\connectivity-probe\\wpf-firewall-rule-remove.json'; " +
+            "$AdminHandoffScript = 'target\\connectivity-probe\\wpf-firewall-rule-remove.admin-handoff.ps1'; " +
+            "$VerifyReport = 'target\\connectivity-probe\\wpf-firewall-rule-remove.verify.json'; " +
+            HostessCtl + "connectivity-probe windows-firewall-rule --action remove --rule-profile '<rule-profile>' --out $FirewallRemove --handoff-script-out $AdminHandoffScript --handoff-verify-out $VerifyReport",
             "rusty.quest.connectivity_windows_firewall_rule.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests"),
