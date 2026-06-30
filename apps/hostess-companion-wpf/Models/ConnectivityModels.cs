@@ -438,6 +438,12 @@ public sealed class ConnectivityFirewallRuleReport
     [JsonPropertyName("action")]
     public string Action { get; set; } = "";
 
+    [JsonPropertyName("rule_profile")]
+    public string RuleProfile { get; set; } = "";
+
+    [JsonPropertyName("probe_usage")]
+    public ConnectivityFirewallProbeUsage ProbeUsage { get; set; } = new();
+
     [JsonPropertyName("rule")]
     public ConnectivityFirewallRule Rule { get; set; } = new();
 
@@ -457,6 +463,15 @@ public sealed class ConnectivityFirewallRuleReport
     public ConnectivityProcessResult ApplyResult { get; set; } = new();
 
     public string ReportPath { get; set; } = "";
+}
+
+public sealed class ConnectivityFirewallProbeUsage
+{
+    [JsonPropertyName("probe_id")]
+    public string ProbeId { get; set; } = "";
+
+    [JsonPropertyName("connectivity_probe_args")]
+    public List<string> ConnectivityProbeArgs { get; set; } = [];
 }
 
 public sealed class ConnectivityFirewallRule

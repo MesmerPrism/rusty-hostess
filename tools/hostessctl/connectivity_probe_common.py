@@ -173,6 +173,10 @@ def empty_measurements() -> dict[str, Any]:
     return {
         "tcp_connect_ms": None,
         "websocket_echo_ms": None,
+        "websocket_messages_requested": None,
+        "websocket_messages_received": None,
+        "websocket_loss_percent": None,
+        "websocket_payload_bytes_max": None,
         "udp_packets_sent": None,
         "udp_packets_received": None,
         "udp_loss_percent": None,

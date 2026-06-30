@@ -162,6 +162,15 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   CLI automation, and future frontends can compare the same operator rows
   without owning artifact selection, validation, command authority, topology
   readiness, or protocol promotion.
+- `tools/hostessctl/companion_report_transport_coverage.py`: transport
+  coverage row helper for companion-report projection. It derives the
+  `transport_coverage.summary` row from already-projected source rows so TCP,
+  WebSocket, Wi-Fi Direct, other Wi-Fi topologies, and QCL probe IDs stay
+  visible without moving topology or protocol-promotion authority into WPF.
+  The row also emits `term_gates` and `remaining_live_gates` so operators can
+  distinguish Manifold-command WebSocket visibility, QCL-079 generic
+  WebSocket evidence, TCP echo/media evidence, and Wi-Fi Direct topology
+  visibility from unfinished live product gates.
 - `tools/hostessctl/connectivity_probe.py`: Quest connectivity lab probe
   facade. It emits `rusty.quest.connectivity_topology_probe.v1` reports,
   dispatches QCL routes, and preserves the CLI/report shape for WPF, Makepad,
@@ -200,7 +209,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/hostessctl/connectivity_media_receiver.py`: QCL-082 Hostess
   receiver-counter helpers for bounded `RMANVID1` stream-header and packet
   parsing, bounded TCP receiver capture, receiver sidecar counters,
-  runtime-status pairing, and no-decode binary media evidence.
+  runtime-status pairing, optional direct-Wi-Fi topology report pairing, and
+  no-decode binary media evidence.
 - `tools/hostessctl/connectivity_topology.py`: QCL-020/QCL-030/QCL-040/QCL-041
   topology fixture report helpers for Wi-Fi ADB stability, Quest
   LocalOnlyHotspot, and Wi-Fi Direct phone/Windows peer limits. These fixtures
@@ -214,11 +224,23 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   LSL, OSC, and ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution
   helpers, live report assembly, source-specific report promotion gates, and
   their protocol-specific evidence-row derivation.
+- `tools/hostessctl/connectivity_websocket.py`: QCL-079 generic WebSocket
+  protocol-fit helper. It owns the bounded host-loopback HTTP upgrade/echo
+  probe, Manifold stream route/evidence ingestion, fixture body,
+  authority-boundary checks, command-route rejection, and the rule that
+  host-loopback WebSocket evidence is candidate-only until broker-owned or
+  Quest-runtime endpoint evidence exists.
 - `tools/hostessctl/connectivity_suite.py`: install/environment/protocol suite
   runner. It executes selected QCL slots, records host network/firewall/tool
   snapshots, aggregates grouped results, and emits
   `rusty.quest.device_link.install_environment_suite_run.v1` for WPF, CLI,
   installers, and future frontends.
+- `tools/test_hostessctl_connectivity_probe.py`: compatibility facade for the
+  QCL connectivity-probe unittest suite. Test-family implementations live in
+  `tools/connectivity_probe_tests/` so fixture reports, QCL-082 media receiver
+  gates, QCL-079/WebSocket/data-protocol evidence, live transport paths,
+  parser coverage, and firewall rule-profile checks can evolve without making
+  one multi-authority test file the review surface.
 - `tools/hostessctl/pmb_broker_bridge.py`: Projected Motion Breath feedback
   publication, breath-source selection, and PMB receipt listening over the
   broker transport.
@@ -353,14 +375,36 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   `--include-protocol-matrix-inputs`, the route derives matrix-selected
   device-link and connectivity-probe artifacts itself; WPF feeds suite-run and
   protocol-matrix reports into the route instead of parsing matrix sources in
-  UI code. Topology report views can still pass explicit connectivity-probe
-  reports through the same route instead of re-normalizing evidence in the UI.
+  UI code. The WPF protocol-matrix flow also passes QCL-020/QCL-030/QCL-040/
+  QCL-041 topology fixtures as explicit matrix inputs so TCP/WebSocket/direct
+  Wi-Fi coverage is visible without promoting topology fixtures as data
+  protocols. The resulting `transport_coverage.summary.details.term_gates`
+  scopes WebSocket to Manifold command/session receipts, or to command receipts
+  plus QCL-079 generic WebSocket when that row is present; TCP is scoped to
+  QCL-010/QCL-011 echo plus QCL-082 binary media, and Wi-Fi Direct is scoped
+  to QCL-040/QCL-041 topology. With broker-owned QCL-079 evidence present,
+  generic WebSocket is cleared; `remaining_live_gates` keeps live
+  direct-Wi-Fi topology and product TCP media over direct Wi-Fi from being
+  implied by visibility alone. Product TCP media over direct Wi-Fi only
+  clears when a QCL-082
+  receiver report carries the explicit `protocol.media_product_topology_gate`
+  proof from a paired topology report. Product TCP media listener readiness is
+  separate again: `transport.product_tcp_media_listener_firewall` clears only
+  when the same QCL-082 receiver report carries
+  `protocol.media_product_listener_firewall_gate` from a verified
+  `connectivity-probe windows-firewall-rule --action verify --rule-profile
+  qcl-082-rmanvid1-media` report for the Hostess/WPF executable using the scoped
+  `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079` rule. Topology report
+  views can still pass explicit connectivity-probe reports through the same
+  route instead of re-normalizing evidence in the UI.
 - `tools/hostessctl/hostessctl.py connectivity-probe run`: emits a
   `rusty.quest.connectivity_topology_probe.v1` report for the Quest
   connectivity lab. Fixture mode covers QCL-000 USB ADB command-feedback and
-  QCL-010 same-Wi-Fi topology cases. Live QCL-010 mode uses serial-scoped ADB
-  only to observe Quest Wi-Fi state and then probes the actual data path with
-  host/Quest LAN reachability checks.
+  QCL-010 same-Wi-Fi topology cases; QCL-000 fixtures remain candidate
+  WebSocket visibility evidence until a live device-link report proves runtime
+  subscriber and applied-command receipt gates. Live QCL-010 mode uses
+  serial-scoped ADB only to observe Quest Wi-Fi state and then probes the
+  actual data path with host/Quest LAN reachability checks.
 - `tools/hostessctl/hostessctl.py connectivity-probe test-suite`: emits the
   planned downloadable install/environment/protocol test set as
   `rusty.quest.device_link.install_environment_test_suite.v1`. It groups host,
@@ -383,7 +427,7 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 ## Validation
 
 ```powershell
-python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_udp.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\hostessctl\native_breathing_room_setup.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
+python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_report_transport_coverage.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_udp.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\questionnaire_bridge.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\hostessctl\native_breathing_room_setup.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_catalog tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_report_projection tools.test_hostessctl_companion_session tools.test_hostessctl_connectivity_probe
 python tools\hostessctl\hostessctl.py run-replay --target desktop --module rmssd_gain --module coherence --packages-root <packages-root> --out <capture.json>
 python tools\hostessctl\hostessctl.py run-pmb-replay --target desktop --packages-root <packages-root> --out <pmb-replay-evidence.json>

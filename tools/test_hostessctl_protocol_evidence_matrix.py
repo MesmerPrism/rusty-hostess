@@ -5,10 +5,12 @@ import json
 import os
 import tempfile
 import unittest
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.cli_parser import build_hostessctl_parser
+from tools.hostessctl.connectivity_probe import fixture_report, live_websocket_report
 from tools.hostessctl.device_link_report import build_stream_capability_descriptor_from_connectivity_probe
 from tools.hostessctl.protocol_evidence_matrix import (
     PROTOCOL_EVIDENCE_MATRIX_SCHEMA,
@@ -74,6 +76,106 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(qcl082["status"], "rejected")
         self.assertEqual(qcl082["promotion_state"], "rejected")
         self.assertIn("gate.qcl082.media_high_rate_json_guard", qcl082["missing_gates"])
+
+    def test_qcl079_generic_websocket_is_optional_candidate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl079_path = root / "qcl079-websocket-loopback.json"
+            qcl079_path.write_text(
+                json.dumps(
+                    fixture_report(
+                        argparse.Namespace(
+                            probe_id="QCL-079",
+                            fixture_profile="qcl-079-websocket-loopback-pass",
+                            run_id="fixture-qcl079-websocket",
+                        ),
+                        observed_at=datetime(2026, 6, 30, 0, 0, tzinfo=UTC),
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            report = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl079-websocket",
+                    input=[str(qcl079_path)],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl079 = row(report, "QCL-079")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl079["status"], "candidate")
+        self.assertEqual(qcl079["transport_kind"], "websocket")
+        self.assertEqual(qcl079["evidence_tier"], "fixture")
+        self.assertEqual(qcl079["promotion_state"], "candidate")
+        self.assertFalse(qcl079["required_for_fold_in"])
+        self.assertFalse(qcl079["promotion_allowed"])
+        self.assertNotIn("QCL-079", report["summary"]["pending_required_probe_ids"])
+
+    def test_qcl079_manifold_websocket_route_promotes_as_broker_owned(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor, evidence = write_websocket_route_files(root)
+            qcl079_path = root / "qcl079-websocket-broker.json"
+            qcl079_path.write_text(
+                json.dumps(
+                    live_websocket_report(
+                        argparse.Namespace(
+                            probe_id="QCL-079",
+                            mode="live",
+                            run_id="qcl079-manifold-websocket",
+                            websocket_source="broker-owned-websocket",
+                            websocket_route_descriptor=str(descriptor),
+                            websocket_route_evidence=str(evidence),
+                            websocket_message_count=8,
+                            websocket_payload_bytes=128,
+                            websocket_bind_host="127.0.0.1",
+                            websocket_port=0,
+                            websocket_path="/qcl079",
+                            websocket_timeout_seconds=1.0,
+                        ),
+                        clock_func=lambda: datetime(2026, 6, 30, 0, 0, tzinfo=UTC),
+                    )
+                ),
+                encoding="utf-8",
+            )
+
+            report = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(root / "matrix.json"),
+                    validation_out=None,
+                    matrix_id="qcl079-websocket-broker",
+                    input=[str(qcl079_path)],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+        validation = validate_protocol_evidence_matrix(report)
+
+        qcl079 = row(report, "QCL-079")
+        self.assertEqual(validation["status"], "pass")
+        self.assertEqual(qcl079["status"], "usable")
+        self.assertEqual(qcl079["transport_kind"], "websocket")
+        self.assertEqual(qcl079["evidence_tier"], "broker_owned")
+        self.assertEqual(qcl079["promotion_state"], "promoted")
+        self.assertFalse(qcl079["required_for_fold_in"])
+        self.assertTrue(qcl079["promotion_allowed"])
+        self.assertNotIn("QCL-079", report["summary"]["pending_required_probe_ids"])
 
     def test_qcl082_media_stream_session_plan_remains_candidate_source_contract(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -526,6 +628,33 @@ class HostessCtlProtocolEvidenceMatrixTests(unittest.TestCase):
         self.assertEqual(command["evidence_tier"], "quest_runtime")
         self.assertEqual(command["missing_gates"], [])
 
+    def test_qcl000_fixture_keeps_websocket_visible_without_promotion(self) -> None:
+        matrix = build_protocol_evidence_matrix(
+            argparse.Namespace(
+                out="unused.json",
+                validation_out=None,
+                matrix_id="qcl000-fixture-command",
+                input=[str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-000-usb-adb-pass.json")],
+                suite_run=[],
+                latest_artifact_dir=[],
+                latest_probe_id=[],
+                latest_device_link_dir=[],
+                latest_stream_capability_dir=[],
+                latest_stream_probe_id=[],
+                fail_on_error=True,
+            )
+        )
+
+        command = row(matrix, "QCL-000")
+        self.assertEqual(command["status"], "candidate")
+        self.assertEqual(command["transport_kind"], "manifold_websocket")
+        self.assertEqual(command["evidence_tier"], "fixture")
+        self.assertFalse(command["promotion_allowed"])
+        self.assertIn("gate.qcl000.quest_runtime", command["missing_gates"])
+        self.assertIn("gate.qcl000.promotion_allowed", command["missing_gates"])
+        self.assertEqual(command["measurements"]["command_stages"]["applied"], "pass")
+        self.assertFalse(matrix["summary"]["all_required_data_protocols_promoted"])
+
     def test_cli_loads_suite_run_artifacts_and_writes_validation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -888,6 +1017,67 @@ def read_json(path: Path) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise AssertionError(f"expected object in {path}")
     return parsed
+
+
+def write_websocket_route_files(root: Path) -> tuple[Path, Path]:
+    descriptor = {
+        "$schema": "rusty.manifold.bridge.route_descriptor.v1",
+        "route_id": "bridge_route.stream.websocket.ordered",
+        "route_kind": "stream_bridge",
+        "plane": "data",
+        "transport_family": "web_socket",
+        "delivery": "ordered",
+        "payload_class": "stream_packet",
+        "rate_class": "periodic",
+        "authority_role": "adapter",
+        "required_evidence_stages": ["sent", "transport_ok", "observed"],
+        "required_conditions": [
+            {
+                "condition_id": "condition.host.websocket_firewall_inbound",
+                "scope": "security",
+                "kind": "host_firewall_inbound_allowed",
+                "required_state": "allowed",
+                "check_ref": "check.host.firewall.websocket_inbound",
+                "issue_codes": ["issue.host.firewall_blocked"],
+            }
+        ],
+        "timing": {
+            "rtt_strategy": "transport_echo",
+            "clock_domain": "clock.host_monotonic",
+            "min_round_trips": 8,
+            "timeout_ms": 5000,
+            "warmup_ms": 250,
+            "reported_metrics": ["rtt_ms", "jitter_ms"],
+        },
+    }
+    evidence = {
+        "$schema": "rusty.manifold.bridge.route_evidence.v1",
+        "evidence_id": "evidence.bridge_route.stream.websocket.ordered.loopback",
+        "route_id": "bridge_route.stream.websocket.ordered",
+        "status": "pass",
+        "started_at_ms": 1765000003000,
+        "ended_at_ms": 1765000003280,
+        "stage_reports": [
+            {"stage": "sent", "status": "pass", "evidence_refs": ["evidence.websocket.stream.producer.sent"], "issue_codes": []},
+            {
+                "stage": "transport_ok",
+                "status": "pass",
+                "evidence_refs": [
+                    "evidence.websocket.http_upgrade.accepted",
+                    "evidence.websocket.sec_websocket_accept.valid",
+                ],
+                "issue_codes": [],
+            },
+            {"stage": "observed", "status": "pass", "evidence_refs": ["evidence.websocket.stream.consumer.received"], "issue_codes": []},
+        ],
+        "artifact_refs": ["artifact.websocket.stream.loopback.report"],
+        "issues": [],
+    }
+    descriptor_path = root / "websocket-route.json"
+    evidence_path = root / "websocket-evidence.json"
+    descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    return descriptor_path, evidence_path
 
 
 def build_parser():

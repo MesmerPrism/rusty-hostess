@@ -199,8 +199,8 @@
                   <ColumnDefinition Width="110"/>
                   <ColumnDefinition Width="70"/>
                   <ColumnDefinition Width="90"/>
-                  <ColumnDefinition Width="70"/>
-                  <ColumnDefinition Width="112"/>
+                  <ColumnDefinition Width="86"/>
+                  <ColumnDefinition Width="160"/>
                 </Grid.ColumnDefinitions>
 
                 <TextBlock Text="Program"
@@ -243,8 +243,18 @@
                            Foreground="{StaticResource Brush.Muted}"/>
                 <TextBox Grid.Row="4"
                          Grid.Column="1"
-                         Grid.ColumnSpan="5"
+                         Grid.ColumnSpan="3"
                          Text="{Binding ConnectivityRemoteAddress, UpdateSourceTrigger=PropertyChanged}"/>
+                <TextBlock Grid.Row="4"
+                           Grid.Column="4"
+                           Text="Rule profile"
+                           VerticalAlignment="Center"
+                           Margin="12,0,0,0"
+                           Foreground="{StaticResource Brush.Muted}"/>
+                <ComboBox Grid.Row="4"
+                          Grid.Column="5"
+                          ItemsSource="{Binding ConnectivityRuleProfiles}"
+                          SelectedItem="{Binding ConnectivityRuleProfile, UpdateSourceTrigger=PropertyChanged}"/>
 
                 <TextBlock Grid.Row="6"
                            Text="Rule"

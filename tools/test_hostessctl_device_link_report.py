@@ -360,6 +360,7 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
         self.assertTrue(
             {
                 "manifold_websocket",
+                "websocket",
                 "udp",
                 "lsl",
                 "osc_udp",
@@ -381,6 +382,7 @@ class HostessCtlDeviceLinkReportTests(unittest.TestCase):
                 "QCL-082",
                 "QCL-083",
                 "QCL-084",
+                "QCL-079",
             }.issubset({row["probe_id"] for row in descriptor["test_slots"]})
         )
         for capability in descriptor["protocol_capabilities"]:

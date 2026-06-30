@@ -15,6 +15,11 @@ from tools.hostessctl.companion_report_projection import (
     run_companion_report_projection,
     validate_companion_report_projection,
 )
+from tools.hostessctl.connectivity_probe import (
+    CONNECTIVITY_PROBE_SCHEMA,
+    fixture_report,
+    live_websocket_report,
+)
 from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import build_protocol_evidence_matrix
 
@@ -317,6 +322,315 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             any(row["row_id"] == "connectivity_probe.transport.QCL-050" for row in report["rows"])
         )
 
+    def test_projection_summarizes_transport_coverage_from_included_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            matrix_path = root / "matrix.json"
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(matrix_path),
+                    validation_out=None,
+                    matrix_id="projection-transport-coverage",
+                    input=[
+                        str(REPO_ROOT / "fixtures" / "companion" / "device-link-pass.json"),
+                        str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-010-router-pass.json"),
+                        str(
+                            REPO_ROOT
+                            / "fixtures"
+                            / "connectivity-probe"
+                            / "qcl-040-wifi-direct-phone-peer-pass.json"
+                        ),
+                    ],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+            matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.transport-coverage",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[],
+                    protocol_matrix=[str(matrix_path)],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=True,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        self.assertTrue(
+            any(
+                row["row_id"] == "connectivity_probe.check.QCL-010.device_to_host.tcp_echo"
+                for row in report["rows"]
+            )
+        )
+        self.assertTrue(
+            any(row["row_id"] == "connectivity_probe.topology.QCL-040" for row in report["rows"])
+        )
+        coverage = find_row(report, "transport_coverage.summary")
+        self.assertEqual(coverage["kind"], "transport_coverage_summary")
+        self.assertIn("websocket=", coverage["notes"])
+        self.assertIn("tcp=", coverage["notes"])
+        self.assertIn("wifi_direct=", coverage["notes"])
+        self.assertTrue(coverage["details"]["explicit_terms"]["websocket"])
+        self.assertTrue(coverage["details"]["explicit_terms"]["tcp"])
+        self.assertTrue(coverage["details"]["explicit_terms"]["wifi_direct"])
+        term_gates = coverage["details"]["term_gates"]
+        self.assertEqual(
+            term_gates["websocket"]["scope"],
+            "manifold_command_session_receipts",
+        )
+        self.assertEqual(
+            term_gates["tcp"]["scope"],
+            "qcl010_qcl011_echo_and_qcl082_tcp_binary_media",
+        )
+        self.assertEqual(
+            term_gates["wifi_direct"]["scope"],
+            "qcl040_qcl041_topology_evidence",
+        )
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertIn("transport.general_websocket_capability", remaining_gate_ids)
+        self.assertIn("transport.direct_wifi_live_topology", remaining_gate_ids)
+        self.assertIn("transport.product_tcp_media_over_direct_wifi", remaining_gate_ids)
+        self.assertIn("transport.product_tcp_media_listener_firewall", remaining_gate_ids)
+
+    def test_projection_tracks_qcl079_generic_websocket_as_pending_live_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl079_path = root / "qcl079-websocket-loopback.json"
+            qcl079_path.write_text(
+                json.dumps(
+                    fixture_report(
+                        argparse.Namespace(
+                            probe_id="QCL-079",
+                            fixture_profile="qcl-079-websocket-loopback-pass",
+                            run_id="fixture-qcl079-websocket",
+                        ),
+                        observed_at=datetime(2026, 6, 30, 0, 0, tzinfo=UTC),
+                    )
+                ),
+                encoding="utf-8",
+            )
+            matrix_path = root / "matrix.json"
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(matrix_path),
+                    validation_out=None,
+                    matrix_id="projection-qcl079-websocket",
+                    input=[
+                        str(REPO_ROOT / "fixtures" / "companion" / "device-link-pass.json"),
+                        str(qcl079_path),
+                    ],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+            matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.qcl079-websocket",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[],
+                    protocol_matrix=[str(matrix_path)],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=True,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        coverage = find_row(report, "transport_coverage.summary")
+        websocket_gate = coverage["details"]["term_gates"]["websocket"]
+        self.assertEqual(
+            websocket_gate["scope"],
+            "manifold_command_session_receipts_and_qcl079_generic_protocol_fit",
+        )
+        self.assertIn("QCL-079", websocket_gate["probe_ids"])
+        gate = next(
+            row
+            for row in coverage["details"]["remaining_live_gates"]
+            if row["gate_id"] == "transport.general_websocket_capability"
+        )
+        self.assertEqual(gate["status"], "pending_live_evidence")
+        self.assertIn("QCL-079 generic WebSocket", gate["evidence"])
+
+    def test_projection_clears_qcl079_gate_with_broker_owned_websocket_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            descriptor, evidence = write_websocket_route_files(root)
+            qcl079_path = root / "qcl079-websocket-broker.json"
+            qcl079_path.write_text(
+                json.dumps(
+                    live_websocket_report(
+                        argparse.Namespace(
+                            probe_id="QCL-079",
+                            mode="live",
+                            run_id="qcl079-manifold-websocket",
+                            websocket_source="broker-owned-websocket",
+                            websocket_route_descriptor=str(descriptor),
+                            websocket_route_evidence=str(evidence),
+                            websocket_message_count=8,
+                            websocket_payload_bytes=128,
+                            websocket_bind_host="127.0.0.1",
+                            websocket_port=0,
+                            websocket_path="/qcl079",
+                            websocket_timeout_seconds=1.0,
+                        ),
+                        clock_func=lambda: datetime(2026, 6, 30, 0, 0, tzinfo=UTC),
+                    )
+                ),
+                encoding="utf-8",
+            )
+            matrix_path = root / "matrix.json"
+            matrix = build_protocol_evidence_matrix(
+                argparse.Namespace(
+                    out=str(matrix_path),
+                    validation_out=None,
+                    matrix_id="projection-qcl079-websocket-broker",
+                    input=[
+                        str(REPO_ROOT / "fixtures" / "companion" / "device-link-pass.json"),
+                        str(qcl079_path),
+                    ],
+                    suite_run=[],
+                    latest_artifact_dir=[],
+                    latest_probe_id=[],
+                    latest_device_link_dir=[],
+                    latest_stream_capability_dir=[],
+                    latest_stream_probe_id=[],
+                    fail_on_error=True,
+                )
+            )
+            matrix_path.write_text(json.dumps(matrix), encoding="utf-8")
+
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.qcl079-websocket-broker",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[],
+                    protocol_matrix=[str(matrix_path)],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=True,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        coverage = find_row(report, "transport_coverage.summary")
+        websocket_gate = coverage["details"]["term_gates"]["websocket"]
+        self.assertEqual(
+            websocket_gate["scope"],
+            "manifold_command_session_receipts_and_qcl079_generic_protocol_fit",
+        )
+        remaining_gate_ids = {
+            row["gate_id"] for row in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.general_websocket_capability", remaining_gate_ids)
+
+    def test_projection_clears_product_tcp_media_direct_wifi_gate_only_with_combined_proof(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl082_path = root / "qcl082-product-direct-wifi.json"
+            qcl082_path.write_text(json.dumps(qcl082_product_direct_wifi_report()), encoding="utf-8")
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.product-direct-wifi",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[
+                        str(REPO_ROOT / "fixtures" / "connectivity-probe" / "qcl-040-wifi-direct-phone-peer-pass.json"),
+                        str(qcl082_path),
+                    ],
+                    protocol_matrix=[],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=False,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        product_row = find_row(
+            report,
+            "connectivity_probe.check.QCL-082.protocol.media_product_topology_gate",
+        )
+        self.assertEqual(product_row["status"], "pass")
+        coverage = find_row(report, "transport_coverage.summary")
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.product_tcp_media_over_direct_wifi", remaining_gate_ids)
+        self.assertIn("transport.product_tcp_media_listener_firewall", remaining_gate_ids)
+
+    def test_projection_clears_product_tcp_media_listener_firewall_gate_with_verified_product_rule(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            qcl082_path = root / "qcl082-product-firewall.json"
+            qcl082_path.write_text(json.dumps(qcl082_product_tcp_firewall_report()), encoding="utf-8")
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.product-tcp-firewall",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[str(qcl082_path)],
+                    protocol_matrix=[],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=False,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        firewall_row = find_row(
+            report,
+            "connectivity_probe.check.QCL-082.protocol.media_product_listener_firewall_gate",
+        )
+        self.assertEqual(firewall_row["status"], "pass")
+        coverage = find_row(report, "transport_coverage.summary")
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.product_tcp_media_listener_firewall", remaining_gate_ids)
+
 
 def suite_run_fixture() -> dict[str, Any]:
     return {
@@ -393,6 +707,105 @@ def suite_run_fixture() -> dict[str, Any]:
     }
 
 
+def qcl082_product_direct_wifi_report() -> dict[str, Any]:
+    return {
+        "schema": CONNECTIVITY_PROBE_SCHEMA,
+        "probe_id": "QCL-082",
+        "run_id": "qcl082-product-direct-wifi",
+        "observed_at_utc": "2026-06-29T00:00:00Z",
+        "status": "pass",
+        "classification": "protocol_fit_receiver_counters",
+        "topology": {
+            "owner": "hostess_receiver_canary",
+            "network_provider": "declared_by_receiver_capture",
+            "endpoint_direction": "quest_to_host_binary_media",
+            "experimental": True,
+        },
+        "transport": {
+            "family": "tcp_binary",
+            "route": "hostess_rmanvid1_receiver_capture",
+            "protocol_role": "binary_media_plane_receiver_counters",
+            "payload_class": "h264_annex_b_binary_frames",
+        },
+        "checks": [
+            {
+                "name": "protocol.media_product_topology_gate",
+                "status": "pass",
+                "evidence": "RMANVID1 TCP receiver capture is paired with promoted direct-Wi-Fi topology evidence",
+                "observed": {
+                    "product_gate": "product_tcp_media_over_direct_wifi",
+                    "product_gate_proven": True,
+                    "topology_owner": "wifi_direct",
+                    "topology_network_provider": "wifi_direct",
+                    "topology_endpoint_direction": "peer_to_peer_group",
+                    "topology_transport_family": "wifi_direct",
+                    "topology_promotion_allowed": True,
+                    "media_promotion_allowed": True,
+                },
+                "issue_codes": [],
+            }
+        ],
+        "measurements": {
+            "media_product_topology_ready": True,
+        },
+        "promotion": {
+            "allowed": True,
+            "target": "quest.device_link binary media stream capability descriptor",
+            "reason": "unit fixture promoted product TCP media over direct-Wi-Fi",
+        },
+        "issues": [],
+    }
+
+
+def qcl082_product_tcp_firewall_report() -> dict[str, Any]:
+    return {
+        "schema": CONNECTIVITY_PROBE_SCHEMA,
+        "probe_id": "QCL-082",
+        "run_id": "qcl082-product-firewall",
+        "observed_at_utc": "2026-06-29T00:00:00Z",
+        "status": "pass",
+        "classification": "protocol_fit_receiver_counters",
+        "topology": {
+            "owner": "hostess_receiver_canary",
+            "network_provider": "declared_by_receiver_capture",
+            "endpoint_direction": "quest_to_host_binary_media",
+            "experimental": True,
+        },
+        "transport": {
+            "family": "tcp_binary",
+            "route": "hostess_rmanvid1_receiver_capture",
+            "protocol_role": "binary_media_plane_receiver_counters",
+            "payload_class": "h264_annex_b_binary_frames",
+        },
+        "checks": [
+            {
+                "name": "protocol.media_product_listener_firewall_gate",
+                "status": "pass",
+                "evidence": "RMANVID1 TCP receiver capture is paired with a verified product Hostess/WPF listener firewall rule",
+                "observed": {
+                    "product_gate": "product_tcp_media_listener_firewall_verified",
+                    "product_gate_proven": True,
+                    "listener_program": "S:\\Work\\repos\\active\\rusty-hostess\\apps\\hostess-companion-wpf\\bin\\Debug\\net9.0-windows\\HostessCompanion.Wpf.exe",
+                    "listener_protocol": "TCP",
+                    "listener_port": 9079,
+                    "product_rule_verified": True,
+                    "allowed_on_active_profile": True,
+                },
+                "issue_codes": [],
+            }
+        ],
+        "measurements": {
+            "media_product_listener_firewall_verified": True,
+        },
+        "promotion": {
+            "allowed": True,
+            "target": "quest.device_link binary media stream capability descriptor",
+            "reason": "unit fixture promoted product TCP media listener firewall",
+        },
+        "issues": [],
+    }
+
+
 def fixed_clock() -> datetime:
     return datetime(2026, 6, 29, 0, 0, 0, tzinfo=UTC)
 
@@ -417,6 +830,67 @@ def read_json(path: Path) -> dict[str, Any]:
     if not isinstance(parsed, dict):
         raise AssertionError(f"expected object in {path}")
     return parsed
+
+
+def write_websocket_route_files(root: Path) -> tuple[Path, Path]:
+    descriptor = {
+        "$schema": "rusty.manifold.bridge.route_descriptor.v1",
+        "route_id": "bridge_route.stream.websocket.ordered",
+        "route_kind": "stream_bridge",
+        "plane": "data",
+        "transport_family": "web_socket",
+        "delivery": "ordered",
+        "payload_class": "stream_packet",
+        "rate_class": "periodic",
+        "authority_role": "adapter",
+        "required_evidence_stages": ["sent", "transport_ok", "observed"],
+        "required_conditions": [
+            {
+                "condition_id": "condition.host.websocket_firewall_inbound",
+                "scope": "security",
+                "kind": "host_firewall_inbound_allowed",
+                "required_state": "allowed",
+                "check_ref": "check.host.firewall.websocket_inbound",
+                "issue_codes": ["issue.host.firewall_blocked"],
+            }
+        ],
+        "timing": {
+            "rtt_strategy": "transport_echo",
+            "clock_domain": "clock.host_monotonic",
+            "min_round_trips": 8,
+            "timeout_ms": 5000,
+            "warmup_ms": 250,
+            "reported_metrics": ["rtt_ms", "jitter_ms"],
+        },
+    }
+    evidence = {
+        "$schema": "rusty.manifold.bridge.route_evidence.v1",
+        "evidence_id": "evidence.bridge_route.stream.websocket.ordered.loopback",
+        "route_id": "bridge_route.stream.websocket.ordered",
+        "status": "pass",
+        "started_at_ms": 1765000003000,
+        "ended_at_ms": 1765000003280,
+        "stage_reports": [
+            {"stage": "sent", "status": "pass", "evidence_refs": ["evidence.websocket.stream.producer.sent"], "issue_codes": []},
+            {
+                "stage": "transport_ok",
+                "status": "pass",
+                "evidence_refs": [
+                    "evidence.websocket.http_upgrade.accepted",
+                    "evidence.websocket.sec_websocket_accept.valid",
+                ],
+                "issue_codes": [],
+            },
+            {"stage": "observed", "status": "pass", "evidence_refs": ["evidence.websocket.stream.consumer.received"], "issue_codes": []},
+        ],
+        "artifact_refs": ["artifact.websocket.stream.loopback.report"],
+        "issues": [],
+    }
+    descriptor_path = root / "websocket-route.json"
+    evidence_path = root / "websocket-evidence.json"
+    descriptor_path.write_text(json.dumps(descriptor), encoding="utf-8")
+    evidence_path.write_text(json.dumps(evidence), encoding="utf-8")
+    return descriptor_path, evidence_path
 
 
 def build_parser():

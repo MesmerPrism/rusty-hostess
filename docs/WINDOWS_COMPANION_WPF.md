@@ -115,6 +115,7 @@ command/readiness semantics.
 The Session page calls:
 
 ```powershell
+& 'C:\Users\tillh\Agent Bureau\scripts\agent-board.ps1' reserve quest:REPLACE_WITH_QUEST_SERIAL --duration 45m --task "WPF companion headset session"
 $Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
 $QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py companion-session run `
@@ -132,6 +133,7 @@ python tools\hostessctl\hostessctl.py companion-session run `
   --launch-settle-seconds 8 `
   --runtime-subscriber-retry-count 8 `
   --runtime-subscriber-retry-wait-seconds 2
+& 'C:\Users\tillh\Agent Bureau\scripts\agent-board.ps1' release 'LEASE_ID_FROM_RESERVE_OUTPUT' --result done
 ```
 
 It renders the returned ordered phases, actions, issues, and artifact
@@ -163,6 +165,7 @@ runtime_accepted -> applied` command stages actually passed.
 The Commands page safe probe calls:
 
 ```powershell
+& 'C:\Users\tillh\Agent Bureau\scripts\agent-board.ps1' reserve quest:REPLACE_WITH_QUEST_SERIAL --duration 30m --task "WPF command probe"
 $Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
 $QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
 python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
@@ -170,6 +173,7 @@ python tools\hostessctl\hostessctl.py run-bridge-command-live-android `
   --out target\companion-command\wpf-broker-stream-probe-evidence.json `
   --adb $Adb `
   --serial $QuestSerial
+& 'C:\Users\tillh\Agent Bureau\scripts\agent-board.ps1' release 'LEASE_ID_FROM_RESERVE_OUTPUT' --result done
 ```
 
 It displays the Hostess execution sidecar stages instead of deciding command
@@ -237,6 +241,13 @@ rules do not satisfy product readiness.
 The plan report also carries the matching QCL-080 probe arguments, including
 the WPF listener executable as `--udp-listener-helper`, so a human operator and
 CLI automation follow the same product-owned listener route.
+The WPF rule-profile selector is the UI projection of the same CLI contract:
+`custom`, `qcl-010-tcp-echo`, `qcl-080-udp-freshness`, and
+`qcl-082-rmanvid1-media`. Selecting the QCL-082 profile projects TCP port
+`9079`, rule `Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079`, and the
+CLI-owned `--rule-profile qcl-082-rmanvid1-media` plan/verify/remove route.
+WPF still only collects parameters, requests Hostess CLI, and renders the
+returned `rusty.quest.connectivity_windows_firewall_rule.v1` artifact.
 
 For UDP, the page uses QCL-080 with the WPF executable itself in listener
 helper mode:
@@ -248,6 +259,7 @@ $RunId = 'wpf-qcl080-live'
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode live `
   --probe-id QCL-080 `
+  --run-id $RunId `
   --adb $Adb `
   --serial $QuestSerial `
   --udp-port 18767 `
@@ -270,7 +282,9 @@ The WPF app renders the report checks plus the
 `rusty.quest.device_link.stream_capability.v1` descriptor requirements and
 warnings. WPF does not decide that UDP is product-ready; it displays Hostess
 firewall evidence, Makepad runtime sender evidence, packet counters, promotion
-state, and remaining warnings.
+state, and remaining warnings. The route materializes a default run id before
+Makepad runtime sender setup, but automation should still pass `--run-id`
+explicitly so the app-owned runtime marker can be matched to the report.
 
 The page can also request the installer-style suite runner:
 
@@ -286,12 +300,42 @@ WPF renders the resulting
 phase rows, per-QCL slot rows, metrics, and artifact paths. Fixture suite
 success proves the diagnostic harness is coherent; live protocol promotion
 still comes from the individual QCL reports and stream capability descriptors.
+The suite includes QCL-079 as a generic WebSocket protocol-fit slot; it is
+separate from QCL-000 Manifold command/session WebSocket authority.
 
 The Protocol Matrix action keeps that split explicit. WPF first requests the
-fixture suite, refreshes the QCL-082 Rusty Quest media-stream source-contract
+fixture suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation
+fixture reports, refreshes the QCL-082 Rusty Quest media-stream source-contract
 report when the sibling plan exists, accepts QCL-082 broker/runtime status
-artifacts when present, then shells to the CLI roll-up with the shared
-latest-artifact resolver:
+artifacts when present, then shells to the CLI roll-up with explicit topology
+inputs and the shared latest-artifact resolver. QCL-000 fixture WebSocket
+evidence remains candidate-only; QCL-000 promotion comes from a live
+`rusty.quest.device_link.v1` companion-session artifact. QCL-079 generic
+WebSocket host-loopback evidence is also candidate-only; it answers protocol
+fit without promoting command authority or media transport:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-079 `
+  --websocket-source host-loopback `
+  --out target\connectivity-probe\qcl079-live-host-loopback.json
+```
+
+When the sibling Manifold repo has the generic stream route descriptor and
+evidence fixture, WPF and CLI automation can promote QCL-079 as broker-owned
+without treating the Manifold command WebSocket as generic data:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-079 `
+  --websocket-source broker-owned-websocket `
+  --websocket-route-descriptor S:\Work\repos\active\rusty-manifold\fixtures\bridge-route\stream-websocket-ordered-route.json `
+  --websocket-route-evidence S:\Work\repos\active\rusty-manifold\fixtures\bridge-route\stream-websocket-ordered-evidence.json `
+  --out target\connectivity-probe\qcl079-live-manifold-websocket-broker.json `
+  --fail-on-error
+```
 
 When the Rusty Quest media/display streaming branch is present, WPF and CLI
 automation use the same source-contract refresh route to translate the
@@ -324,15 +368,35 @@ Receiver-counter evidence uses a third CLI-equivalent route. Hostess first
 arms a bounded TCP `RMANVID1` receiver, writes the raw capture and receiver
 sidecar/result artifacts, then parses the bounded stream header and packet
 records into the QCL report. WPF should only render the generated report
-through protocol-matrix/projection; it must not parse binary media itself:
+through protocol-matrix/projection; it must not parse binary media itself. To
+prove product TCP media over direct Wi-Fi, pair the receiver with a QCL-040 or
+QCL-041 topology report. To prove product listener readiness, also pass a
+verified Hostess/WPF TCP listener firewall report. Unpromoted topology or
+missing/product-mismatched firewall evidence keeps the product gates visible
+instead of letting WPF infer readiness from separate TCP, firewall, and Wi-Fi
+Direct rows:
+
+If the verification report has `product_rule_verified=false`, run the same
+Hostess CLI route with `--action apply` from an elevated PowerShell session,
+then rerun `--action verify`. WPF should project the resulting report; it must
+not create firewall rules through hidden UI logic.
 
 ```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action verify `
+  --rule-profile qcl-082-rmanvid1-media `
+  --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --out target\connectivity-probe\qcl082-tcp-firewall-verify.json `
+  --fail-on-error
+
 python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-capture `
   --bind-host 0.0.0.0 `
   --port 9079 `
   --capture-out target\connectivity-probe\media-stream.rmanvid1 `
   --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
   --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
   --max-packets 240 `
   --out target\connectivity-probe\media-stream-receiver-result.json `
@@ -344,6 +408,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
   --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
   --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-topology-report target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
+  --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
   --fail-on-error
 ```
@@ -351,7 +417,18 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --suite-run target\connectivity-probe\wpf-connectivity-suite.json `
+  --input target\connectivity-probe\wpf-connectivity-suite.qcl020-wifi-adb-session-pass.json `
+  --input target\connectivity-probe\wpf-connectivity-suite.qcl030-local-only-hotspot-started.json `
+  --input target\connectivity-probe\wpf-connectivity-suite.qcl040-wifi-direct-phone-peer-pass.json `
+  --input target\connectivity-probe\wpf-connectivity-suite.qcl041-wifi-direct-windows-peer-pass.json `
   --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-000 `
+  --latest-probe-id QCL-010 `
+  --latest-probe-id QCL-011 `
+  --latest-probe-id QCL-020 `
+  --latest-probe-id QCL-030 `
+  --latest-probe-id QCL-040 `
+  --latest-probe-id QCL-041 `
   --latest-probe-id QCL-050 `
   --latest-probe-id QCL-051 `
   --latest-probe-id QCL-080 `
@@ -359,6 +436,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --latest-probe-id QCL-082 `
   --latest-probe-id QCL-083 `
   --latest-probe-id QCL-084 `
+  --latest-probe-id QCL-079 `
   --latest-device-link-dir target\companion-session `
   --latest-stream-capability-dir target\connectivity-probe `
   --latest-stream-probe-id QCL-080 `
@@ -399,7 +477,14 @@ still pass explicit `--connectivity-probe` artifacts for standalone topology
 views without moving probe execution or promotion rules into UI code. The rows
 shown in the Protocol Matrix page come from
 `rusty.hostess.companion.report_projection.v1`, so WPF, Makepad-facing tests,
-and CLI automation use the same row contract.
+and CLI automation use the same row contract. The projection's
+`transport_coverage.summary.details.term_gates` keeps WebSocket scoped to the
+Manifold command/session receipt route, or to command receipts plus QCL-079
+generic protocol fit when that evidence is present. TCP stays scoped to
+QCL-010/QCL-011 echo plus QCL-082 binary media, and Wi-Fi Direct stays scoped
+to QCL-040/QCL-041 topology. `remaining_live_gates` names the still-open
+generic WebSocket, live
+direct-Wi-Fi topology, and product TCP media over direct-Wi-Fi gates.
 
 ## Build
 

@@ -122,6 +122,25 @@ CAPABILITY_PROFILES: list[dict[str, Any]] = [
         ),
     },
     {
+        "capability_id": "capability.protocol.websocket_generic",
+        "probe_id": "QCL-079",
+        "transport_kind": "websocket",
+        "semantic_family": "generic_data_protocol",
+        "authority_owner": "rusty.quest.device_link",
+        "required_for_fold_in": False,
+        "allowed_tiers": ["quest_runtime", "broker_owned"],
+        "next_cli": (
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run "
+            "--mode live --probe-id QCL-079 --websocket-source host-loopback "
+            "--out target\\connectivity-probe\\qcl079-live-host-loopback.json"
+        ),
+        "promotion_gate": (
+            "QCL-079 host-loopback proves generic WebSocket protocol fit only; "
+            "promotion requires broker-owned or Quest-runtime live endpoint evidence "
+            "separate from Manifold command acceptance."
+        ),
+    },
+    {
         "capability_id": "capability.bluetooth.rfcomm_control",
         "probe_id": "QCL-050",
         "transport_kind": "bluetooth_rfcomm",
@@ -679,6 +698,8 @@ def promotion_requirements(
         requirements.extend(qcl080_product_requirements(report, descriptor))
     if probe_id == "QCL-082":
         requirements.extend(qcl082_media_requirements(report))
+    if probe_id == "QCL-079":
+        requirements.extend(qcl079_websocket_requirements(report))
     return requirements
 
 
@@ -802,6 +823,99 @@ def qcl082_check_passed(report: dict[str, Any], name: str) -> bool:
     return False
 
 
+def qcl079_websocket_requirements(report: dict[str, Any]) -> list[dict[str, Any]]:
+    transport = object_value(report.get("transport"))
+    measurements = object_value(report.get("measurements"))
+    handshake = report_check_passed(report, "protocol.websocket_handshake")
+    exchange = report_check_passed(report, "protocol.websocket_payload_exchange")
+    bounds = report_check_passed(report, "protocol.websocket_message_bounds")
+    command_separation = report_check_passed(report, "protocol.websocket_not_command_authority")
+    media_guard = report_check_passed(report, "protocol.websocket_high_rate_media_guard")
+    measurement_keys = [
+        "websocket_messages_requested",
+        "websocket_messages_received",
+        "websocket_loss_percent",
+    ]
+    measurements_present = all(measurements.get(key) is not None for key in measurement_keys)
+    generic_websocket = (
+        transport.get("family") == "websocket"
+        and transport.get("protocol_role") == "generic_websocket_protocol_fit"
+    )
+    return [
+        gate_result(
+            "gate.qcl079.generic_websocket_probe_defined",
+            "satisfied" if generic_websocket else "missing",
+            (
+                "QCL-079 generic WebSocket report loaded"
+                if generic_websocket
+                else "QCL-079 generic WebSocket report is missing or not WebSocket"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_handshake",
+            "satisfied" if handshake else "missing",
+            (
+                "WebSocket HTTP upgrade and Sec-WebSocket-Accept validated"
+                if handshake
+                else "WebSocket handshake evidence missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_payload_exchange",
+            "satisfied" if exchange else "missing",
+            (
+                "bounded WebSocket payload exchange validated"
+                if exchange
+                else "WebSocket payload exchange evidence missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_message_bounds",
+            "satisfied" if bounds else "missing",
+            (
+                "message count and payload bounds declared"
+                if bounds
+                else "WebSocket message bounds missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_not_command_authority",
+            "satisfied" if command_separation else "missing",
+            (
+                "generic WebSocket is separated from Manifold command authority"
+                if command_separation
+                else "generic WebSocket command-authority separation missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_high_rate_media_guard",
+            "satisfied" if media_guard else "missing",
+            (
+                "generic WebSocket is guarded from high-rate media promotion"
+                if media_guard
+                else "WebSocket high-rate media guard missing"
+            ),
+        ),
+        gate_result(
+            "gate.qcl079.websocket_measurements_declared",
+            "satisfied" if measurements_present else "missing",
+            (
+                "message request, receive, and loss measurements declared"
+                if measurements_present
+                else "WebSocket message measurements missing"
+            ),
+        ),
+    ]
+
+
+def report_check_passed(report: dict[str, Any], name: str) -> bool:
+    for check in list_value(report.get("checks")):
+        row = object_value(check)
+        if row.get("name") == name:
+            return row.get("status") == "pass"
+    return False
+
+
 def protocol_row_status(
     report: dict[str, Any],
     *,
@@ -844,6 +958,8 @@ def evidence_tier(report: dict[str, Any]) -> str:
     transport = object_value(report.get("transport"))
     endpoint_source = str(transport.get("endpoint_source") or "")
     promotion_allowed = object_value(report.get("promotion")).get("allowed") is True
+    if probe_id == "QCL-000" and is_fixture_report(report):
+        return "fixture"
     if probe_id == "QCL-000" and report.get("status") == "pass":
         return "quest_runtime"
     if probe_id == "QCL-080" and endpoint_source == "app_owned_runtime_udp_sender":
@@ -854,6 +970,7 @@ def evidence_tier(report: dict[str, Any]) -> str:
         "native-rust-broker",
         "manifold-lsl-broker",
         "rusty-quest-manifold-broker-media-stream-runtime",
+        "broker-owned-websocket",
     }:
         return "broker_owned"
     if is_fixture_report(report):

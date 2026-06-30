@@ -820,6 +820,7 @@ def validate_install_test_suite_descriptor(descriptor: dict[str, Any]) -> dict[s
 
     required_transports = {
         "manifold_websocket",
+        "websocket",
         "udp",
         "lsl",
         "osc_udp",
@@ -847,6 +848,7 @@ def validate_install_test_suite_descriptor(descriptor: dict[str, Any]) -> dict[s
         "QCL-082",
         "QCL-083",
         "QCL-084",
+        "QCL-079",
     }
     observed_probe_ids = {
         str(slot.get("probe_id") or "")
@@ -1080,6 +1082,77 @@ def default_stream_capabilities() -> list[dict[str, Any]]:
             ],
             recommended_for=["operator commands", "runtime receipt probes"],
             not_for=["camera frames", "biosignal sample streams"],
+        ),
+        capability_row(
+            capability_id="capability.protocol.websocket_generic",
+            bridge_route_id="bridge_route.quest_device_link.qcl079.websocket_generic",
+            stream_id="stream.protocol_fit.websocket.generic",
+            semantic_family="generic_data_protocol",
+            transport_kind="websocket",
+            payload_plane="bounded_text_or_binary_message",
+            rate_class="low_or_mid_rate",
+            reliability="ordered_message_ack_measured",
+            direction="peer_to_peer_socket_exchange",
+            clock_policy="protocol_ack_timestamps",
+            queue_policy="bounded_message_exchange_not_command_authority",
+            max_rate_hz=120,
+            status="candidate",
+            conditions=[
+                condition(
+                    "condition.websocket.http_upgrade",
+                    "protocol",
+                    "unknown",
+                    remediation="Run QCL-079 host-loopback for protocol fit, or broker-owned with Manifold stream route descriptor/evidence for promotion.",
+                    evidence_refs=["protocol.websocket_handshake"],
+                ),
+                condition(
+                    "condition.websocket.generic_data_boundary",
+                    "authority",
+                    "unknown",
+                    remediation="Keep generic WebSocket separate from Manifold command acceptance and high-rate media routes; reject command/control WebSocket descriptors.",
+                    evidence_refs=[
+                        "protocol.websocket_not_command_authority",
+                        "protocol.websocket_high_rate_media_guard",
+                    ],
+                ),
+            ],
+            timing=timing_profile(
+                rtt_strategy="echo_round_trip_ack",
+                clock_alignment="host_send_echo_receive_delta",
+                metrics=[
+                    "websocket_messages_received",
+                    "websocket_loss_percent",
+                    "websocket_echo_ms",
+                ],
+                rtt_supported=True,
+                fallback_timing_source="parallel_lsl_reference_for_cross_runtime_timing",
+            ),
+            test_slots=[
+                test_slot(
+                    "QCL-079",
+                    "qcl-079-websocket-loopback-pass",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source host-loopback --out target\\connectivity-probe\\qcl079-live-host-loopback.json",
+                    "Generic WebSocket handshake, bounded message exchange, and authority boundary",
+                    metrics=[
+                        "websocket_messages_received",
+                        "websocket_loss_percent",
+                        "websocket_echo_ms",
+                    ],
+                ),
+                test_slot(
+                    "QCL-079",
+                    "qcl-079-manifold-websocket-broker",
+                    "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor S:\\Work\\repos\\active\\rusty-manifold\\fixtures\\bridge-route\\stream-websocket-ordered-route.json --websocket-route-evidence S:\\Work\\repos\\active\\rusty-manifold\\fixtures\\bridge-route\\stream-websocket-ordered-evidence.json --out target\\connectivity-probe\\qcl079-live-manifold-websocket-broker.json --fail-on-error",
+                    "Broker-owned generic WebSocket stream bridge evidence, separate from command authority",
+                    metrics=[
+                        "websocket_messages_received",
+                        "websocket_loss_percent",
+                        "websocket_echo_ms",
+                    ],
+                )
+            ],
+            recommended_for=["generic low/mid-rate message protocols after broker or runtime endpoint evidence"],
+            not_for=["Manifold command authority", "high-rate media payloads"],
         ),
         capability_row(
             capability_id="capability.biosignal.lsl_clocked_samples",
@@ -2438,9 +2511,9 @@ def install_suite_environment_checks() -> list[dict[str, Any]]:
         environment_check(
             "suite.protocol.dependencies",
             "protocol",
-            "Protocol libraries, helpers, and runtime endpoints for LSL, OSC, ZeroMQ, BLE/GATT, and RFCOMM",
+            "Protocol libraries, helpers, and runtime endpoints for WebSocket, LSL, OSC, ZeroMQ, BLE/GATT, and RFCOMM",
             "python tools\\hostessctl\\hostessctl.py connectivity-probe test-suite --out target\\connectivity-probe\\device-link-test-suite.json",
-            ["protocol.lsl_discovery", "protocol.osc_payload_exchange", "protocol.zeromq_dependency", "protocol.ble_gatt_status", "protocol.rfcomm_control"],
+            ["protocol.websocket_handshake", "protocol.lsl_discovery", "protocol.osc_payload_exchange", "protocol.zeromq_dependency", "protocol.ble_gatt_status", "protocol.rfcomm_control"],
         ),
         environment_check(
             "suite.timing.rtt",
@@ -2538,6 +2611,16 @@ def install_suite_test_slots() -> list[dict[str, Any]]:
             "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source manifold-zmq-loopback --zeromq-pattern pub-sub --zeromq-manifold-root S:\\Work\\repos\\active\\rusty-manifold --out target\\connectivity-probe\\qcl084-live-manifold-zmq-loopback.json",
             metrics=["zeromq_messages_received", "zeromq_rtt_ms_p95", "zeromq_clock_offset_estimate_ms_median"],
             rtt_policy="req_rep_native_rtt_or_pub_sub_lsl_parallel_reference",
+        ),
+        suite_slot(
+            "suite.qcl079.websocket_generic",
+            "QCL-079",
+            "qcl-079-websocket-loopback-pass",
+            "protocol",
+            "Generic WebSocket handshake, bounded payload exchange, and command-authority separation",
+            "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source host-loopback --out target\\connectivity-probe\\qcl079-live-host-loopback.json",
+            metrics=["websocket_messages_received", "websocket_loss_percent", "websocket_echo_ms"],
+            rtt_policy="echo_round_trip_ack_candidate_until_broker_or_runtime_endpoint",
         ),
         suite_slot(
             "suite.qcl050.bluetooth_rfcomm",

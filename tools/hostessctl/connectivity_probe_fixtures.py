@@ -24,6 +24,7 @@ from tools.hostessctl.connectivity_media_receiver import (
     parse_rmanvid1_capture,
     qcl082_media_stream_receiver_capture_body,
 )
+from tools.hostessctl.connectivity_websocket import qcl079_fixture_body
 from tools.hostessctl.connectivity_probe_common import (
     DEFAULT_TCP_MARKER,
     base_report,
@@ -55,22 +56,40 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
     media_stream_runtime_status = str(getattr(args, "media_stream_runtime_status", "") or "").strip()
     media_stream_rmanvid1_capture = str(getattr(args, "media_stream_rmanvid1_capture", "") or "").strip()
     media_stream_receiver_sidecar = str(getattr(args, "media_stream_receiver_sidecar", "") or "").strip()
+    media_stream_topology_report = str(getattr(args, "media_stream_topology_report", "") or "").strip()
+    media_stream_firewall_report = str(getattr(args, "media_stream_firewall_report", "") or "").strip()
     if probe_id == "QCL-082" and media_stream_rmanvid1_capture:
         capture_path = Path(media_stream_rmanvid1_capture)
         sidecar_path = Path(media_stream_receiver_sidecar) if media_stream_receiver_sidecar else None
         runtime_path = Path(media_stream_runtime_status) if media_stream_runtime_status else None
         capture_stats = parse_rmanvid1_capture(capture_path)
         sidecar = read_json_file(sidecar_path) if sidecar_path else {}
+        if not media_stream_topology_report:
+            media_stream_topology_report = str(
+                object_value(sidecar.get("source")).get("topology_report_path") or ""
+            ).strip()
+        if not media_stream_firewall_report:
+            media_stream_firewall_report = str(
+                object_value(sidecar.get("source")).get("firewall_report_path") or ""
+            ).strip()
+        topology_path = Path(media_stream_topology_report) if media_stream_topology_report else None
+        firewall_path = Path(media_stream_firewall_report) if media_stream_firewall_report else None
         runtime_artifact = read_json_file(runtime_path) if runtime_path else None
+        topology_artifact = read_json_file(topology_path) if topology_path else None
+        firewall_artifact = read_json_file(firewall_path) if firewall_path else None
         report = base_report(args, observed_at=observed_at, probe_id="QCL-082")
         report.update(
             qcl082_media_stream_receiver_capture_body(
                 capture_stats,
                 sidecar=sidecar,
                 runtime_status=runtime_artifact,
+                topology_report=topology_artifact,
+                firewall_report=firewall_artifact,
                 capture_path=str(capture_path),
                 sidecar_path=str(sidecar_path) if sidecar_path else "",
                 runtime_status_path=str(runtime_path) if runtime_path else "",
+                topology_report_path=str(topology_path) if topology_path else "",
+                firewall_report_path=str(firewall_path) if firewall_path else "",
             )
         )
         return report
@@ -117,6 +136,8 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
             profile = "qcl-083-osc-loopback-pass"
         elif probe_id == "QCL-084":
             profile = "qcl-084-zeromq-loopback-pass"
+        elif probe_id == "QCL-079":
+            profile = "qcl-079-websocket-loopback-pass"
         else:
             profile = "qcl-010-router-pass"
     if profile == "qcl-000-usb-adb-pass":
@@ -211,6 +232,14 @@ def fixture_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[s
     if profile == "qcl-084-zeromq-dependency-missing":
         report = base_report(args, observed_at=observed_at, probe_id="QCL-084")
         report.update(qcl084_fixture_body(status="blocked", dependency_missing=True))
+        return report
+    if profile == "qcl-079-websocket-loopback-pass":
+        report = base_report(args, observed_at=observed_at, probe_id="QCL-079")
+        report.update(qcl079_fixture_body(status="pass"))
+        return report
+    if profile == "qcl-079-websocket-handshake-blocked":
+        report = base_report(args, observed_at=observed_at, probe_id="QCL-079")
+        report.update(qcl079_fixture_body(status="blocked", handshake_blocked=True))
         return report
     raise SystemExit(f"unsupported connectivity fixture profile: {profile}")
 

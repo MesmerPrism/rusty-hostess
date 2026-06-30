@@ -11,8 +11,30 @@ public sealed class HostessctlConnectivityService
 {
     private const int DefaultTcpPort = 18766;
     private const int DefaultUdpPort = 18767;
+    private const int DefaultQcl082Rmanvid1MediaPort = 9079;
+    public const string FirewallRuleProfileCustom = "custom";
+    public const string FirewallRuleProfileQcl010TcpEcho = "qcl-010-tcp-echo";
+    public const string FirewallRuleProfileQcl080UdpFreshness = "qcl-080-udp-freshness";
+    public const string FirewallRuleProfileQcl082Rmanvid1Media = "qcl-082-rmanvid1-media";
     private const string DefaultTcpRuleNamePrefix = "Rusty Hostess WPF QCL-010 TCP Echo";
     private const string DefaultUdpRuleNamePrefix = "Rusty Hostess WPF QCL-080 UDP Freshness";
+    private const string DefaultQcl082RuleNamePrefix = "Rusty Hostess WPF QCL-082 TCP RMANVID1 Media";
+
+    public static readonly IReadOnlyList<string> FirewallRuleProfiles =
+    [
+        FirewallRuleProfileCustom,
+        FirewallRuleProfileQcl010TcpEcho,
+        FirewallRuleProfileQcl080UdpFreshness,
+        FirewallRuleProfileQcl082Rmanvid1Media,
+    ];
+
+    private static readonly (string ProbeId, string FixtureProfile, string FileSuffix)[] TopologyFixtureProfiles =
+    {
+        ("QCL-020", "qcl-020-wifi-adb-session-pass", "qcl020-wifi-adb-session-pass"),
+        ("QCL-030", "qcl-030-local-only-hotspot-started", "qcl030-local-only-hotspot-started"),
+        ("QCL-040", "qcl-040-wifi-direct-phone-peer-pass", "qcl040-wifi-direct-phone-peer-pass"),
+        ("QCL-041", "qcl-041-wifi-direct-windows-peer-pass", "qcl041-wifi-direct-windows-peer-pass"),
+    };
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
@@ -26,10 +48,15 @@ public sealed class HostessctlConnectivityService
         string profile,
         string remoteAddress,
         string ruleName,
+        string ruleProfile,
         CancellationToken cancellationToken)
     {
-        var selectedProtocol = NormalizeProtocol(protocol);
-        var port = ParsePort(portText, DefaultPortForProtocol(selectedProtocol));
+        var selectedRuleProfile = NormalizeFirewallRuleProfile(ruleProfile);
+        var selectedProtocol = NormalizeProtocol(
+            string.IsNullOrWhiteSpace(protocol)
+                ? DefaultProtocolForRuleProfile(selectedRuleProfile)
+                : protocol);
+        var port = ParsePort(portText, DefaultPortForRuleProfile(selectedRuleProfile, selectedProtocol));
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
         var reportPath = new FileInfo(Path.Combine(
             repoRoot.FullName,
@@ -46,7 +73,8 @@ public sealed class HostessctlConnectivityService
             port,
             profile,
             remoteAddress,
-            ruleName);
+            ruleName,
+            selectedRuleProfile);
 
         await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
@@ -70,7 +98,8 @@ public sealed class HostessctlConnectivityService
             report.Rule.LocalPort,
             string.Join(",", report.Rule.Profiles),
             report.Rule.RemoteAddress,
-            report.Rule.Name);
+            report.Rule.Name,
+            report.RuleProfile);
         return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -82,10 +111,15 @@ public sealed class HostessctlConnectivityService
         string profile,
         string remoteAddress,
         string ruleName,
+        string ruleProfile,
         CancellationToken cancellationToken)
     {
-        var selectedProtocol = NormalizeProtocol(protocol);
-        var port = ParsePort(portText, DefaultPortForProtocol(selectedProtocol));
+        var selectedRuleProfile = NormalizeFirewallRuleProfile(ruleProfile);
+        var selectedProtocol = NormalizeProtocol(
+            string.IsNullOrWhiteSpace(protocol)
+                ? DefaultProtocolForRuleProfile(selectedRuleProfile)
+                : protocol);
+        var port = ParsePort(portText, DefaultPortForRuleProfile(selectedRuleProfile, selectedProtocol));
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
         var reportPath = FirewallActionReportPath(repoRoot, "verify");
         var arguments = FirewallRuleArguments(
@@ -96,7 +130,8 @@ public sealed class HostessctlConnectivityService
             port,
             profile,
             remoteAddress,
-            ruleName);
+            ruleName,
+            selectedRuleProfile);
         await RunHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
         var report = await ReadReportAsync<ConnectivityFirewallRuleReport>(reportPath, cancellationToken)
@@ -112,10 +147,15 @@ public sealed class HostessctlConnectivityService
         string portText,
         string profile,
         string remoteAddress,
+        string ruleProfile,
         CancellationToken cancellationToken)
     {
-        var selectedProtocol = NormalizeProtocol(protocol);
-        var port = ParsePort(portText, DefaultPortForProtocol(selectedProtocol));
+        var selectedRuleProfile = NormalizeFirewallRuleProfile(ruleProfile);
+        var selectedProtocol = NormalizeProtocol(
+            string.IsNullOrWhiteSpace(protocol)
+                ? DefaultProtocolForRuleProfile(selectedRuleProfile)
+                : protocol);
+        var port = ParsePort(portText, DefaultPortForRuleProfile(selectedRuleProfile, selectedProtocol));
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
         var reportPath = FirewallActionReportPath(repoRoot, "remove");
         var arguments = FirewallRuleArguments(
@@ -126,7 +166,8 @@ public sealed class HostessctlConnectivityService
             port,
             profile,
             remoteAddress,
-            ruleName);
+            ruleName,
+            selectedRuleProfile);
         return await RunElevatedHostessctlAsync(repoRoot, arguments, reportPath, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -393,6 +434,16 @@ public sealed class HostessctlConnectivityService
                 suite.SuiteRunId,
                 cancellationToken)
             .ConfigureAwait(false);
+        var qcl079WebSocketReport = await RunQcl079ManifoldWebSocketIfAvailableAsync(
+                repoRoot,
+                suite.SuiteRunId,
+                cancellationToken)
+            .ConfigureAwait(false);
+        var topologyReports = await RunTopologyFixtureReportsAsync(
+                repoRoot,
+                suite.SuiteRunId,
+                cancellationToken)
+            .ConfigureAwait(false);
 
         var reportPath = new FileInfo(Path.Combine(
             repoRoot.FullName,
@@ -413,10 +464,34 @@ public sealed class HostessctlConnectivityService
             matrixArguments.Add("--input");
             matrixArguments.Add(qcl082SourceContractReport.FullName);
         }
+        if (qcl079WebSocketReport is not null)
+        {
+            matrixArguments.Add("--input");
+            matrixArguments.Add(qcl079WebSocketReport.FullName);
+        }
+        foreach (var topologyReport in topologyReports)
+        {
+            matrixArguments.Add("--input");
+            matrixArguments.Add(topologyReport.FullName);
+        }
         matrixArguments.AddRange(
         [
             "--latest-artifact-dir",
             Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
+            "--latest-probe-id",
+            "QCL-000",
+            "--latest-probe-id",
+            "QCL-010",
+            "--latest-probe-id",
+            "QCL-011",
+            "--latest-probe-id",
+            "QCL-020",
+            "--latest-probe-id",
+            "QCL-030",
+            "--latest-probe-id",
+            "QCL-040",
+            "--latest-probe-id",
+            "QCL-041",
             "--latest-probe-id",
             "QCL-050",
             "--latest-probe-id",
@@ -431,6 +506,8 @@ public sealed class HostessctlConnectivityService
             "QCL-083",
             "--latest-probe-id",
             "QCL-084",
+            "--latest-probe-id",
+            "QCL-079",
             "--latest-device-link-dir",
             Path.Combine(repoRoot.FullName, "target", "companion-session"),
             "--latest-stream-capability-dir",
@@ -469,7 +546,20 @@ public sealed class HostessctlConnectivityService
     }
 
     public string DefaultRuleNameForPort(string portText, string protocol) =>
-        DefaultRuleName(ParsePort(portText, DefaultPortForProtocol(NormalizeProtocol(protocol))), NormalizeProtocol(protocol));
+        DefaultRuleNameForPortAndProfile(portText, protocol, FirewallRuleProfileCustom);
+
+    public string DefaultRuleNameForPortAndProfile(string portText, string protocol, string ruleProfile)
+    {
+        var selectedRuleProfile = NormalizeFirewallRuleProfile(ruleProfile);
+        var selectedProtocol = NormalizeProtocol(
+            string.IsNullOrWhiteSpace(protocol)
+                ? DefaultProtocolForRuleProfile(selectedRuleProfile)
+                : protocol);
+        return DefaultRuleName(
+            ParsePort(portText, DefaultPortForRuleProfile(selectedRuleProfile, selectedProtocol)),
+            selectedProtocol,
+            selectedRuleProfile);
+    }
 
     public static string DefaultProductProgramPath()
     {
@@ -619,6 +709,46 @@ public sealed class HostessctlConnectivityService
         return report;
     }
 
+    private static async Task<IReadOnlyList<FileInfo>> RunTopologyFixtureReportsAsync(
+        DirectoryInfo repoRoot,
+        string suiteRunId,
+        CancellationToken cancellationToken)
+    {
+        var reports = new List<FileInfo>();
+        foreach (var fixture in TopologyFixtureProfiles)
+        {
+            var reportPath = new FileInfo(Path.Combine(
+                repoRoot.FullName,
+                "target",
+                "connectivity-probe",
+                $"{suiteRunId}.{fixture.FileSuffix}.json"));
+            Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+            await RunHostessctlAsync(
+                    repoRoot,
+                    [
+                        "connectivity-probe",
+                        "run",
+                        "--mode",
+                        "fixture",
+                        "--probe-id",
+                        fixture.ProbeId,
+                        "--fixture-profile",
+                        fixture.FixtureProfile,
+                        "--run-id",
+                        $"{suiteRunId}-{fixture.FileSuffix}",
+                        "--out",
+                        reportPath.FullName,
+                        "--fail-on-error",
+                    ],
+                    reportPath,
+                    cancellationToken)
+                .ConfigureAwait(false);
+            reports.Add(reportPath);
+        }
+        return reports;
+    }
+
     private static async Task<FileInfo?> RunQcl082MediaStreamSessionPlanIfAvailableAsync(
         DirectoryInfo repoRoot,
         string suiteRunId,
@@ -658,6 +788,50 @@ public sealed class HostessctlConnectivityService
         return reportPath;
     }
 
+    private static async Task<FileInfo?> RunQcl079ManifoldWebSocketIfAvailableAsync(
+        DirectoryInfo repoRoot,
+        string suiteRunId,
+        CancellationToken cancellationToken)
+    {
+        var routeDescriptor = DefaultQcl079ManifoldWebSocketRouteDescriptorPath(repoRoot);
+        var routeEvidence = DefaultQcl079ManifoldWebSocketRouteEvidencePath(repoRoot);
+        if (!routeDescriptor.Exists || !routeEvidence.Exists)
+        {
+            return null;
+        }
+
+        var reportPath = new FileInfo(Path.Combine(
+            repoRoot.FullName,
+            "target",
+            "connectivity-probe",
+            $"{suiteRunId}.qcl079-manifold-websocket-stream.json"));
+        Directory.CreateDirectory(reportPath.Directory!.FullName);
+
+        await RunHostessctlAsync(
+                repoRoot,
+                [
+                    "connectivity-probe",
+                    "run",
+                    "--mode",
+                    "live",
+                    "--probe-id",
+                    "QCL-079",
+                    "--websocket-source",
+                    "broker-owned-websocket",
+                    "--websocket-route-descriptor",
+                    routeDescriptor.FullName,
+                    "--websocket-route-evidence",
+                    routeEvidence.FullName,
+                    "--out",
+                    reportPath.FullName,
+                    "--fail-on-error",
+                ],
+                reportPath,
+                cancellationToken)
+            .ConfigureAwait(false);
+        return reportPath;
+    }
+
     private static FileInfo DefaultQcl082MediaStreamSessionPlanPath(DirectoryInfo repoRoot) =>
         new(Path.GetFullPath(Path.Combine(
             repoRoot.FullName,
@@ -666,6 +840,25 @@ public sealed class HostessctlConnectivityService
             "fixtures",
             "media-stream-sessions",
             "display-composite-mediaprojection-h264.plan.json")));
+
+    private static FileInfo DefaultQcl079ManifoldWebSocketRouteDescriptorPath(DirectoryInfo repoRoot) =>
+        new(Path.GetFullPath(Path.Combine(
+            repoRoot.FullName,
+            "..",
+            "rusty-manifold",
+            "fixtures",
+            "bridge-route",
+            "stream-websocket-ordered-route.json")));
+
+    private static FileInfo DefaultQcl079ManifoldWebSocketRouteEvidencePath(DirectoryInfo repoRoot) =>
+        new(Path.GetFullPath(Path.Combine(
+            repoRoot.FullName,
+            "..",
+            "rusty-manifold",
+            "fixtures",
+            "bridge-route",
+            "stream-websocket-ordered-evidence.json")));
+
 
     private static FileInfo FirewallActionReportPath(DirectoryInfo repoRoot, string action) =>
         new(Path.Combine(
@@ -682,11 +875,17 @@ public sealed class HostessctlConnectivityService
         int port,
         string profile,
         string remoteAddress,
-        string ruleName)
+        string ruleName,
+        string ruleProfile)
     {
+        var selectedRuleProfile = NormalizeFirewallRuleProfile(ruleProfile);
+        var selectedProtocol = NormalizeProtocol(protocol);
+        var selectedRuleName = string.IsNullOrWhiteSpace(ruleName)
+            ? DefaultRuleName(port, selectedProtocol, selectedRuleProfile)
+            : ruleName.Trim();
         Directory.CreateDirectory(reportPath.Directory!.FullName);
-        return
-        [
+        var arguments = new List<string>
+        {
             "connectivity-probe",
             "windows-firewall-rule",
             "--action",
@@ -695,17 +894,31 @@ public sealed class HostessctlConnectivityService
             reportPath.FullName,
             "--program",
             string.IsNullOrWhiteSpace(program) ? DefaultProductProgramPath() : program.Trim(),
-            "--port",
-            port.ToString(CultureInfo.InvariantCulture),
-            "--protocol",
-            NormalizeProtocol(protocol),
             "--profile",
             string.IsNullOrWhiteSpace(profile) ? "Public" : profile.Trim(),
             "--remote-address",
             string.IsNullOrWhiteSpace(remoteAddress) ? "LocalSubnet" : remoteAddress.Trim(),
-            "--rule-name",
-            string.IsNullOrWhiteSpace(ruleName) ? DefaultRuleName(port, protocol) : ruleName.Trim(),
-        ];
+        };
+        if (selectedRuleProfile == FirewallRuleProfileCustom)
+        {
+            arguments.Add("--port");
+            arguments.Add(port.ToString(CultureInfo.InvariantCulture));
+            arguments.Add("--protocol");
+            arguments.Add(selectedProtocol);
+            arguments.Add("--rule-name");
+            arguments.Add(selectedRuleName);
+        }
+        else
+        {
+            arguments.Add("--rule-profile");
+            arguments.Add(selectedRuleProfile);
+            if (port != DefaultPortForRuleProfile(selectedRuleProfile, selectedProtocol))
+            {
+                arguments.Add("--port");
+                arguments.Add(port.ToString(CultureInfo.InvariantCulture));
+            }
+        }
+        return arguments;
     }
 
     private static int ParsePort(string portText, int fallback)
@@ -723,11 +936,42 @@ public sealed class HostessctlConnectivityService
         return port;
     }
 
-    private static string DefaultRuleName(int port, string protocol) =>
-        $"{(NormalizeProtocol(protocol) == "UDP" ? DefaultUdpRuleNamePrefix : DefaultTcpRuleNamePrefix)} {port}";
+    private static string DefaultRuleName(
+        int port,
+        string protocol,
+        string ruleProfile = FirewallRuleProfileCustom) =>
+        NormalizeFirewallRuleProfile(ruleProfile) switch
+        {
+            FirewallRuleProfileQcl010TcpEcho => $"{DefaultTcpRuleNamePrefix} {port}",
+            FirewallRuleProfileQcl080UdpFreshness => $"{DefaultUdpRuleNamePrefix} {port}",
+            FirewallRuleProfileQcl082Rmanvid1Media => $"{DefaultQcl082RuleNamePrefix} {port}",
+            _ => $"{(NormalizeProtocol(protocol) == "UDP" ? DefaultUdpRuleNamePrefix : DefaultTcpRuleNamePrefix)} {port}",
+        };
 
     private static int DefaultPortForProtocol(string protocol) =>
         NormalizeProtocol(protocol) == "UDP" ? DefaultUdpPort : DefaultTcpPort;
+
+    public static int DefaultPortForRuleProfile(string ruleProfile, string protocol = "") =>
+        NormalizeFirewallRuleProfile(ruleProfile) switch
+        {
+            FirewallRuleProfileQcl080UdpFreshness => DefaultUdpPort,
+            FirewallRuleProfileQcl082Rmanvid1Media => DefaultQcl082Rmanvid1MediaPort,
+            FirewallRuleProfileQcl010TcpEcho => DefaultTcpPort,
+            _ => DefaultPortForProtocol(protocol),
+        };
+
+    public static string DefaultProtocolForRuleProfile(string ruleProfile) =>
+        NormalizeFirewallRuleProfile(ruleProfile) == FirewallRuleProfileQcl080UdpFreshness ? "UDP" : "TCP";
+
+    public static string NormalizeFirewallRuleProfile(string ruleProfile)
+    {
+        var normalized = string.IsNullOrWhiteSpace(ruleProfile)
+            ? FirewallRuleProfileCustom
+            : ruleProfile.Trim().ToLowerInvariant();
+        return FirewallRuleProfiles.Contains(normalized)
+            ? normalized
+            : FirewallRuleProfileCustom;
+    }
 
     private static string NormalizeProtocol(string protocol) =>
         string.Equals(protocol?.Trim(), "TCP", StringComparison.OrdinalIgnoreCase) ? "TCP" : "UDP";

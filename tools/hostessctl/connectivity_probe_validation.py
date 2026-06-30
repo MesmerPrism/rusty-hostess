@@ -34,6 +34,7 @@ VALID_PROBE_IDS = {
     "QCL-082",
     "QCL-083",
     "QCL-084",
+    "QCL-079",
 }
 
 
@@ -164,6 +165,24 @@ def validate_connectivity_probe_report(report: dict[str, Any]) -> dict[str, Any]
             errors.append("QCL-084 pass requires zeromq_messages_requested measurement")
         if measurements.get("zeromq_messages_received") is None:
             errors.append("QCL-084 pass requires zeromq_messages_received measurement")
+
+    if report.get("probe_id") == "QCL-079" and report.get("status") == "pass":
+        for required_check in [
+            "protocol.websocket_handshake",
+            "protocol.websocket_payload_exchange",
+            "protocol.websocket_message_bounds",
+            "protocol.websocket_not_command_authority",
+            "protocol.websocket_high_rate_media_guard",
+        ]:
+            if not check_passed(report, required_check):
+                errors.append(f"QCL-079 pass requires {required_check}")
+        measurements = object_value(report.get("measurements"))
+        if measurements.get("websocket_messages_requested") is None:
+            errors.append("QCL-079 pass requires websocket_messages_requested measurement")
+        if measurements.get("websocket_messages_received") is None:
+            errors.append("QCL-079 pass requires websocket_messages_received measurement")
+        if measurements.get("websocket_loss_percent") is None:
+            errors.append("QCL-079 pass requires websocket_loss_percent measurement")
 
     if report.get("probe_id") in {"QCL-050", "QCL-051"} and report.get("status") == "pass":
         probe_id = str(report.get("probe_id"))

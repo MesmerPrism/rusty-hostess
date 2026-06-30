@@ -62,18 +62,21 @@ is a row-normalizing view contract for WPF, Makepad, CLI automation, and future
 frontends; it does not select latest artifacts, validate QCL source evidence,
 run probes, change firewall/device state, declare topology readiness, or
 re-evaluate protocol promotion gates.
-The WPF Protocol Matrix action first requests the fixture suite, optionally
+The WPF Protocol Matrix action first requests the fixture suite, generates
+QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixture reports, optionally
 refreshes the QCL-082 source-contract report from the sibling Rusty Quest
 media-stream session plan when that branch is present, accepts broker/runtime
 status artifacts through the same Hostess CLI route, then requests the Hostess
-protocol-matrix route. That preserves the CLI route's latest-artifact
-selection and promotion policy before WPF passes the suite and matrix artifacts into
+protocol-matrix route with those topology reports as explicit inputs. That
+preserves the CLI route's latest-artifact selection and promotion policy before
+WPF passes the suite and matrix artifacts into
 `companion-report projection --include-protocol-matrix-inputs`. The CLI
 projection route derives selected device-link and connectivity-probe inputs
 from the matrix, so WPF does not parse matrix sources or own artifact
-selection. Topology report views can still pass explicit connectivity-probe
-artifacts through that same projection route. WPF renders the resulting
-projection rows through
+selection. QCL-000 fixture WebSocket evidence is visible as candidate evidence;
+promotion still requires live device-link command evidence. Topology report
+views can still pass explicit connectivity-probe artifacts through that same
+projection route. WPF renders the resulting projection rows through
 `ConnectivityRows.ForCompanionReportProjection` so the human page and CLI
 automation inspect the same normalized report artifact.
 Page-owned viewmodels keep the row projection families separated:
@@ -231,6 +234,32 @@ Read-only report projection lives in
 artifact paths and copies source status, topology metadata, evidence tier,
 promotion state, missing gates, issue codes, and detailed payloads into
 frontend-neutral rows.
+Transport coverage summarization lives in
+`tools/hostessctl/companion_report_transport_coverage.py`. It derives the
+`transport_coverage.summary` row from already-projected rows so WebSocket, TCP,
+Wi-Fi Direct, other Wi-Fi topologies, and QCL probe IDs stay visible without
+moving artifact selection, topology probing, or protocol promotion into the
+projection facade or WPF. The same row emits structured `term_gates`: WebSocket
+is scoped to Manifold command/session receipts until QCL-079 generic WebSocket
+evidence is present, TCP is scoped to QCL-010/QCL-011 echo plus QCL-082 binary
+media, and Wi-Fi Direct is scoped to QCL-040/QCL-041 topology evidence.
+Broker-owned QCL-079 evidence clears the generic WebSocket gate;
+`remaining_live_gates` keeps live direct-Wi-Fi topology and product TCP media
+over direct Wi-Fi explicit without turning them into promotion decisions. The
+product TCP media
+gate clears only when a projected QCL-082 receiver report contains
+`protocol.media_product_topology_gate` with
+`product_gate=product_tcp_media_over_direct_wifi` and `product_gate_proven=true`.
+The product listener firewall gate is distinct: QCL-082 emits
+`protocol.media_product_listener_firewall_gate` from a supplied
+`connectivity-probe windows-firewall-rule --action verify --rule-profile
+qcl-082-rmanvid1-media`
+report, and `transport.product_tcp_media_listener_firewall` clears only when
+that report verifies a product-scoped Hostess/WPF executable rule for the
+RMANVID1 TCP listener port. The current product rule name is
+`Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079`. Diagnostic Python
+listener allowances stay diagnostic evidence and do not satisfy product
+readiness.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and
@@ -269,8 +298,10 @@ turning either frontend into a validator.
 Windows firewall listener lifecycle also stays in Hostess:
 `connectivity-probe windows-firewall-rule --action plan|apply|verify|remove`
 emits the rule report and verification evidence. WPF requests these actions and
-renders the report; it does not invent firewall scope rules or treat broad
-diagnostic Python listener allowances as product readiness.
+renders the report through explicit rule profiles (`custom`,
+`qcl-010-tcp-echo`, `qcl-080-udp-freshness`, and
+`qcl-082-rmanvid1-media`); it does not invent firewall scope rules or treat
+broad diagnostic Python listener allowances as product readiness.
 Quest connectivity lab probing lives in `tools/hostessctl/connectivity_probe.py`.
 It emits the experimental `rusty.quest.connectivity_topology_probe.v1` report
 shape for QCL fixture and live same-Wi-Fi probes. Hostess owns execution and
@@ -311,8 +342,10 @@ broker/runtime artifact ingestion for H.264/TCP framing, accepted
 source-classification, shell-display lab gating, and high-rate JSON rejection;
 `connectivity_media_receiver.py` owns QCL-082 Hostess receiver-counter
 evidence by arming bounded TCP `RMANVID1` captures, parsing stream headers and
-packet records, writing receiver sidecar queue/drop/close counters, and pairing
-that evidence with broker runtime status when available;
+packet records, writing receiver sidecar queue/drop/close counters, pairing
+that evidence with broker runtime status when available, and optionally joining
+a topology report through the explicit product TCP media over direct-Wi-Fi
+gate;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
@@ -320,7 +353,10 @@ limitations; and
 `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
 ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution helpers, and
 protocol-specific live report assembly, source-specific report promotion
-gates, and evidence rows.
+gates, and evidence rows; `connectivity_websocket.py` owns QCL-079 generic
+WebSocket host-loopback fixture/live mechanics, bounded message measurements,
+and the explicit separation from Manifold command authority and high-rate media
+routes.
 The Bluetooth helper owns QCL-050/QCL-051 readiness and payload
 evidence. QCL-051 uses the Hostess T Android app as an app-owned BLE/GATT
 server plus `tools/connectivity_probe/qcl051_ble_gatt_client` as the Windows
@@ -362,7 +398,10 @@ contracts, shell-hidden display lab gates, and receiver packet evidence without
 making Hostess the source authority for Android capture. Session plans remain
 source-contract evidence; broker/runtime status is broker-owned candidate
 evidence; receiver counters become promotable only when paired with live
-broker-owned or Quest-runtime status.
+broker-owned or Quest-runtime status. Product TCP media over direct Wi-Fi is a
+separate gate: the receiver report must also be paired with a promoted
+QCL-040/QCL-041 direct-Wi-Fi topology report before the WPF transport summary
+can mark that product path proven.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ
@@ -377,6 +416,15 @@ Manifold adapter's JSON report mode, requires `evidence_tier=broker_owned`,
 `authority.owner=rusty.manifold.transport`, passing bridge-route evidence,
 zero drops, and zero decode errors, then wraps that report as Hostess
 connectivity evidence for WPF and protocol-matrix rendering.
+QCL-079 treats generic WebSocket as a separate optional protocol-fit slot. It
+does not promote or weaken QCL-000 Manifold command/session WebSocket
+authority. The host-loopback route validates a bounded HTTP upgrade, echo
+payload exchange, message limits, command-authority separation, and high-rate
+media guard; it remains candidate-only until a broker-owned or Quest-runtime
+endpoint produces live evidence. The broker-owned path accepts the Manifold
+`stream_bridge` WebSocket descriptor/evidence pair and rejects command/control
+WebSocket descriptors so QCL-000 receipt authority cannot be reused as generic
+data-plane proof.
 `hostessctl connectivity-probe protocol-matrix` is the roll-up contract for
 operator protocol promotion views. It consumes existing suite, probe,
 device-link, and stream-capability artifacts and classifies each protocol by
@@ -467,6 +515,13 @@ The Studio staging request tests follow the same facade pattern:
 while `tools/studio_staging/request_tests/` groups the coverage by
 intake/smoke workflow, platform-smoke control, platform-smoke evidence,
 PMB/release, Hostess staging handoff, and CLI fixture-writing families.
+The QCL connectivity-probe tests follow the same facade pattern:
+`tools/test_hostessctl_connectivity_probe.py` remains the stable unittest entry
+point, while `tools/connectivity_probe_tests/` groups coverage by fixture
+reports, QCL-082 media receiver/product gates, QCL-079 generic WebSocket and
+data-protocol evidence, live LAN/UDP/Bluetooth paths, parser coverage, and
+firewall rule profiles. The split keeps the automation gate stable while
+preventing the test suite from becoming the next mixed-authority source file.
 
 Processor modules are selected by module id. For deterministic replay, Hostess
 delegates formula execution and dependency resolution to the package Rust

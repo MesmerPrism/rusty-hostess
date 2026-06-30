@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.Windows.Media;
 using HostessCompanion.Wpf.Models;
 using HostessCompanion.Wpf.Services;
@@ -24,6 +25,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private string connectivityProfile = "Public";
     private string connectivityRemoteAddress = "LocalSubnet";
     private string connectivityRuleName = "Rusty Hostess WPF QCL-080 UDP Freshness 18767";
+    private string connectivityRuleProfile = HostessctlConnectivityService.FirewallRuleProfileQcl080UdpFreshness;
     private bool useQuestProfile = true;
     private bool checkBroker;
     private NavigationItemViewModel? selectedNavigationItem;
@@ -113,6 +115,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public ObservableCollection<WorkspaceViewModel> Workspaces => WorkspacesPage.Rows;
 
     public IReadOnlyList<OperatorActionDescriptor> OperatorActions => OperatorActionCatalog.All;
+
+    public IReadOnlyList<string> ConnectivityRuleProfiles => HostessctlConnectivityService.FirewallRuleProfiles;
 
     public AsyncRelayCommand RefreshCommand { get; }
 
@@ -227,14 +231,26 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         get => connectivityProtocol;
         set
         {
-            var previousDefaultRuleName = DefaultConnectivityRuleName(connectivityPort, connectivityProtocol);
+            var previousDefaultRuleName = DefaultConnectivityRuleName(
+                connectivityPort,
+                connectivityProtocol,
+                connectivityRuleProfile);
             var nextProtocol = NormalizeConnectivityProtocol(value);
             if (SetField(ref connectivityProtocol, nextProtocol))
             {
+                var nextRuleProfile = ProductRuleProfileForProtocol(nextProtocol);
+                if (connectivityRuleProfile != HostessctlConnectivityService.FirewallRuleProfileCustom
+                    && connectivityRuleProfile != nextRuleProfile)
+                {
+                    SetConnectivityRuleProfile(nextRuleProfile, applyDefaults: false);
+                }
                 if (string.IsNullOrWhiteSpace(ConnectivityRuleName)
                     || string.Equals(ConnectivityRuleName, previousDefaultRuleName, StringComparison.Ordinal))
                 {
-                    ConnectivityRuleName = DefaultConnectivityRuleName(connectivityPort, nextProtocol);
+                    ConnectivityRuleName = DefaultConnectivityRuleName(
+                        connectivityPort,
+                        nextProtocol,
+                        connectivityRuleProfile);
                 }
                 OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
             }
@@ -246,12 +262,15 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         get => connectivityPort;
         set
         {
-            var previousDefaultRuleName = DefaultConnectivityRuleName(connectivityPort, connectivityProtocol);
+            var previousDefaultRuleName = DefaultConnectivityRuleName(
+                connectivityPort,
+                connectivityProtocol,
+                connectivityRuleProfile);
             if (SetField(ref connectivityPort, value)
                 && (string.IsNullOrWhiteSpace(ConnectivityRuleName)
                     || string.Equals(ConnectivityRuleName, previousDefaultRuleName, StringComparison.Ordinal)))
             {
-                ConnectivityRuleName = DefaultConnectivityRuleName(value, connectivityProtocol);
+                ConnectivityRuleName = DefaultConnectivityRuleName(value, connectivityProtocol, connectivityRuleProfile);
             }
         }
     }
@@ -271,7 +290,31 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public string ConnectivityRuleName
     {
         get => connectivityRuleName;
-        set => SetField(ref connectivityRuleName, value);
+        set
+        {
+            var next = value ?? "";
+            if (SetField(ref connectivityRuleName, next))
+            {
+                var expectedProfileRuleName = DefaultConnectivityRuleName(
+                    connectivityPort,
+                    connectivityProtocol,
+                    connectivityRuleProfile);
+                if (connectivityRuleProfile != HostessctlConnectivityService.FirewallRuleProfileCustom
+                    && !string.IsNullOrWhiteSpace(next)
+                    && !string.Equals(next, expectedProfileRuleName, StringComparison.Ordinal))
+                {
+                    SetConnectivityRuleProfile(
+                        HostessctlConnectivityService.FirewallRuleProfileCustom,
+                        applyDefaults: false);
+                }
+            }
+        }
+    }
+
+    public string ConnectivityRuleProfile
+    {
+        get => connectivityRuleProfile;
+        set => SetConnectivityRuleProfile(value, applyDefaults: true);
     }
 
     public NavigationItemViewModel? SelectedNavigationItem
@@ -607,6 +650,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                     ConnectivityProfile,
                     ConnectivityRemoteAddress,
                     ConnectivityRuleName,
+                    ConnectivityRuleProfile,
                     CancellationToken.None);
             ApplyFirewallRuleReport(report);
             SummaryLabel =
@@ -637,6 +681,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                         ConnectivityProfile,
                         ConnectivityRemoteAddress,
                         ConnectivityRuleName,
+                        ConnectivityRuleProfile,
                         CancellationToken.None);
             currentFirewallRuleReport = report;
             UpdateFirewallInputsFromReport(report);
@@ -669,6 +714,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                     ConnectivityProfile,
                     ConnectivityRemoteAddress,
                     ConnectivityRuleName,
+                    ConnectivityRuleProfile,
                     CancellationToken.None);
             ApplyFirewallRuleReport(report);
             SummaryLabel =
@@ -791,6 +837,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                     ConnectivityPort,
                     ConnectivityProfile,
                     ConnectivityRemoteAddress,
+                    ConnectivityRuleProfile,
                     CancellationToken.None);
             ApplyFirewallRuleReport(rows);
             SummaryLabel = $"Firewall rule remove: {connectivityStatus}.";
@@ -851,6 +898,11 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     private void UpdateFirewallInputsFromReport(ConnectivityFirewallRuleReport report)
     {
+        SetConnectivityRuleProfile(
+            string.IsNullOrWhiteSpace(report.RuleProfile)
+                ? HostessctlConnectivityService.FirewallRuleProfileCustom
+                : report.RuleProfile,
+            applyDefaults: false);
         if (!string.IsNullOrWhiteSpace(report.Rule.Program))
         {
             ConnectivityProgram = report.Rule.Program;
@@ -1001,15 +1053,59 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         _ => Brushes.DimGray,
     };
 
-    private static string DefaultConnectivityRuleName(string portText, string protocol)
+    private string DefaultConnectivityRuleName(string portText, string protocol, string ruleProfile) =>
+        connectivityService.DefaultRuleNameForPortAndProfile(portText, protocol, ruleProfile);
+
+    private void SetConnectivityRuleProfile(string ruleProfile, bool applyDefaults)
     {
-        var port = int.TryParse(portText, out var parsed) && parsed > 0 && parsed <= 65535
-            ? parsed
-            : NormalizeConnectivityProtocol(protocol) == "UDP" ? 18767 : 18766;
-        return NormalizeConnectivityProtocol(protocol) == "UDP"
-            ? $"Rusty Hostess WPF QCL-080 UDP Freshness {port}"
-            : $"Rusty Hostess WPF QCL-010 TCP Echo {port}";
+        var next = HostessctlConnectivityService.NormalizeFirewallRuleProfile(ruleProfile);
+        if (!SetField(ref connectivityRuleProfile, next, nameof(ConnectivityRuleProfile)))
+        {
+            return;
+        }
+
+        if (applyDefaults && next != HostessctlConnectivityService.FirewallRuleProfileCustom)
+        {
+            ApplyConnectivityRuleProfileDefaults(next);
+        }
     }
+
+    private void ApplyConnectivityRuleProfileDefaults(string ruleProfile)
+    {
+        var protocol = HostessctlConnectivityService.DefaultProtocolForRuleProfile(ruleProfile);
+        var port = HostessctlConnectivityService
+            .DefaultPortForRuleProfile(ruleProfile, protocol)
+            .ToString(CultureInfo.InvariantCulture);
+        SetConnectivityProtocolValue(protocol);
+        SetConnectivityPortValue(port);
+        ConnectivityRuleName = DefaultConnectivityRuleName(port, protocol, ruleProfile);
+        OnPropertyChanged(nameof(VerifyConnectivityButtonLabel));
+    }
+
+    private void SetConnectivityProtocolValue(string protocol)
+    {
+        var next = NormalizeConnectivityProtocol(protocol);
+        if (!string.Equals(connectivityProtocol, next, StringComparison.Ordinal))
+        {
+            connectivityProtocol = next;
+            OnPropertyChanged(nameof(ConnectivityProtocol));
+        }
+    }
+
+    private void SetConnectivityPortValue(string port)
+    {
+        var next = port ?? "";
+        if (!string.Equals(connectivityPort, next, StringComparison.Ordinal))
+        {
+            connectivityPort = next;
+            OnPropertyChanged(nameof(ConnectivityPort));
+        }
+    }
+
+    private static string ProductRuleProfileForProtocol(string protocol) =>
+        NormalizeConnectivityProtocol(protocol) == "UDP"
+            ? HostessctlConnectivityService.FirewallRuleProfileQcl080UdpFreshness
+            : HostessctlConnectivityService.FirewallRuleProfileQcl010TcpEcho;
 
     private static string NormalizeConnectivityProtocol(string protocol) =>
         string.Equals(protocol?.Trim(), "TCP", StringComparison.OrdinalIgnoreCase) ? "TCP" : "UDP";

@@ -25,7 +25,7 @@ The check covers the available local surface:
 For fast CLI/evidence edits, run the Python path first:
 
 ```powershell
-python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py
+python -m py_compile tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_catalog.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_report_transport_coverage.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py
 python -m unittest discover -s tools -p "test_*.py"
 ```
 
@@ -101,6 +101,11 @@ that artifact.
 The WPF test suite also reflects over `MainWindowViewModel` command properties
 and compares them with `OperatorActionCatalog`, so a new command fails tests
 until its CLI-equivalent route, evidence artifact, and test coverage are named.
+Firewall controls are covered the same way: the WPF rule-profile selector must
+map to the CLI `--rule-profile` contract, and
+`HostessCompanion.Wpf.Tests` plans the QCL-082 profile through Hostess CLI to
+prove the UI-visible TCP/9079 media listener route emits the same structured
+firewall report automation will consume.
 
 The shared read-only report projection route is covered by:
 
@@ -120,13 +125,29 @@ source artifact rows into a frontend-neutral operator view. Individual
 connectivity-probe rows can show topology and promotion gates, but use
 `connectivity-probe protocol-matrix` first when the view needs latest-artifact
 selection or protocol-promotion state.
+The transport coverage summary row is shaped in
+`tools\hostessctl\companion_report_transport_coverage.py`; it is still covered
+through `tools.test_hostessctl_companion_report_projection` because the row is
+part of the shared projection artifact consumed by WPF and Makepad. The row
+must expose `details.term_gates` and `details.remaining_live_gates` so TCP,
+WebSocket, and Wi-Fi Direct visibility cannot be mistaken for live product
+TCP/direct-Wi-Fi or generic WebSocket promotion. The product TCP/direct-Wi-Fi
+gate is cleared only by a QCL-082 receiver report that carries
+`protocol.media_product_topology_gate` with
+`product_gate=product_tcp_media_over_direct_wifi` and
+`product_gate_proven=true`.
+When QCL-079 is present, the WebSocket term gate changes from command-only
+coverage to command receipts plus generic WebSocket protocol-fit coverage, but
+the generic gate remains pending until broker-owned or Quest-runtime endpoint
+evidence exists.
 The WPF Protocol Matrix action follows that sequence: it runs the fixture
-suite, refreshes the QCL-082 Rusty Quest media-stream source-contract report
-through `connectivity-probe run --media-stream-session-plan` when the sibling
-plan exists, accepts QCL-082 broker/runtime status artifacts through
+suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixtures,
+refreshes the QCL-082 Rusty Quest media-stream source-contract report through
+`connectivity-probe run --media-stream-session-plan` when the sibling plan
+exists, accepts QCL-082 broker/runtime status artifacts through
 `connectivity-probe run --media-stream-runtime-status`, asks
-`connectivity-probe protocol-matrix` for source selection and promotion state,
-then asks
+`connectivity-probe protocol-matrix` for source selection and promotion state
+with those topology reports as explicit `--input` files, then asks
 `companion-report projection --include-protocol-matrix-inputs` for the
 normalized operator rows that the Connectivity page renders. The flag keeps
 device-link and connectivity-probe source selection inside the CLI route rather
@@ -160,28 +181,47 @@ python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-082 
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-082 --mode fixture --fixture-profile qcl-082-media-high-rate-json-misuse --out target\connectivity-probe\qcl-082-media-high-rate-json-misuse.json
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-083 --mode fixture --fixture-profile qcl-083-osc-loopback-pass --out target\connectivity-probe\qcl-083-osc-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-084 --mode fixture --fixture-profile qcl-084-zeromq-loopback-pass --out target\connectivity-probe\qcl-084-zeromq-loopback-pass.json --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-079 --mode fixture --fixture-profile qcl-079-websocket-loopback-pass --out target\connectivity-probe\qcl-079-websocket-loopback-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-080-app-owned-udp-freshness-pass.json --out target\connectivity-probe\qcl-080-app-owned.stream-capability.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-081-lsl-loopback-pass.json --out target\connectivity-probe\qcl-081-lsl-loopback.stream-capability.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --suite-run target\connectivity-probe\device-link-suite-run.json --out target\connectivity-probe\device-link-protocol-matrix.json --fail-on-error
 ```
 
+`tools.test_hostessctl_connectivity_probe` is intentionally the stable unittest
+entrypoint. The implementation tests live under
+`tools\connectivity_probe_tests\` by family: fixture reports, QCL-082 media
+receiver/product gates, QCL-079/WebSocket and data-protocol evidence, live
+transport paths, parser coverage, and firewall rule profiles. Add new tests to
+the focused family module while keeping this command stable for WPF/CLI parity
+automation.
+
 The test-suite descriptor is the installer-facing index. It must cover host,
 toolchain, network adapter, firewall, device, protocol, and timing categories;
-QCL-000/QCL-010/QCL-011/QCL-050/QCL-051/QCL-080/QCL-081/QCL-082/QCL-083/QCL-084 slots;
-and reusable capability rows for Manifold WebSocket, UDP, LSL, OSC, ZeroMQ,
-RFCOMM, BLE/GATT, and binary media/TCP.
+QCL-000/QCL-010/QCL-011/QCL-050/QCL-051/QCL-080/QCL-081/QCL-082/QCL-083/QCL-084/QCL-079 slots;
+and reusable capability rows for Manifold command WebSocket, generic
+WebSocket, UDP, LSL, OSC, ZeroMQ, RFCOMM, BLE/GATT, and binary media/TCP.
 QCL-020/QCL-030/QCL-040/QCL-041 are explicit topology limitation probes and
 remain fixture-only/opt-in until live topology work is in scope; do not add
 them as required downloadable-install suite slots without a separate promotion
 decision.
 
-LSL, OSC, and ZeroMQ protocol-fit smokes are covered by host-loopback live
-reports. These are dependency/protocol checks, not Quest topology promotion:
+LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
+host-loopback live reports. These are dependency/protocol checks, not Quest
+topology promotion:
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source host-loopback --out target\connectivity-probe\qcl081-live-host-loopback.json
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-083 --osc-source host-loopback --out target\connectivity-probe\qcl083-live-host-loopback.json
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source manifold-zmq-loopback --zeromq-pattern pub-sub --zeromq-manifold-root S:\Work\repos\active\rusty-manifold --out target\connectivity-probe\qcl084-live-manifold-zmq-loopback.json
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source host-loopback --out target\connectivity-probe\qcl079-live-host-loopback.json
+```
+
+QCL-079 can promote only when the endpoint source is broker-owned or
+Quest-runtime-owned. The broker-owned Manifold route uses the stream
+bridge-route descriptor/evidence pair, not the QCL-000 command WebSocket route:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor S:\Work\repos\active\rusty-manifold\fixtures\bridge-route\stream-websocket-ordered-route.json --websocket-route-evidence S:\Work\repos\active\rusty-manifold\fixtures\bridge-route\stream-websocket-ordered-evidence.json --out target\connectivity-probe\qcl079-live-manifold-websocket-broker.json --fail-on-error
 ```
 
 The protocol evidence matrix is the WPF-equivalent CLI report for promotion
@@ -189,7 +229,12 @@ state. It rolls up suite/probe/device-link artifacts and marks each protocol as
 `usable`, `usable_with_warnings`, `candidate`, `blocked`, `missing`, or
 `rejected` with explicit missing gates. Fixture and host-loopback LSL/OSC/ZeroMQ
 rows must remain candidates until Quest-runtime or broker-owned live QCL
-evidence exists.
+evidence exists. QCL-000 fixture WebSocket evidence also remains candidate-only;
+QCL-000 promotion requires a live `rusty.quest.device_link.v1` report with
+runtime subscriber and applied command receipt evidence. QCL-079 generic
+WebSocket host-loopback evidence is also candidate-only and never substitutes
+for QCL-000 command authority or QCL-082 high-rate media transport; the
+broker-owned QCL-079 path must reject command/control WebSocket descriptors.
 
 Operator views that need the current promoted data-protocol rows should use the
 same CLI artifact resolver as WPF:
@@ -197,7 +242,18 @@ same CLI artifact resolver as WPF:
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --suite-run target\connectivity-probe\device-link-suite-run.json `
+  --input target\connectivity-probe\qcl-020-wifi-adb-session-pass.json `
+  --input target\connectivity-probe\qcl-030-local-only-hotspot-started.json `
+  --input target\connectivity-probe\qcl-040-wifi-direct-phone-peer-pass.json `
+  --input target\connectivity-probe\qcl-041-wifi-direct-windows-peer-pass.json `
   --latest-artifact-dir target\connectivity-probe `
+  --latest-probe-id QCL-000 `
+  --latest-probe-id QCL-010 `
+  --latest-probe-id QCL-011 `
+  --latest-probe-id QCL-020 `
+  --latest-probe-id QCL-030 `
+  --latest-probe-id QCL-040 `
+  --latest-probe-id QCL-041 `
   --latest-probe-id QCL-050 `
   --latest-probe-id QCL-051 `
   --latest-probe-id QCL-080 `
@@ -272,7 +328,17 @@ without decoding H.264, and joins receiver queue/drop/backpressure/close
 evidence. Source contracts, runtime status artifacts, and fixture receiver
 captures are CLI/WPF-visible candidate checks only; promotion still needs live
 broker-owned or Quest-runtime receiver frame, byte, drop, close-reason, and
-queue evidence:
+queue evidence. Product TCP media over direct Wi-Fi additionally needs the
+receiver report paired with a promoted QCL-040/QCL-041 direct-Wi-Fi topology
+report through `--topology-report` and `--media-stream-topology-report`.
+Product listener readiness is a separate CLI-owned artifact: verify the
+Hostess/WPF TCP listener firewall rule first, then pass the report through
+`--firewall-report` and `--media-stream-firewall-report`:
+
+If verification reports `product_rule_verified=false`, run the same command
+with `--action apply` from an elevated PowerShell session, then rerun
+`--action verify`. The scoped rule name is part of the QCL-082 product
+contract and must stay distinct from the default QCL-010 TCP echo rule.
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run `
@@ -298,9 +364,16 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 
 python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
-  --probe-id QCL-082 `
-  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
-  --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
+  --probe-id QCL-040 `
+  --fixture-profile qcl-040-wifi-direct-phone-peer-pass `
+  --out target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
+  --fail-on-error
+
+python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
+  --action verify `
+  --rule-profile qcl-082-rmanvid1-media `
+  --program apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
+  --out target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --fail-on-error
 
 python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-capture `
@@ -309,6 +382,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --capture-out target\connectivity-probe\media-stream.rmanvid1 `
   --sidecar-out target\connectivity-probe\media-stream-receiver-sidecar.json `
   --runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
+  --firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --capture-kind live_broker_stream `
   --max-packets 240 `
   --out target\connectivity-probe\media-stream-receiver-result.json `
@@ -320,12 +395,34 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --media-stream-rmanvid1-capture target\connectivity-probe\media-stream.rmanvid1 `
   --media-stream-receiver-sidecar target\connectivity-probe\media-stream-receiver-sidecar.json `
   --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --media-stream-topology-report target\connectivity-probe\qcl040-wifi-direct-phone-peer-pass.json `
+  --media-stream-firewall-report target\connectivity-probe\qcl082-tcp-firewall-verify.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
   --fail-on-error
 
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix `
   --input target\connectivity-probe\qcl082-rmanvid1-receiver-capture.json `
   --out target\connectivity-probe\qcl082-rmanvid1-receiver-capture.protocol-matrix.json `
+  --fail-on-error
+```
+
+If the paired topology report is still experimental or unpromoted, the QCL-082
+report remains valid for generic binary-media evidence but the
+`protocol.media_product_topology_gate` check is `warn` and the WPF transport
+summary keeps `transport.product_tcp_media_over_direct_wifi` pending. If the
+firewall report is missing, scoped to Python, or not product-verified, the
+`protocol.media_product_listener_firewall_gate` check stays skipped, blocked,
+or warn and WPF keeps `transport.product_tcp_media_listener_firewall` pending.
+
+The runtime-status-only route remains useful for broker command/source policy
+checks:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-082 `
+  --media-stream-runtime-status target\connectivity-probe\media-stream-runtime-status.json `
+  --out target\connectivity-probe\qcl082-media-stream-runtime-status.json `
   --fail-on-error
 ```
 

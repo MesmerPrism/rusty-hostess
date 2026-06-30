@@ -32,7 +32,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(report["$schema"], CONNECTIVITY_SUITE_RUN_SCHEMA)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
-        self.assertEqual(len(report["slot_results"]), 10)
+        self.assertEqual(len(report["slot_results"]), 11)
         self.assertEqual(
             {
                 "QCL-000",
@@ -45,6 +45,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
                 "QCL-082",
                 "QCL-083",
                 "QCL-084",
+                "QCL-079",
             },
             {row["probe_id"] for row in report["slot_results"]},
         )
@@ -78,7 +79,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(status, 0)
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
-        self.assertEqual(validation["slot_count"], 10)
+        self.assertEqual(validation["slot_count"], 11)
 
     def test_public_profile_single_connection_object_keeps_suite_warn(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -91,7 +92,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
             )
 
         self.assertEqual(report["status"], "warn")
-        self.assertEqual(report["summary"]["pass_count"], 10)
+        self.assertEqual(report["summary"]["pass_count"], 11)
         self.assertEqual(
             report["environment_snapshot"]["network"]["windows_profile"]["connections"][
                 "NetworkCategory"
@@ -116,6 +117,14 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
                 "HostessCompanion.Wpf.exe",
                 "--listener-port",
                 "18767",
+                "--websocket-message-count",
+                "4",
+                "--websocket-payload-bytes",
+                "64",
+                "--websocket-route-descriptor",
+                "S:/Work/repos/active/rusty-manifold/fixtures/bridge-route/stream-websocket-ordered-route.json",
+                "--websocket-route-evidence",
+                "S:/Work/repos/active/rusty-manifold/fixtures/bridge-route/stream-websocket-ordered-evidence.json",
                 "--fail-on-error",
             ]
         )
@@ -126,6 +135,16 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(args.probe_id, ["QCL-080"])
         self.assertEqual(args.suite_id, "installer-smoke")
         self.assertEqual(args.listener_program, "HostessCompanion.Wpf.exe")
+        self.assertEqual(args.websocket_message_count, 4)
+        self.assertEqual(args.websocket_payload_bytes, 64)
+        self.assertEqual(
+            args.websocket_route_descriptor,
+            "S:/Work/repos/active/rusty-manifold/fixtures/bridge-route/stream-websocket-ordered-route.json",
+        )
+        self.assertEqual(
+            args.websocket_route_evidence,
+            "S:/Work/repos/active/rusty-manifold/fixtures/bridge-route/stream-websocket-ordered-evidence.json",
+        )
         self.assertTrue(args.fail_on_error)
 
 
@@ -256,6 +275,15 @@ def suite_args(out: Path) -> argparse.Namespace:
         listener_protocol="UDP",
         listener_port=18767,
         listener_bind_host="0.0.0.0",
+        websocket_source="host-loopback",
+        websocket_bind_host="127.0.0.1",
+        websocket_port=0,
+        websocket_path="/qcl079",
+        websocket_message_count=16,
+        websocket_payload_bytes=96,
+        websocket_timeout_seconds=1.0,
+        websocket_route_descriptor="",
+        websocket_route_evidence="",
         fail_on_error=True,
     )
 

@@ -95,6 +95,9 @@ from tools.hostessctl.connectivity_media_receiver import (
     parse_rmanvid1_capture,
     qcl082_media_stream_receiver_capture_body,
 )
+from tools.hostessctl.connectivity_websocket import (
+    live_websocket_report,
+)
 from tools.hostessctl.connectivity_topology import (
     DEFAULT_TOPOLOGY_FIXTURE_PROFILES,
     TOPOLOGY_PROBE_IDS,
@@ -233,6 +236,11 @@ def run_connectivity_probe(
             run_captured_func=run_captured,
             clock_func=clock,
             host_ipv4_func=host_ipv4_func,
+        )
+    elif getattr(args, "probe_id", "QCL-010") == "QCL-079":
+        report = live_websocket_report(
+            args,
+            clock_func=clock,
         )
     else:
         report = live_same_wifi_report(

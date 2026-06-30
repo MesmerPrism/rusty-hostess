@@ -14,9 +14,11 @@ var tests = new (string Name, Action Test)[]
     ("protocol matrix rows expose latest promoted evidence", ProtocolMatrixRowsExposeLatestPromotedEvidence),
     ("companion report projection rows expose shared artifact", CompanionReportProjectionRowsExposeSharedArtifact),
     ("companion report projection projects topology probe rows", CompanionReportProjectionProjectsTopologyProbeRows),
+    ("companion report projection rows expose transport coverage", CompanionReportProjectionRowsExposeTransportCoverage),
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall default names stay product scoped", FirewallDefaultNamesStayProductScoped),
+    ("firewall QCL-082 profile plan uses CLI profile", FirewallQcl082ProfilePlanUsesCliProfile),
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
     ("page viewmodels project backend reports", PageViewModelsProjectBackendReports),
@@ -290,6 +292,108 @@ static void CompanionReportProjectionProjectsTopologyProbeRows()
         "topology projection must stay planned until live evidence promotes it");
 }
 
+static void CompanionReportProjectionRowsExposeTransportCoverage()
+{
+    var projection = new CompanionReportProjection
+    {
+        Status = "pass",
+        ProjectionId = "projection.transport-coverage",
+        SourceArtifacts =
+        [
+            new CompanionReportProjectionSource
+            {
+                SourceId = "source.protocol_evidence_matrix.1",
+                Role = "protocol_evidence_matrix",
+                RequestedRole = "protocol_evidence_matrix",
+                Schema = "rusty.quest.device_link.protocol_evidence_matrix.v1",
+                Status = "pass",
+                Path = "target/protocol-matrix.json",
+            },
+        ],
+        Rows =
+        [
+            new CompanionReportProjectionRow
+            {
+                RowId = "transport_coverage.summary",
+                Section = "transport_coverage",
+                Kind = "transport_coverage_summary",
+                Label = "Transport coverage",
+                Status = "candidate",
+                AuthorityOwner = "source_artifacts",
+                Evidence = "families=tcp, websocket, wifi_direct; topologies=wifi_direct; probes=QCL-010, QCL-040",
+                Notes = "websocket=device_link.broker; tcp=connectivity_probe.check.QCL-010; wifi_direct=connectivity_probe.topology.QCL-040",
+                SourceArtifact = "source.protocol_evidence_matrix.1",
+                Details = JsonSerializer.SerializeToElement(new
+                {
+                    explicit_terms = new
+                    {
+                        websocket = true,
+                        tcp = true,
+                        wifi_direct = true,
+                    },
+                    term_gates = new
+                    {
+                        websocket = new
+                        {
+                            included = true,
+                            scope = "manifold_command_session_receipts",
+                            promotion_boundary = "Current WebSocket coverage is the Manifold command/session receipt route, not a generic WebSocket data-plane slot.",
+                        },
+                        tcp = new
+                        {
+                            included = true,
+                            scope = "qcl010_qcl011_echo_and_qcl082_tcp_binary_media",
+                            promotion_boundary = "TCP visibility covers topology echo and QCL-082 binary media; product TCP over direct Wi-Fi needs a live topology/listener gate.",
+                        },
+                        wifi_direct = new
+                        {
+                            included = true,
+                            scope = "qcl040_qcl041_topology_evidence",
+                            promotion_boundary = "Wi-Fi Direct is topology evidence and remains experimental until live peer discovery, group lifecycle, socket exchange, and cleanup evidence promote it.",
+                        },
+                    },
+                    remaining_live_gates = new object[]
+                    {
+                        new
+                        {
+                            gate_id = "transport.general_websocket_capability",
+                            status = "not_in_current_scope",
+                        },
+                        new
+                        {
+                            gate_id = "transport.direct_wifi_live_topology",
+                            status = "pending_live_evidence",
+                        },
+                        new
+                        {
+                            gate_id = "transport.product_tcp_media_over_direct_wifi",
+                            status = "pending_live_evidence",
+                        },
+                    },
+                }),
+            },
+        ],
+    };
+
+    var rows = ConnectivityRows.ForCompanionReportProjection(projection);
+    var coverage = rows.Single(row => row.Name == "transport_coverage.summary");
+    Assert(coverage.Evidence.Contains("websocket", StringComparison.Ordinal),
+        "coverage row must keep WebSocket visible");
+    Assert(coverage.Evidence.Contains("tcp", StringComparison.Ordinal),
+        "coverage row must keep TCP visible");
+    Assert(coverage.Evidence.Contains("wifi_direct", StringComparison.Ordinal),
+        "coverage row must keep Wi-Fi Direct visible");
+    var termGates = coverage.Observed.GetProperty("Details").GetProperty("term_gates");
+    Assert(termGates.GetProperty("websocket").GetProperty("scope").GetString() == "manifold_command_session_receipts",
+        "coverage details must scope WebSocket to Manifold command/session receipts");
+    Assert(termGates.GetProperty("tcp").GetProperty("scope").GetString() == "qcl010_qcl011_echo_and_qcl082_tcp_binary_media",
+        "coverage details must scope TCP to topology echo and QCL-082 binary media");
+    Assert(termGates.GetProperty("wifi_direct").GetProperty("scope").GetString() == "qcl040_qcl041_topology_evidence",
+        "coverage details must scope Wi-Fi Direct to topology evidence");
+    Assert(ConnectivityRows.StatusFromRows(rows) == "planned",
+        "candidate direct-Wi-Fi coverage must keep the projection planned");
+}
+
 static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
 {
     var run = new HostessctlConnectivityService()
@@ -315,6 +419,78 @@ static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
         "projection must include the suite source artifact");
     Assert(run.Projection.SourceArtifacts.Any(source => source.Role == "connectivity_probe_report"),
         "projection must include protocol-matrix source probe artifacts");
+    var topologyArtifacts = new[]
+    {
+        ("QCL-020", $"{run.Suite.SuiteRunId}.qcl020-wifi-adb-session-pass.json"),
+        ("QCL-030", $"{run.Suite.SuiteRunId}.qcl030-local-only-hotspot-started.json"),
+        ("QCL-040", $"{run.Suite.SuiteRunId}.qcl040-wifi-direct-phone-peer-pass.json"),
+        ("QCL-041", $"{run.Suite.SuiteRunId}.qcl041-wifi-direct-windows-peer-pass.json"),
+    };
+    foreach (var (probeId, artifactName) in topologyArtifacts)
+    {
+        Assert(run.Matrix.Inputs.Any(input =>
+                input.Role == "connectivity_probe_report"
+                && input.Path.EndsWith(artifactName, StringComparison.Ordinal)),
+            $"protocol matrix must consume generated topology fixture report {probeId}");
+        Assert(run.Projection.SourceArtifacts.Any(source =>
+                source.Role == "connectivity_probe_report"
+                && source.Path.EndsWith(artifactName, StringComparison.Ordinal)),
+            $"projection must include generated topology fixture report {probeId}");
+        Assert(run.Projection.Rows.Any(row => row.RowId == $"connectivity_probe.topology.{probeId}"),
+            $"projection must include topology row {probeId}");
+        Assert(run.Projection.Rows.Any(row => row.RowId == $"connectivity_probe.transport.{probeId}"),
+            $"projection must include transport row {probeId}");
+    }
+    var coverage = run.Projection.Rows.Single(row => row.RowId == "transport_coverage.summary");
+    Assert(coverage.Evidence.Contains("websocket", StringComparison.Ordinal),
+        "projection coverage must keep WebSocket command route visible");
+    Assert(coverage.Evidence.Contains("tcp", StringComparison.Ordinal),
+        "projection coverage must keep TCP transport visible");
+    Assert(coverage.Evidence.Contains("wifi_direct", StringComparison.Ordinal),
+        "projection coverage must keep Wi-Fi Direct topology visible");
+    var explicitTerms = coverage.Details.GetProperty("explicit_terms");
+    Assert(explicitTerms.GetProperty("websocket").GetBoolean(),
+        "projection coverage must mark WebSocket as explicit");
+    Assert(explicitTerms.GetProperty("tcp").GetBoolean(),
+        "projection coverage must mark TCP as explicit");
+    Assert(explicitTerms.GetProperty("wifi_direct").GetBoolean(),
+        "projection coverage must mark Wi-Fi Direct as explicit");
+    var generatedTermGates = coverage.Details.GetProperty("term_gates");
+    Assert(generatedTermGates.GetProperty("websocket").GetProperty("scope").GetString() == "manifold_command_session_receipts_and_qcl079_generic_protocol_fit",
+        "generated coverage must scope WebSocket as command receipts plus QCL-079 generic protocol fit");
+    Assert(generatedTermGates.GetProperty("tcp").GetProperty("scope").GetString() == "qcl010_qcl011_echo_and_qcl082_tcp_binary_media",
+        "generated coverage must scope TCP as topology echo and QCL-082 media");
+    Assert(generatedTermGates.GetProperty("wifi_direct").GetProperty("scope").GetString() == "qcl040_qcl041_topology_evidence",
+        "generated coverage must scope Wi-Fi Direct as topology evidence");
+    var remainingGateIds = coverage.Details.GetProperty("remaining_live_gates")
+        .EnumerateArray()
+        .Select(gate => gate.GetProperty("gate_id").GetString())
+        .ToHashSet(StringComparer.Ordinal);
+    if (ManifoldWebSocketStreamEvidenceExists())
+    {
+        var qcl079Artifact = $"{run.Suite.SuiteRunId}.qcl079-manifold-websocket-stream.json";
+        Assert(run.Matrix.Inputs.Any(input =>
+                input.Role == "connectivity_probe_report"
+                && input.Path.EndsWith(qcl079Artifact, StringComparison.Ordinal)),
+            "protocol matrix must consume the QCL-079 Manifold WebSocket stream evidence artifact");
+        Assert(run.Projection.SourceArtifacts.Any(source =>
+                source.Role == "connectivity_probe_report"
+                && source.Path.EndsWith(qcl079Artifact, StringComparison.Ordinal)),
+            "projection must include the QCL-079 Manifold WebSocket stream evidence artifact");
+        Assert(!remainingGateIds.Contains("transport.general_websocket_capability"),
+            "generated coverage must clear generic WebSocket once QCL-079 has broker-owned evidence");
+    }
+    else
+    {
+        Assert(remainingGateIds.Contains("transport.general_websocket_capability"),
+            "generated coverage must state generic WebSocket still needs promoted broker or Quest runtime evidence");
+    }
+    Assert(remainingGateIds.Contains("transport.direct_wifi_live_topology"),
+        "generated coverage must state direct Wi-Fi still needs live topology evidence");
+    Assert(remainingGateIds.Contains("transport.product_tcp_media_over_direct_wifi"),
+        "generated coverage must state product TCP media over direct Wi-Fi still needs live evidence");
+    Assert(remainingGateIds.Contains("transport.product_tcp_media_listener_firewall"),
+        "generated coverage must state product TCP media still needs verified Hostess/WPF firewall evidence");
     if (RustyQuestMediaStreamSessionPlanExists())
     {
         var sourceContractArtifact = $"{run.Suite.SuiteRunId}.qcl082-media-stream-session-plan.json";
@@ -380,6 +556,10 @@ static void FirewallDefaultNamesStayProductScoped()
 
     Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-080 UDP Freshness 18767",
         "initial UDP firewall rule name must be WPF product scoped");
+    Assert(vm.ConnectivityRuleProfile == HostessctlConnectivityService.FirewallRuleProfileQcl080UdpFreshness,
+        "initial firewall rule profile must be the QCL-080 product UDP profile");
+    Assert(vm.ConnectivityRuleProfiles.Contains(HostessctlConnectivityService.FirewallRuleProfileQcl082Rmanvid1Media),
+        "WPF must expose the QCL-082 product media listener firewall profile");
 
     vm.ConnectivityPort = "19000";
     Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-080 UDP Freshness 19000",
@@ -392,6 +572,44 @@ static void FirewallDefaultNamesStayProductScoped()
     vm.ConnectivityPort = "18766";
     Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-010 TCP Echo 18766",
         "TCP port changes must preserve WPF product-scoped rule name");
+    Assert(vm.ConnectivityRuleProfile == HostessctlConnectivityService.FirewallRuleProfileQcl010TcpEcho,
+        "TCP manual selection must switch to the QCL-010 product TCP profile");
+
+    vm.ConnectivityRuleProfile = HostessctlConnectivityService.FirewallRuleProfileQcl082Rmanvid1Media;
+    Assert(vm.ConnectivityProtocol == "TCP", "QCL-082 product profile must select TCP");
+    Assert(vm.ConnectivityPort == "9079", "QCL-082 product profile must select the RMANVID1 media listener port");
+    Assert(vm.ConnectivityRuleName == "Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079",
+        "QCL-082 product profile must project the product media listener rule name");
+
+    vm.ConnectivityRuleName = "Rusty Hostess WPF Manual Override";
+    Assert(vm.ConnectivityRuleProfile == HostessctlConnectivityService.FirewallRuleProfileCustom,
+        "manual rule-name edits must switch WPF back to the custom CLI profile");
+}
+
+static void FirewallQcl082ProfilePlanUsesCliProfile()
+{
+    var service = new HostessctlConnectivityService();
+    var report = service.PlanFirewallRuleAsync(
+            "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+            "",
+            "",
+            "Public",
+            "LocalSubnet",
+            "",
+            HostessctlConnectivityService.FirewallRuleProfileQcl082Rmanvid1Media,
+            CancellationToken.None)
+        .GetAwaiter()
+        .GetResult();
+
+    Assert(report.RuleProfile == HostessctlConnectivityService.FirewallRuleProfileQcl082Rmanvid1Media,
+        "WPF plan route must emit the QCL-082 CLI rule profile");
+    Assert(report.ProbeUsage.ProbeId == "QCL-082", "QCL-082 firewall profile must bind the media listener probe id");
+    Assert(report.ProbeUsage.ConnectivityProbeArgs.Contains("--media-stream-firewall-report"),
+        "QCL-082 firewall profile must advertise the media-stream firewall report probe argument");
+    Assert(report.Rule.Protocol == "TCP", "QCL-082 firewall profile must use TCP");
+    Assert(report.Rule.LocalPort == 9079, "QCL-082 firewall profile must use the RMANVID1 media listener port");
+    Assert(report.Rule.Name == "Rusty Hostess WPF QCL-082 TCP RMANVID1 Media 9079",
+        "QCL-082 firewall profile must use the product-owned listener rule name");
 }
 
 static void OperatorActionsMapWpfCommandsToCliRoutes()
@@ -441,6 +659,38 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise latest artifact directory selection");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-probe-id", StringComparison.Ordinal),
         "protocol matrix action must advertise latest probe-id selection");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-020", StringComparison.Ordinal),
+        "protocol matrix action must advertise generated QCL-020 topology fixture evidence");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl-020-wifi-adb-session-pass", StringComparison.Ordinal),
+        "protocol matrix action must advertise QCL-020 fixture profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-030", StringComparison.Ordinal),
+        "protocol matrix action must advertise generated QCL-030 topology fixture evidence");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl-030-local-only-hotspot-started", StringComparison.Ordinal),
+        "protocol matrix action must advertise QCL-030 fixture profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-040", StringComparison.Ordinal),
+        "protocol matrix action must advertise generated QCL-040 topology fixture evidence");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl-040-wifi-direct-phone-peer-pass", StringComparison.Ordinal),
+        "protocol matrix action must advertise QCL-040 fixture profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe run --mode fixture --probe-id QCL-041", StringComparison.Ordinal),
+        "protocol matrix action must advertise generated QCL-041 topology fixture evidence");
+    Assert(protocolMatrixAction.CliRoute.Contains("qcl-041-wifi-direct-windows-peer-pass", StringComparison.Ordinal),
+        "protocol matrix action must advertise QCL-041 fixture profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("--input <topology-fixture-reports>", StringComparison.Ordinal),
+        "protocol matrix action must advertise explicit topology fixture report inputs");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-000", StringComparison.Ordinal),
+        "protocol matrix action must include WebSocket command route evidence QCL-000");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-010", StringComparison.Ordinal),
+        "protocol matrix action must include same-Wi-Fi TCP topology probe QCL-010");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-011", StringComparison.Ordinal),
+        "protocol matrix action must include PC-hotspot TCP topology probe QCL-011");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-020", StringComparison.Ordinal),
+        "protocol matrix action must include Wi-Fi ADB topology probe QCL-020");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-030", StringComparison.Ordinal),
+        "protocol matrix action must include LocalOnlyHotspot topology probe QCL-030");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-040", StringComparison.Ordinal),
+        "protocol matrix action must include phone-peer Wi-Fi Direct topology probe QCL-040");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-041", StringComparison.Ordinal),
+        "protocol matrix action must include Windows-peer Wi-Fi Direct topology probe QCL-041");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-050", StringComparison.Ordinal),
         "protocol matrix action must include Bluetooth readiness probe QCL-050");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-051", StringComparison.Ordinal),
@@ -455,6 +705,14 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must include OSC probe QCL-083");
     Assert(protocolMatrixAction.CliRoute.Contains("QCL-084", StringComparison.Ordinal),
         "protocol matrix action must include ZeroMQ probe QCL-084");
+    Assert(protocolMatrixAction.CliRoute.Contains("QCL-079", StringComparison.Ordinal),
+        "protocol matrix action must include generic WebSocket probe QCL-079");
+    Assert(protocolMatrixAction.CliRoute.Contains("--websocket-source", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-079 generic WebSocket probe route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--websocket-route-descriptor", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-079 Manifold WebSocket route descriptor input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--websocket-route-evidence", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-079 Manifold WebSocket route evidence input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-session-plan", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 media-stream source-contract input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-runtime-status", StringComparison.Ordinal),
@@ -465,6 +723,18 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise the QCL-082 RMANVID1 capture evidence input");
     Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-receiver-sidecar", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 receiver sidecar evidence input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--topology-report", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 receiver topology report input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-topology-report", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 follow-on topology report input");
+    Assert(protocolMatrixAction.CliRoute.Contains("windows-firewall-rule --action verify --rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal),
+        "protocol matrix action must advertise the product TCP firewall verification route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--rule-profile qcl-082-rmanvid1-media", StringComparison.Ordinal),
+        "protocol matrix action must use the QCL-082 product media listener firewall profile");
+    Assert(protocolMatrixAction.CliRoute.Contains("--firewall-report", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 receiver firewall report input");
+    Assert(protocolMatrixAction.CliRoute.Contains("--media-stream-firewall-report", StringComparison.Ordinal),
+        "protocol matrix action must advertise the QCL-082 follow-on firewall report input");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-device-link-dir", StringComparison.Ordinal),
         "protocol matrix action must advertise latest device-link directory selection");
     Assert(protocolMatrixAction.CliRoute.Contains("--latest-stream-capability-dir", StringComparison.Ordinal),
@@ -487,6 +757,9 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
     Assert(firewallActions.All(action =>
             action.CliRoute.StartsWith("connectivity-probe windows-firewall-rule --action ", StringComparison.Ordinal)),
         "firewall controls must stay backed by the windows-firewall-rule CLI route");
+    Assert(firewallActions.All(action =>
+            action.CliRoute.Contains("--rule-profile", StringComparison.Ordinal)),
+        "firewall controls must advertise the CLI rule profile route");
     Assert(firewallActions.All(action =>
             action.EvidenceArtifact == "rusty.quest.connectivity_windows_firewall_rule.v1"),
         "firewall controls must advertise the emitted windows firewall evidence schema");
@@ -870,6 +1143,26 @@ static bool RustyQuestMediaStreamSessionPlanExists()
         "media-stream-sessions",
         "display-composite-mediaprojection-h264.plan.json"));
     return File.Exists(planPath);
+}
+
+static bool ManifoldWebSocketStreamEvidenceExists()
+{
+    var repoRoot = LocateHostessRepoRoot();
+    var routePath = Path.GetFullPath(Path.Combine(
+        repoRoot.FullName,
+        "..",
+        "rusty-manifold",
+        "fixtures",
+        "bridge-route",
+        "stream-websocket-ordered-route.json"));
+    var evidencePath = Path.GetFullPath(Path.Combine(
+        repoRoot.FullName,
+        "..",
+        "rusty-manifold",
+        "fixtures",
+        "bridge-route",
+        "stream-websocket-ordered-evidence.json"));
+    return File.Exists(routePath) && File.Exists(evidencePath);
 }
 
 static DirectoryInfo LocateHostessRepoRoot()

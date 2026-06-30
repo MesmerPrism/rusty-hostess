@@ -14,6 +14,9 @@ from tools.hostessctl.connectivity_suite import CONNECTIVITY_SUITE_RUN_SCHEMA
 from tools.hostessctl.connectivity_probe import CONNECTIVITY_PROBE_SCHEMA
 from tools.hostessctl.device_link_report import QUEST_DEVICE_LINK_SCHEMA
 from tools.hostessctl.protocol_evidence_matrix import PROTOCOL_EVIDENCE_MATRIX_SCHEMA
+from tools.hostessctl.companion_report_transport_coverage import (
+    project_transport_coverage_rows,
+)
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -87,6 +90,7 @@ def build_companion_report_projection(
         elif projected_role == "connectivity_suite_run":
             rows.extend(project_connectivity_suite_rows(payload, source))
 
+    rows.extend(project_transport_coverage_rows(rows, sources))
     summary = projection_summary(rows, sources, issues)
     return {
         "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,

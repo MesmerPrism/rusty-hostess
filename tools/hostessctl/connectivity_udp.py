@@ -32,6 +32,7 @@ from tools.hostessctl.connectivity_probe_common import (
     check_status,
     check_row,
     completed_observed,
+    ensure_probe_run_id,
     issue_row,
     list_value,
     object_value,
@@ -77,6 +78,7 @@ def live_udp_freshness_report(
         raise SystemExit("connectivity-probe live QCL-080 mode requires --adb and --serial")
 
     observed_at = clock_func()
+    ensure_probe_run_id(args, observed_at, "QCL-080")
     checks: list[dict[str, Any]] = []
     issues: list[dict[str, Any]] = []
 

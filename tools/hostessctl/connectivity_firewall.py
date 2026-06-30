@@ -18,6 +18,18 @@ from tools.hostessctl.runtime import run_captured as default_run_captured
 
 CONNECTIVITY_FIREWALL_RULE_SCHEMA = "rusty.quest.connectivity_windows_firewall_rule.v1"
 DEFAULT_QCL010_TCP_ECHO_PORT = 18766
+DEFAULT_QCL080_UDP_FRESHNESS_PORT = 18767
+DEFAULT_QCL082_RMANVID1_MEDIA_PORT = 9079
+FIREWALL_RULE_PROFILE_CUSTOM = "custom"
+FIREWALL_RULE_PROFILE_QCL010_TCP_ECHO = "qcl-010-tcp-echo"
+FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS = "qcl-080-udp-freshness"
+FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA = "qcl-082-rmanvid1-media"
+FIREWALL_RULE_PROFILE_CHOICES = (
+    FIREWALL_RULE_PROFILE_CUSTOM,
+    FIREWALL_RULE_PROFILE_QCL010_TCP_ECHO,
+    FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS,
+    FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA,
+)
 DEFAULT_WPF_FIREWALL_PROGRAM = (
     Path(__file__).resolve().parents[2]
     / "apps"
@@ -99,8 +111,11 @@ def run_windows_firewall_rule(
 
 
 def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datetime) -> dict[str, Any]:
-    port = int(getattr(args, "port", DEFAULT_QCL010_TCP_ECHO_PORT) or DEFAULT_QCL010_TCP_ECHO_PORT)
-    protocol = normalize_firewall_protocol(str(getattr(args, "protocol", "") or "TCP"))
+    rule_profile = normalize_firewall_rule_profile(str(getattr(args, "rule_profile", "") or ""))
+    profile_defaults = firewall_rule_profile_defaults(rule_profile)
+    raw_port = getattr(args, "port", None)
+    port = int(raw_port if raw_port not in {None, ""} else profile_defaults["port"])
+    protocol = normalize_firewall_protocol(str(getattr(args, "protocol", "") or profile_defaults["protocol"]))
     program = normalize_firewall_program_path(
         str(getattr(args, "program", "") or default_firewall_program(protocol)).strip()
     )
@@ -108,7 +123,7 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
     remote_address = str(getattr(args, "remote_address", "") or "LocalSubnet").strip()
     rule_name = str(getattr(args, "rule_name", "") or "").strip()
     if not rule_name:
-        rule_name = default_firewall_rule_name(port, protocol)
+        rule_name = default_firewall_rule_name(port, protocol, rule_profile=rule_profile)
     action = firewall_rule_action(args)
 
     issues: list[dict[str, Any]] = []
@@ -153,28 +168,14 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
             profiles=profiles,
             remote_address=remote_address,
         )
-    probe_id = "QCL-010" if protocol == "TCP" else "QCL-080"
-    connectivity_probe_args = [
-        "connectivity-probe",
-        "run",
-        "--mode",
-        "live",
-        "--probe-id",
-        probe_id,
-    ]
-    if protocol == "TCP":
-        connectivity_probe_args.extend(["--tcp-echo-port", str(port)])
-    else:
-        connectivity_probe_args.extend(
-            [
-                "--udp-port",
-                str(port),
-                "--udp-listener-helper",
-                program,
-                "--udp-sender-source",
-                "makepad-runtime",
-            ]
-        )
+    probe_id = firewall_rule_probe_id(protocol, rule_profile)
+    connectivity_probe_args = connectivity_probe_usage_args(
+        args,
+        port=port,
+        protocol=protocol,
+        probe_id=probe_id,
+        program=program,
+    )
 
     return {
         "schema": CONNECTIVITY_FIREWALL_RULE_SCHEMA,
@@ -182,6 +183,7 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
         "observed_at_utc": observed_at.isoformat().replace("+00:00", "Z"),
         "status": status,
         "action": action,
+        "rule_profile": rule_profile,
         "rule": {
             "name": rule_name,
             "direction": "Inbound",
@@ -214,6 +216,52 @@ def windows_firewall_rule_report(args: argparse.Namespace, *, observed_at: datet
     }
 
 
+def connectivity_probe_usage_args(
+    args: argparse.Namespace,
+    *,
+    port: int,
+    protocol: str,
+    probe_id: str,
+    program: str,
+) -> list[str]:
+    connectivity_probe_args = [
+        "connectivity-probe",
+        "run",
+        "--mode",
+        "live",
+        "--probe-id",
+        probe_id,
+    ]
+    if probe_id == "QCL-082":
+        connectivity_probe_args = [
+            "connectivity-probe",
+            "run",
+            "--mode",
+            "fixture",
+            "--probe-id",
+            probe_id,
+        ]
+        out = str(getattr(args, "out", "") or "").strip()
+        if out:
+            connectivity_probe_args.extend(["--media-stream-firewall-report", out])
+        else:
+            connectivity_probe_args.extend(["--media-stream-firewall-report", "<qcl082-tcp-firewall-verify>"])
+    elif protocol == "TCP":
+        connectivity_probe_args.extend(["--tcp-echo-port", str(port)])
+    else:
+        connectivity_probe_args.extend(
+            [
+                "--udp-port",
+                str(port),
+                "--udp-listener-helper",
+                program,
+                "--udp-sender-source",
+                "makepad-runtime",
+            ]
+        )
+    return connectivity_probe_args
+
+
 def firewall_rule_action(args: argparse.Namespace) -> str:
     action = str(getattr(args, "action", "") or "").strip().lower()
     if action in {"plan", "apply", "verify", "remove"}:
@@ -231,12 +279,51 @@ def default_firewall_program(protocol: str) -> str:
     return str(DEFAULT_WPF_FIREWALL_PROGRAM)
 
 
-def default_firewall_rule_name(port: int, protocol: str) -> str:
+def default_firewall_rule_name(
+    port: int,
+    protocol: str,
+    *,
+    rule_profile: str = FIREWALL_RULE_PROFILE_CUSTOM,
+) -> str:
+    normalized_profile = normalize_firewall_rule_profile(rule_profile)
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA:
+        return f"Rusty Hostess WPF QCL-082 TCP RMANVID1 Media {port}"
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS:
+        return f"Rusty Hostess WPF QCL-080 UDP Freshness {port}"
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL010_TCP_ECHO:
+        return f"Rusty Hostess WPF QCL-010 TCP Echo {port}"
     return (
         f"Rusty Hostess WPF QCL-010 TCP Echo {port}"
         if normalize_firewall_protocol(protocol) == "TCP"
         else f"Rusty Hostess WPF QCL-080 UDP Freshness {port}"
     )
+
+
+def normalize_firewall_rule_profile(raw_profile: str) -> str:
+    profile = str(raw_profile or "").strip().lower()
+    if not profile:
+        return FIREWALL_RULE_PROFILE_CUSTOM
+    if profile in FIREWALL_RULE_PROFILE_CHOICES:
+        return profile
+    return FIREWALL_RULE_PROFILE_CUSTOM
+
+
+def firewall_rule_profile_defaults(rule_profile: str) -> dict[str, Any]:
+    normalized_profile = normalize_firewall_rule_profile(rule_profile)
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS:
+        return {"protocol": "UDP", "port": DEFAULT_QCL080_UDP_FRESHNESS_PORT}
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA:
+        return {"protocol": "TCP", "port": DEFAULT_QCL082_RMANVID1_MEDIA_PORT}
+    return {"protocol": "TCP", "port": DEFAULT_QCL010_TCP_ECHO_PORT}
+
+
+def firewall_rule_probe_id(protocol: str, rule_profile: str) -> str:
+    normalized_profile = normalize_firewall_rule_profile(rule_profile)
+    if normalized_profile == FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA:
+        return "QCL-082"
+    if normalize_firewall_protocol(protocol) == "TCP":
+        return "QCL-010"
+    return "QCL-080"
 
 
 def normalize_firewall_program_path(program: str) -> str:
@@ -600,21 +687,32 @@ def utc_now() -> datetime:
 
 __all__ = [
     "CONNECTIVITY_FIREWALL_RULE_SCHEMA",
+    "DEFAULT_QCL080_UDP_FRESHNESS_PORT",
     "DEFAULT_QCL010_TCP_ECHO_PORT",
+    "DEFAULT_QCL082_RMANVID1_MEDIA_PORT",
     "DEFAULT_WPF_FIREWALL_PROGRAM",
+    "FIREWALL_RULE_PROFILE_CHOICES",
+    "FIREWALL_RULE_PROFILE_CUSTOM",
+    "FIREWALL_RULE_PROFILE_QCL010_TCP_ECHO",
+    "FIREWALL_RULE_PROFILE_QCL080_UDP_FRESHNESS",
+    "FIREWALL_RULE_PROFILE_QCL082_RMANVID1_MEDIA",
     "active_windows_network_categories",
     "build_windows_firewall_rule_remove_script",
     "build_windows_firewall_rule_script",
     "build_windows_firewall_rule_verify_script",
     "collect_windows_network_profile",
+    "connectivity_probe_usage_args",
     "default_firewall_program",
     "default_firewall_rule_name",
     "diagnostic_python_program_path",
     "firewall_rule_action",
+    "firewall_rule_probe_id",
+    "firewall_rule_profile_defaults",
     "network_profile_summary",
     "normalize_firewall_program_path",
     "normalize_firewall_profiles",
     "normalize_firewall_protocol",
+    "normalize_firewall_rule_profile",
     "ps_string_literal",
     "run_windows_firewall_rule",
     "verify_windows_firewall_rule_report",

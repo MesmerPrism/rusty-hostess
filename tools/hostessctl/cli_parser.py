@@ -646,6 +646,7 @@ def build_hostessctl_parser(
             "QCL-082",
             "QCL-083",
             "QCL-084",
+            "QCL-079",
         ],
         default="QCL-010",
     )
@@ -682,12 +683,29 @@ def build_hostessctl_parser(
             "qcl-083-osc-malformed-packet",
             "qcl-084-zeromq-loopback-pass",
             "qcl-084-zeromq-dependency-missing",
+            "qcl-079-websocket-loopback-pass",
+            "qcl-079-websocket-handshake-blocked",
         ],
     )
     connectivity_probe_run.add_argument("--media-stream-session-plan", default="")
     connectivity_probe_run.add_argument("--media-stream-runtime-status", default="")
     connectivity_probe_run.add_argument("--media-stream-rmanvid1-capture", default="")
     connectivity_probe_run.add_argument("--media-stream-receiver-sidecar", default="")
+    connectivity_probe_run.add_argument("--media-stream-topology-report", default="")
+    connectivity_probe_run.add_argument("--media-stream-firewall-report", default="")
+    connectivity_probe_run.add_argument(
+        "--websocket-source",
+        choices=["host-loopback", "broker-owned-websocket", "quest-runtime", "external"],
+        default="host-loopback",
+    )
+    connectivity_probe_run.add_argument("--websocket-bind-host", default="127.0.0.1")
+    connectivity_probe_run.add_argument("--websocket-port", type=int, default=0)
+    connectivity_probe_run.add_argument("--websocket-path", default="/qcl079")
+    connectivity_probe_run.add_argument("--websocket-message-count", type=int, default=16)
+    connectivity_probe_run.add_argument("--websocket-payload-bytes", type=int, default=96)
+    connectivity_probe_run.add_argument("--websocket-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run.add_argument("--websocket-route-descriptor", default="")
+    connectivity_probe_run.add_argument("--websocket-route-evidence", default="")
     connectivity_probe_receiver_capture = connectivity_probe_subcommands.add_parser(
         "rmanvid1-receiver-capture"
     )
@@ -712,6 +730,8 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--command-id", default="command.media_stream.start_source")
     connectivity_probe_receiver_capture.add_argument("--session-id", default="")
     connectivity_probe_receiver_capture.add_argument("--runtime-status", default="")
+    connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
+    connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
     connectivity_probe_receiver_capture.add_argument("--fail-on-error", action="store_true")
     connectivity_probe_run.add_argument("--adb")
     connectivity_probe_run.add_argument("--serial")
@@ -827,8 +847,13 @@ def build_hostessctl_parser(
     connectivity_probe_firewall = connectivity_probe_subcommands.add_parser("windows-firewall-rule")
     connectivity_probe_firewall.add_argument("--out")
     connectivity_probe_firewall.add_argument("--program")
-    connectivity_probe_firewall.add_argument("--protocol", choices=["TCP", "UDP"], default="TCP")
-    connectivity_probe_firewall.add_argument("--port", type=int, default=18766)
+    connectivity_probe_firewall.add_argument(
+        "--rule-profile",
+        choices=["custom", "qcl-010-tcp-echo", "qcl-080-udp-freshness", "qcl-082-rmanvid1-media"],
+        default="custom",
+    )
+    connectivity_probe_firewall.add_argument("--protocol", choices=["TCP", "UDP"], default=None)
+    connectivity_probe_firewall.add_argument("--port", type=int, default=None)
     connectivity_probe_firewall.add_argument("--profile", default="Public")
     connectivity_probe_firewall.add_argument("--remote-address", default="LocalSubnet")
     connectivity_probe_firewall.add_argument("--rule-name")
@@ -885,6 +910,7 @@ def build_hostessctl_parser(
             "QCL-082",
             "QCL-083",
             "QCL-084",
+            "QCL-079",
         ],
     )
     connectivity_probe_run_suite.add_argument("--skip-host-snapshot", action="store_true")
@@ -977,6 +1003,19 @@ def build_hostessctl_parser(
     connectivity_probe_run_suite.add_argument("--zeromq-rusty-xr-root", default="")
     connectivity_probe_run_suite.add_argument("--zeromq-goofi-bridge-root", default="")
     connectivity_probe_run_suite.add_argument("--zeromq-cargo-timeout-seconds", type=float, default=120.0)
+    connectivity_probe_run_suite.add_argument(
+        "--websocket-source",
+        choices=["host-loopback", "broker-owned-websocket", "quest-runtime", "external"],
+        default="host-loopback",
+    )
+    connectivity_probe_run_suite.add_argument("--websocket-bind-host", default="127.0.0.1")
+    connectivity_probe_run_suite.add_argument("--websocket-port", type=int, default=0)
+    connectivity_probe_run_suite.add_argument("--websocket-path", default="/qcl079")
+    connectivity_probe_run_suite.add_argument("--websocket-message-count", type=int, default=16)
+    connectivity_probe_run_suite.add_argument("--websocket-payload-bytes", type=int, default=96)
+    connectivity_probe_run_suite.add_argument("--websocket-timeout-seconds", type=float, default=5.0)
+    connectivity_probe_run_suite.add_argument("--websocket-route-descriptor", default="")
+    connectivity_probe_run_suite.add_argument("--websocket-route-evidence", default="")
     connectivity_probe_run_suite.add_argument("--bluetooth-payload-source", choices=["passive", "android-ble-gatt", "android-rfcomm"], default="passive")
     connectivity_probe_run_suite.add_argument("--bluetooth-helper", default="")
     connectivity_probe_run_suite.add_argument("--bluetooth-message-count", type=int, default=3)

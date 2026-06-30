@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from typing import Any, BinaryIO
 
+from tools.hostessctl.connectivity_firewall import diagnostic_python_program_path
 from tools.hostessctl.connectivity_media import (
     DEFAULT_QCL082_PACKET_MAGIC,
     MEDIA_STREAM_RUNTIME_ENDPOINT_SOURCE,
@@ -38,6 +39,8 @@ DEFAULT_RMANVID1_RECEIVER_QUEUE_CAPACITY = 48
 MEDIA_CODEC_FLAG_KEY_FRAME = 1
 MEDIA_CODEC_FLAG_CODEC_CONFIG = 2
 LIVE_CAPTURE_KINDS = {"live_broker_stream", "live_quest_runtime_stream"}
+PRODUCT_TCP_MEDIA_DIRECT_WIFI_GATE = "product_tcp_media_over_direct_wifi"
+PRODUCT_TCP_MEDIA_LISTENER_FIREWALL_GATE = "product_tcp_media_listener_firewall_verified"
 
 
 def run_rmanvid1_receiver_capture(args: Any) -> int:
@@ -75,6 +78,8 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
         command_id=str(getattr(args, "command_id", "") or ""),
         session_id=str(getattr(args, "session_id", "") or ""),
         runtime_status_path=str(getattr(args, "runtime_status", "") or ""),
+        topology_report_path=str(getattr(args, "topology_report", "") or ""),
+        firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
     )
     out = Path(getattr(args, "out"))
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -102,6 +107,8 @@ def capture_rmanvid1_receiver_stream(
     command_id: str = "",
     session_id: str = "",
     runtime_status_path: str = "",
+    topology_report_path: str = "",
+    firewall_report_path: str = "",
     listening_callback: Any | None = None,
 ) -> dict[str, Any]:
     """Listen for one RMANVID1 TCP stream and write bounded capture artifacts."""
@@ -187,6 +194,8 @@ def capture_rmanvid1_receiver_stream(
         capture_finished_unix_ns=capture_finished_unix_ns,
         elapsed_ms=elapsed_ms,
         runtime_status_path=runtime_status_path,
+        topology_report_path=topology_report_path,
+        firewall_report_path=firewall_report_path,
     )
     sidecar_path.write_text(json.dumps(sidecar, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
@@ -204,6 +213,10 @@ def capture_rmanvid1_receiver_stream(
     ]
     if runtime_status_path:
         follow_on_args.extend(["--media-stream-runtime-status", runtime_status_path])
+    if topology_report_path:
+        follow_on_args.extend(["--media-stream-topology-report", topology_report_path])
+    if firewall_report_path:
+        follow_on_args.extend(["--media-stream-firewall-report", firewall_report_path])
     result = {
         "schema": RECEIVER_CAPTURE_RESULT_SCHEMA,
         "status": status,
@@ -212,6 +225,8 @@ def capture_rmanvid1_receiver_stream(
         "capture_path": str(capture_path),
         "sidecar_path": str(sidecar_path),
         "runtime_status_path": runtime_status_path,
+        "topology_report_path": topology_report_path,
+        "firewall_report_path": firewall_report_path,
         "local_endpoint": local_endpoint,
         "remote_endpoint": remote_endpoint,
         "accepted_connection": accepted,
@@ -326,6 +341,8 @@ def receiver_capture_sidecar(
     capture_finished_unix_ns: int,
     elapsed_ms: float,
     runtime_status_path: str,
+    topology_report_path: str,
+    firewall_report_path: str,
 ) -> dict[str, Any]:
     arrival_count = len(receiver_arrivals_ns)
     queue_depth = 1 if packet_count > 0 else 0
@@ -362,6 +379,8 @@ def receiver_capture_sidecar(
             "command_id": command_id,
             "session_id": session_id,
             "runtime_status_path": runtime_status_path,
+            "topology_report_path": topology_report_path,
+            "firewall_report_path": firewall_report_path,
         },
     }
 
@@ -552,9 +571,13 @@ def qcl082_media_stream_receiver_capture_body(
     *,
     sidecar: dict[str, Any] | None = None,
     runtime_status: dict[str, Any] | None = None,
+    topology_report: dict[str, Any] | None = None,
+    firewall_report: dict[str, Any] | None = None,
     capture_path: str = "",
     sidecar_path: str = "",
     runtime_status_path: str = "",
+    topology_report_path: str = "",
+    firewall_report_path: str = "",
 ) -> dict[str, Any]:
     """Build QCL-082 evidence from RMANVID1 receiver counters."""
 
@@ -643,7 +666,28 @@ def qcl082_media_stream_receiver_capture_body(
     )
     status = "fail" if core_failed else ("pass" if all_qcl_gates else "warn")
     promotion_allowed = all_qcl_gates and live_capture and broker_or_quest_source
-    issues = receiver_capture_issues(capture_stats, high_rate_json, runtime_ok, backpressure_policy_ok)
+    product_topology = media_product_topology_summary(
+        topology_report,
+        topology_report_path=topology_report_path,
+        media_promotion_allowed=promotion_allowed,
+        media_transport_ok=binary_transport_ok,
+        runtime_ok=runtime_ok,
+        capture_kind=capture_kind,
+    )
+    product_listener_firewall = media_product_listener_firewall_summary(
+        firewall_report,
+        firewall_report_path=firewall_report_path,
+        media_promotion_allowed=promotion_allowed,
+        capture_kind=capture_kind,
+    )
+    issues = receiver_capture_issues(
+        capture_stats,
+        high_rate_json,
+        runtime_ok,
+        backpressure_policy_ok,
+        product_topology,
+        product_listener_firewall,
+    )
 
     checks = [
         check_row(
@@ -788,6 +832,20 @@ def qcl082_media_stream_receiver_capture_body(
                 "close_reason": close_reason,
             },
         ),
+        check_row(
+            "protocol.media_product_topology_gate",
+            str(product_topology["check_status"]),
+            str(product_topology["evidence"]),
+            observed=product_topology,
+            issue_codes=list(product_topology.get("issue_codes") or []),
+        ),
+        check_row(
+            "protocol.media_product_listener_firewall_gate",
+            str(product_listener_firewall["check_status"]),
+            str(product_listener_firewall["evidence"]),
+            observed=product_listener_firewall,
+            issue_codes=list(product_listener_firewall.get("issue_codes") or []),
+        ),
     ]
 
     local_endpoint = str(receiver.get("local_endpoint") or receiver.get("bind_endpoint") or "hostess_receiver_capture")
@@ -837,6 +895,8 @@ def qcl082_media_stream_receiver_capture_body(
             "media_decode_error_count": int_or_none(receiver.get("decode_error_count")) or 0,
             "media_backpressure_events": backpressure_events,
             "media_frame_timestamp_gap_ms_p95": receiver.get("timestamp_gap_ms_p95"),
+            "media_product_topology_ready": product_topology["ready"],
+            "media_product_listener_firewall_verified": product_listener_firewall["ready"],
         },
         "issues": issues,
         "promotion": {
@@ -859,6 +919,8 @@ def qcl082_media_stream_receiver_capture_body(
             "sidecar_schema": sidecar.get("schema"),
             "sidecar_path": sidecar_path,
             "runtime_status_path": runtime_status_path,
+            "topology_report_path": topology_report_path,
+            "firewall_report_path": firewall_report_path,
             "source": {
                 "endpoint_source": source_endpoint,
                 "broker_or_quest_source": broker_or_quest_source,
@@ -867,6 +929,8 @@ def qcl082_media_stream_receiver_capture_body(
                 "session_id": source.get("session_id"),
             },
             "stream": capture_stats,
+            "product_topology": product_topology,
+            "product_listener_firewall": product_listener_firewall,
             "receiver": {
                 "queue_capacity_packets": queue_capacity,
                 "max_queue_depth_observed": max_queue_depth,
@@ -886,6 +950,8 @@ def receiver_capture_issues(
     high_rate_json: bool,
     runtime_ok: bool,
     backpressure_policy_ok: bool,
+    product_topology: dict[str, Any],
+    product_listener_firewall: dict[str, Any],
 ) -> list[dict[str, Any]]:
     issues = [
         issue_row(
@@ -919,7 +985,200 @@ def receiver_capture_issues(
                 "receiver capture sidecar is missing bounded queue/drop/backpressure/close evidence",
             )
         )
+    for issue_code in product_topology.get("issue_codes", []) or []:
+        issues.append(
+            issue_row(
+                str(issue_code),
+                "warning" if product_topology.get("check_status") == "warn" else "error",
+                "QCL-082 receiver capture is not paired with a promoted direct-Wi-Fi topology",
+            )
+        )
+    for issue_code in product_listener_firewall.get("issue_codes", []) or []:
+        issues.append(
+            issue_row(
+                str(issue_code),
+                "warning"
+                if product_listener_firewall.get("check_status") == "warn"
+                else "error",
+                "QCL-082 receiver capture is not paired with a verified product TCP listener firewall rule",
+            )
+        )
     return issues
+
+
+def media_product_topology_summary(
+    topology_report: dict[str, Any] | None,
+    *,
+    topology_report_path: str,
+    media_promotion_allowed: bool,
+    media_transport_ok: bool,
+    runtime_ok: bool,
+    capture_kind: str,
+) -> dict[str, Any]:
+    report = object_value(topology_report)
+    topology = object_value(report.get("topology"))
+    transport = object_value(report.get("transport"))
+    promotion = object_value(report.get("promotion"))
+    owner = str(topology.get("owner") or "")
+    network_provider = str(topology.get("network_provider") or "")
+    endpoint_direction = str(topology.get("endpoint_direction") or "")
+    transport_family = str(transport.get("family") or "")
+    route = str(transport.get("route") or "")
+    topology_status = str(report.get("status") or "")
+    topology_probe_id = str(report.get("probe_id") or "")
+    topology_promotion_allowed = promotion.get("allowed") is True
+    direct_wifi = any(
+        "wifi_direct" in normalize_topology_token(value)
+        for value in [owner, network_provider, endpoint_direction, transport_family, route]
+    )
+    report_present = bool(report)
+    ready = (
+        report_present
+        and direct_wifi
+        and topology_status == "pass"
+        and topology_promotion_allowed
+        and media_promotion_allowed
+    )
+    if not report_present:
+        check_status_value = "skipped"
+        evidence = "product TCP media over direct-Wi-Fi topology report was not supplied"
+        issue_codes: list[str] = []
+    elif ready:
+        check_status_value = "pass"
+        evidence = "RMANVID1 TCP receiver capture is paired with promoted direct-Wi-Fi topology evidence"
+        issue_codes = []
+    elif direct_wifi and not topology_promotion_allowed:
+        check_status_value = "warn"
+        evidence = "direct-Wi-Fi topology is present but not promoted for product media"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_not_promoted"
+        ]
+    elif direct_wifi and not media_promotion_allowed:
+        check_status_value = "warn"
+        evidence = "direct-Wi-Fi topology is present but receiver media promotion evidence is incomplete"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_receiver_not_product_ready"
+        ]
+    else:
+        check_status_value = "blocked"
+        evidence = "topology report does not prove direct-Wi-Fi for product TCP media"
+        issue_codes = [
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_mismatch"
+        ]
+    return {
+        "product_gate": PRODUCT_TCP_MEDIA_DIRECT_WIFI_GATE,
+        "product_gate_proven": ready,
+        "ready": ready,
+        "check_status": check_status_value,
+        "evidence": evidence,
+        "issue_codes": issue_codes,
+        "topology_report_path": topology_report_path,
+        "topology_report_present": report_present,
+        "topology_probe_id": topology_probe_id,
+        "topology_status": topology_status,
+        "topology_owner": owner,
+        "topology_network_provider": network_provider,
+        "topology_endpoint_direction": endpoint_direction,
+        "topology_transport_family": transport_family,
+        "topology_promotion_allowed": topology_promotion_allowed,
+        "direct_wifi_topology": direct_wifi,
+        "media_transport_ok": media_transport_ok,
+        "media_runtime_ok": runtime_ok,
+        "media_promotion_allowed": media_promotion_allowed,
+        "receiver_capture_kind": capture_kind,
+    }
+
+
+def media_product_listener_firewall_summary(
+    firewall_report: dict[str, Any] | None,
+    *,
+    firewall_report_path: str,
+    media_promotion_allowed: bool,
+    capture_kind: str,
+) -> dict[str, Any]:
+    report = object_value(firewall_report)
+    rule = object_value(report.get("rule"))
+    verification = object_value(report.get("verification"))
+    listener_firewall = object_value(verification.get("listener_firewall"))
+    if not listener_firewall:
+        listener_firewall = object_value(object_value(verification.get("network_profile")).get("listener_firewall"))
+    report_present = bool(report)
+    report_status = str(report.get("status") or "")
+    action = str(report.get("action") or "")
+    protocol = str(listener_firewall.get("protocol") or rule.get("protocol") or "").upper()
+    port = int_or_none(listener_firewall.get("port")) or int_or_none(rule.get("local_port")) or 0
+    program = str(listener_firewall.get("program") or rule.get("program") or "")
+    product_rule_verified = (
+        verification.get("product_rule_verified") is True
+        or listener_firewall.get("product_rule_verified") is True
+    )
+    allowed_on_active_profile = (
+        verification.get("allowed_on_active_profile") is True
+        or listener_firewall.get("allowed_on_active_profile") is True
+    )
+    diagnostic_program = diagnostic_python_program_path(program)
+    tcp_listener = protocol == "TCP" and port > 0
+    ready = (
+        report_present
+        and report_status == "pass"
+        and product_rule_verified
+        and allowed_on_active_profile
+        and tcp_listener
+        and not diagnostic_program
+        and media_promotion_allowed
+    )
+    if not report_present:
+        check_status_value = "skipped"
+        evidence = "product TCP media listener firewall report was not supplied"
+        issue_codes: list[str] = []
+    elif ready:
+        check_status_value = "pass"
+        evidence = "RMANVID1 TCP receiver capture is paired with a verified product Hostess/WPF listener firewall rule"
+        issue_codes = []
+    elif not tcp_listener:
+        check_status_value = "blocked"
+        evidence = "firewall report does not verify a TCP listener port for product media"
+        issue_codes = ["hostess.issue.connectivity_probe.media_listener_firewall_not_tcp"]
+    elif diagnostic_program:
+        check_status_value = "blocked"
+        evidence = "firewall report is scoped to a diagnostic Python listener, not the product Hostess/WPF executable"
+        issue_codes = ["hostess.issue.connectivity_probe.media_listener_firewall_program_diagnostic"]
+    elif not product_rule_verified:
+        check_status_value = "warn" if allowed_on_active_profile else "blocked"
+        evidence = "firewall report does not verify a product Hostess/WPF TCP listener rule"
+        issue_codes = ["hostess.issue.connectivity_probe.media_listener_firewall_product_rule_missing"]
+    elif not media_promotion_allowed:
+        check_status_value = "warn"
+        evidence = "product Hostess/WPF TCP listener firewall is verified but receiver media promotion evidence is incomplete"
+        issue_codes = ["hostess.issue.connectivity_probe.media_receiver_not_product_ready"]
+    else:
+        check_status_value = "blocked"
+        evidence = "firewall report does not prove product TCP media listener readiness"
+        issue_codes = ["hostess.issue.connectivity_probe.media_listener_firewall_not_verified"]
+    return {
+        "product_gate": PRODUCT_TCP_MEDIA_LISTENER_FIREWALL_GATE,
+        "product_gate_proven": ready,
+        "ready": ready,
+        "check_status": check_status_value,
+        "evidence": evidence,
+        "issue_codes": issue_codes,
+        "firewall_report_path": firewall_report_path,
+        "firewall_report_present": report_present,
+        "firewall_report_status": report_status,
+        "firewall_action": action,
+        "product_rule_verified": product_rule_verified,
+        "allowed_on_active_profile": allowed_on_active_profile,
+        "listener_program": program,
+        "listener_protocol": protocol,
+        "listener_port": port,
+        "diagnostic_program": diagnostic_program,
+        "media_promotion_allowed": media_promotion_allowed,
+        "receiver_capture_kind": capture_kind,
+    }
+
+
+def normalize_topology_token(value: str) -> str:
+    return str(value or "").strip().lower().replace("-", "_").replace(" ", "_")
 
 
 def check_passed(report_body: dict[str, Any], name: str) -> bool:
