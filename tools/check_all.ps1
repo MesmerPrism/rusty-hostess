@@ -33,6 +33,7 @@ try {
         "tools\hostessctl\companion_readiness.py",
         "tools\hostessctl\companion_report_projection.py",
         "tools\hostessctl\companion_report_transport_coverage.py",
+        "tools\hostessctl\companion_transport_gate_actions.py",
         "tools\hostessctl\companion_transport_gates.py",
         "tools\hostessctl\companion_session.py",
         "tools\hostessctl\companion_session_defaults.py",

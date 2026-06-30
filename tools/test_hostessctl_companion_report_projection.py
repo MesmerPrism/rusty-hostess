@@ -332,6 +332,45 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
             gate_report["summary"]["remaining_gate_ids"],
         )
         self.assertIn("tcp", gate_report["summary"]["term_gate_ids"])
+        self.assertEqual(
+            gate_report["operator_next_actions"]["shell"],
+            "powershell",
+        )
+        self.assertGreaterEqual(
+            gate_report["operator_next_actions"]["gate_count"],
+            3,
+        )
+        direct_wifi_gate = next(
+            gate
+            for gate in gate_report["remaining_live_gates"]
+            if gate["gate_id"] == "transport.direct_wifi_live_topology"
+        )
+        self.assertTrue(
+            any(action["requires_quest_lease"] for action in direct_wifi_gate["next_actions"])
+        )
+        self.assertTrue(
+            any(
+                "adb.exe" in action.get("command", {}).get("command", "")
+                and "--serial '<quest-serial>'" in action.get("command", {}).get("command", "")
+                for action in direct_wifi_gate["next_actions"]
+            )
+        )
+        firewall_gate = next(
+            gate
+            for gate in gate_report["remaining_live_gates"]
+            if gate["gate_id"] == "transport.product_tcp_media_listener_firewall"
+        )
+        self.assertTrue(
+            any(action["requires_elevation"] for action in firewall_gate["next_actions"])
+        )
+        self.assertTrue(
+            any(
+                action.get("command", {}).get("shell") == "powershell"
+                and "--rule-profile qcl-082-rmanvid1-media"
+                in action.get("command", {}).get("command", "")
+                for action in firewall_gate["next_actions"]
+            )
+        )
 
     def test_transport_gate_report_can_fail_on_pending_gates(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

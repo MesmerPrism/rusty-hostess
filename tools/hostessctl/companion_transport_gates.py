@@ -13,6 +13,11 @@ from typing import Any
 from tools.hostessctl.companion_report_projection import (
     HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
 )
+from tools.hostessctl.companion_transport_gate_actions import (
+    operator_next_actions_for_gate,
+    operator_next_actions_summary,
+    validate_next_actions_for_gate,
+)
 
 
 HOSTESS_COMPANION_TRANSPORT_GATE_REPORT_SCHEMA = (
@@ -119,6 +124,7 @@ def build_companion_transport_gate_report(
             "term_gate_count": len(term_gates),
             "term_gate_ids": sorted(term_gates.keys()),
         },
+        "operator_next_actions": operator_next_actions_summary(remaining_live_gates),
         "term_gates": term_gates,
         "remaining_live_gates": remaining_live_gates,
         "issues": issues,
@@ -148,6 +154,8 @@ def validate_companion_transport_gate_report(report: dict[str, Any]) -> dict[str
         status = str(object_value(gate).get("status") or "")
         if status in {"pending_live_evidence", "not_in_current_scope"}:
             warnings.append(f"transport gate remains pending: {gate_id}")
+            next_actions = list_objects(object_value(gate).get("next_actions"))
+            errors.extend(validate_next_actions_for_gate(gate_id, next_actions))
     for report_issue in list_objects(report.get("issues")):
         if report_issue.get("severity") == "error":
             errors.append(str(report_issue.get("issue_code") or "transport gate issue"))
@@ -170,11 +178,15 @@ def transport_coverage_row(projection: dict[str, Any]) -> dict[str, Any]:
 
 
 def normalize_remaining_gate(gate: dict[str, Any]) -> dict[str, Any]:
-    return {
+    normalized = {
         "gate_id": str(gate.get("gate_id") or ""),
         "status": str(gate.get("status") or "unknown"),
         "evidence": str(gate.get("evidence") or ""),
     }
+    next_actions = operator_next_actions_for_gate(normalized["gate_id"])
+    if next_actions:
+        normalized["next_actions"] = next_actions
+    return normalized
 
 
 def any_error(issues: list[dict[str, Any]]) -> bool:

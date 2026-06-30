@@ -264,10 +264,14 @@ Transport gate status automation lives in
 `tools/hostessctl/companion_transport_gates.py`. It consumes an existing
 `rusty.hostess.companion.report_projection.v1` artifact and emits
 `rusty.hostess.companion.transport_gate_report.v1`, including the same
-`term_gates` and `remaining_live_gates` WPF renders. Its optional
-`--fail-on-pending` behavior is an automation guard only; it does not run
+`term_gates` and `remaining_live_gates` WPF renders. Pending gates also carry
+`next_actions` with PowerShell-compatible Hostess CLI routes, acceptance
+artifacts, elevation flags, host/device mutation flags, and Quest lease
+requirements supplied by `companion_transport_gate_actions.py`. Those actions
+are operator guidance and automation inputs; the route still does not run
 probes, choose latest artifacts, mutate firewall/device state, parse media, or
-promote topology/protocol evidence.
+promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
+is an automation guard only.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
 topology classification, `connectivity_suite.py` owns suite execution, and

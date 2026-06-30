@@ -519,6 +519,11 @@ python tools\hostessctl\hostessctl.py companion-report transport-gates `
 Use `--fail-on-pending` only for runs that require every transport gate to be
 cleared. The command consumes the projection report; it does not run probes,
 apply firewall rules, parse media, or promote evidence on behalf of WPF.
+Pending gates carry `next_actions` so WPF can show the same CLI-equivalent
+PowerShell route automation will use. The action metadata distinguishes
+non-elevated handoff generation from elevated firewall mutation, marks
+Quest-bound direct-Wi-Fi and product-media actions with `requires_quest_lease`,
+and keeps ordinary ADB commands serial-scoped.
 
 ## Build
 
