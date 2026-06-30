@@ -167,8 +167,11 @@ topology/protocol evidence. Pending gates include `next_actions` that automation
 and WPF can render as the CLI-equivalent path to the clearing evidence. Each
 action names a PowerShell-compatible command when one exists, the expected
 acceptance artifacts, whether elevation is required, and whether a Quest lease
-is required. Headset-bound actions use serial-scoped ADB; reserve
-`adb-server:lifecycle` only for disruptive daemon lifecycle recovery.
+is required. Headset-bound actions also carry structured Agent Board lease
+metadata with the `quest:<quest-serial>` resource, reserve command, release
+command, duration, and the `adb-server:lifecycle` policy. Headset-bound
+commands use serial-scoped ADB; reserve `adb-server:lifecycle` only for
+disruptive daemon lifecycle recovery.
 The WPF Protocol Matrix action follows that sequence: it runs the fixture
 suite, generates QCL-020/QCL-030/QCL-040/QCL-041 topology limitation fixtures,
 refreshes the QCL-082 Rusty Quest media-stream source-contract report through

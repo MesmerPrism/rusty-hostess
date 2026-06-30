@@ -182,6 +182,9 @@ public sealed class CompanionTransportGateNextAction
     [JsonPropertyName("command")]
     public CompanionTransportGateNextActionCommand Command { get; set; } = new();
 
+    [JsonPropertyName("lease")]
+    public CompanionTransportGateNextActionLease Lease { get; set; } = new();
+
     [JsonExtensionData]
     public Dictionary<string, JsonElement> ExtensionData { get; set; } = [];
 }
@@ -199,4 +202,31 @@ public sealed class CompanionTransportGateNextActionCommand
 
     [JsonPropertyName("command")]
     public string Command { get; set; } = "";
+}
+
+public sealed class CompanionTransportGateNextActionLease
+{
+    [JsonPropertyName("manager")]
+    public string Manager { get; set; } = "";
+
+    [JsonPropertyName("resource")]
+    public string Resource { get; set; } = "";
+
+    [JsonPropertyName("duration")]
+    public string Duration { get; set; } = "";
+
+    [JsonPropertyName("task")]
+    public string Task { get; set; } = "";
+
+    [JsonPropertyName("lease_id_placeholder")]
+    public string LeaseIdPlaceholder { get; set; } = "";
+
+    [JsonPropertyName("reserve_command")]
+    public string ReserveCommand { get; set; } = "";
+
+    [JsonPropertyName("release_command")]
+    public string ReleaseCommand { get; set; } = "";
+
+    [JsonPropertyName("adb_server_lifecycle_policy")]
+    public string AdbServerLifecyclePolicy { get; set; } = "";
 }

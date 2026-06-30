@@ -351,12 +351,7 @@ public static class ConnectivityRows
                     Evidence = string.IsNullOrWhiteSpace(action.Command.Command)
                         ? string.Join("; ", action.AcceptanceArtifacts)
                         : action.Command.Command,
-                    Notes =
-                        $"requires_quest_lease={action.RequiresQuestLease}; " +
-                        $"requires_elevation={action.RequiresElevation}; " +
-                        $"requires_adb_server_lifecycle_lease={action.RequiresAdbServerLifecycleLease}; " +
-                        $"mutates_host={action.MutatesHost}; mutates_device={action.MutatesDevice}; " +
-                        $"clears_gate={action.ClearsGateWhenAccepted}",
+                    Notes = TransportGateActionNotes(action),
                     IssueCodes = [],
                     Observed = ToObservedElement(action),
                 });
@@ -555,6 +550,32 @@ public static class ConnectivityRows
 
     private static string FirstNonEmpty(params string[] values) =>
         values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value)) ?? "";
+
+    private static string TransportGateActionNotes(CompanionTransportGateNextAction action)
+    {
+        var parts = new List<string>
+        {
+            $"requires_quest_lease={action.RequiresQuestLease}",
+            $"requires_elevation={action.RequiresElevation}",
+            $"requires_adb_server_lifecycle_lease={action.RequiresAdbServerLifecycleLease}",
+            $"mutates_host={action.MutatesHost}",
+            $"mutates_device={action.MutatesDevice}",
+            $"clears_gate={action.ClearsGateWhenAccepted}",
+        };
+        if (!string.IsNullOrWhiteSpace(action.Lease.Resource))
+        {
+            parts.Add($"lease_resource={action.Lease.Resource}");
+        }
+        if (!string.IsNullOrWhiteSpace(action.Lease.Duration))
+        {
+            parts.Add($"lease_duration={action.Lease.Duration}");
+        }
+        if (!string.IsNullOrWhiteSpace(action.Lease.ReleaseCommand))
+        {
+            parts.Add($"lease_release={action.Lease.ReleaseCommand}");
+        }
+        return string.Join("; ", parts);
+    }
 
     private static string StatusForRequirement(string status) => status switch
     {

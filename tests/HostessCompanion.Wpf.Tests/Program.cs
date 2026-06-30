@@ -629,6 +629,13 @@ static void TransportGateRowsExposeNextActions()
                             Shell = "powershell",
                             Command = "python tools\\hostessctl\\hostessctl.py connectivity-probe run --mode live --probe-id QCL-041 --adb S:\\Work\\tools\\Android\\windows-sdk\\platform-tools\\adb.exe --serial '<quest-serial>'",
                         },
+                        Lease = new CompanionTransportGateNextActionLease
+                        {
+                            Manager = "Agent Board",
+                            Resource = "quest:<quest-serial>",
+                            Duration = "45m",
+                            ReleaseCommand = "& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done",
+                        },
                     },
                 ],
             },
@@ -666,8 +673,10 @@ static void TransportGateRowsExposeNextActions()
     Assert(rows.Any(row =>
             row.Name == "transport.direct_wifi_live_topology.run_qcl041_live_wifi_direct_preflight"
             && row.Notes.Contains("requires_quest_lease=True", StringComparison.Ordinal)
-            && row.Notes.Contains("requires_adb_server_lifecycle_lease=False", StringComparison.Ordinal)),
-        "direct Wi-Fi next action must show Quest lease and non-lifecycle ADB policy");
+            && row.Notes.Contains("requires_adb_server_lifecycle_lease=False", StringComparison.Ordinal)
+            && row.Notes.Contains("lease_resource=quest:<quest-serial>", StringComparison.Ordinal)
+            && row.Notes.Contains("lease_release=& 'S:\\Work\\agent-bureau\\scripts\\agent-board.ps1' release '<quest-lease-id>' --result done", StringComparison.Ordinal)),
+        "direct Wi-Fi next action must show Quest lease resource, release command, and non-lifecycle ADB policy");
     Assert(rows.Any(row =>
             row.Name == "transport.product_tcp_media_listener_firewall.verify_qcl082_product_firewall_rule"
             && row.Notes.Contains("requires_elevation=True", StringComparison.Ordinal)

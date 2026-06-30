@@ -349,10 +349,28 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertTrue(
             any(action["requires_quest_lease"] for action in direct_wifi_gate["next_actions"])
         )
+        reserve_action = next(
+            action
+            for action in direct_wifi_gate["next_actions"]
+            if action["action_id"] == "reserve_quest_lease_for_direct_wifi"
+        )
+        self.assertIn(
+            "agent-board.ps1",
+            reserve_action["command"]["command"],
+        )
+        self.assertIn(
+            "reserve 'quest:<quest-serial>'",
+            reserve_action["command"]["command"],
+        )
+        self.assertIn(
+            "release '<quest-lease-id>'",
+            reserve_action["lease"]["release_command"],
+        )
         self.assertTrue(
             any(
                 "adb.exe" in action.get("command", {}).get("command", "")
                 and "--serial '<quest-serial>'" in action.get("command", {}).get("command", "")
+                and action.get("lease", {}).get("resource") == "quest:<quest-serial>"
                 for action in direct_wifi_gate["next_actions"]
             )
         )

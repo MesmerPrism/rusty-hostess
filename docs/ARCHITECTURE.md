@@ -277,9 +277,10 @@ Transport gate status automation lives in
 `rusty.hostess.companion.transport_gate_report.v1`, including the same
 `term_gates` and `remaining_live_gates` WPF renders. Pending gates also carry
 `next_actions` with PowerShell-compatible Hostess CLI routes, acceptance
-artifacts, elevation flags, host/device mutation flags, and Quest lease
-requirements supplied by `companion_transport_gate_actions.py`. Those actions
-are operator guidance and automation inputs; the route still does not run
+artifacts, elevation flags, host/device mutation flags, and structured Agent
+Board `quest:<quest-serial>` lease reserve/release metadata supplied by
+`companion_transport_gate_actions.py`. Those actions are operator guidance and
+automation inputs; the route still does not run
 probes, choose latest artifacts, mutate firewall/device state, parse media, or
 promote topology/protocol evidence. Its optional `--fail-on-pending` behavior
 is an automation guard only. WPF uses the same route without

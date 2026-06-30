@@ -127,8 +127,9 @@ generic code or sanitized sample fixtures.
   `remaining_live_gates` from an existing companion-report projection and
   optionally fail automation on pending gates. It may attach structured
   operator `next_actions` that name CLI-equivalent PowerShell commands,
-  acceptance artifacts, elevation flags, mutation flags, and Quest lease
-  requirements; it must not run probes, select artifacts, change
+  acceptance artifacts, elevation flags, mutation flags, and Agent Board
+  `quest:<serial>` lease reserve/release metadata; it must not run probes,
+  select artifacts, change
   firewall/device state, parse media, or promote evidence.
 - Keep `tools\hostessctl\companion_transport_gate_actions.py` as the static
   transport gate operator-action catalog. It may name existing Hostess CLI

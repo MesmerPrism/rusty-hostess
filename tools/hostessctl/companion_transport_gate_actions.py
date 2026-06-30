@@ -7,6 +7,10 @@ from typing import Any
 
 POWERSHELL_SHELL = "powershell"
 HOSTESS_REPO_CWD = "<rusty-hostess-root>"
+AGENT_BOARD_SCRIPT = r"S:\Work\agent-bureau\scripts\agent-board.ps1"
+QUEST_LEASE_RESOURCE = "quest:<quest-serial>"
+QUEST_LEASE_ID = "<quest-lease-id>"
+QUEST_LEASE_DURATION = "45m"
 WPF_COMPANION_EXE = (
     r"apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe"
 )
@@ -79,6 +83,16 @@ def validate_next_actions_for_gate(
                 errors.append(f"next action command must be powershell: {gate_id}/{action_id}")
             if not str(command.get("command") or "").strip():
                 errors.append(f"next action command missing command text: {gate_id}/{action_id}")
+        if next_action.get("requires_quest_lease"):
+            lease = object_value(next_action.get("lease"))
+            if lease.get("manager") != "Agent Board":
+                errors.append(f"quest-bound next action missing Agent Board lease metadata: {gate_id}/{action_id}")
+            if str(lease.get("resource") or "") != QUEST_LEASE_RESOURCE:
+                errors.append(f"quest-bound next action missing quest:<quest-serial> resource: {gate_id}/{action_id}")
+            if "adb-server:lifecycle" not in str(lease.get("adb_server_lifecycle_policy") or ""):
+                errors.append(f"quest-bound next action missing adb-server lifecycle policy: {gate_id}/{action_id}")
+            if not str(lease.get("release_command") or "").strip():
+                errors.append(f"quest-bound next action missing lease release command: {gate_id}/{action_id}")
     return errors
 
 
@@ -162,13 +176,16 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
             "Reserve the target Quest before headset-bound Wi-Fi Direct evidence.",
             authority_owner="Agent Board",
             requires_elevation=False,
-            requires_quest_lease=True,
+            requires_quest_lease=False,
             mutates_host=False,
             mutates_device=False,
-            command=None,
+            command=powershell_command(
+                "Reserve Quest lease",
+                agent_board_reserve_command("QCL-040/QCL-041 direct Wi-Fi validation"),
+            ),
             acceptance_artifacts=["Agent Board quest:<quest-serial> lease id"],
             clears_gate=False,
-            available_now=False,
+            lease=quest_lease_metadata("QCL-040/QCL-041 direct Wi-Fi validation"),
             note=(
                 "Use the local Agent Board lease flow before running the ADB-backed "
                 "commands below. Ordinary ADB commands stay serial-scoped; reserve "
@@ -199,6 +216,7 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 r"target\connectivity-probe\qcl040-live-wifi-direct-preflight.json",
             ],
             clears_gate=False,
+            lease=quest_lease_metadata("QCL-040 live Wi-Fi Direct preflight"),
             note=(
                 "The current preflight is read-only and does not clear the promotion "
                 "gate by itself."
@@ -228,6 +246,7 @@ def direct_wifi_live_topology_actions() -> list[dict[str, Any]]:
                 r"target\connectivity-probe\qcl041-live-wifi-direct-preflight.json",
             ],
             clears_gate=False,
+            lease=quest_lease_metadata("QCL-041 live Wi-Fi Direct preflight"),
             note=(
                 "The clearing evidence still needs peer discovery, group formation, "
                 "bounded socket exchange, and cleanup evidence."
@@ -274,6 +293,7 @@ def product_tcp_media_over_direct_wifi_actions() -> list[dict[str, Any]]:
                 r"target\connectivity-probe\media-stream-receiver-result.json",
             ],
             clears_gate=False,
+            lease=quest_lease_metadata("QCL-082 RMANVID1 product media capture"),
         ),
         next_action(
             "promote_qcl082_rmanvid1_capture",
@@ -377,6 +397,7 @@ def next_action(
     clears_gate: bool,
     available_now: bool = True,
     depends_on: list[str] | None = None,
+    lease: dict[str, Any] | None = None,
     note: str = "",
 ) -> dict[str, Any]:
     action = {
@@ -394,6 +415,8 @@ def next_action(
     }
     if depends_on:
         action["depends_on"] = depends_on
+    if lease:
+        action["lease"] = lease
     if command:
         action["command"] = command
     if note:
@@ -408,6 +431,33 @@ def powershell_command(label: str, command: str) -> dict[str, Any]:
         "cwd": HOSTESS_REPO_CWD,
         "command": command,
     }
+
+
+def quest_lease_metadata(task: str) -> dict[str, Any]:
+    return {
+        "manager": "Agent Board",
+        "resource": QUEST_LEASE_RESOURCE,
+        "duration": QUEST_LEASE_DURATION,
+        "task": task,
+        "lease_id_placeholder": QUEST_LEASE_ID,
+        "reserve_command": agent_board_reserve_command(task),
+        "release_command": agent_board_release_command(),
+        "adb_server_lifecycle_policy": (
+            "Use adb-server:lifecycle only for disruptive daemon lifecycle "
+            "or Wi-Fi ADB setup/recovery. Ordinary ADB commands stay serial-scoped."
+        ),
+    }
+
+
+def agent_board_reserve_command(task: str) -> str:
+    return (
+        f"& '{AGENT_BOARD_SCRIPT}' reserve '{QUEST_LEASE_RESOURCE}' "
+        f"--duration {QUEST_LEASE_DURATION} --task '{task}'"
+    )
+
+
+def agent_board_release_command() -> str:
+    return f"& '{AGENT_BOARD_SCRIPT}' release '{QUEST_LEASE_ID}' --result done"
 
 
 def object_value(value: Any) -> dict[str, Any]:
