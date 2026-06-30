@@ -489,6 +489,56 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(collect["lease"]["resource"], "quest:3487C10H3M017Q")
         self.assertIn("device.serial matching quest resource 'quest:3487C10H3M017Q'", collect["command"])
 
+    def test_wifi_direct_lifecycle_plan_summarizes_preflight_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preflight_path = root / "qcl041-preflight.json"
+            preflight = live_direct_wifi_topology_report(
+                probe_args(mode="live", probe_id="QCL-041", host_ip="192.0.2.10"),
+                run_captured_func=FakeRunner(),
+                clock_func=fixed_datetime,
+                host_ipv4_func=lambda: [
+                    {
+                        "ip": "192.0.2.10",
+                        "prefix_length": 24,
+                        "interface": "fixture",
+                    }
+                ],
+            )
+            preflight_path.write_text(json.dumps(preflight), encoding="utf-8")
+
+            report = wifi_direct_lifecycle_plan(
+                argparse.Namespace(
+                    probe_id="QCL-041",
+                    plan_id="",
+                    adb=r"S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe",
+                    serial="<quest-serial>",
+                    preflight_report_out=str(preflight_path),
+                    template_out="",
+                    lifecycle_report="",
+                    topology_report_out="",
+                    out="unused.json",
+                    fail_on_error=False,
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        preflight_observation = report["observations"]["preflight"]
+        preflight_check = check(
+            {"checks": report["checks"]},
+            "wifi_direct.lifecycle_preflight_observation",
+        )
+        self.assertTrue(preflight_observation["report_present"])
+        self.assertTrue(preflight_observation["probe_id_matches"])
+        self.assertTrue(preflight_observation["blocked"])
+        self.assertEqual(preflight_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_live_peer_discovery_missing",
+            preflight_check["issue_codes"],
+        )
+        self.assertTrue(report["readiness"]["preflight_report_present"])
+        self.assertTrue(report["readiness"]["preflight_blocked"])
+
     def test_wifi_direct_lifecycle_plan_is_ready_when_live_source_artifact_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

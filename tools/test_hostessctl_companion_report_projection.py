@@ -543,6 +543,8 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         self.assertFalse(acceptance_action["clears_gate_when_accepted"])
         self.assertIn("direct-wifi-product-media-plan", acceptance_command)
         self.assertIn("direct-wifi-product-media-acceptance-plan.json", acceptance_command)
+        self.assertIn("--qcl040-preflight-report", acceptance_command)
+        self.assertIn("--qcl041-preflight-report", acceptance_command)
         self.assertIn("--qcl041-topology-report", acceptance_command)
         self.assertIn("--qcl082-report", acceptance_command)
         for probe_id, action_id, artifact_name in [

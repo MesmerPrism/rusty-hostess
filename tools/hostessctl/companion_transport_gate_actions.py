@@ -24,6 +24,12 @@ DIRECT_WIFI_QCL040_LIFECYCLE_PLAN = (
 DIRECT_WIFI_QCL041_LIFECYCLE_PLAN = (
     r"target\connectivity-probe\qcl041-wifi-direct-lifecycle-plan.json"
 )
+DIRECT_WIFI_QCL040_PREFLIGHT = (
+    r"target\connectivity-probe\qcl040-live-wifi-direct-preflight.json"
+)
+DIRECT_WIFI_QCL041_PREFLIGHT = (
+    r"target\connectivity-probe\qcl041-live-wifi-direct-preflight.json"
+)
 DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT = (
     r"target\connectivity-probe\qcl040-live-wifi-direct-lifecycle.json"
 )
@@ -482,6 +488,8 @@ def direct_wifi_product_media_acceptance_plan_action() -> dict[str, Any]:
                 "python tools\\hostessctl\\hostessctl.py "
                 "connectivity-probe direct-wifi-product-media-plan "
                 f"--out {DIRECT_WIFI_PRODUCT_MEDIA_ACCEPTANCE_PLAN} "
+                f"--qcl040-preflight-report {DIRECT_WIFI_QCL040_PREFLIGHT} "
+                f"--qcl041-preflight-report {DIRECT_WIFI_QCL041_PREFLIGHT} "
                 "--qcl040-lifecycle-report '<qcl040-live-wifi-direct-lifecycle-source>' "
                 "--qcl041-lifecycle-report '<qcl041-live-wifi-direct-lifecycle-source>' "
                 f"--qcl040-topology-report {DIRECT_WIFI_QCL040_LIFECYCLE_OUTPUT} "

@@ -82,7 +82,17 @@ def wifi_direct_lifecycle_plan(
     serial = value(args, "serial", "<quest-serial>")
     paths = wifi_direct_lifecycle_plan_paths(args, probe_id)
     lifecycle = lifecycle_dependency(paths["lifecycle_report"], probe_id)
+    preflight = preflight_observation(paths["preflight_report"], probe_id)
     commands = wifi_direct_lifecycle_plan_commands(args, paths, probe_id)
+    preflight_check_status = lifecycle_preflight_check_status(
+        preflight,
+        lifecycle_ready=lifecycle["ready"],
+    )
+    preflight_issue_codes = (
+        []
+        if lifecycle["ready"] or preflight_check_status == "pass"
+        else preflight["issue_codes"]
+    )
     checks = [
         check_row(
             "wifi_direct.lifecycle_plan_authority",
@@ -94,6 +104,13 @@ def wifi_direct_lifecycle_plan(
                 "preflight_owner": "tools.hostessctl.connectivity_topology_live",
                 "frontend_role": "requester_inspector",
             },
+        ),
+        check_row(
+            "wifi_direct.lifecycle_preflight_observation",
+            preflight_check_status,
+            preflight["evidence"],
+            observed=preflight,
+            issue_codes=preflight_issue_codes,
         ),
         check_row(
             "wifi_direct.lifecycle_source_dependency",
@@ -113,9 +130,10 @@ def wifi_direct_lifecycle_plan(
             },
         ),
     ]
+    issue_codes = sorted(set(lifecycle["issue_codes"] + preflight_issue_codes))
     issues = [
         issue_row(code, "warning", "Wi-Fi Direct lifecycle plan dependency is not ready")
-        for code in lifecycle["issue_codes"]
+        for code in issue_codes
     ]
     return {
         "schema": WIFI_DIRECT_LIFECYCLE_PLAN_SCHEMA,
@@ -154,7 +172,13 @@ def wifi_direct_lifecycle_plan(
                 "summary": lifecycle,
             }
         ],
+        "observations": {
+            "preflight": preflight,
+        },
         "readiness": {
+            "preflight_report_present": preflight["report_present"],
+            "preflight_probe_matches": preflight["probe_id_matches"],
+            "preflight_blocked": preflight["blocked"],
             "ready_for_normalization": lifecycle["ready"],
             "ready_for_topology_promotion": lifecycle["ready"],
             "live_steps_require_quest_lease": True,
@@ -169,13 +193,123 @@ def wifi_direct_lifecycle_plan(
             "Normalize the supplied live lifecycle artifact into a promoted topology report."
             if lifecycle["ready"]
             else (
-                "Under a quest:<quest-serial> lease, collect a live "
+                "Refresh the live Wi-Fi Direct preflight if needed, then under "
+                "a quest:<quest-serial> lease collect a live "
                 f"{WIFI_DIRECT_LIFECYCLE_SCHEMA} source artifact with peer discovery, "
                 "group formation, bounded TCP socket exchange, cleanup evidence, "
                 "and device.serial matching the Agent Board quest lease resource."
             )
         ),
     }
+
+
+def preflight_observation(path_text: str, probe_id: str) -> dict[str, Any]:
+    report = report_if_path_exists(path_text)
+    report_probe_id = str(report.get("probe_id") or "").upper()
+    report_status = str(report.get("status") or "")
+    checks = list_objects(report.get("checks"))
+    issues = list_objects(report.get("issues"))
+    topology = object_value(report.get("topology"))
+    transport = object_value(report.get("transport"))
+    check_summaries = [
+        {
+            "name": str(check.get("name") or ""),
+            "status": str(check.get("status") or ""),
+            "evidence": str(check.get("evidence") or ""),
+            "issue_codes": [
+                str(code)
+                for code in check.get("issue_codes", [])
+                if str(code)
+            ]
+            if isinstance(check.get("issue_codes"), list)
+            else [],
+        }
+        for check in checks
+    ]
+    blocker_checks = [
+        item
+        for item in check_summaries
+        if item["status"] in {"blocked", "fail"}
+    ]
+    issue_codes = sorted(
+        {
+            str(code)
+            for item in check_summaries
+            for code in item["issue_codes"]
+            if str(code)
+        }
+        | {
+            str(issue.get("issue_code") or "")
+            for issue in issues
+            if str(issue.get("issue_code") or "")
+        }
+    )
+
+    if not report:
+        return {
+            "report_present": False,
+            "report_path": path_text,
+            "probe_id": "",
+            "probe_id_matches": False,
+            "report_status": "",
+            "blocked": False,
+            "blocker_checks": [],
+            "issue_codes": [
+                "hostess.issue.connectivity_probe.wifi_direct_live_preflight_missing"
+            ],
+            "evidence": "live Wi-Fi Direct preflight report is not supplied yet",
+            "topology_owner": "",
+            "transport_route": "",
+            "peer_class": "windows" if probe_id == "QCL-041" else "android_phone",
+        }
+
+    if report_probe_id != probe_id:
+        issue_codes.append(
+            "hostess.issue.connectivity_probe.wifi_direct_live_preflight_probe_mismatch"
+        )
+
+    blocked = report_status in {"blocked", "fail"} or bool(blocker_checks)
+    if blocked:
+        blocker_names = ", ".join(
+            item["name"] for item in blocker_checks if item["name"]
+        )
+        evidence = (
+            "live Wi-Fi Direct preflight report records blockers"
+            + (f": {blocker_names}" if blocker_names else "")
+        )
+    elif report_status:
+        evidence = f"live Wi-Fi Direct preflight report status={report_status}"
+    else:
+        evidence = "live Wi-Fi Direct preflight report is present"
+
+    return {
+        "report_present": True,
+        "report_path": path_text,
+        "probe_id": report_probe_id,
+        "probe_id_matches": report_probe_id == probe_id,
+        "report_status": report_status,
+        "blocked": blocked,
+        "blocker_checks": blocker_checks,
+        "issue_codes": sorted(set(issue_codes)),
+        "evidence": evidence,
+        "topology_owner": str(topology.get("owner") or ""),
+        "transport_route": str(transport.get("route") or ""),
+        "peer_class": str(topology.get("peer_class") or ""),
+    }
+
+
+def lifecycle_preflight_check_status(
+    preflight: dict[str, Any],
+    *,
+    lifecycle_ready: bool,
+) -> str:
+    if lifecycle_ready:
+        return "skipped"
+    if not preflight["report_present"]:
+        return "planned"
+    if preflight["blocked"] or preflight["issue_codes"]:
+        return "blocked"
+    return "pass"
 
 
 def wifi_direct_lifecycle_plan_paths(args: argparse.Namespace, probe_id: str) -> dict[str, str]:

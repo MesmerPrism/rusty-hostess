@@ -706,6 +706,13 @@ projection, and transport-gate routes so WPF and CLI automation inspect the
 same remaining checklist; it does not run ADB, mutate Wi-Fi Direct, apply
 firewall rules, parse media payloads, or clear pending gates without the
 supplied evidence artifacts.
+Pass `--qcl040-preflight-report` and `--qcl041-preflight-report` when fresh
+live preflight artifacts exist. The plan projects those reports as blocker
+observations for operator guidance, including missing phone-peer harness,
+Windows Wi-Fi Direct adapter/API, peer-discovery, runtime-harness, and cleanup
+gaps. These observations do not clear `transport.direct_wifi_live_topology`;
+only a leased lifecycle source artifact normalized into a promoted QCL-040 or
+QCL-041 topology report can clear that gate.
 
 If the paired topology report is still experimental or unpromoted, the QCL-082
 report remains valid for generic binary-media evidence but the

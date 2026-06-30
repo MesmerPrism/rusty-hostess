@@ -95,6 +95,11 @@ def direct_wifi_product_media_plan(
         product_args(args, paths, selected_topology),
         observed_at=observed_at,
     )
+    preflight = direct_wifi_preflight_summary(
+        qcl040_plan,
+        qcl041_plan,
+        direct_wifi_topology_ready=selected_topology["ready"],
+    )
 
     commands = (
         subplan_writer_commands(args, paths)
@@ -161,6 +166,13 @@ def direct_wifi_product_media_plan(
             selected_topology["evidence"],
             observed=selected_topology,
             issue_codes=selected_topology["issue_codes"],
+        ),
+        check_row(
+            "direct_wifi_product_media.direct_wifi_preflight_observation",
+            preflight["status"],
+            preflight["evidence"],
+            observed=preflight,
+            issue_codes=preflight["issue_codes"],
         ),
         check_row(
             "direct_wifi_product_media.product_listener_firewall_dependency",
@@ -258,6 +270,8 @@ def direct_wifi_product_media_plan(
         ],
         "readiness": {
             "lifecycle_source_ready_for_normalization": lifecycle_source_ready,
+            "direct_wifi_preflight_observed": preflight["observed"],
+            "direct_wifi_preflight_blocked": preflight["blocked"],
             "direct_wifi_topology_ready": direct_wifi_topology_ready,
             "product_listener_firewall_ready": firewall["ready"],
             "ready_for_qcl082_receiver_capture": ready_for_receiver_capture,
@@ -276,13 +290,66 @@ def direct_wifi_product_media_plan(
         },
         "commands": commands,
         "checks": checks,
-        "issues": plan_issues(qcl040_lifecycle, qcl041_lifecycle, selected_topology, firewall, qcl082_media),
+        "issues": plan_issues(
+            qcl040_lifecycle,
+            qcl041_lifecycle,
+            selected_topology,
+            firewall,
+            qcl082_media,
+            preflight if not direct_wifi_topology_ready else {},
+        ),
         "next_step": next_step(
             lifecycle_source_ready=lifecycle_source_ready,
+            preflight_observed=preflight["observed"],
             direct_wifi_topology_ready=direct_wifi_topology_ready,
             firewall_ready=firewall["ready"],
             qcl082_ready=product_media_ready,
         ),
+    }
+
+
+def direct_wifi_preflight_summary(
+    qcl040_plan: dict[str, Any],
+    qcl041_plan: dict[str, Any],
+    *,
+    direct_wifi_topology_ready: bool,
+) -> dict[str, Any]:
+    observations = {
+        "qcl040": object_value(object_value(qcl040_plan.get("observations")).get("preflight")),
+        "qcl041": object_value(object_value(qcl041_plan.get("observations")).get("preflight")),
+    }
+    observed = any(item.get("report_present") is True for item in observations.values())
+    issue_codes = sorted(
+        {
+            str(code)
+            for item in observations.values()
+            for code in item.get("issue_codes", [])
+            if str(code)
+        }
+    )
+    blocked = any(item.get("blocked") is True for item in observations.values())
+    if direct_wifi_topology_ready:
+        status = "skipped"
+        evidence = "promoted direct-Wi-Fi topology is already supplied; live preflight blockers do not gate this plan"
+        issue_codes = []
+        blocked = False
+    elif blocked:
+        status = "blocked"
+        evidence = "live Wi-Fi Direct preflight exists and records blockers"
+    elif observed:
+        status = "planned"
+        evidence = "live Wi-Fi Direct preflight exists, but lifecycle source evidence is still required for promotion"
+    else:
+        status = "planned"
+        evidence = "live Wi-Fi Direct preflight has not been supplied for QCL-040 or QCL-041"
+    return {
+        "status": status,
+        "observed": observed,
+        "blocked": blocked,
+        "issue_codes": issue_codes,
+        "evidence": evidence,
+        "qcl040": observations["qcl040"],
+        "qcl041": observations["qcl041"],
     }
 
 
@@ -309,6 +376,16 @@ def acceptance_plan_paths(args: argparse.Namespace) -> dict[str, str]:
             args,
             "qcl082_product_plan_out",
             r"target\connectivity-probe\qcl082-product-media-direct-wifi-plan.json",
+        ),
+        "qcl040_preflight_report": value(
+            args,
+            "qcl040_preflight_report",
+            lifecycle_plan.DEFAULT_QCL040_PREFLIGHT,
+        ),
+        "qcl041_preflight_report": value(
+            args,
+            "qcl041_preflight_report",
+            lifecycle_plan.DEFAULT_QCL041_PREFLIGHT,
         ),
         "qcl040_lifecycle_report": value(
             args,
@@ -351,7 +428,7 @@ def lifecycle_args(args: argparse.Namespace, probe_id: str, paths: dict[str, str
         plan_id=f"{probe_id.lower()}-wifi-direct-lifecycle",
         adb=value(args, "adb", lifecycle_plan.DEFAULT_ADB),
         serial=value(args, "serial", "<quest-serial>"),
-        preflight_report_out="",
+        preflight_report_out=paths["qcl040_preflight_report"] if qcl040 else paths["qcl041_preflight_report"],
         template_out="",
         lifecycle_report=paths["qcl040_lifecycle_report"] if qcl040 else paths["qcl041_lifecycle_report"],
         topology_report_out=paths["qcl040_topology_report"] if qcl040 else paths["qcl041_topology_report"],
@@ -546,6 +623,7 @@ def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> 
                 "connectivity-probe wifi-direct-lifecycle-plan "
                 "--probe-id QCL-040 "
                 f"--out {ps_quote(paths['qcl040_lifecycle_plan_out'])} "
+                f"--preflight-report-out {ps_quote(paths['qcl040_preflight_report'])} "
                 f"--adb {ps_quote(adb)} --serial {ps_quote(serial)}"
             ),
             [paths["qcl040_lifecycle_plan_out"]],
@@ -559,6 +637,7 @@ def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> 
                 "connectivity-probe wifi-direct-lifecycle-plan "
                 "--probe-id QCL-041 "
                 f"--out {ps_quote(paths['qcl041_lifecycle_plan_out'])} "
+                f"--preflight-report-out {ps_quote(paths['qcl041_preflight_report'])} "
                 f"--adb {ps_quote(adb)} --serial {ps_quote(serial)}"
             ),
             [paths["qcl041_lifecycle_plan_out"]],
@@ -663,6 +742,7 @@ def plan_command(
 def next_step(
     *,
     lifecycle_source_ready: bool,
+    preflight_observed: bool,
     direct_wifi_topology_ready: bool,
     firewall_ready: bool,
     qcl082_ready: bool,
@@ -678,9 +758,16 @@ def next_step(
         return "Verify or apply the product Hostess/WPF TCP listener firewall rule for QCL-082."
     if lifecycle_source_ready:
         return "Normalize the ready lifecycle source into a promoted QCL-040/QCL-041 topology report."
+    if preflight_observed:
+        return (
+            "Use the preflight blockers to finish the external Wi-Fi Direct peer "
+            "harness, then collect leased lifecycle source evidence with peer "
+            "discovery, group roles, bounded TCP exchange, and cleanup."
+        )
     return (
-        "Under a quest:<quest-serial> lease, collect direct-Wi-Fi lifecycle evidence "
-        "with peer discovery, group roles, bounded TCP exchange, and cleanup."
+        "Refresh live QCL-040/QCL-041 Wi-Fi Direct preflight under a "
+        "quest:<quest-serial> lease, then collect lifecycle evidence with peer "
+        "discovery, group roles, bounded TCP exchange, and cleanup."
     )
 
 

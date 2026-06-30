@@ -1405,9 +1405,9 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must advertise live QCL-041 Wi-Fi Direct preflight");
     Assert(protocolMatrixAction.CliRoute.Contains("--adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
         "protocol matrix action must use PowerShell variables for serial-scoped ADB placeholders");
-    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-040 --out $Qcl040LifecyclePlan --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-040 --out $Qcl040LifecyclePlan --preflight-report-out $Qcl040Preflight --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle execution plan route");
-    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out $Qcl041LifecyclePlan --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
+    Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-plan --probe-id QCL-041 --out $Qcl041LifecyclePlan --preflight-report-out $Qcl041Preflight --adb $Adb --serial $QuestSerial", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-041 Wi-Fi Direct lifecycle execution plan route");
     Assert(protocolMatrixAction.CliRoute.Contains("connectivity-probe wifi-direct-lifecycle-template --probe-id QCL-040 --out $Qcl040LifecycleTemplate", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-040 Wi-Fi Direct lifecycle source template route");
@@ -1478,6 +1478,10 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must name the QCL-082 product-media plan artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("direct-wifi-product-media-plan --out $DirectWifiProductMediaPlan", StringComparison.Ordinal),
         "protocol matrix action must advertise the combined direct-Wi-Fi product-media acceptance plan route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--qcl040-preflight-report $Qcl040Preflight", StringComparison.Ordinal),
+        "protocol matrix action must pass QCL-040 live preflight into the combined acceptance plan");
+    Assert(protocolMatrixAction.CliRoute.Contains("--qcl041-preflight-report $Qcl041Preflight", StringComparison.Ordinal),
+        "protocol matrix action must pass QCL-041 live preflight into the combined acceptance plan");
     Assert(protocolMatrixAction.CliRoute.Contains("direct-wifi-product-media-acceptance-plan.json", StringComparison.Ordinal),
         "protocol matrix action must name the combined direct-Wi-Fi product-media acceptance plan artifact");
     Assert(protocolMatrixAction.CliRoute.Contains("$Qcl082ReceiverReport = 'target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json'", StringComparison.Ordinal),

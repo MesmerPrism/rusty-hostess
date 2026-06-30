@@ -62,6 +62,53 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("--direct-wifi-product-media-plan", command_text)
         self.assertIn("companion-report transport-gates", command_text)
 
+    def test_direct_wifi_product_media_acceptance_plan_surfaces_preflight_blockers(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            preflight_path = root / "qcl041-live-wifi-direct-preflight.json"
+            preflight = live_direct_wifi_topology_report(
+                probe_args(mode="live", probe_id="QCL-041", host_ip="192.0.2.10"),
+                run_captured_func=FakeRunner(),
+                clock_func=fixed_datetime,
+                host_ipv4_func=lambda: [
+                    {
+                        "ip": "192.0.2.10",
+                        "prefix_length": 24,
+                        "interface": "fixture",
+                    }
+                ],
+            )
+            preflight_path.write_text(json.dumps(preflight), encoding="utf-8")
+
+            report = direct_wifi_product_media_plan(
+                probe_args(
+                    connectivity_probe_command="direct-wifi-product-media-plan",
+                    out=str(root / "plan.json"),
+                    qcl041_preflight_report=str(preflight_path),
+                    firewall_report="target\\connectivity-probe\\qcl082-tcp-firewall-admin-handoff-verify.json",
+                    qcl082_report="target\\connectivity-probe\\qcl082-rmanvid1-receiver-capture.json",
+                ),
+                observed_at=fixed_datetime(),
+            )
+
+        preflight_check = check(
+            {"checks": report["checks"]},
+            "direct_wifi_product_media.direct_wifi_preflight_observation",
+        )
+        self.assertFalse(report["readiness"]["direct_wifi_topology_ready"])
+        self.assertTrue(report["readiness"]["direct_wifi_preflight_observed"])
+        self.assertTrue(report["readiness"]["direct_wifi_preflight_blocked"])
+        self.assertEqual(preflight_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_live_peer_discovery_missing",
+            preflight_check["issue_codes"],
+        )
+        self.assertEqual(
+            preflight_check["observed"]["qcl041"]["report_path"],
+            str(preflight_path),
+        )
+        self.assertIn("preflight blockers", report["next_step"])
+
     def test_direct_wifi_product_media_acceptance_plan_detects_ready_artifacts(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

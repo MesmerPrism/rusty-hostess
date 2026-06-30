@@ -86,6 +86,12 @@ but it does not run ADB, mutate firewall state, parse media payloads, or
 promote topology/media gates. Command rows are copied from the Hostess plan
 artifact so WPF can inspect PowerShell command text, Quest lease flags,
 dependency gates, and acceptance artifacts without synthesizing recipes.
+The plan may consume QCL-040/QCL-041 live Wi-Fi Direct preflight reports as
+read-only blocker observations. Those observations make missing phone-peer
+harness, Windows Wi-Fi Direct adapter/API, peer-discovery, runtime-harness, and
+cleanup gaps visible to WPF/CLI operators, but only a leased lifecycle source
+artifact normalized by `connectivity_topology_lifecycle.py` can promote the
+direct-Wi-Fi topology gate.
 QCL-000 fixture WebSocket evidence is visible as candidate evidence;
 promotion still requires live device-link command evidence. Topology report
 views can still pass explicit connectivity-probe artifacts through that same

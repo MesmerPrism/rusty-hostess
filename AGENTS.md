@@ -225,9 +225,13 @@ generic code or sanitized sample fixtures.
   readiness.
 - Keep `tools\hostessctl\connectivity_topology_lifecycle_plan.py` as the
   read-only QCL-040/QCL-041 Wi-Fi Direct lifecycle plan owner. It may bind
-  Agent Board lease metadata, preflight, source-template, external live-source,
-  and normalization CLI routes into a WPF/CLI-equivalent artifact, but it must
-  not run headset commands, mutate Wi-Fi Direct state, or clear topology gates.
+  Agent Board lease metadata, live preflight report observations,
+  source-template, external live-source, and normalization CLI routes into a
+  WPF/CLI-equivalent artifact. Preflight observations may expose concrete
+  blockers such as missing peer harness, unavailable Windows Wi-Fi Direct
+  adapter/API, missing peer discovery, and runtime-harness gaps, but they do
+  not promote topology. This module must not run headset commands, mutate
+  Wi-Fi Direct state, or clear topology gates.
 - Keep `tools\hostessctl\connectivity_bluetooth.py` as the QCL-050/QCL-051
   Bluetooth readiness, payload, reconnect, transport, and live report assembly
   owner. `connectivity_probe.py` may preserve facade imports and route

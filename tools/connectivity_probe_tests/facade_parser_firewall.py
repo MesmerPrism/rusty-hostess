@@ -628,6 +628,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "direct-wifi-product-media-plan",
                 "--out",
                 "target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json",
+                "--qcl040-preflight-report",
+                "target\\connectivity-probe\\qcl040-live-wifi-direct-preflight.json",
+                "--qcl041-preflight-report",
+                "target\\connectivity-probe\\qcl041-live-wifi-direct-preflight.json",
                 "--qcl040-topology-report",
                 "target\\connectivity-probe\\qcl040-live-wifi-direct-lifecycle.json",
                 "--qcl041-topology-report",
@@ -662,6 +666,14 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(
             args.out,
             "target\\connectivity-probe\\direct-wifi-product-media-acceptance-plan.json",
+        )
+        self.assertEqual(
+            args.qcl040_preflight_report,
+            "target\\connectivity-probe\\qcl040-live-wifi-direct-preflight.json",
+        )
+        self.assertEqual(
+            args.qcl041_preflight_report,
+            "target\\connectivity-probe\\qcl041-live-wifi-direct-preflight.json",
         )
         self.assertEqual(
             args.qcl041_topology_report,

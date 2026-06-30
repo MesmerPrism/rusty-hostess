@@ -907,6 +907,8 @@ def build_hostessctl_parser(
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl040-lifecycle-plan-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl041-lifecycle-plan-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl082-product-plan-out", default="")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl040-preflight-report", default="")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl041-preflight-report", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl040-lifecycle-report", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl041-lifecycle-report", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--qcl040-topology-report", default="")
