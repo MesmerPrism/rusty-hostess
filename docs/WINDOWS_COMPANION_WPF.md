@@ -520,6 +520,15 @@ start-source request, does not arm the receiver, and does not start the live
 Android command. WPF renders that blocked evidence; it must not bypass the CLI
 preflight from UI handlers.
 
+The live receiver routes may also take `--preview-ffplay` and
+`--preview-window-title`. That preview starts a local ffplay child process and
+feeds it H.264 payloads copied from accepted `RMANVID1` packets while Hostess
+continues to own the TCP listener, capture file, sidecar, receiver-result, and
+QCL-082 fold-in artifacts. Preview success is useful operator feedback, but
+promotion still comes from the structured receiver counters, broker/runtime
+status, matching Quest lease/topology identity, and verified product listener
+firewall report.
+
 If the verification report has `product_rule_verified=false`, generate the
 admin handoff from the same Hostess CLI route, then run the generated script
 from an elevated PowerShell session. A non-elevated apply produces a blocked
@@ -528,6 +537,9 @@ and the handoff script/verify paths WPF projects for the operator. WPF must not
 create firewall rules through hidden UI logic.
 
 ```powershell
+$PreviewFfplay = 'ffplay.exe'
+$PreviewWindowTitle = 'Rusty QCL-082 Camera2 direct-WiFi preview'
+
 python tools\hostessctl\hostessctl.py connectivity-probe windows-firewall-rule `
   --action verify `
   --rule-profile qcl-082-rmanvid1-media `
@@ -555,6 +567,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe qcl082-product-media-li
   --quest-lease-id $QuestLeaseId `
   --quest-lease-resource $QuestLeaseResource `
   --quest-lease-reserved-before-live-steps `
+  --preview-ffplay $PreviewFfplay `
+  --preview-window-title $PreviewWindowTitle `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 
@@ -571,6 +585,8 @@ python tools\hostessctl\hostessctl.py connectivity-probe rmanvid1-receiver-captu
   --quest-lease-id $QuestLeaseId `
   --quest-lease-resource $QuestLeaseResource `
   --quest-lease-reserved-before-live-steps `
+  --preview-ffplay $PreviewFfplay `
+  --preview-window-title $PreviewWindowTitle `
   --out target\connectivity-probe\media-stream-receiver-result.json `
   --fail-on-error
 

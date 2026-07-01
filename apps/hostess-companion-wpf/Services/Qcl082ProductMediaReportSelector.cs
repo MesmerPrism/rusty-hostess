@@ -13,7 +13,7 @@ internal static class Qcl082ProductMediaReportSelector
         foreach (var candidate in ConnectivityReportSelectorSupport.CandidateReports(
             repoRoot,
             matrix,
-            Array.Empty<FileInfo>()))
+            DefaultCandidateReports(repoRoot)))
         {
             if (IsPromotedProductMediaReport(candidate))
             {
@@ -21,6 +21,40 @@ internal static class Qcl082ProductMediaReportSelector
             }
         }
         return null;
+    }
+
+    private static IEnumerable<FileInfo> DefaultCandidateReports(DirectoryInfo repoRoot)
+    {
+        var reports = new List<FileInfo>
+        {
+            new(Path.Combine(
+                repoRoot.FullName,
+                "target",
+                "connectivity-probe",
+                "qcl082-rmanvid1-receiver-capture.json")),
+        };
+
+        var latestArtifactOverride = Environment.GetEnvironmentVariable(
+            HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(latestArtifactOverride))
+        {
+            var latestArtifactTarget = new DirectoryInfo(Path.GetFullPath(
+                latestArtifactOverride.Trim(),
+                repoRoot.FullName));
+            if (latestArtifactTarget.Exists)
+            {
+                reports.AddRange(
+                    latestArtifactTarget
+                        .EnumerateFiles("qcl082-product-media-live-qcl082.json", SearchOption.AllDirectories)
+                        .OrderByDescending(report => report.LastWriteTimeUtc));
+                reports.AddRange(
+                    latestArtifactTarget
+                        .EnumerateFiles("qcl082-rmanvid1-receiver-capture.json", SearchOption.AllDirectories)
+                        .OrderByDescending(report => report.LastWriteTimeUtc));
+            }
+        }
+
+        return reports;
     }
 
     private static bool IsPromotedProductMediaReport(FileInfo reportPath)

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import socket
+import subprocess
 import threading
 import time
 import argparse
@@ -67,6 +68,7 @@ MEDIA_CODEC_FLAG_CODEC_CONFIG = 2
 LIVE_CAPTURE_KINDS = {"live_broker_stream", "live_quest_runtime_stream"}
 PRODUCT_TCP_MEDIA_DIRECT_WIFI_GATE = "product_tcp_media_over_direct_wifi"
 PRODUCT_TCP_MEDIA_LISTENER_FIREWALL_GATE = "product_tcp_media_listener_firewall_verified"
+DEFAULT_PREVIEW_WINDOW_TITLE = "Rusty QCL-082 Camera2 direct-WiFi preview"
 
 
 def adb_server_lifecycle_policy() -> str:
@@ -363,6 +365,10 @@ def run_rmanvid1_receiver_capture(args: Any) -> int:
         topology_report_path=str(getattr(args, "topology_report", "") or ""),
         firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
         quest_lease=quest_lease,
+        preview_ffplay=str(getattr(args, "preview_ffplay", "") or ""),
+        preview_window_title=str(
+            getattr(args, "preview_window_title", "") or DEFAULT_PREVIEW_WINDOW_TITLE
+        ),
     )
     out = Path(getattr(args, "out"))
     result["follow_on_qcl082_args"] = receiver_result_follow_on_args(str(out))
@@ -546,6 +552,10 @@ def run_qcl082_product_media_live_session(
         firewall_report_path=str(getattr(args, "firewall_report", "") or ""),
         quest_lease=quest_lease,
         listening_callback=on_listening,
+        preview_ffplay=str(getattr(args, "preview_ffplay", "") or ""),
+        preview_window_title=str(
+            getattr(args, "preview_window_title", "") or DEFAULT_PREVIEW_WINDOW_TITLE
+        ),
     )
 
     live_thread_timeout = max(0.0, float(getattr(args, "live_command_join_timeout_seconds", 30.0) or 30.0))
@@ -706,6 +716,8 @@ def capture_rmanvid1_receiver_stream(
     firewall_report_path: str = "",
     quest_lease: dict[str, Any] | None = None,
     listening_callback: Any | None = None,
+    preview_ffplay: str = "",
+    preview_window_title: str = DEFAULT_PREVIEW_WINDOW_TITLE,
 ) -> dict[str, Any]:
     """Listen for one RMANVID1 TCP stream and write bounded capture artifacts."""
 
@@ -724,6 +736,13 @@ def capture_rmanvid1_receiver_stream(
     remote_endpoint = source_remote_endpoint
     bytes_written = 0
     packet_count = 0
+    viewer: dict[str, Any] = rmanvid1_preview_viewer(
+        ffplay=preview_ffplay,
+        window_title=preview_window_title,
+        started=False,
+        payload_writes=0,
+        error="",
+    )
 
     try:
         capture_path.write_bytes(b"")
@@ -755,6 +774,9 @@ def capture_rmanvid1_receiver_stream(
                             max_packets=max_packets,
                             max_packet_bytes=max_packet_bytes,
                             max_metadata_bytes=max_metadata_bytes,
+                            preview_ffplay=preview_ffplay,
+                            preview_window_title=preview_window_title,
+                            viewer_out=viewer,
                         )
     except OSError as exc:
         close_reason = "socket_error"
@@ -835,6 +857,7 @@ def capture_rmanvid1_receiver_stream(
         "capture_stats": capture_stats,
         "receiver_sidecar": sidecar,
         "quest_lease": object_value(quest_lease),
+        "viewer": viewer,
         "follow_on_qcl082_args": follow_on_args,
     }
     return result
@@ -849,58 +872,169 @@ def capture_rmanvid1_socket_bytes(
     max_packets: int,
     max_packet_bytes: int,
     max_metadata_bytes: int,
+    preview_ffplay: str = "",
+    preview_window_title: str = DEFAULT_PREVIEW_WINDOW_TITLE,
+    viewer_out: dict[str, Any] | None = None,
 ) -> tuple[str, int, int]:
     bytes_written = 0
     packet_count = 0
+    preview = Rmanvid1PreviewSink(preview_ffplay, preview_window_title)
 
-    header, header_reason = recv_exact(connection, RMANVID1_STREAM_HEADER_BYTES)
-    if len(header) != RMANVID1_STREAM_HEADER_BYTES:
-        output.write(header)
-        return f"stream_header_{header_reason}", len(header), packet_count
-    if len(header) > max_capture_bytes:
-        return "max_bytes_reached", bytes_written, packet_count
-    output.write(header)
-    bytes_written += len(header)
-
-    metadata_len = u32_be(header, 28)
-    if metadata_len > max_metadata_bytes:
-        return "metadata_too_large", bytes_written, packet_count
-    if bytes_written + metadata_len > max_capture_bytes:
-        return "max_bytes_reached", bytes_written, packet_count
-    metadata, metadata_reason = recv_exact(connection, metadata_len)
-    output.write(metadata)
-    bytes_written += len(metadata)
-    if len(metadata) != metadata_len:
-        return f"metadata_{metadata_reason}", bytes_written, packet_count
-
-    while True:
-        if max_packets > 0 and packet_count >= max_packets:
-            return "max_packets_reached", bytes_written, packet_count
-        packet_header, packet_header_reason = recv_exact(connection, RMANVID1_PACKET_HEADER_BYTES)
-        if not packet_header and packet_header_reason == "peer_closed":
-            return "peer_closed", bytes_written, packet_count
-        if len(packet_header) != RMANVID1_PACKET_HEADER_BYTES:
-            output.write(packet_header)
-            bytes_written += len(packet_header)
-            return f"packet_header_{packet_header_reason}", bytes_written, packet_count
-
-        payload_len = u32_be(packet_header, 12)
-        if payload_len > max_packet_bytes:
-            output.write(packet_header)
-            bytes_written += len(packet_header)
-            return "payload_too_large", bytes_written, packet_count
-        if bytes_written + RMANVID1_PACKET_HEADER_BYTES + payload_len > max_capture_bytes:
+    try:
+        header, header_reason = recv_exact(connection, RMANVID1_STREAM_HEADER_BYTES)
+        if len(header) != RMANVID1_STREAM_HEADER_BYTES:
+            output.write(header)
+            return f"stream_header_{header_reason}", len(header), packet_count
+        if len(header) > max_capture_bytes:
             return "max_bytes_reached", bytes_written, packet_count
+        output.write(header)
+        bytes_written += len(header)
 
-        receiver_arrivals_ns.append(time.time_ns())
-        output.write(packet_header)
-        bytes_written += len(packet_header)
-        payload, payload_reason = recv_exact(connection, payload_len)
-        output.write(payload)
-        bytes_written += len(payload)
-        if len(payload) != payload_len:
-            return f"payload_{payload_reason}", bytes_written, packet_count
-        packet_count += 1
+        codec = u32_be(header, 12)
+        width = u32_be(header, 16)
+        height = u32_be(header, 20)
+        metadata_len = u32_be(header, 28)
+        if metadata_len > max_metadata_bytes:
+            return "metadata_too_large", bytes_written, packet_count
+        if bytes_written + metadata_len > max_capture_bytes:
+            return "max_bytes_reached", bytes_written, packet_count
+        metadata, metadata_reason = recv_exact(connection, metadata_len)
+        output.write(metadata)
+        bytes_written += len(metadata)
+        if len(metadata) != metadata_len:
+            return f"metadata_{metadata_reason}", bytes_written, packet_count
+        preview.start(codec, width, height)
+
+        while True:
+            if max_packets > 0 and packet_count >= max_packets:
+                return "max_packets_reached", bytes_written, packet_count
+            packet_header, packet_header_reason = recv_exact(connection, RMANVID1_PACKET_HEADER_BYTES)
+            if not packet_header and packet_header_reason == "peer_closed":
+                return "peer_closed", bytes_written, packet_count
+            if len(packet_header) != RMANVID1_PACKET_HEADER_BYTES:
+                output.write(packet_header)
+                bytes_written += len(packet_header)
+                return f"packet_header_{packet_header_reason}", bytes_written, packet_count
+
+            payload_len = u32_be(packet_header, 12)
+            if payload_len > max_packet_bytes:
+                output.write(packet_header)
+                bytes_written += len(packet_header)
+                return "payload_too_large", bytes_written, packet_count
+            if bytes_written + RMANVID1_PACKET_HEADER_BYTES + payload_len > max_capture_bytes:
+                return "max_bytes_reached", bytes_written, packet_count
+
+            receiver_arrivals_ns.append(time.time_ns())
+            output.write(packet_header)
+            bytes_written += len(packet_header)
+            payload, payload_reason = recv_exact(connection, payload_len)
+            output.write(payload)
+            bytes_written += len(payload)
+            if len(payload) != payload_len:
+                return f"payload_{payload_reason}", bytes_written, packet_count
+            preview.write_payload(payload)
+            packet_count += 1
+    finally:
+        preview.close()
+        if viewer_out is not None:
+            viewer_out.clear()
+            viewer_out.update(preview.to_json())
+
+
+class Rmanvid1PreviewSink:
+    def __init__(self, ffplay: str, window_title: str) -> None:
+        self.ffplay = str(ffplay or "").strip()
+        self.window_title = str(window_title or DEFAULT_PREVIEW_WINDOW_TITLE).strip()
+        self.process: subprocess.Popen[bytes] | None = None
+        self.started = False
+        self.payload_writes = 0
+        self.error = ""
+
+    def start(self, codec: int, width: int, height: int) -> None:
+        if not self.ffplay or codec != RMANVID1_CODEC_H264:
+            return
+        try:
+            preview_width = max(int(width) * 2, 640)
+            preview_height = max(int(height) * 2, 360)
+            self.process = subprocess.Popen(
+                [
+                    self.ffplay,
+                    "-hide_banner",
+                    "-loglevel",
+                    "warning",
+                    "-fflags",
+                    "nobuffer",
+                    "-flags",
+                    "low_delay",
+                    "-framedrop",
+                    "-sync",
+                    "video",
+                    "-window_title",
+                    self.window_title,
+                    "-x",
+                    str(preview_width),
+                    "-y",
+                    str(preview_height),
+                    "-f",
+                    "h264",
+                    "-i",
+                    "pipe:0",
+                ],
+                stdin=subprocess.PIPE,
+            )
+            self.started = self.process.stdin is not None
+        except OSError as exc:
+            self.error = str(exc)
+
+    def write_payload(self, payload: bytes) -> None:
+        if not self.started or self.process is None or self.process.stdin is None:
+            return
+        try:
+            self.process.stdin.write(payload)
+            self.process.stdin.flush()
+            self.payload_writes += 1
+        except (BrokenPipeError, OSError) as exc:
+            self.error = str(exc)
+            self.started = False
+
+    def close(self) -> None:
+        if self.process is None:
+            return
+        try:
+            if self.process.stdin is not None:
+                self.process.stdin.close()
+        except OSError:
+            pass
+        try:
+            self.process.wait(timeout=2.0)
+        except subprocess.TimeoutExpired:
+            self.process.terminate()
+
+    def to_json(self) -> dict[str, Any]:
+        return rmanvid1_preview_viewer(
+            ffplay=self.ffplay,
+            window_title=self.window_title,
+            started=self.started,
+            payload_writes=self.payload_writes,
+            error=self.error,
+        )
+
+
+def rmanvid1_preview_viewer(
+    *,
+    ffplay: str,
+    window_title: str,
+    started: bool,
+    payload_writes: int,
+    error: str,
+) -> dict[str, Any]:
+    return {
+        "ffplay": str(ffplay or ""),
+        "window_title": str(window_title or DEFAULT_PREVIEW_WINDOW_TITLE),
+        "ffplay_started": bool(started),
+        "ffplay_payload_writes": int(payload_writes),
+        "ffplay_error": str(error or ""),
+    }
 
 
 def recv_exact(connection: socket.socket, byte_count: int) -> tuple[bytes, str]:

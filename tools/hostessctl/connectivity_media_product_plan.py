@@ -133,6 +133,12 @@ def qcl082_product_media_direct_wifi_plan(
                 "capture_out": paths["capture_out"],
                 "sidecar_out": paths["sidecar_out"],
                 "receiver_result_out": paths["receiver_result_out"],
+                "preview_ffplay": value(args, "preview_ffplay", "<ffplay>"),
+                "preview_window_title": value(
+                    args,
+                    "preview_window_title",
+                    "Rusty QCL-082 Camera2 direct-WiFi preview",
+                ),
             },
         ),
         check_row(
@@ -277,6 +283,12 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
     port = str(int_value(value(args, "port", DEFAULT_QCL082_RMANVID1_MEDIA_PORT)) or DEFAULT_QCL082_RMANVID1_MEDIA_PORT)
     max_packets = str(int_value(value(args, "max_packets", 240)) or 240)
     capture_kind = value(args, "capture_kind", "live_broker_stream")
+    preview_ffplay = value(args, "preview_ffplay", "<ffplay>")
+    preview_window_title = value(
+        args,
+        "preview_window_title",
+        "Rusty QCL-082 Camera2 direct-WiFi preview",
+    )
     return [
         plan_command(
             "write_qcl082_media_stream_start_source_request",
@@ -356,6 +368,8 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
                 f"--sidecar-out {ps_quote(paths['sidecar_out'])} "
                 f"--topology-report {ps_quote(paths['promoted_topology_report'])} "
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
+                f"--preview-ffplay {ps_quote(preview_ffplay)} "
+                f"--preview-window-title {ps_quote(preview_window_title)} "
                 f"--capture-kind {capture_kind} --max-packets {max_packets} "
                 f"--adb {ps_quote(adb)} --serial {ps_quote(serial)} "
                 f"--quest-lease-id {ps_quote(quest_lease_id)} "
@@ -391,6 +405,8 @@ def product_media_plan_commands(args: argparse.Namespace, paths: dict[str, str])
                 f"--runtime-status {ps_quote(paths['start_source_execution_out'])} "
                 f"--topology-report {ps_quote(paths['promoted_topology_report'])} "
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
+                f"--preview-ffplay {ps_quote(preview_ffplay)} "
+                f"--preview-window-title {ps_quote(preview_window_title)} "
                 f"--capture-kind {capture_kind} --max-packets {max_packets} "
                 f"--quest-lease-id {ps_quote(quest_lease_id)} "
                 f"--quest-lease-resource {ps_quote(quest_lease_resource)} "

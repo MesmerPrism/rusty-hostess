@@ -22,6 +22,7 @@ var tests = new (string Name, Action Test)[]
     ("connectivity service builds companion report projection artifact", ConnectivityServiceBuildsCompanionReportProjectionArtifact),
     ("connectivity service forwards promoted direct wifi topology input", ConnectivityServiceForwardsPromotedDirectWifiTopologyInput),
     ("connectivity service forwards QCL-082 product media input", ConnectivityServiceForwardsQcl082ProductMediaInput),
+    ("connectivity service finds sibling QCL-082 product media artifact", ConnectivityServiceFindsSiblingQcl082ProductMediaArtifact),
     ("firewall rows expose product verification", FirewallRowsExposeProductVerification),
     ("firewall rows expose elevation preflight", FirewallRowsExposeElevationPreflight),
     ("firewall service uses CLI admin handoff", FirewallServiceUsesCliAdminHandoff),
@@ -891,6 +892,115 @@ static void ConnectivityServiceForwardsQcl082ProductMediaInput()
     }
 }
 
+static void ConnectivityServiceFindsSiblingQcl082ProductMediaArtifact()
+{
+    var repoRoot = LocateHostessRepoRoot();
+    var stamp = DateTimeOffset.UtcNow.ToString("yyyyMMdd-HHmmss-fff", CultureInfo.InvariantCulture);
+    var suiteRunId = $"wpf-qcl082-product-media-sibling-{stamp}";
+    var artifactDir = Path.Combine(repoRoot.FullName, "target", "connectivity-probe");
+    var reportDir = Path.Combine(repoRoot.FullName, "target", "companion-report");
+    var questLifecycleDir = Path.GetFullPath(Path.Combine(
+        repoRoot.FullName,
+        "..",
+        "rusty-quest",
+        "target",
+        "qcl041-wifi-direct-lifecycle",
+        suiteRunId));
+    Directory.CreateDirectory(artifactDir);
+    Directory.CreateDirectory(reportDir);
+    Directory.CreateDirectory(questLifecycleDir);
+
+    var promotedTopologyPath = Path.Combine(artifactDir, $"{suiteRunId}.qcl041-promoted-wifi-direct-lifecycle.json");
+    var siblingProductMediaPath = Path.Combine(questLifecycleDir, "qcl082-product-media-live-qcl082.json");
+    var previousLatestArtifactDir = Environment.GetEnvironmentVariable(
+        HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable);
+    FileInfo? planPath = null;
+    try
+    {
+        Environment.SetEnvironmentVariable(
+            HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable,
+            questLifecycleDir);
+        DirectWifiProductMediaPlanTestArtifacts.WriteDirectWifiTopologyReport(
+            promotedTopologyPath,
+            "QCL-041",
+            promoted: true);
+        DirectWifiProductMediaPlanTestArtifacts.WriteQcl082ProductMediaReport(
+            siblingProductMediaPath,
+            promoted: true);
+
+        var matrix = new ConnectivityProtocolEvidenceMatrix
+        {
+            MatrixId = $"{suiteRunId}.matrix",
+            ReportPath = Path.Combine(artifactDir, $"{suiteRunId}.protocol-matrix.json"),
+            Inputs =
+            [
+                new ConnectivityProtocolEvidenceInput
+                {
+                    Role = "connectivity_probe_report",
+                    Path = promotedTopologyPath,
+                    Schema = "rusty.quest.connectivity_topology_probe.v1",
+                    Status = "pass",
+                },
+            ],
+        };
+        var suite = new ConnectivitySuiteRunReport
+        {
+            SuiteRunId = suiteRunId,
+            ReportPath = Path.Combine(artifactDir, $"{suiteRunId}.suite.json"),
+        };
+        var method = typeof(HostessctlConnectivityService).GetMethod(
+                "RunDirectWifiProductMediaPlanAsync",
+                BindingFlags.NonPublic | BindingFlags.Static)
+            ?? throw new InvalidOperationException("missing RunDirectWifiProductMediaPlanAsync method");
+        var task = (Task<FileInfo>)method.Invoke(
+                null,
+                new object?[]
+                {
+                    repoRoot,
+                    suite,
+                    matrix,
+                    new List<FileInfo>(),
+                    null,
+                    new FileInfo(Path.Combine(reportDir, $"{suiteRunId}.projection.json")),
+                    new FileInfo(Path.Combine(reportDir, $"{suiteRunId}.transport-gates.json")),
+                    "C:\\Program Files\\Rusty Hostess\\HostessCompanion.Wpf.exe",
+                    CancellationToken.None,
+                })!
+            ?? throw new InvalidOperationException("direct-Wi-Fi product-media plan task was empty");
+        planPath = task.GetAwaiter().GetResult();
+
+        using var document = JsonDocument.Parse(File.ReadAllText(planPath.FullName));
+        var root = document.RootElement;
+        var artifacts = root.GetProperty("artifacts");
+        Assert(artifacts.GetProperty("qcl082_report").GetString() == siblingProductMediaPath,
+            "WPF acceptance-plan route must find promoted QCL-082 reports from the sibling Rusty Quest lifecycle target");
+        Assert(root.GetProperty("readiness").GetProperty("product_tcp_media_over_direct_wifi_ready").GetBoolean(),
+            "sibling promoted QCL-082 product-media evidence must clear the product media readiness dependency");
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(
+            HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable,
+            previousLatestArtifactDir);
+        foreach (var path in new[]
+        {
+            promotedTopologyPath,
+            siblingProductMediaPath,
+            planPath?.FullName,
+        })
+        {
+            if (!string.IsNullOrWhiteSpace(path) && File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        if (Directory.Exists(questLifecycleDir))
+        {
+            Directory.Delete(questLifecycleDir, recursive: true);
+        }
+    }
+}
+
 static void TransportGateRowsExposeNextActions()
 {
     var report = TransportGateReportFixtures.PendingWithNextActions();
@@ -1062,6 +1172,8 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("--start-source-request-out target\\connectivity-probe\\media-stream-start-source.request.json", StringComparison.Ordinal)
             && row.Evidence.Contains("--logcat-out target\\connectivity-probe\\media-stream-start-source.logcat.txt", StringComparison.Ordinal)
             && row.Evidence.Contains("--bind-host 0.0.0.0", StringComparison.Ordinal)
+            && row.Evidence.Contains("--preview-ffplay '<ffplay>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--preview-window-title 'Rusty QCL-082 Camera2 direct-WiFi preview'", StringComparison.Ordinal)
             && row.Evidence.Contains("--capture-kind live_broker_stream", StringComparison.Ordinal)
             && row.Evidence.Contains("--quest-lease-id '<quest-lease-id>'", StringComparison.Ordinal)
             && row.Evidence.Contains("--quest-lease-reserved-before-live-steps", StringComparison.Ordinal)
@@ -1078,6 +1190,8 @@ static void TransportGateRowsExposeNextActions()
             && row.Evidence.Contains("--capture-out target\\connectivity-probe\\media-stream.rmanvid1", StringComparison.Ordinal)
             && row.Evidence.Contains("--sidecar-out target\\connectivity-probe\\media-stream-receiver-sidecar.json", StringComparison.Ordinal)
             && row.Evidence.Contains("--runtime-status target\\connectivity-probe\\media-stream-start-source.live-android-execution.json", StringComparison.Ordinal)
+            && row.Evidence.Contains("--preview-ffplay '<ffplay>'", StringComparison.Ordinal)
+            && row.Evidence.Contains("--preview-window-title 'Rusty QCL-082 Camera2 direct-WiFi preview'", StringComparison.Ordinal)
             && row.Evidence.Contains("--quest-lease-resource 'quest:<quest-serial>'", StringComparison.Ordinal)
             && row.Evidence.Contains("--quest-lease-reserved-before-live-steps", StringComparison.Ordinal)
             && row.Evidence.Contains("--out target\\connectivity-probe\\media-stream-receiver-result.json", StringComparison.Ordinal)
@@ -1525,6 +1639,12 @@ static void OperatorActionsMapWpfCommandsToCliRoutes()
         "protocol matrix action must use the live Android execution artifact as the runtime-status source");
     Assert(protocolMatrixAction.CliRoute.Contains("qcl082-product-media-live-session", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 orchestrated live media session route");
+    Assert(protocolMatrixAction.CliRoute.Contains("$PreviewFfplay = '<ffplay>'", StringComparison.Ordinal),
+        "protocol matrix action must advertise the live preview ffplay placeholder");
+    Assert(protocolMatrixAction.CliRoute.Contains("--preview-ffplay $PreviewFfplay", StringComparison.Ordinal),
+        "protocol matrix action must pass ffplay to the QCL-082 receiver route");
+    Assert(protocolMatrixAction.CliRoute.Contains("--preview-window-title $PreviewWindowTitle", StringComparison.Ordinal),
+        "protocol matrix action must pass the WPF preview window title to the QCL-082 receiver route");
     Assert(protocolMatrixAction.CliRoute.Contains("--quest-lease-id $QuestLeaseId", StringComparison.Ordinal),
         "protocol matrix action must advertise the QCL-082 product-media quest lease id");
     Assert(protocolMatrixAction.CliRoute.Contains("--quest-lease-resource $QuestLeaseResource", StringComparison.Ordinal),

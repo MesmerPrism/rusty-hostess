@@ -110,6 +110,7 @@ def direct_wifi_product_media_plan(
     )
     lifecycle_source_ready = qcl040_lifecycle["ready"] or qcl041_lifecycle["ready"]
     direct_wifi_topology_ready = selected_topology["ready"]
+    lifecycle_source_satisfied = lifecycle_source_ready or direct_wifi_topology_ready
     ready_for_receiver_capture = direct_wifi_topology_ready and firewall["ready"]
     product_media_ready = qcl082_media["ready"]
     all_remaining_gates_ready = direct_wifi_topology_ready and product_media_ready
@@ -146,17 +147,21 @@ def direct_wifi_product_media_plan(
         ),
         check_row(
             "direct_wifi_product_media.lifecycle_source_dependency",
-            "pass" if lifecycle_source_ready else "planned",
+            "pass" if lifecycle_source_satisfied else "planned",
             (
-                "a live lifecycle source artifact is ready for topology normalization"
-                if lifecycle_source_ready
-                else "no live direct-Wi-Fi lifecycle source artifact is ready yet"
+                "promoted direct-Wi-Fi topology is already supplied; lifecycle source normalization is not required"
+                if direct_wifi_topology_ready
+                else (
+                    "a live lifecycle source artifact is ready for topology normalization"
+                    if lifecycle_source_ready
+                    else "no live direct-Wi-Fi lifecycle source artifact is ready yet"
+                )
             ),
             observed={
                 "qcl040": qcl040_lifecycle,
                 "qcl041": qcl041_lifecycle,
             },
-            issue_codes=sorted(
+            issue_codes=[] if direct_wifi_topology_ready else sorted(
                 set(qcl040_lifecycle["issue_codes"] + qcl041_lifecycle["issue_codes"])
             ),
         ),
@@ -291,8 +296,8 @@ def direct_wifi_product_media_plan(
         "commands": commands,
         "checks": checks,
         "issues": plan_issues(
-            qcl040_lifecycle,
-            qcl041_lifecycle,
+            qcl040_lifecycle if not direct_wifi_topology_ready else {},
+            qcl041_lifecycle if not direct_wifi_topology_ready else {},
             selected_topology,
             firewall,
             qcl082_media,
@@ -466,6 +471,12 @@ def product_args(
         receiver_result_out="",
         qcl082_report_out=paths["qcl082_report"],
         protocol_matrix_out=paths["protocol_matrix_out"],
+        preview_ffplay=value(args, "preview_ffplay", "<ffplay>"),
+        preview_window_title=value(
+            args,
+            "preview_window_title",
+            "Rusty QCL-082 Camera2 direct-WiFi preview",
+        ),
         quest_lease_id=value(args, "quest_lease_id", product_plan.DEFAULT_QUEST_LEASE_ID),
         quest_lease_resource=product_plan.quest_lease_resource_value(
             value(args, "serial", "<quest-serial>"),
@@ -654,6 +665,8 @@ def subplan_writer_commands(args: argparse.Namespace, paths: dict[str, str]) -> 
                 f"--promoted-topology-report {ps_quote(paths['promoted_topology_report'])} "
                 f"--firewall-report {ps_quote(paths['firewall_report'])} "
                 f"--adb {ps_quote(adb)} --serial {ps_quote(serial)} "
+                f"--preview-ffplay {ps_quote(value(args, 'preview_ffplay', '<ffplay>'))} "
+                f"--preview-window-title {ps_quote(value(args, 'preview_window_title', 'Rusty QCL-082 Camera2 direct-WiFi preview'))} "
                 f"--quest-lease-id {ps_quote(quest_lease_id)} "
                 f"--quest-lease-resource {ps_quote(quest_lease_resource)}"
             ),

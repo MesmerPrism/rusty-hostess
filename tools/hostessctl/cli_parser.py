@@ -762,6 +762,11 @@ def build_hostessctl_parser(
     connectivity_probe_receiver_capture.add_argument("--runtime-status", default="")
     connectivity_probe_receiver_capture.add_argument("--topology-report", default="")
     connectivity_probe_receiver_capture.add_argument("--firewall-report", default="")
+    connectivity_probe_receiver_capture.add_argument("--preview-ffplay", default="")
+    connectivity_probe_receiver_capture.add_argument(
+        "--preview-window-title",
+        default="Rusty QCL-082 Camera2 direct-WiFi preview",
+    )
     connectivity_probe_receiver_capture.add_argument("--quest-lease-id", default="")
     connectivity_probe_receiver_capture.add_argument("--quest-lease-resource", default="")
     connectivity_probe_receiver_capture.add_argument(
@@ -812,6 +817,11 @@ def build_hostessctl_parser(
     connectivity_probe_live_session.add_argument("--session-id", default="")
     connectivity_probe_live_session.add_argument("--topology-report", required=True)
     connectivity_probe_live_session.add_argument("--firewall-report", required=True)
+    connectivity_probe_live_session.add_argument("--preview-ffplay", default="")
+    connectivity_probe_live_session.add_argument(
+        "--preview-window-title",
+        default="Rusty QCL-082 Camera2 direct-WiFi preview",
+    )
     connectivity_probe_live_session.add_argument("--adb", required=True)
     connectivity_probe_live_session.add_argument("--serial", required=True)
     connectivity_probe_live_session.add_argument("--quest-lease-id", default="")
@@ -883,6 +893,11 @@ def build_hostessctl_parser(
     connectivity_probe_product_media_plan.add_argument("--receiver-result-out", default="")
     connectivity_probe_product_media_plan.add_argument("--qcl082-report-out", default="")
     connectivity_probe_product_media_plan.add_argument("--protocol-matrix-out", default="")
+    connectivity_probe_product_media_plan.add_argument("--preview-ffplay", default="<ffplay>")
+    connectivity_probe_product_media_plan.add_argument(
+        "--preview-window-title",
+        default="Rusty QCL-082 Camera2 direct-WiFi preview",
+    )
     connectivity_probe_product_media_plan.add_argument("--quest-lease-id", default="")
     connectivity_probe_product_media_plan.add_argument("--quest-lease-resource", default="")
     connectivity_probe_product_media_plan.add_argument("--fail-on-error", action="store_true")
@@ -920,6 +935,11 @@ def build_hostessctl_parser(
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--protocol-matrix-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--projection-out", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--transport-gates-out", default="")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument("--preview-ffplay", default="<ffplay>")
+    connectivity_probe_direct_wifi_product_media_plan.add_argument(
+        "--preview-window-title",
+        default="Rusty QCL-082 Camera2 direct-WiFi preview",
+    )
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--quest-lease-id", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--quest-lease-resource", default="")
     connectivity_probe_direct_wifi_product_media_plan.add_argument("--fail-on-error", action="store_true")

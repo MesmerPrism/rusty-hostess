@@ -568,6 +568,11 @@ proven. For live captures, the receiver's Agent Board `quest:<serial>` lease
 must also match the promoted topology report `device.serial`; otherwise the
 generic QCL-082 media row may remain broker/runtime evidence, but the product
 TCP media over direct-Wi-Fi gate stays blocked.
+For operator preview, the same Hostess receiver can optionally fork accepted
+H.264 `RMANVID1` payloads to an `ffplay` child process. That child is a local
+viewer only: Hostess remains the network listener and evidence owner, WPF
+remains the requester/inspector, and QCL-082 promotion continues to depend on
+the structured receiver-result and paired topology/firewall/runtime evidence.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ
