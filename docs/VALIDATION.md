@@ -308,10 +308,96 @@ and reusable capability rows for Manifold command WebSocket, generic
 WebSocket, UDP, LSL, OSC, ZeroMQ, RFCOMM, BLE/GATT, and binary media/TCP.
 QCL-020/QCL-030/QCL-040/QCL-041 are explicit topology limitation probes and
 remain opt-in; do not add them as required downloadable-install suite slots
-without a separate promotion decision. QCL-040/QCL-041 live mode currently
-emits a read-only Wi-Fi Direct preflight report and intentionally stays
-blocked/non-promoting until peer discovery, group formation, bounded socket
-exchange, and cleanup evidence exists.
+without a separate promotion decision. QCL-040/QCL-041 live mode promotes only
+when the lifecycle artifact preserves peer discovery, group formation, bounded
+socket exchange, cleanup, source identity, and Hostess normalization evidence.
+
+QCL-041 also has a Windows-side Wi-Fi Direct helper that does not require an
+Android phone. It starts a WinRT Wi-Fi Direct advertisement/listener and a
+bounded TCP listener, then writes a report that the live preflight can project
+with `--windows-wifi-direct-helper-report`. A timeout with
+`advertisement_started=true`, `connection_listener_ready=true`, and
+`cleanup_completed=true` proves the Windows half is ready while still leaving
+Quest peer discovery pending:
+
+```powershell
+dotnet run --project tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj -- `
+  --run-id qcl041-windows-helper `
+  --timeout-seconds 30 `
+  --socket-timeout-seconds 20 `
+  --listen-port 18768 `
+  --out target\connectivity-probe\qcl041-windows-wifi-direct-helper.json
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-041 `
+  --adb $Adb `
+  --serial $QuestSerial `
+  --windows-wifi-direct-helper-report target\connectivity-probe\qcl041-windows-wifi-direct-helper.json `
+  --out target\connectivity-probe\qcl041-live-wifi-direct-preflight.json
+```
+
+After the elevated network/interface trace, do not spend more QCL-041 time on
+ordinary helper firewall allow-rule variants. The trace showed the Windows
+Wi-Fi Direct interface at `192.168.137.1/24`, an active helper listener, and
+helper allow rules, while all-packet `pktmon` saw Wi-Fi Direct traffic but no
+Quest-source or TCP `18768` packets. The remaining blocker is below the
+Hostess TCP listener/firewall layer: either the Quest stack is not emitting the
+P2P SYN, or the Windows WinRT data-plane association is not usable after
+`WiFiDirectDevice.FromIdAsync` times out.
+
+Prefer the UI-thread broker for the next Windows-side QCL-041 run. It writes
+the same `rusty.hostess.windows.qcl041_wifi_direct_peer_helper.v1` report
+shape, but opens `WiFiDirectDevice.FromIdAsync` from a WPF STA dispatcher,
+records `GetConnectionEndpointPairs()`, and binds the bounded TCP listener to
+the actual Wi-Fi Direct local endpoint rather than using another
+listener-on-`0.0.0.0` experiment:
+
+```powershell
+dotnet run --project tools\connectivity_probe\qcl041_wifi_direct_broker\qcl041-wifi-direct-broker.csproj -- `
+  --run-id qcl041-windows-ui-thread-broker `
+  --timeout-seconds 45 `
+  --socket-timeout-seconds 20 `
+  --listen-port 18768 `
+  --out target\connectivity-probe\qcl041-windows-wifi-direct-broker.json
+
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode live `
+  --probe-id QCL-041 `
+  --adb $Adb `
+  --serial $QuestSerial `
+  --windows-wifi-direct-helper-report target\connectivity-probe\qcl041-windows-wifi-direct-broker.json `
+  --out target\connectivity-probe\qcl041-live-wifi-direct-preflight.json
+```
+
+The 2026-07-01 broker pass showed two details are required for QCL-041:
+
+- The Windows broker must keep the `WiFiDirectConnectionRequest` object alive
+  until `WiFiDirectDevice.FromIdAsync` completes. Keeping only
+  `DeviceInformation` and disposing the request can produce `0x80070490` or
+  timeout-style device-open failures.
+- The Quest harness must create the Java socket from Android's Wi-Fi Direct
+  `Network` (`p2p0`) before the bounded TCP connect. Binding only to the local
+  `p2p0` address was not sufficient on the live Quest run.
+
+The first promoted live QCL-041 Windows-peer lifecycle artifact from this path
+is:
+
+```text
+S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\qcl041-live-windows-broker-network-socket-340-20260701-1336\wifi-direct-lifecycle-qcl041-windows.live.json
+```
+
+Hostess normalized it to `status=pass`, `promotion.allowed=true`, with
+`wifi_direct.peer_discovery`, `wifi_direct.group_formation`,
+`topology.socket_exchange`, and `wifi_direct.cleanup` all passing. The broker
+recorded endpoint pair `local=192.168.137.1`, `remote=192.168.137.77`, bound
+TCP to `192.168.137.1:18768`, and completed one bounded request/ack.
+
+This helper report is not the lifecycle source artifact and does not clear
+`transport.direct_wifi_live_topology` by itself. Promotion still requires the
+`rusty.quest.connectivity_wifi_direct_lifecycle.v1` source artifact with a
+matching `quest:<serial>` lease, peer discovery, group formation, bounded TCP
+socket exchange, and cleanup.
 
 Once a leased Quest-side or peer harness has produced a structured
 `rusty.quest.connectivity_wifi_direct_lifecycle.v1` artifact, normalize it
@@ -488,11 +574,11 @@ apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe
 operators and automation use the same product listener rule rather than a
 diagnostic Python allowance.
 
-The QCL-081 stream-capability route is still useful before promotion: blocked
-Quest-runtime preflight artifacts validate as descriptors with explicit LSL
-discovery, sample-continuity, producer-owner, and promotion gates, so WPF can
-show the same missing Quest-side `pylsl/liblsl` evidence that CLI automation
-sees.
+The QCL-081 stream-capability route now accepts promoted Quest-runtime Wi-Fi
+Direct evidence when the QCL-041 harness pairs a receiver artifact with the
+direct topology report. Before that evidence exists, blocked Quest-runtime
+preflight artifacts still validate as descriptors with explicit LSL discovery,
+sample-continuity, producer-owner, topology, and promotion gates.
 
 QCL-082 is the binary media-plane slot. The built-in fixture pass report
 declares the TCP binary/H.264 packet shape, `RMANVID1` marker, timestamp
@@ -752,9 +838,23 @@ python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --inp
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --input target\connectivity-probe\qcl081-live-manifold-lsl-broker.json --out target\connectivity-probe\qcl081-live-manifold-lsl-broker.protocol-matrix.json --fail-on-error
 ```
 
-This does not replace Quest-runtime evidence. `quest-runtime` remains blocked
-until a Quest-side LSL producer or product study adapter can emit runtime-owned
-sample continuity.
+Quest-runtime evidence can promote through the QCL-041 Wi-Fi Direct harness.
+The wrapper starts the Windows `pylsl` receiver, forms the Wi-Fi Direct group,
+binds the Quest process to the direct `Network`, publishes a Quest `liblsl`
+outlet, and passes the receiver report back into Hostess:
+
+```powershell
+pwsh -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-quest\tools\Invoke-Qcl041WifiDirectLifecycle.ps1 `
+  -Serial <quest-serial> `
+  -WindowsHelperProject S:\Work\repos\active\rusty-hostess\tools\connectivity_probe\qcl041_wifi_direct_broker\qcl041-wifi-direct-broker.csproj `
+  -RunQcl081Lsl
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-081 --lsl-source quest-runtime --lsl-quest-runtime-report S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\<run-id>\qcl081-wifi-direct-lsl-receiver.json --out target\connectivity-probe\qcl081-live-wifi-direct-lsl.json --fail-on-error
+```
+
+The promoted live run `qcl081-live-wifi-direct-lsl-340-20260701-1419` recorded
+16/16 monotonic Quest-runtime LSL samples over Wi-Fi Direct from
+`192.168.137.152` to `192.168.137.1` with Quest `lsl_local_clock` source
+timestamps and Hostess `promotion.allowed=true`.
 
 QCL-084 is the generic ZeroMQ data-protocol slot. Its primary proof is the
 pure-Rust `rusty-manifold-zmq` PUB/SUB adapter consuming

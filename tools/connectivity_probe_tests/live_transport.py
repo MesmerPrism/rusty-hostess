@@ -76,6 +76,63 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
             )
         )
 
+    def test_live_wifi_direct_topology_preflight_projects_windows_helper_readiness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            helper_report = Path(tmpdir) / "qcl041-windows-helper.json"
+            helper_report.write_text(
+                json.dumps(
+                    {
+                        "schema": "rusty.hostess.windows.qcl041_wifi_direct_peer_helper.v1",
+                        "status": "blocked",
+                        "measurements": {
+                            "advertisement_started": True,
+                            "connection_listener_ready": True,
+                            "peer_connection_requested": False,
+                            "group_formed": False,
+                            "endpoint_pair_count": 0,
+                            "socket_exchange_completed": False,
+                            "messages_sent": 0,
+                            "messages_received": 0,
+                            "cleanup_completed": True,
+                        },
+                        "events": [],
+                        "issues": [
+                            {
+                                "issue_code": "hostess.issue.connectivity_probe.wifi_direct_windows_peer_not_connected",
+                                "severity": "warning",
+                                "message": "no peer connected",
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = live_direct_wifi_topology_report(
+                probe_args(
+                    mode="live",
+                    probe_id="QCL-041",
+                    host_ip="192.0.2.10",
+                    windows_wifi_direct_helper_report=str(helper_report),
+                ),
+                run_captured_func=FakeRunner(),
+                clock_func=fixed_datetime,
+                host_ipv4_func=lambda: [{"ip": "192.0.2.10", "prefix_length": 24, "interface": "fixture"}],
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        helper_check = check(report, "windows.wifi_direct_peer_helper")
+        peer_check = check(report, "wifi_direct.peer_discovery")
+        cleanup_check = check(report, "wifi_direct.cleanup")
+        self.assertEqual(report["status"], "blocked")
+        self.assertEqual(helper_check["status"], "pass")
+        self.assertTrue(helper_check["observed"]["advertisement_started"])
+        self.assertEqual(peer_check["status"], "blocked")
+        self.assertIn("no Quest peer connected", peer_check["evidence"])
+        self.assertEqual(cleanup_check["status"], "skipped")
+        self.assertIn("group cleanup still waits", cleanup_check["evidence"])
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
     def test_run_connectivity_probe_routes_qcl040_live_to_wifi_direct_preflight(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -939,6 +996,72 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(check(report, "protocol.lsl_sample_continuity")["status"], "pass")
         self.assertEqual(report["lsl_payload_probe"]["evidence_tier"], "broker_owned")
         self.assertEqual(report["lsl_payload_probe"]["authority_owner"], "rusty.manifold.transport")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_live_lsl_report_promotes_quest_runtime_wifi_direct_receiver_report(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            receiver_path = Path(temp_dir) / "qcl081-wifi-direct-lsl-receiver.json"
+            receiver_path.write_text(
+                json.dumps(
+                    {
+                        "schema": "rusty.hostess.qcl081_wifi_direct_lsl_receiver.v1",
+                        "status": "pass",
+                        "run_id": "qcl081-fixture",
+                        "source": "quest-runtime",
+                        "evidence_tier": "quest_runtime",
+                        "stream_name": "RustyQCL081WifiDirect",
+                        "stream_type": "rusty.quest.qcl081.wifi_direct",
+                        "source_id": "rusty-quest-qcl081-wifi-direct-fixture",
+                        "samples_requested": 16,
+                        "samples_received": 16,
+                        "loss_percent": 0.0,
+                        "discovery_ms": 84,
+                        "monotonic_sequences": True,
+                        "received_sequences": list(range(16)),
+                        "source_timestamp_domain": "quest_lsl_local_clock",
+                        "source_timestamps_monotonic": True,
+                        "time_correction_seconds_before": 0.001,
+                        "time_correction_seconds_after": 0.001,
+                        "topology": {
+                            "owner": "wifi_direct",
+                            "network_provider": "wifi_direct",
+                            "endpoint_direction": "lsl_multicast_discovery_plus_tcp_samples",
+                            "local_endpoint": "192.168.137.1",
+                            "remote_endpoint": "192.168.137.152",
+                            "paired_topology_status": "pass",
+                            "paired_topology_promotion_allowed": True,
+                        },
+                        "issue_codes": [],
+                        "notes": "fixture",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            report = live_lsl_report(
+                probe_args(
+                    mode="live",
+                    probe_id="QCL-081",
+                    lsl_source="quest-runtime",
+                    lsl_stream_name="RustyQCL081WifiDirect",
+                    lsl_stream_type="rusty.quest.qcl081.wifi_direct",
+                    lsl_quest_runtime_report=str(receiver_path),
+                ),
+                run_captured_func=FakeRunner(),
+                run_timeout_func=FakeTimeoutRunner(),
+                clock_func=fixed_datetime,
+                host_ipv4_func=lambda: [
+                    {"ip": "192.168.137.1", "prefix_length": 24, "interface": "Wi-Fi Direct"}
+                ],
+            )
+        validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["topology"]["network_provider"], "wifi_direct")
+        self.assertEqual(report["transport"]["endpoint_source"], "quest-runtime")
+        self.assertEqual(check(report, "protocol.lsl_discovery")["status"], "pass")
+        self.assertEqual(check(report, "protocol.lsl_sample_continuity")["status"], "pass")
+        self.assertEqual(report["measurements"]["lsl_samples_received"], 16)
         self.assertTrue(report["promotion"]["allowed"])
         self.assertEqual(validation["status"], "pass")
 

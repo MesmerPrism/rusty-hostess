@@ -79,6 +79,7 @@ try {
         "tools\capture_window_printwindow.py",
         "tools\telemetry_snapshot.py",
         "tools\telemetry_stream.py",
+        "tools\connectivity_probe\qcl081_wifi_direct_lsl_receiver.py",
         "tools\check_makepad_quest_gpu_evidence.py",
         "tools\makepad_quest_gpu_evidence\__init__.py",
         "tools\makepad_quest_gpu_evidence\proof_lines.py",
@@ -145,6 +146,12 @@ try {
     }
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
         Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
+    }
+    if (Test-Path "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj") {
+        Invoke-Checked "QCL-041 Wi-Fi Direct peer helper build" "dotnet" @("build", "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj")
+    }
+    if (Test-Path "tools\connectivity_probe\qcl041_wifi_direct_broker\qcl041-wifi-direct-broker.csproj") {
+        Invoke-Checked "QCL-041 Wi-Fi Direct UI-thread broker build" "dotnet" @("build", "tools\connectivity_probe\qcl041_wifi_direct_broker\qcl041-wifi-direct-broker.csproj")
     }
     if (Test-Path "tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj") {
         Invoke-Checked "WPF companion projection tests" "dotnet" @("run", "--project", "tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj")

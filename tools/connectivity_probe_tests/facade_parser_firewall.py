@@ -90,6 +90,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "S:/Work/repos/active/rusty-manifold",
                 "--lsl-sample-count",
                 "8",
+                "--lsl-quest-runtime-report",
+                "target/qcl081-wifi-direct-lsl-receiver.json",
                 "--osc-source",
                 "host-loopback",
                 "--osc-message-count",
@@ -135,6 +137,7 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(args.lsl_source, "manifold-lsl-broker")
         self.assertEqual(args.lsl_manifold_root, "S:/Work/repos/active/rusty-manifold")
         self.assertEqual(args.lsl_sample_count, 8)
+        self.assertEqual(args.lsl_quest_runtime_report, "target/qcl081-wifi-direct-lsl-receiver.json")
         self.assertEqual(args.osc_source, "host-loopback")
         self.assertEqual(args.osc_message_count, 6)
         self.assertEqual(args.zeromq_source, "host-loopback")

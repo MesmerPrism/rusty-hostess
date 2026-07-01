@@ -319,14 +319,15 @@ def direct_wifi_preflight_summary(
         "qcl041": object_value(object_value(qcl041_plan.get("observations")).get("preflight")),
     }
     observed = any(item.get("report_present") is True for item in observations.values())
-    issue_codes = sorted(
-        {
-            str(code)
-            for item in observations.values()
-            for code in item.get("issue_codes", [])
-            if str(code)
-        }
-    )
+    issue_codes = {
+        str(code)
+        for item in observations.values()
+        for code in item.get("issue_codes", [])
+        if str(code)
+    }
+    if observed:
+        issue_codes.discard("hostess.issue.connectivity_probe.wifi_direct_live_preflight_missing")
+    issue_codes = sorted(issue_codes)
     blocked = any(item.get("blocked") is True for item in observations.values())
     if direct_wifi_topology_ready:
         status = "skipped"

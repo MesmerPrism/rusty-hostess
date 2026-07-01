@@ -14,6 +14,13 @@ public partial class App : Application
             Shutdown(exitCode);
             return;
         }
+        if (Qcl082Rmanvid1TcpReceiverMode.IsReceiverMode(e.Args))
+        {
+            ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            var exitCode = Qcl082Rmanvid1TcpReceiverMode.Run(e.Args);
+            Shutdown(exitCode);
+            return;
+        }
 
         base.OnStartup(e);
         MainWindow = new MainWindow();

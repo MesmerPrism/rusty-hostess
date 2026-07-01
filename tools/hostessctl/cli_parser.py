@@ -722,6 +722,7 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--media-stream-topology-report", default="")
     connectivity_probe_run.add_argument("--media-stream-firewall-report", default="")
     connectivity_probe_run.add_argument("--wifi-direct-lifecycle-report", default="")
+    connectivity_probe_run.add_argument("--windows-wifi-direct-helper-report", default="")
     connectivity_probe_run.add_argument(
         "--websocket-source",
         choices=["host-loopback", "broker-owned-websocket", "quest-runtime", "external"],
@@ -1021,6 +1022,7 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--lsl-sample-count", type=int, default=16)
     connectivity_probe_run.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
     connectivity_probe_run.add_argument("--lsl-manifold-root", default="")
+    connectivity_probe_run.add_argument("--lsl-quest-runtime-report", default="")
     connectivity_probe_run.add_argument(
         "--osc-source",
         choices=["host-loopback", "quest-runtime", "external"],
@@ -1206,6 +1208,7 @@ def build_hostessctl_parser(
     connectivity_probe_run_suite.add_argument("--lsl-sample-count", type=int, default=16)
     connectivity_probe_run_suite.add_argument("--lsl-timeout-seconds", type=float, default=5.0)
     connectivity_probe_run_suite.add_argument("--lsl-manifold-root", default="")
+    connectivity_probe_run_suite.add_argument("--lsl-quest-runtime-report", default="")
     connectivity_probe_run_suite.add_argument("--osc-source", choices=["host-loopback", "quest-runtime", "external"], default="host-loopback")
     connectivity_probe_run_suite.add_argument("--osc-address", default="/rusty/qcl083")
     connectivity_probe_run_suite.add_argument("--osc-port", type=int, default=0)

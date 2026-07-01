@@ -418,8 +418,10 @@ status derivation, listener rows, topology summaries, and measurement
 projection while route execution remains in the facade and protocol helpers;
 `connectivity_topology_live.py` owns read-only live QCL-040/QCL-041 Wi-Fi
 Direct topology preflight reports. It may collect Quest feature state and
-Windows adapter state, but it keeps promotion blocked until peer discovery,
-group formation, bounded socket exchange, and cleanup evidence are present;
+Windows adapter state, and it may project a supplied Windows QCL-041 helper
+report as peer-readiness evidence. It keeps promotion blocked until peer
+discovery, group formation, bounded socket exchange, and cleanup evidence are
+present in the source lifecycle artifact;
 `connectivity_topology_lifecycle.py` owns structured QCL-040/QCL-041
 Wi-Fi Direct lifecycle artifact ingestion. It validates live evidence source,
 source run id, harness id/owner, peer class, feature/API or peer, permission,
@@ -494,9 +496,10 @@ turning the plan into a promotion authority;
 `connectivity_topology.py` owns topology metadata helpers, Windows Mobile
 Hotspot status formatting, and fixture-only QCL-020/QCL-030/QCL-040/QCL-041
 topology report bodies for Wi-Fi ADB, LocalOnlyHotspot, and Wi-Fi Direct
-limitations. Live QCL-040/QCL-041 routes are intentionally separate and
-non-promoting until a real topology harness records the full Wi-Fi Direct peer
-lifecycle and the lifecycle ingestion route normalizes that evidence; and
+limitations. Live QCL-040/QCL-041 routes are intentionally separate from
+fixture topology; they promote only when a real topology harness records peer
+discovery, group formation, bounded socket exchange, cleanup, and Hostess
+normalization evidence; and
 `connectivity_data_protocols.py` owns QCL-081 LSL, QCL-083 OSC, and QCL-084
 ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution helpers, and
 protocol-specific live report assembly, source-specific report promotion
@@ -518,14 +521,19 @@ vocabulary for permissions, service discovery, control writes, handoff timeout,
 and cleanup, but PMD physical sensor ownership remains with Manifold/PMB
 routes rather than QCL-051.
 The same lab module owns protocol-fit reports for LSL, OSC, and ZeroMQ.
-QCL-081 treats Manifold-owned LSL broker evidence the same way QCL-084 treats
-the Manifold ZeroMQ broker path: Hostess shells to the Manifold JSON report
-tool, requires `evidence_tier=broker_owned`,
-`authority.owner=rusty.manifold.transport`, passing bridge-route evidence,
-complete sample continuity, and monotonic received sequences, then wraps that
-report as Hostess connectivity evidence for WPF and protocol-matrix rendering.
-Quest-runtime LSL promotion remains separate and blocked until the Quest side
-can emit its own `pylsl/liblsl` sample-continuity evidence.
+QCL-081 accepts two promotable LSL source tiers. The Manifold-owned broker path
+is handled the same way QCL-084 handles the Manifold ZeroMQ broker path:
+Hostess shells to the Manifold JSON report tool, requires
+`evidence_tier=broker_owned`, `authority.owner=rusty.manifold.transport`,
+passing bridge-route evidence, complete sample continuity, and monotonic
+received sequences, then wraps that report as Hostess connectivity evidence
+for WPF and protocol-matrix rendering. The Quest-runtime path ingests
+`qcl081_wifi_direct_lsl_receiver.py` artifacts from the QCL-041 harness: the
+Quest app binds the Android process to the Wi-Fi Direct `Network`, publishes a
+`liblsl` outlet, and Windows `pylsl` receives the requested samples. Hostess
+promotes that path only when the paired receiver artifact preserves
+`network_provider=wifi_direct`, Quest-runtime source ownership, sample
+continuity, monotonic LSL samples, and the QCL-041 direct-Wi-Fi endpoints.
 QCL-082 is the media/binary data-plane slot. Its fixture route declares the
 source-neutral `tcp_binary` contract shape, `RMANVID1` packet marker,
 frame-timestamp policy, bounded receiver queue, drop/close backpressure rules,

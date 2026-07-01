@@ -8,6 +8,8 @@ namespace HostessCompanion.Wpf.Services;
 
 public sealed class HostessctlConnectivityService
 {
+    public const string LatestArtifactDirEnvironmentVariable = "HOSTESS_COMPANION_WPF_LATEST_ARTIFACT_DIR";
+
     private const int DefaultTcpPort = 18766;
     private const int DefaultUdpPort = 18767;
     private const int DefaultQcl082Rmanvid1MediaPort = 9079;
@@ -499,7 +501,7 @@ public sealed class HostessctlConnectivityService
         matrixArguments.AddRange(
         [
             "--latest-artifact-dir",
-            Path.Combine(repoRoot.FullName, "target", "connectivity-probe"),
+            LatestArtifactDirectory(repoRoot).FullName,
             "--latest-probe-id",
             "QCL-000",
             "--latest-probe-id",
@@ -1202,6 +1204,17 @@ public sealed class HostessctlConnectivityService
             .ToArray();
         var token = new string(chars).Trim('.', '_', '-');
         return string.IsNullOrWhiteSpace(token) ? "companion-report" : token;
+    }
+
+    private static DirectoryInfo LatestArtifactDirectory(DirectoryInfo repoRoot)
+    {
+        var overridePath = Environment.GetEnvironmentVariable(LatestArtifactDirEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(overridePath))
+        {
+            return new DirectoryInfo(Path.GetFullPath(overridePath.Trim(), repoRoot.FullName));
+        }
+
+        return new DirectoryInfo(Path.Combine(repoRoot.FullName, "target", "connectivity-probe"));
     }
 
 }

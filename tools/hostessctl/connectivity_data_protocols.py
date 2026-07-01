@@ -713,7 +713,27 @@ def live_lsl_report(
             "LSL discovery or sample continuity did not satisfy the requested probe",
         )
 
-    status = live_qcl081_status(checks, source=source, device_ip=device.get("wifi_ipv4"))
+    lsl_route_evidence = object_value(lsl_result.get("bridge_route_evidence"))
+    lsl_runtime_topology = object_value(lsl_result.get("topology"))
+    lsl_runtime_wifi_direct = (
+        source == "quest-runtime"
+        and str(lsl_runtime_topology.get("network_provider") or "") == "wifi_direct"
+    )
+    lsl_broker_owned = (
+        source == "manifold-lsl-broker"
+        and str(lsl_result.get("evidence_tier") or "") == "broker_owned"
+        and str(lsl_result.get("authority_owner") or "") == "rusty.manifold.transport"
+        and str(lsl_route_evidence.get("status") or "") == "pass"
+    )
+    effective_device_ip = device.get("wifi_ipv4")
+    if lsl_runtime_wifi_direct and not effective_device_ip:
+        effective_device_ip = str(
+            lsl_result.get("device_endpoint")
+            or lsl_runtime_topology.get("remote_endpoint")
+            or ""
+        ).strip()
+
+    status = live_qcl081_status(checks, source=source, device_ip=effective_device_ip)
     if status == "warn" and source == "host-loopback":
         append_issue_once(
             issues,
@@ -729,13 +749,6 @@ def live_lsl_report(
             "LSL discovery and sample continuity were not proven",
         )
 
-    lsl_route_evidence = object_value(lsl_result.get("bridge_route_evidence"))
-    lsl_broker_owned = (
-        source == "manifold-lsl-broker"
-        and str(lsl_result.get("evidence_tier") or "") == "broker_owned"
-        and str(lsl_result.get("authority_owner") or "") == "rusty.manifold.transport"
-        and str(lsl_route_evidence.get("status") or "") == "pass"
-    )
     promotion_allowed = status == "pass" and (
         source == "quest-runtime" or lsl_broker_owned
     )
@@ -746,10 +759,21 @@ def live_lsl_report(
             "status": status,
             "classification": "protocol_fit_candidate",
             "topology": {
-                "owner": "external_wifi" if device.get("wifi_ipv4") else "host_local",
-                "network_provider": "router_or_existing_wifi" if device.get("wifi_ipv4") else "loopback",
-                "endpoint_direction": "lsl_multicast_discovery_plus_tcp_samples",
-                "requires_existing_wifi": bool(device.get("wifi_ipv4")),
+                "owner": (
+                    str(lsl_runtime_topology.get("owner") or "wifi_direct")
+                    if lsl_runtime_wifi_direct
+                    else "external_wifi" if device.get("wifi_ipv4") else "host_local"
+                ),
+                "network_provider": (
+                    "wifi_direct"
+                    if lsl_runtime_wifi_direct
+                    else "router_or_existing_wifi" if device.get("wifi_ipv4") else "loopback"
+                ),
+                "endpoint_direction": str(
+                    lsl_runtime_topology.get("endpoint_direction")
+                    or "lsl_multicast_discovery_plus_tcp_samples"
+                ),
+                "requires_existing_wifi": False if lsl_runtime_wifi_direct else bool(device.get("wifi_ipv4")),
                 "requires_adb": bool(getattr(args, "adb", None) and getattr(args, "serial", None)),
                 "requires_pairing": False,
                 "requires_termux": False,
@@ -758,8 +782,19 @@ def live_lsl_report(
             "transport": {
                 "family": "lsl",
                 "route": "qcl081_lsl_discovery_sample_continuity",
-                "local_endpoint": host_ip or "host-loopback",
-                "remote_endpoint": str(device.get("wifi_ipv4") or source),
+                "local_endpoint": str(
+                    lsl_result.get("host_endpoint")
+                    or lsl_runtime_topology.get("local_endpoint")
+                    or host_ip
+                    or "host-loopback"
+                ),
+                "remote_endpoint": str(
+                    lsl_result.get("device_endpoint")
+                    or lsl_runtime_topology.get("remote_endpoint")
+                    or lsl_result.get("source_id")
+                    or device.get("wifi_ipv4")
+                    or source
+                ),
                 "protocol_role": "study_stream_probe",
                 "payload_class": "lsl_float32_samples",
                 "endpoint_source": source,
@@ -1286,6 +1321,14 @@ def lsl_quest_runtime_preflight(args: argparse.Namespace, run_captured_func: Any
     stream_name = str(getattr(args, "lsl_stream_name", "RustyQCL081") or "RustyQCL081")
     stream_type = str(getattr(args, "lsl_stream_type", "Markers") or "Markers")
     sample_count = max(1, int(getattr(args, "lsl_sample_count", 16) or 16))
+    report_path = str(getattr(args, "lsl_quest_runtime_report", "") or "").strip()
+    if report_path:
+        return lsl_quest_runtime_report_from_file(
+            Path(report_path),
+            stream_name=stream_name,
+            stream_type=stream_type,
+            sample_count=sample_count,
+        )
     if not getattr(args, "adb", None) or not getattr(args, "serial", None):
         return {
             "status": "blocked",
@@ -1343,6 +1386,82 @@ def lsl_quest_runtime_preflight(args: argparse.Namespace, run_captured_func: Any
             "pylsl_import": completed_observed(pylsl_result),
         },
     }
+
+
+def lsl_quest_runtime_report_from_file(
+    report_path: Path,
+    *,
+    stream_name: str,
+    stream_type: str,
+    sample_count: int,
+) -> dict[str, Any]:
+    if not report_path.is_file():
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "stream_name": stream_name,
+            "stream_type": stream_type,
+            "samples_requested": sample_count,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "discovery_ms": None,
+            "monotonic_sequences": False,
+            "received_sequences": [],
+            "issue_codes": ["hostess.issue.connectivity_probe.lsl_quest_runtime_report_missing"],
+            "notes": f"QCL-081 Quest-runtime receiver report not found: {report_path}",
+        }
+    try:
+        parsed = json.loads(report_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        return {
+            "status": "blocked",
+            "source": "quest-runtime",
+            "stream_name": stream_name,
+            "stream_type": stream_type,
+            "samples_requested": sample_count,
+            "samples_received": 0,
+            "loss_percent": 100.0,
+            "discovery_ms": None,
+            "monotonic_sequences": False,
+            "received_sequences": [],
+            "issue_codes": ["hostess.issue.connectivity_probe.lsl_quest_runtime_report_invalid_json"],
+            "notes": f"QCL-081 Quest-runtime receiver report is not valid JSON: {exc}",
+        }
+    if not isinstance(parsed, dict):
+        parsed = {}
+
+    status = str(parsed.get("status") or "blocked")
+    issue_codes = [str(code) for code in parsed.get("issue_codes", []) or []]
+    if str(parsed.get("source") or "") != "quest-runtime":
+        issue_codes.append("hostess.issue.connectivity_probe.lsl_quest_runtime_report_wrong_source")
+        if status == "pass":
+            status = "blocked"
+    if str(object_value(parsed.get("topology")).get("network_provider") or "") != "wifi_direct":
+        issue_codes.append("hostess.issue.connectivity_probe.lsl_quest_runtime_not_wifi_direct")
+        if status == "pass":
+            status = "warn"
+
+    samples_requested = int_value(parsed.get("samples_requested"))
+    samples_received = int_value(parsed.get("samples_received"))
+    result = dict(parsed)
+    result.update(
+        {
+            "status": status,
+            "source": "quest-runtime",
+            "stream_name": str(parsed.get("stream_name") or stream_name),
+            "stream_type": str(parsed.get("stream_type") or stream_type),
+            "samples_requested": samples_requested if samples_requested is not None else sample_count,
+            "samples_received": samples_received if samples_received is not None else 0,
+            "loss_percent": float_value(parsed.get("loss_percent"), default=100.0),
+            "discovery_ms": int_value(parsed.get("discovery_ms")),
+            "monotonic_sequences": bool(parsed.get("monotonic_sequences")),
+            "received_sequences": parsed.get("received_sequences", []),
+            "issue_codes": dedupe_issue_codes(issue_codes),
+            "notes": str(parsed.get("notes") or "Quest-runtime QCL-081 LSL receiver report was ingested."),
+            "receiver_report_path": str(report_path),
+        }
+    )
+    return result
 
 
 def osc_loopback_probe(args: argparse.Namespace) -> dict[str, Any]:

@@ -212,9 +212,10 @@ generic code or sanitized sample fixtures.
 - Keep `tools\hostessctl\connectivity_topology_live.py` as the read-only live
   topology preflight owner for experimental QCL-040/QCL-041 Wi-Fi Direct
   reports. It may collect serial-scoped ADB feature state and Windows
-  Wi-Fi Direct adapter state, but it must not promote direct-Wi-Fi topology
-  without peer discovery, group formation, socket exchange, and cleanup
-  evidence.
+  Wi-Fi Direct adapter state, and it may project the Windows QCL-041 peer
+  helper report as readiness evidence, but it must not promote direct-Wi-Fi
+  topology without peer discovery, group formation, socket exchange, and
+  cleanup evidence in the lifecycle source artifact.
 - Keep `tools\hostessctl\connectivity_topology_lifecycle.py` as the
   QCL-040/QCL-041 Wi-Fi Direct lifecycle evidence ingestion owner. It may
   validate a structured live lifecycle artifact and emit a promoted topology

@@ -103,6 +103,10 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
             "hostess.issue.connectivity_probe.wifi_direct_live_peer_discovery_missing",
             preflight_check["issue_codes"],
         )
+        self.assertNotIn(
+            "hostess.issue.connectivity_probe.wifi_direct_live_preflight_missing",
+            preflight_check["issue_codes"],
+        )
         self.assertEqual(
             preflight_check["observed"]["qcl041"]["report_path"],
             str(preflight_path),

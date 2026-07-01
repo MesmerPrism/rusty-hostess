@@ -405,15 +405,42 @@ static void CompanionReportProjectionRowsExposeTransportCoverage()
 
 static void ConnectivityServiceBuildsCompanionReportProjectionArtifact()
 {
-    var run = new HostessctlConnectivityService()
-        .RunProtocolMatrixProjectionAsync(
-            serial: "",
-            program: "",
-            protocol: "UDP",
-            portText: "18767",
-            cancellationToken: CancellationToken.None)
-        .GetAwaiter()
-        .GetResult();
+    var repoRoot = LocateHostessRepoRoot();
+    var isolatedLatestArtifactDir = Path.Combine(
+        repoRoot.FullName,
+        "target",
+        "connectivity-probe",
+        $"wpf-fixture-latest-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(isolatedLatestArtifactDir);
+    var previousLatestArtifactDir = Environment.GetEnvironmentVariable(
+        HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable);
+    ConnectivityProtocolMatrixProjectionRun run;
+    try
+    {
+        Environment.SetEnvironmentVariable(
+            HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable,
+            isolatedLatestArtifactDir);
+
+        run = new HostessctlConnectivityService()
+            .RunProtocolMatrixProjectionAsync(
+                serial: "",
+                program: "",
+                protocol: "UDP",
+                portText: "18767",
+                cancellationToken: CancellationToken.None)
+            .GetAwaiter()
+            .GetResult();
+    }
+    finally
+    {
+        Environment.SetEnvironmentVariable(
+            HostessctlConnectivityService.LatestArtifactDirEnvironmentVariable,
+            previousLatestArtifactDir);
+        if (Directory.Exists(isolatedLatestArtifactDir))
+        {
+            Directory.Delete(isolatedLatestArtifactDir, recursive: true);
+        }
+    }
 
     Assert(run.Suite.ReportPath.EndsWith(".json", StringComparison.Ordinal),
         "suite report path must be attached");
