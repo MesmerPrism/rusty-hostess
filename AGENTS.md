@@ -173,15 +173,17 @@ generic code or sanitized sample fixtures.
   protocols. Ordinary headset-bound rows stay serial-scoped and must not
   require `adb-server:lifecycle` unless the route explicitly owns disruptive
   ADB daemon recovery.
-- Keep `tools\hostessctl\connectivity_media_receiver.py` as the QCL-082
-  Hostess receiver-counter owner. It may arm bounded TCP `RMANVID1` captures,
-  write raw capture/sidecar/result artifacts, parse packet counters, and run
-  the orchestrated product-media live session that starts the receiver before
-  requesting the Quest/Manifold media source command. It may join product TCP
-  listener firewall verification reports and promoted direct-Wi-Fi topology
-  reports, but it must keep the live receiver `quest:<serial>` lease bound to
-  the topology `device.serial`; it must not own Windows firewall rule
-  lifecycle, Android camera/display source setup, or QCL promotion policy.
+- Keep `tools\hostessctl\connectivity_media_receiver.py` as a compatibility
+  facade for the QCL-082 Hostess receiver-counter route. `*_capture.py` owns
+  bounded TCP capture and optional preview, `*_rmanvid1.py` owns packet parsing
+  and evidence shaping, `*_live_session.py` owns receiver-before-source
+  orchestration, `*_product.py` owns product topology/firewall gates, and
+  `*_lease.py`/`*_preflight.py` own Quest lease and dependency blocking. The
+  route may join product TCP listener firewall verification reports and
+  promoted direct-Wi-Fi topology reports, but it must keep the live receiver
+  `quest:<serial>` lease bound to the topology `device.serial`; it must not own
+  Windows firewall rule lifecycle, Android camera/display source setup, or QCL
+  promotion policy.
 - Keep `tools\hostessctl\connectivity_media_product_plan.py` as the read-only
   QCL-082 product-media direct-Wi-Fi plan artifact owner. It may bind the
   existing Hostess CLI routes, dependencies, lease policy, and acceptance
@@ -237,11 +239,13 @@ generic code or sanitized sample fixtures.
   Bluetooth readiness, payload, reconnect, transport, and live report assembly
   owner. `connectivity_probe.py` may preserve facade imports and route
   dispatch, but Bluetooth evidence logic belongs in the helper.
-- Keep `tools\hostessctl\connectivity_data_protocols.py` as the QCL-081,
-  QCL-083, and QCL-084 data-protocol mechanics owner. It may own host
-  loopbacks, Manifold broker wrappers, Quest-runtime OSC/ZeroMQ probe helpers,
-  live report assembly, protocol evidence rows, and source-specific report
-  promotion gates; it must not own protocol-matrix promotion or WPF projection.
+- Keep `tools\hostessctl\connectivity_data_protocols.py` as a compatibility
+  facade for QCL-081, QCL-083, and QCL-084 data-protocol helpers. Put LSL
+  mechanics in `connectivity_data_protocols_lsl.py`, OSC mechanics in
+  `connectivity_data_protocols_osc.py`, ZeroMQ mechanics in
+  `connectivity_data_protocols_zeromq.py`, and shared parsing/topology helpers
+  in `connectivity_data_protocols_common.py`; these modules must not own
+  protocol-matrix promotion or WPF projection.
 - Keep `tools\hostessctl\connectivity_websocket.py` as the QCL-079 generic
   WebSocket mechanics owner. It may own bounded HTTP upgrade/echo loopbacks,
   Manifold stream route/evidence ingestion, fixture report bodies, WebSocket

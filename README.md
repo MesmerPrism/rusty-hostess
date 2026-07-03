@@ -229,12 +229,14 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   broker/runtime status artifact ingestion for H.264/TCP framing, command
   acceptance, timestamp, queue/drop/backpressure, source classification,
   shell-display lab gating, and high-rate JSON rejection evidence.
-- `tools/hostessctl/connectivity_media_receiver.py`: QCL-082 Hostess
-  receiver-counter helpers for bounded `RMANVID1` stream-header and packet
-  parsing, bounded TCP receiver capture, receiver sidecar counters,
-  runtime-status pairing, optional direct-Wi-Fi topology report pairing, the
-  orchestrated product-media live session that arms the receiver before the
-  Quest/Manifold source command, and no-decode binary media evidence.
+- `tools/hostessctl/connectivity_media_receiver.py`: compatibility facade for
+  QCL-082 Hostess receiver-counter helpers. Ownership is split across
+  `connectivity_media_receiver_rmanvid1.py` for `RMANVID1` parsing/evidence,
+  `connectivity_media_receiver_capture.py` for bounded TCP capture/preview,
+  `connectivity_media_receiver_live_session.py` for product-media session
+  orchestration, `connectivity_media_receiver_product.py` for topology/firewall
+  gates, and `connectivity_media_receiver_lease.py`/`_preflight.py` for Quest
+  lease and dependency gating.
 - `tools/hostessctl/connectivity_media_product_plan.py`: read-only QCL-082
   product-media direct-Wi-Fi plan artifacts. It binds the existing
   start_source, runtime-status, product firewall, RMANVID1 capture, QCL-082
@@ -263,10 +265,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   RFCOMM and BLE/GATT readiness, Android payload probes, Windows helper
   command construction, live report assembly, reconnect measurements, and
   Bluetooth transport rows.
-- `tools/hostessctl/connectivity_data_protocols.py`: QCL-081/QCL-083/QCL-084
-  LSL, OSC, and ZeroMQ adapter mechanics, Quest-runtime OSC/ZeroMQ execution
-  helpers, live report assembly, source-specific report promotion gates, and
-  their protocol-specific evidence-row derivation.
+- `tools/hostessctl/connectivity_data_protocols.py`: compatibility facade for
+  QCL-081/QCL-083/QCL-084 data-protocol helpers. Protocol mechanics live in
+  `connectivity_data_protocols_lsl.py`, `connectivity_data_protocols_osc.py`,
+  and `connectivity_data_protocols_zeromq.py`; shared topology/report parsing
+  helpers live in `connectivity_data_protocols_common.py`.
 - `tools/hostessctl/connectivity_websocket.py`: QCL-079 generic WebSocket
   protocol-fit helper. It owns the bounded host-loopback HTTP upgrade/echo
   probe, Manifold stream route/evidence ingestion, fixture body,

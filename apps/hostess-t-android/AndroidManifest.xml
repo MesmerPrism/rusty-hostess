@@ -31,6 +31,7 @@
                 <action android:name="io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL050_RFCOMM" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL051_BLE_GATT" />
+                <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL096_Q2Q_BLE_GATT" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RUN_QCL083_OSC" />
                 <action android:name="io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY" />
                 <category android:name="android.intent.category.DEFAULT" />

@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Sockets;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.Json;
 using System.IO;
@@ -40,6 +42,9 @@ internal sealed class Broker(CliOptions options)
     private readonly List<Dictionary<string, object?>> _eventsLog = [];
     private readonly List<Dictionary<string, object?>> _issues = [];
     private readonly List<Dictionary<string, object?>> _messages = [];
+    private readonly List<Dictionary<string, object?>> _lslCommandTimingSamples = [];
+    private readonly Queue<Dictionary<string, object?>> _lslCommandTimingTail = new();
+    private readonly List<double> _lslCommandPublishIntervalMs = [];
     private readonly List<string> _errors = [];
     private readonly object _sync = new();
     private readonly DateTimeOffset _started = DateTimeOffset.UtcNow;
@@ -53,7 +58,32 @@ internal sealed class Broker(CliOptions options)
     private int _endpointPairCount;
     private int _messagesSent;
     private int _messagesReceived;
+    private int _lslCommandSamplesPublished;
+    private int _lslCommandFirstSequence = -1;
+    private int _lslCommandLastSequence = -1;
+    private int _lslCommandLastPushResult;
+    private double? _lslCommandFirstClockSeconds;
+    private double? _lslCommandLastClockSeconds;
+    private double? _lslCommandPublishElapsedMs;
+    private DateTimeOffset? _lslCommandPublishStartedAtUtc;
+    private DateTimeOffset? _lslCommandPublishEndedAtUtc;
     private string _publisherStatus = "";
+    private string _lslCommandStatus = "disabled";
+    private string _lslCommandIssue = "";
+    private string _lslCommandLastError = "";
+    private string _lslCommandStreamXml = "";
+    private string _lslCommandHostname = "";
+    private string _lslCommandUid = "";
+    private string _lslCommandSessionId = "";
+    private string _lslCommandV4Address = "";
+    private string _lslCommandV4DataPort = "";
+    private string _lslCommandV4ServicePort = "";
+    private string _lslCommandV6Address = "";
+    private string _lslCommandV6DataPort = "";
+    private string _lslCommandV6ServicePort = "";
+    private double? _lslCommandCreatedAtSeconds;
+    private string _lslCommandApiConfigPath = "";
+    private string _lslCommandApiConfigContent = "";
     private string _selectedPeerName = "";
     private bool? _selectedPeerPaired;
     private bool? _selectedPeerCanPair;
@@ -246,6 +276,10 @@ internal sealed class Broker(CliOptions options)
                 ["remote_endpoint"] = tcpResult.RemoteEndpoint,
             });
             AddEvent("wifi_direct.socket_exchange", "pass", $"bounded TCP request/ack exchange completed; remote={tcpResult.RemoteEndpoint}");
+            if (options.LslCommandOutletEnabled)
+            {
+                await RunLslCommandOutletAsync(openCancellationToken);
+            }
         }
         else
         {
@@ -255,6 +289,301 @@ internal sealed class Broker(CliOptions options)
                 tcpResult.Error);
             AddEvent("wifi_direct.socket_exchange", "blocked", tcpResult.Error);
         }
+    }
+
+    private async Task RunLslCommandOutletAsync(CancellationToken cancellationToken)
+    {
+        _lslCommandStatus = "blocked";
+        IntPtr streamInfo = IntPtr.Zero;
+        IntPtr outlet = IntPtr.Zero;
+        LslNative? lsl = null;
+        var previousLslApiCfg = Environment.GetEnvironmentVariable("LSLAPICFG");
+        try
+        {
+            PrepareLslCommandApiConfig();
+            lsl = LslNative.Load(options.LslDllPath);
+            if (!string.IsNullOrWhiteSpace(_lslCommandApiConfigContent))
+            {
+                var configContentApplied = lsl.TrySetConfigContent(_lslCommandApiConfigContent);
+                AddEvent(
+                    "qcl081_lsl_command.api_config_content",
+                    configContentApplied ? "pass" : "warn",
+                    configContentApplied
+                        ? "applied per-run LSL config content before command outlet creation"
+                        : "liblsl does not export lsl_set_config_content; using LSLAPICFG file path only");
+            }
+            AddEvent(
+                "qcl081_lsl_command.library",
+                "pass",
+                $"loaded liblsl for broker command outlet: {lsl.LibraryInfo}");
+            streamInfo = lsl.CreateStreamInfo(
+                options.LslCommandStreamName,
+                options.LslCommandStreamType,
+                2,
+                0.0,
+                2,
+                options.LslCommandSourceId);
+            if (streamInfo == IntPtr.Zero)
+            {
+                throw new InvalidOperationException($"lsl_create_streaminfo returned null; last_error={lsl.LastError}");
+            }
+            outlet = lsl.CreateOutlet(streamInfo, 1, 60);
+            if (outlet == IntPtr.Zero)
+            {
+                throw new InvalidOperationException($"lsl_create_outlet returned null; last_error={lsl.LastError}");
+            }
+            _lslCommandStreamXml = lsl.GetXml(streamInfo);
+            _lslCommandHostname = lsl.GetHostname(streamInfo);
+            _lslCommandUid = lsl.GetUid(streamInfo);
+            _lslCommandSessionId = lsl.GetSessionId(streamInfo);
+            _lslCommandCreatedAtSeconds = lsl.GetCreatedAt(streamInfo);
+            _lslCommandV4Address = XmlTagValue(_lslCommandStreamXml, "v4address");
+            _lslCommandV4DataPort = XmlTagValue(_lslCommandStreamXml, "v4data_port");
+            _lslCommandV4ServicePort = XmlTagValue(_lslCommandStreamXml, "v4service_port");
+            _lslCommandV6Address = XmlTagValue(_lslCommandStreamXml, "v6address");
+            _lslCommandV6DataPort = XmlTagValue(_lslCommandStreamXml, "v6data_port");
+            _lslCommandV6ServicePort = XmlTagValue(_lslCommandStreamXml, "v6service_port");
+            AddEvent(
+                "qcl081_lsl_command.outlet",
+                "pass",
+                $"broker LSL command outlet source_id={options.LslCommandSourceId}");
+            if (options.LslCommandStartDelayMs > 0)
+            {
+                await Task.Delay(options.LslCommandStartDelayMs, cancellationToken);
+            }
+            _lslCommandPublishStartedAtUtc = DateTimeOffset.UtcNow;
+            var publishWatch = Stopwatch.StartNew();
+            double? previousPublishElapsedMs = null;
+            for (var sequence = 0; sequence < options.LslCommandSampleCount; sequence += 1)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var elapsedBeforePushMs = publishWatch.Elapsed.TotalMilliseconds;
+                var timestamp = lsl.LocalClock();
+                var sample = new[] { (double)sequence, timestamp };
+                var result = lsl.PushSampleDtp(outlet, sample, timestamp, 1);
+                _lslCommandLastPushResult = result;
+                _lslCommandLastError = lsl.LastError;
+                if (result != 0)
+                {
+                    _lslCommandIssue = $"lsl_push_sample_dtp returned {result}; last_error={lsl.LastError}";
+                    break;
+                }
+                if (_lslCommandSamplesPublished == 0)
+                {
+                    _lslCommandFirstSequence = sequence;
+                    _lslCommandFirstClockSeconds = timestamp;
+                }
+                if (previousPublishElapsedMs.HasValue)
+                {
+                    _lslCommandPublishIntervalMs.Add(elapsedBeforePushMs - previousPublishElapsedMs.Value);
+                }
+                previousPublishElapsedMs = elapsedBeforePushMs;
+                _lslCommandLastSequence = sequence;
+                _lslCommandLastClockSeconds = timestamp;
+                var timingSample = new Dictionary<string, object?>
+                {
+                    ["sequence"] = sequence,
+                    ["host_send_lsl_clock_seconds"] = timestamp,
+                    ["publish_elapsed_ms"] = Math.Round(elapsedBeforePushMs, 3),
+                };
+                if (_lslCommandTimingSamples.Count < 25)
+                {
+                    _lslCommandTimingSamples.Add(timingSample);
+                }
+                _lslCommandTimingTail.Enqueue(timingSample);
+                while (_lslCommandTimingTail.Count > 10)
+                {
+                    _lslCommandTimingTail.Dequeue();
+                }
+                _lslCommandSamplesPublished += 1;
+                await Task.Delay(options.LslCommandIntervalMs, cancellationToken);
+            }
+            _lslCommandPublishEndedAtUtc = DateTimeOffset.UtcNow;
+            publishWatch.Stop();
+            _lslCommandPublishElapsedMs = publishWatch.Elapsed.TotalMilliseconds;
+            _lslCommandStatus = _lslCommandSamplesPublished == options.LslCommandSampleCount
+                ? "pass"
+                : (_lslCommandSamplesPublished > 0 ? "warn" : "fail");
+            AddEvent(
+                "qcl081_lsl_command.publish",
+                _lslCommandStatus,
+                $"broker published {_lslCommandSamplesPublished}/{options.LslCommandSampleCount} command samples");
+            if (options.LslCommandHoldAfterMs > 0)
+            {
+                await Task.Delay(options.LslCommandHoldAfterMs, cancellationToken);
+                AddEvent(
+                    "qcl081_lsl_command.hold_after_publish",
+                    "pass",
+                    $"held Wi-Fi Direct group and LSL outlet for {options.LslCommandHoldAfterMs} ms after command publish");
+            }
+        }
+        catch (Exception ex)
+        {
+            _lslCommandStatus = _lslCommandSamplesPublished > 0 ? "warn" : "fail";
+            _lslCommandIssue = ex.Message;
+            AddIssue(
+                "hostess.issue.connectivity_probe.qcl081_lsl_broker_command_outlet_failed",
+                "error",
+                ex.ToString());
+            AddEvent("qcl081_lsl_command.publish", _lslCommandStatus, ex.ToString());
+        }
+        finally
+        {
+            if (outlet != IntPtr.Zero)
+            {
+                try
+                {
+                    lsl?.DestroyOutlet(outlet);
+                }
+                catch
+                {
+                    // Native cleanup should not hide the command outlet evidence.
+                }
+            }
+            if (streamInfo != IntPtr.Zero)
+            {
+                try
+                {
+                    lsl?.DestroyStreamInfo(streamInfo);
+                }
+                catch
+                {
+                    // Native cleanup should not hide the command outlet evidence.
+                }
+            }
+            lsl?.Dispose();
+            Environment.SetEnvironmentVariable("LSLAPICFG", previousLslApiCfg, EnvironmentVariableTarget.Process);
+        }
+    }
+
+    private void PrepareLslCommandApiConfig()
+    {
+        if (string.IsNullOrWhiteSpace(options.Out))
+        {
+            return;
+        }
+        var localAddress = _localEndpointHostName.Trim();
+        if (!IPAddress.TryParse(localAddress, out var parsedLocal) ||
+            parsedLocal.AddressFamily != AddressFamily.InterNetwork)
+        {
+            AddIssue(
+                "hostess.issue.connectivity_probe.qcl081_lsl_command_listen_address_unavailable",
+                "warning",
+                $"Cannot force LSL ListenAddress because local Wi-Fi Direct endpoint is '{_localEndpointHostName}'.");
+            return;
+        }
+        var peers = new List<string> { localAddress };
+        var remoteAddress = _remoteEndpointHostName.Trim();
+        if (IPAddress.TryParse(remoteAddress, out var parsedRemote) &&
+            parsedRemote.AddressFamily == AddressFamily.InterNetwork &&
+            !peers.Contains(remoteAddress, StringComparer.OrdinalIgnoreCase))
+        {
+            peers.Add(remoteAddress);
+        }
+        var sessionId = "default";
+        var outPath = Path.GetFullPath(options.Out);
+        var outDir = Path.GetDirectoryName(outPath);
+        if (string.IsNullOrWhiteSpace(outDir))
+        {
+            return;
+        }
+        Directory.CreateDirectory(outDir);
+        _lslCommandApiConfigPath = Path.Combine(outDir, "qcl081-lsl-command-lsl_api.cfg");
+        _lslCommandApiConfigContent = string.Join(
+            Environment.NewLine,
+            [
+                "[ports]",
+                "IPv6 = disable",
+                "",
+                "[multicast]",
+                "ResolveScope = link",
+                $"ListenAddress = {localAddress}",
+                "",
+                "[lab]",
+                $"KnownPeers = {{{string.Join(", ", peers)}}}",
+                $"SessionID = {sessionId}",
+                "",
+                "[log]",
+                "level = 0",
+                "",
+            ]);
+        File.WriteAllText(_lslCommandApiConfigPath, _lslCommandApiConfigContent, new UTF8Encoding(false));
+        Environment.SetEnvironmentVariable("LSLAPICFG", _lslCommandApiConfigPath, EnvironmentVariableTarget.Process);
+        AddEvent(
+            "qcl081_lsl_command.api_config",
+            "pass",
+            $"wrote per-run LSLAPICFG with ListenAddress={localAddress}, KnownPeers={string.Join(",", peers)}");
+    }
+
+    private static string SanitizeLslSessionId(string value)
+    {
+        var text = string.IsNullOrWhiteSpace(value) ? "qcl081-direct-wifi" : value.Trim();
+        var builder = new StringBuilder(text.Length);
+        foreach (var ch in text)
+        {
+            builder.Append(char.IsLetterOrDigit(ch) || ch is '-' or '_' or '.' ? ch : '-');
+        }
+        return builder.Length == 0 ? "qcl081-direct-wifi" : builder.ToString();
+    }
+
+    private static string XmlTagValue(string xml, string tag)
+    {
+        if (string.IsNullOrEmpty(xml) || string.IsNullOrEmpty(tag))
+        {
+            return "";
+        }
+        var openTag = $"<{tag}>";
+        var closeTag = $"</{tag}>";
+        var start = xml.IndexOf(openTag, StringComparison.Ordinal);
+        if (start < 0)
+        {
+            return "";
+        }
+        var valueStart = start + openTag.Length;
+        var end = xml.IndexOf(closeTag, valueStart, StringComparison.Ordinal);
+        if (end < valueStart)
+        {
+            return "";
+        }
+        return xml[valueStart..end];
+    }
+
+    private static Dictionary<string, object?>? BuildMsSummary(IReadOnlyList<double> values)
+    {
+        if (values.Count == 0)
+        {
+            return null;
+        }
+        var ordered = values.OrderBy(value => value).ToArray();
+        return new Dictionary<string, object?>
+        {
+            ["count"] = ordered.Length,
+            ["min"] = Math.Round(ordered[0], 3),
+            ["median"] = Math.Round(Percentile(ordered, 50.0), 3),
+            ["p95"] = Math.Round(Percentile(ordered, 95.0), 3),
+            ["max"] = Math.Round(ordered[^1], 3),
+        };
+    }
+
+    private static double Percentile(IReadOnlyList<double> ordered, double percentile)
+    {
+        if (ordered.Count == 0)
+        {
+            return double.NaN;
+        }
+        if (ordered.Count == 1)
+        {
+            return ordered[0];
+        }
+        var position = Math.Clamp(percentile, 0.0, 100.0) / 100.0 * (ordered.Count - 1);
+        var lower = (int)Math.Floor(position);
+        var upper = (int)Math.Ceiling(position);
+        if (lower == upper)
+        {
+            return ordered[lower];
+        }
+        var fraction = position - lower;
+        return ordered[lower] + ((ordered[upper] - ordered[lower]) * fraction);
     }
 
     private IPAddress ResolveLocalBindAddress(string localHostName)
@@ -351,6 +680,43 @@ internal sealed class Broker(CliOptions options)
                 ["socket_exchange_completed"] = _socketExchangeCompleted,
                 ["messages_sent"] = _messagesSent,
                 ["messages_received"] = _messagesReceived,
+                ["lsl_command_outlet_enabled"] = options.LslCommandOutletEnabled,
+                ["lsl_command_status"] = _lslCommandStatus,
+                ["lsl_command_samples_requested"] = options.LslCommandSampleCount,
+                ["lsl_command_samples_published"] = _lslCommandSamplesPublished,
+                ["lsl_command_source_id"] = options.LslCommandSourceId,
+                ["lsl_command_api_config_path"] = _lslCommandApiConfigPath,
+                ["lsl_command_api_config_content"] = _lslCommandApiConfigContent,
+                ["lsl_command_stream_info"] = new Dictionary<string, object?>
+                {
+                    ["hostname"] = _lslCommandHostname,
+                    ["uid"] = _lslCommandUid,
+                    ["session_id"] = _lslCommandSessionId,
+                    ["created_at_seconds"] = _lslCommandCreatedAtSeconds,
+                    ["v4address"] = _lslCommandV4Address,
+                    ["v4data_port"] = _lslCommandV4DataPort,
+                    ["v4service_port"] = _lslCommandV4ServicePort,
+                    ["v6address"] = _lslCommandV6Address,
+                    ["v6data_port"] = _lslCommandV6DataPort,
+                    ["v6service_port"] = _lslCommandV6ServicePort,
+                    ["xml"] = _lslCommandStreamXml,
+                },
+                ["lsl_command_first_sequence"] = _lslCommandFirstSequence >= 0 ? _lslCommandFirstSequence : null,
+                ["lsl_command_last_sequence"] = _lslCommandLastSequence >= 0 ? _lslCommandLastSequence : null,
+                ["lsl_command_first_clock_seconds"] = _lslCommandFirstClockSeconds,
+                ["lsl_command_last_clock_seconds"] = _lslCommandLastClockSeconds,
+                ["lsl_command_publish_started_at_utc"] = _lslCommandPublishStartedAtUtc?.ToString("O"),
+                ["lsl_command_publish_ended_at_utc"] = _lslCommandPublishEndedAtUtc?.ToString("O"),
+                ["lsl_command_publish_elapsed_ms"] = _lslCommandPublishElapsedMs.HasValue
+                    ? Math.Round(_lslCommandPublishElapsedMs.Value, 3)
+                    : null,
+                ["lsl_command_publish_interval_ms_summary"] = BuildMsSummary(_lslCommandPublishIntervalMs),
+                ["lsl_command_last_push_result"] = _lslCommandLastPushResult,
+                ["lsl_command_last_error"] = _lslCommandLastError,
+                ["lsl_command_timing_samples"] = _lslCommandTimingSamples,
+                ["lsl_command_timing_samples_tail"] = _lslCommandTimingTail.ToArray(),
+                ["lsl_command_hold_after_ms"] = options.LslCommandHoldAfterMs,
+                ["lsl_command_issue"] = _lslCommandIssue,
                 ["cleanup_completed"] = _cleanupCompleted,
             },
             ["messages"] = _messages,
@@ -476,6 +842,159 @@ internal sealed record TcpProbeResult(
         Error: error);
 }
 
+internal sealed class LslNative : IDisposable
+{
+    private readonly IntPtr _library;
+    private readonly CreateStreamInfoDelegate _createStreamInfo;
+    private readonly DestroyStreamInfoDelegate _destroyStreamInfo;
+    private readonly CreateOutletDelegate _createOutlet;
+    private readonly DestroyOutletDelegate _destroyOutlet;
+    private readonly PushSampleDtpDelegate _pushSampleDtp;
+    private readonly LocalClockDelegate _localClock;
+    private readonly SetConfigContentDelegate? _setConfigContent;
+    private readonly StringDelegate _libraryInfo;
+    private readonly StringDelegate _lastError;
+    private readonly StreamInfoStringDelegate _getXml;
+    private readonly StreamInfoStringDelegate _getHostname;
+    private readonly StreamInfoStringDelegate _getUid;
+    private readonly StreamInfoStringDelegate _getSessionId;
+    private readonly StreamInfoDoubleDelegate _getCreatedAt;
+
+    private LslNative(IntPtr library)
+    {
+        _library = library;
+        _createStreamInfo = GetDelegate<CreateStreamInfoDelegate>("lsl_create_streaminfo");
+        _destroyStreamInfo = GetDelegate<DestroyStreamInfoDelegate>("lsl_destroy_streaminfo");
+        _createOutlet = GetDelegate<CreateOutletDelegate>("lsl_create_outlet");
+        _destroyOutlet = GetDelegate<DestroyOutletDelegate>("lsl_destroy_outlet");
+        _pushSampleDtp = GetDelegate<PushSampleDtpDelegate>("lsl_push_sample_dtp");
+        _localClock = GetDelegate<LocalClockDelegate>("lsl_local_clock");
+        _setConfigContent = TryGetDelegate<SetConfigContentDelegate>("lsl_set_config_content");
+        _libraryInfo = GetDelegate<StringDelegate>("lsl_library_info");
+        _lastError = GetDelegate<StringDelegate>("lsl_last_error");
+        _getXml = GetDelegate<StreamInfoStringDelegate>("lsl_get_xml");
+        _getHostname = GetDelegate<StreamInfoStringDelegate>("lsl_get_hostname");
+        _getUid = GetDelegate<StreamInfoStringDelegate>("lsl_get_uid");
+        _getSessionId = GetDelegate<StreamInfoStringDelegate>("lsl_get_session_id");
+        _getCreatedAt = GetDelegate<StreamInfoDoubleDelegate>("lsl_get_created_at");
+    }
+
+    public string LibraryInfo => PtrToString(_libraryInfo());
+
+    public string LastError => PtrToString(_lastError());
+
+    public static LslNative Load(string path)
+    {
+        var libraryPath = string.IsNullOrWhiteSpace(path)
+            ? throw new ArgumentException("liblsl path is required", nameof(path))
+            : Path.GetFullPath(path);
+        if (!File.Exists(libraryPath))
+        {
+            throw new FileNotFoundException("liblsl DLL not found", libraryPath);
+        }
+        return new LslNative(NativeLibrary.Load(libraryPath));
+    }
+
+    public IntPtr CreateStreamInfo(
+        string name,
+        string type,
+        int channelCount,
+        double nominalSrate,
+        int channelFormat,
+        string sourceId) =>
+        _createStreamInfo(name, type, channelCount, nominalSrate, channelFormat, sourceId);
+
+    public IntPtr CreateOutlet(IntPtr streamInfo, int chunkSize, int maxBuffered) =>
+        _createOutlet(streamInfo, chunkSize, maxBuffered);
+
+    public int PushSampleDtp(IntPtr outlet, double[] sample, double timestamp, int pushthrough) =>
+        _pushSampleDtp(outlet, sample, timestamp, pushthrough);
+
+    public double LocalClock() => _localClock();
+
+    public bool TrySetConfigContent(string content)
+    {
+        if (_setConfigContent is null)
+        {
+            return false;
+        }
+        _setConfigContent(content);
+        return true;
+    }
+
+    public string GetXml(IntPtr info) => PtrToString(_getXml(info));
+
+    public string GetHostname(IntPtr info) => PtrToString(_getHostname(info));
+
+    public string GetUid(IntPtr info) => PtrToString(_getUid(info));
+
+    public string GetSessionId(IntPtr info) => PtrToString(_getSessionId(info));
+
+    public double GetCreatedAt(IntPtr info) => _getCreatedAt(info);
+
+    public void DestroyOutlet(IntPtr outlet)
+    {
+        _destroyOutlet(outlet);
+    }
+
+    public void DestroyStreamInfo(IntPtr streamInfo)
+    {
+        _destroyStreamInfo(streamInfo);
+    }
+
+    public void Dispose()
+    {
+        NativeLibrary.Free(_library);
+    }
+
+    private T GetDelegate<T>(string name) where T : Delegate =>
+        Marshal.GetDelegateForFunctionPointer<T>(NativeLibrary.GetExport(_library, name));
+
+    private T? TryGetDelegate<T>(string name) where T : Delegate =>
+        NativeLibrary.TryGetExport(_library, name, out var address)
+            ? Marshal.GetDelegateForFunctionPointer<T>(address)
+            : null;
+
+    private static string PtrToString(IntPtr value) =>
+        value == IntPtr.Zero ? "" : (Marshal.PtrToStringUTF8(value) ?? "");
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr CreateStreamInfoDelegate(
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string name,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string type,
+        int channelCount,
+        double nominalSrate,
+        int channelFormat,
+        [MarshalAs(UnmanagedType.LPUTF8Str)] string sourceId);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void DestroyStreamInfoDelegate(IntPtr streamInfo);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr CreateOutletDelegate(IntPtr streamInfo, int chunkSize, int maxBuffered);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void DestroyOutletDelegate(IntPtr outlet);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate int PushSampleDtpDelegate(IntPtr outlet, [In] double[] sample, double timestamp, int pushthrough);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate double LocalClockDelegate();
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate void SetConfigContentDelegate([MarshalAs(UnmanagedType.LPUTF8Str)] string content);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr StringDelegate();
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate IntPtr StreamInfoStringDelegate(IntPtr info);
+
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    private delegate double StreamInfoDoubleDelegate(IntPtr info);
+}
+
 internal sealed class CliOptions
 {
     public string RunId { get; init; } = "qcl041-windows-wifi-direct-broker";
@@ -486,6 +1005,15 @@ internal sealed class CliOptions
     public bool AutonomousGroupOwner { get; init; } = true;
     public short GroupOwnerIntent { get; init; } = 15;
     public bool PairBeforeOpen { get; init; }
+    public bool LslCommandOutletEnabled { get; init; }
+    public string LslDllPath { get; init; } = "";
+    public string LslCommandStreamName { get; init; } = "RustyQCL081WifiDirectCommand";
+    public string LslCommandStreamType { get; init; } = "rusty.quest.qcl081.wifi_direct.command";
+    public string LslCommandSourceId { get; init; } = "";
+    public int LslCommandSampleCount { get; init; } = 300;
+    public int LslCommandIntervalMs { get; init; } = 100;
+    public int LslCommandStartDelayMs { get; init; } = 250;
+    public int LslCommandHoldAfterMs { get; init; } = 10000;
 
     public static CliOptions Parse(string[] args)
     {
@@ -530,6 +1058,24 @@ internal sealed class CliOptions
                 : (short)15,
             PairBeforeOpen = values.TryGetValue("pair-before-open", out var pairBeforeOpen)
                 && string.Equals(pairBeforeOpen, "true", StringComparison.OrdinalIgnoreCase),
+            LslCommandOutletEnabled = values.TryGetValue("lsl-command-outlet", out var lslCommandOutlet)
+                && string.Equals(lslCommandOutlet, "true", StringComparison.OrdinalIgnoreCase),
+            LslDllPath = values.GetValueOrDefault("lsl-dll", ""),
+            LslCommandStreamName = values.GetValueOrDefault("lsl-command-stream-name", "RustyQCL081WifiDirectCommand"),
+            LslCommandStreamType = values.GetValueOrDefault("lsl-command-stream-type", "rusty.quest.qcl081.wifi_direct.command"),
+            LslCommandSourceId = values.GetValueOrDefault("lsl-command-source-id", ""),
+            LslCommandSampleCount = int.TryParse(values.GetValueOrDefault("lsl-command-sample-count"), out var lslCommandSampleCount)
+                ? Math.Max(1, lslCommandSampleCount)
+                : 300,
+            LslCommandIntervalMs = int.TryParse(values.GetValueOrDefault("lsl-command-interval-ms"), out var lslCommandIntervalMs)
+                ? Math.Max(1, lslCommandIntervalMs)
+                : 100,
+            LslCommandStartDelayMs = int.TryParse(values.GetValueOrDefault("lsl-command-start-delay-ms"), out var lslCommandStartDelayMs)
+                ? Math.Max(0, lslCommandStartDelayMs)
+                : 250,
+            LslCommandHoldAfterMs = int.TryParse(values.GetValueOrDefault("lsl-command-hold-after-ms"), out var lslCommandHoldAfterMs)
+                ? Math.Max(0, lslCommandHoldAfterMs)
+                : 10000,
         };
     }
 }

@@ -891,8 +891,17 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         bluetooth_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_bluetooth.py"
         ).read_text(encoding="utf-8")
-        protocol_source = (
+        protocol_facade_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_data_protocols.py"
+        ).read_text(encoding="utf-8")
+        protocol_lsl_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_data_protocols_lsl.py"
+        ).read_text(encoding="utf-8")
+        protocol_osc_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_data_protocols_osc.py"
+        ).read_text(encoding="utf-8")
+        protocol_zeromq_source = (
+            REPO_ROOT / "tools" / "hostessctl" / "connectivity_data_protocols_zeromq.py"
         ).read_text(encoding="utf-8")
         topology_source = (
             REPO_ROOT / "tools" / "hostessctl" / "connectivity_topology.py"
@@ -941,12 +950,15 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertIn("def live_bluetooth_report", bluetooth_source)
         self.assertIn("def qcl020_wifi_adb_body", topology_source)
         self.assertIn("def live_direct_wifi_topology_report", topology_live_source)
-        self.assertIn("def live_lsl_report", protocol_source)
-        self.assertIn("def live_osc_report", protocol_source)
-        self.assertIn("def live_zeromq_report", protocol_source)
-        self.assertIn("def lsl_discovery_sample_continuity", protocol_source)
-        self.assertIn("def osc_loopback_probe", protocol_source)
-        self.assertIn("def zeromq_loopback_probe", protocol_source)
+        self.assertIn("from tools.hostessctl.connectivity_data_protocols_lsl import", protocol_facade_source)
+        self.assertIn("from tools.hostessctl.connectivity_data_protocols_osc import", protocol_facade_source)
+        self.assertIn("from tools.hostessctl.connectivity_data_protocols_zeromq import", protocol_facade_source)
+        self.assertIn("def live_lsl_report", protocol_lsl_source)
+        self.assertIn("def lsl_discovery_sample_continuity", protocol_lsl_source)
+        self.assertIn("def live_osc_report", protocol_osc_source)
+        self.assertIn("def osc_loopback_probe", protocol_osc_source)
+        self.assertIn("def live_zeromq_report", protocol_zeromq_source)
+        self.assertIn("def zeromq_loopback_probe", protocol_zeromq_source)
         self.assertIn("def check_row", common_source)
         self.assertIn("def live_same_wifi_report", lan_source)
         self.assertIn("def collect_device_identity", lan_source)

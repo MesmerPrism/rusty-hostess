@@ -47,6 +47,7 @@ public final class MainActivity extends Activity {
     private static final String ACTION_BROKER_TELEMETRY = "io.github.mesmerprism.rustyhostess.t.OBSERVE_BROKER_TELEMETRY";
     private static final String ACTION_QCL050_RFCOMM = "io.github.mesmerprism.rustyhostess.t.RUN_QCL050_RFCOMM";
     private static final String ACTION_QCL051_BLE_GATT = "io.github.mesmerprism.rustyhostess.t.RUN_QCL051_BLE_GATT";
+    private static final String ACTION_QCL096_Q2Q_BLE_GATT = "io.github.mesmerprism.rustyhostess.t.RUN_QCL096_Q2Q_BLE_GATT";
     private static final String ACTION_QCL083_OSC = "io.github.mesmerprism.rustyhostess.t.RUN_QCL083_OSC";
     private static final String ACTION_RENDER = "io.github.mesmerprism.rustyhostess.t.RENDER_TELEMETRY";
     private static final String PACKAGE_ID = "package.polar_h10";
@@ -133,6 +134,10 @@ public final class MainActivity extends Activity {
             startQcl051BleGattProbe(intent);
             return;
         }
+        if (ACTION_QCL096_Q2Q_BLE_GATT.equals(intent.getAction())) {
+            startQcl096Q2qBleGattProbe(intent);
+            return;
+        }
         if (ACTION_QCL083_OSC.equals(intent.getAction())) {
             startQcl083OscProbe(intent);
             return;
@@ -191,6 +196,22 @@ public final class MainActivity extends Activity {
         telemetryView.resetForRun("qcl051_ble_gatt", modules);
         telemetryView.setRunState("running", "qcl051_ble_gatt", modules);
         Qcl051BleGattProbe.start(this, intent, handler, telemetryView);
+    }
+
+    private void startQcl096Q2qBleGattProbe(Intent intent) {
+        if (run != null) {
+            run.close();
+            run = null;
+        }
+        if (brokerTelemetryRun != null) {
+            brokerTelemetryRun.close();
+            brokerTelemetryRun = null;
+        }
+        List<String> modules = new ArrayList<>();
+        modules.add("module.hostess.qcl096_q2q_ble_gatt");
+        telemetryView.resetForRun("qcl096_q2q_ble_gatt", modules);
+        telemetryView.setRunState("running", "qcl096_q2q_ble_gatt", modules);
+        Qcl096Q2qBleGattProbe.start(this, intent, handler, telemetryView);
     }
 
     private void startQcl050RfcommProbe(Intent intent) {
