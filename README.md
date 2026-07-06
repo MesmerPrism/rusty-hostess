@@ -255,7 +255,14 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   Wi-Fi Direct lifecycle evidence ingestion. It validates a structured live
   lifecycle artifact and emits the promoted topology report only when feature,
   peer/API, permission, discovery, group formation, bounded TCP socket
-  exchange, and cleanup checks pass.
+  exchange, cleanup, source identity, and Quest coordination checks pass. For
+  the QCL-041 Quest-hosted Windows-join branch, the paired Windows-join summary
+  supplies the peer-discovery proof and records the Windows client endpoint.
+  For the QCL-041 Windows `WiFiDirectLegacySettings` AP branch, the
+  `--wifi-direct-windows-legacy-ap-report` route accepts only redacted
+  credential summaries with Windows owner host, Quest active-Wi-Fi IPv4,
+  bounded UDP/TCP/ACK bytes, transient Quest profile cleanup, and previous WLAN
+  restoration evidence.
 - `tools/hostessctl/connectivity_topology_lifecycle_plan.py`: read-only
   QCL-040/QCL-041 Wi-Fi Direct lifecycle plan artifacts. It binds the Agent
   Board lease, live preflight, source-template, external live-source, and

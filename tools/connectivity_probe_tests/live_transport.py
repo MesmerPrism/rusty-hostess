@@ -17,14 +17,14 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
 
         self.assertEqual(report["probe_id"], "QCL-010")
         self.assertTrue(str(report["run_id"]).endswith("-qcl-010"))
-        self.assertEqual(report["status"], "warn")
+        self.assertEqual(report["status"], "pass")
         self.assertEqual(report["device"]["wifi_ipv4"], "192.0.2.42")
         self.assertEqual(report["host"]["selected_ipv4"], "192.0.2.10")
         self.assertEqual(check(report, "topology.same_subnet")["status"], "pass")
         self.assertEqual(check(report, "device_to_host.tcp_echo")["status"], "pass")
         self.assertEqual(check(report, "host.windows_firewall_listener")["status"], "pass")
         self.assertEqual(validation["status"], "pass")
-        self.assertTrue(
+        self.assertFalse(
             any(
                 issue["issue_code"] == "hostess.issue.connectivity_probe.partial_protocol_coverage"
                 for issue in report["issues"]
@@ -48,7 +48,7 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(report["transport"]["route"], "pc_hotspot_lan_probe")
         self.assertEqual(check(report, "host.windows_mobile_hotspot")["status"], "pass")
         self.assertEqual(check(report, "device_to_host.tcp_echo")["status"], "pass")
-        self.assertEqual(report["status"], "warn")
+        self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
 
     def test_live_wifi_direct_topology_preflight_blocks_until_peer_lifecycle_exists(self) -> None:
@@ -185,6 +185,216 @@ class HostessCtlConnectivityProbeLiveTransportTests(unittest.TestCase):
         self.assertEqual(report["artifacts"][0]["source_run_id"], "qcl-041-unit-test-lifecycle-run")
         self.assertEqual(report["artifacts"][0]["harness_id"], "qcl-041-unit-test-peer-harness")
         self.assertEqual(report["measurements"]["cleanup_completed"], True)
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_accepts_quest_hosted_windows_join_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-quest-hosted-lifecycle.json"
+            windows_join_path = root / "qcl041-windows-join-summary.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["peer_class"] = "quest"
+            artifact["topology"]["peer_class"] = "quest"
+            artifact["topology"]["endpoint_direction"] = "quest_to_quest_peer_group"
+            artifact["harness"]["route"] = "quest_quest_wifi_direct_lifecycle"
+            artifact["host"]["os"] = "android-quest-peer"
+            artifact["lease"]["lease_id"] = "manual-no-lease"
+            artifact["lease"]["reserved_before_live_steps"] = False
+            artifact["lease"]["released_after_live_steps"] = False
+            artifact["lease"]["reserve_command"] = ""
+            artifact["lease"]["release_command"] = ""
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+            windows_join_path.write_text(
+                json.dumps(quest_hosted_windows_join_summary(run_id=artifact["run_id"])),
+                encoding="utf-8",
+            )
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                    wifi_direct_windows_join_report=str(windows_join_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(check(report, "wifi_direct.lifecycle_source")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.quest_lease")["status"], "pass")
+        self.assertEqual(
+            check(report, "wifi_direct.quest_lease")["observed"]["coordination_mode"],
+            "manual_supervised_no_agent_board",
+        )
+        self.assertEqual(check(report, "wifi_direct.peer_discovery")["status"], "pass")
+        self.assertEqual(check(report, "windows.wifi_direct_join")["status"], "pass")
+        self.assertEqual(report["topology"]["peer_class"], "windows")
+        self.assertEqual(report["topology"]["peer_class_source"], "quest")
+        self.assertEqual(report["topology"]["endpoint_direction"], "quest_hosted_windows_client_join")
+        self.assertEqual(report["topology"]["quest_group_owner_host"], "192.168.49.1")
+        self.assertEqual(report["topology"]["windows_client_ipv4"], "192.168.49.158")
+        self.assertEqual(report["host"]["os"], "windows")
+        self.assertEqual(report["host"]["wifi_direct_role"], "client")
+        self.assertEqual(report["host"]["source_artifact_host"]["os"], "android-quest-peer")
+        self.assertEqual(report["artifacts"][1]["kind"], "wifi_direct_windows_join_report")
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_blocks_quest_peer_without_windows_join_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            lifecycle_path = root / "qcl041-quest-peer-lifecycle.json"
+            out = root / "qcl041-live-topology.json"
+            artifact = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            artifact["peer_class"] = "quest"
+            artifact["topology"]["peer_class"] = "quest"
+            artifact["topology"]["endpoint_direction"] = "quest_to_quest_peer_group"
+            artifact["harness"]["route"] = "quest_quest_wifi_direct_lifecycle"
+            artifact["host"]["os"] = "android-quest-peer"
+            lifecycle_path.write_text(json.dumps(artifact), encoding="utf-8")
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_lifecycle_report=str(lifecycle_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        source_check = check(report, "wifi_direct.lifecycle_source")
+        windows_join_check = check(report, "windows.wifi_direct_join")
+        issue_codes = {
+            issue_code
+            for row in report["checks"]
+            for issue_code in row.get("issue_codes", [])
+        }
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(source_check["status"], "blocked")
+        self.assertEqual(windows_join_check["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_lifecycle_peer_mismatch",
+            issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_windows_join_report_missing",
+            issue_codes,
+        )
+        self.assertEqual(report["topology"]["peer_class"], "windows")
+        self.assertEqual(validation["status"], "pass")
+
+    def test_wifi_direct_lifecycle_report_accepts_windows_legacy_ap_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            helper_path = root / "windows-legacy-ap-helper.json"
+            client_path = root / "quest-active-wifi-client-artifact.json"
+            summary_path = root / "windows-legacy-ap-summary.json"
+            out = root / "qcl041-windows-legacy-ap-normalized.json"
+            helper_path.write_text(json.dumps(windows_legacy_ap_helper_report()), encoding="utf-8")
+            client_path.write_text(json.dumps(windows_legacy_ap_client_report()), encoding="utf-8")
+            summary_path.write_text(
+                json.dumps(
+                    windows_legacy_ap_summary(
+                        helper_path=str(helper_path),
+                        client_path=str(client_path),
+                    )
+                ),
+                encoding="utf-8",
+            )
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_windows_legacy_ap_report=str(summary_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(report["transport"]["route"], "windows_wifi_direct_legacy_ap")
+        self.assertEqual(report["topology"]["endpoint_direction"], "windows_legacy_ap_quest_client_join")
+        self.assertEqual(report["topology"]["windows_owner_host"], "192.168.137.1")
+        self.assertEqual(report["topology"]["quest_active_wifi_ipv4"], "192.168.137.43")
+        self.assertEqual(report["product_routing"]["qcl082_product_media_topology_input_ready"], True)
+        self.assertEqual(report["product_routing"]["credential_fields_preserved"], False)
+        self.assertEqual(check(report, "wifi_direct.legacy_ap_source")["status"], "pass")
+        self.assertEqual(check(report, "windows.wifi_direct_legacy_ap")["status"], "pass")
+        self.assertEqual(check(report, "topology.socket_exchange")["status"], "pass")
+        self.assertEqual(check(report, "wifi_direct.cleanup")["status"], "pass")
+        self.assertEqual(validation["status"], "pass")
+        self.assertNotIn("passphrase", json.dumps(report).lower())
+
+    def test_wifi_direct_lifecycle_report_blocks_damaged_windows_legacy_ap_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            helper_path = root / "windows-legacy-ap-helper.json"
+            client_path = root / "quest-active-wifi-client-artifact.json"
+            summary_path = root / "windows-legacy-ap-summary.json"
+            out = root / "qcl041-windows-legacy-ap-normalized.json"
+            helper_path.write_text(
+                json.dumps(windows_legacy_ap_helper_report(tcp_ack_bytes=0)),
+                encoding="utf-8",
+            )
+            client_path.write_text(
+                json.dumps(windows_legacy_ap_client_report(client_network_bound=False, tcp_ack_bytes=0)),
+                encoding="utf-8",
+            )
+            summary_path.write_text(
+                json.dumps(
+                    windows_legacy_ap_summary(
+                        helper_path=str(helper_path),
+                        client_path=str(client_path),
+                        previous_wlan_restored=False,
+                    )
+                ),
+                encoding="utf-8",
+            )
+            status = run_connectivity_probe(
+                probe_args(
+                    mode="fixture",
+                    probe_id="QCL-041",
+                    out=str(out),
+                    wifi_direct_windows_legacy_ap_report=str(summary_path),
+                ),
+                clock_func=fixed_datetime,
+            )
+            report = json.loads(out.read_text(encoding="utf-8"))
+            validation = validate_connectivity_probe_report(report)
+
+        issue_codes = {
+            issue_code
+            for row in report["checks"]
+            for issue_code in row.get("issue_codes", [])
+        }
+        self.assertEqual(status, 0)
+        self.assertEqual(report["status"], "blocked")
+        self.assertFalse(report["promotion"]["allowed"])
+        self.assertEqual(check(report, "windows.wifi_direct_legacy_ap")["status"], "blocked")
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_legacy_ap_client_network_not_bound",
+            issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_legacy_ap_tcp_ack_missing",
+            issue_codes,
+        )
+        self.assertIn(
+            "hostess.issue.connectivity_probe.wifi_direct_legacy_ap_previous_wlan_restore_missing",
+            issue_codes,
+        )
         self.assertEqual(validation["status"], "pass")
 
     def test_wifi_direct_lifecycle_report_promotes_complete_qcl040_topology(self) -> None:

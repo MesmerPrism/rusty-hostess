@@ -48,10 +48,12 @@ def tcp_echo_listener_from_result(args: argparse.Namespace, tcp_result: dict[str
     if port <= 0:
         return {}
     return {
-        "program": sys.executable,
+        "program": str(observed.get("listener_program") or sys.executable),
         "protocol": "TCP",
         "port": port,
         "bind_host": str(getattr(args, "tcp_echo_bind_host", "0.0.0.0") or "0.0.0.0"),
+        "rule_name": default_firewall_rule_name(port, "TCP"),
+        "remote_address": "LocalSubnet",
     }
 
 
@@ -79,7 +81,11 @@ def live_qcl010_status(checks: list[dict[str, Any]], host_ip: str, device_ip: An
     if not host_ip or not device_ip:
         return "blocked"
     if check_status(checks, "device_to_host.tcp_echo") == "pass":
-        return "warn"
+        if check_status(checks, "host.windows_network_firewall_profile") == "warn":
+            return "warn"
+        if check_status(checks, "host.windows_firewall_listener") == "warn":
+            return "warn"
+        return "pass"
     if check_status(checks, "device_to_host.icmp_ping") == "pass":
         return "warn"
     return "fail"
@@ -91,7 +97,11 @@ def live_qcl011_status(checks: list[dict[str, Any]], host_ip: str, device_ip: An
     if check_status(checks, "host.windows_mobile_hotspot") != "pass":
         return "blocked"
     if check_status(checks, "device_to_host.tcp_echo") == "pass":
-        return "warn"
+        if check_status(checks, "host.windows_network_firewall_profile") == "warn":
+            return "warn"
+        if check_status(checks, "host.windows_firewall_listener") == "warn":
+            return "warn"
+        return "pass"
     if check_status(checks, "device_to_host.icmp_ping") == "pass":
         return "warn"
     return "fail"

@@ -8,8 +8,10 @@ import json
 import re
 import socket
 import subprocess
+import tempfile
 import threading
 import time
+from pathlib import Path
 from typing import Any
 
 from tools.hostessctl.connectivity_probe_common import (
@@ -17,14 +19,17 @@ from tools.hostessctl.connectivity_probe_common import (
     adb_command,
     append_issue_once,
     base_report,
+    check_status,
     check_row,
     completed_observed,
     ensure_probe_run_id,
     issue_row,
     object_value,
     powershell_executable,
+    read_json_file,
     shell_word,
     strip_powershell_clixml_noise,
+    wait_for_json_file,
 )
 from tools.hostessctl.connectivity_firewall import (
     collect_windows_network_profile,
@@ -200,12 +205,14 @@ def live_same_wifi_report(
         if selected_probe_id == "QCL-011"
         else live_qcl010_status(checks, host_ip, device.get("wifi_ipv4"))
     )
-    if status == "warn":
+    tcp_passed = check_status(checks, "device_to_host.tcp_echo") == "pass"
+    device_ping_passed = check_status(checks, "device_to_host.icmp_ping") == "pass"
+    if status == "warn" and not tcp_passed and device_ping_passed:
         issues.append(
             issue_row(
                 "hostess.issue.connectivity_probe.partial_protocol_coverage",
                 "warning",
-                f"{selected_probe_id} topology was probed with ICMP/TCP only; WebSocket, UDP, and LSL probes remain separate",
+                f"{selected_probe_id} reachability was only proven by ICMP; TCP echo remains the promotion data path",
             )
         )
     if status in {"fail", "blocked"}:
@@ -257,7 +264,7 @@ def live_same_wifi_report(
             "promotion": {
                 "allowed": False,
                 "target": "quest.device_link topology descriptor",
-                "reason": f"initial {selected_probe_id} probe; WebSocket, UDP, LSL, and firewall classification remain separate",
+                "reason": f"{selected_probe_id} is a LAN reachability row; stream protocol promotion is owned by QCL-080/QCL-081/QCL-083/QCL-084 rows",
             },
         }
     )
@@ -512,6 +519,19 @@ def device_to_host_tcp_echo(args: argparse.Namespace, host_ip: str, run_timeout_
     timeout = float(getattr(args, "tcp_timeout_seconds", 4.0))
     bind_host = str(getattr(args, "tcp_echo_bind_host", "0.0.0.0") or "0.0.0.0")
     requested_port = int(getattr(args, "tcp_echo_port", 0) or 0)
+    listener_helper = str(getattr(args, "tcp_listener_helper", "") or "").strip()
+    if listener_helper:
+        return device_to_host_tcp_echo_with_listener_helper(
+            args,
+            host_ip,
+            run_timeout_func,
+            marker=marker,
+            timeout=timeout,
+            bind_host=bind_host,
+            requested_port=requested_port,
+            listener_helper=listener_helper,
+        )
+
     received: dict[str, Any] = {"data": b"", "error": ""}
     ready = threading.Event()
 
@@ -571,6 +591,139 @@ def device_to_host_tcp_echo(args: argparse.Namespace, host_ip: str, run_timeout_
         },
         issue_codes=[] if passed else ["hostess.issue.connectivity_probe.tcp_echo_failed"],
     )
+
+
+def device_to_host_tcp_echo_with_listener_helper(
+    args: argparse.Namespace,
+    host_ip: str,
+    run_timeout_func: Any,
+    *,
+    marker: str,
+    timeout: float,
+    bind_host: str,
+    requested_port: int,
+    listener_helper: str,
+) -> dict[str, Any]:
+    run_token = safe_filename(str(getattr(args, "run_id", "") or f"{int(time.time() * 1000)}"))
+    helper_root = Path(tempfile.gettempdir()) / "rusty-hostess-qcl010"
+    helper_root.mkdir(parents=True, exist_ok=True)
+    ready_path = helper_root / f"{run_token}.listener-ready.json"
+    out_path = helper_root / f"{run_token}.listener-result.json"
+    for path in [ready_path, out_path]:
+        try:
+            path.unlink()
+        except FileNotFoundError:
+            pass
+
+    helper_command = [
+        listener_helper,
+        "--qcl010-tcp-echo-listener",
+        "--bind-host",
+        bind_host,
+        "--port",
+        str(requested_port),
+        "--marker",
+        marker,
+        "--timeout-seconds",
+        f"{timeout + 2.0:.3f}",
+        "--ready-out",
+        str(ready_path),
+        "--out",
+        str(out_path),
+    ]
+    started = time.monotonic()
+    try:
+        listener_process = subprocess.Popen(
+            helper_command,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+    except OSError as exc:
+        return check_row(
+            "device_to_host.tcp_echo",
+            "blocked",
+            f"WPF TCP echo listener helper did not start: {exc}",
+            observed={"listener_helper": listener_helper, "error": str(exc)},
+            issue_codes=["hostess.issue.connectivity_probe.tcp_listener_helper_failed"],
+        )
+
+    ready = wait_for_json_file(ready_path, timeout_seconds=timeout)
+    if not ready:
+        terminate_process(listener_process)
+        return check_row(
+            "device_to_host.tcp_echo",
+            "blocked",
+            "WPF TCP echo listener helper did not report readiness",
+            observed={
+                "listener_helper": listener_helper,
+                "ready_path": str(ready_path),
+                "result_path": str(out_path),
+            },
+            issue_codes=["hostess.issue.connectivity_probe.tcp_listener_helper_not_ready"],
+        )
+
+    port = int(ready.get("port") or requested_port)
+    command_text = (
+        f"printf %s {shell_word(marker)} | "
+        f"(toybox nc -w {int(timeout)} {host_ip} {port} || nc -w {int(timeout)} {host_ip} {port})"
+    )
+    result = run_timeout_func(
+        adb_command(args, "shell", command_text),
+        timeout_seconds=timeout + 2.0,
+    )
+    helper_stdout = ""
+    helper_stderr = ""
+    try:
+        helper_stdout, helper_stderr = listener_process.communicate(timeout=timeout + 5.0)
+    except subprocess.TimeoutExpired:
+        terminate_process(listener_process)
+        helper_stdout, helper_stderr = listener_process.communicate(timeout=2.0)
+
+    listener_report = read_json_file(out_path)
+    elapsed_ms = int((time.monotonic() - started) * 1000)
+    payload = str(listener_report.get("payload") or "")
+    passed = str(listener_report.get("status") or "") == "pass" and marker in payload
+    return check_row(
+        "device_to_host.tcp_echo",
+        "pass" if passed else "fail",
+        payload.strip() or str(listener_report.get("error") or "no TCP echo received"),
+        observed={
+            "host_ip": host_ip,
+            "port": port,
+            "elapsed_ms": elapsed_ms,
+            "listener_owner": "hostess_companion_wpf",
+            "listener_program": str(listener_report.get("program") or ready.get("program") or listener_helper),
+            "listener_helper": listener_helper,
+            "listener_ready": ready,
+            "listener_report": listener_report,
+            "listener_process": {
+                "returncode": listener_process.returncode,
+                "stdout": helper_stdout,
+                "stderr": helper_stderr,
+            },
+            "adb_client": completed_observed(result),
+            "server_peer": str(listener_report.get("peer") or ""),
+        },
+        notes="WPF-owned host TCP echo listener; firewall verification is product-scoped to HostessCompanion.Wpf.exe.",
+        issue_codes=[] if passed else ["hostess.issue.connectivity_probe.tcp_echo_failed"],
+    )
+
+
+def terminate_process(process: subprocess.Popen[str]) -> None:
+    if process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=2.0)
+    except subprocess.TimeoutExpired:
+        process.kill()
+        process.wait(timeout=2.0)
+
+
+def safe_filename(value: str) -> str:
+    safe = re.sub(r"[^A-Za-z0-9._-]+", "-", value).strip("._-")
+    return safe or "run"
 
 
 def adb_text(args: argparse.Namespace, run_captured_func: Any, *parts: str) -> str:

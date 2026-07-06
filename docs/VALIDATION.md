@@ -399,7 +399,59 @@ This helper report is not the lifecycle source artifact and does not clear
 matching `quest:<serial>` lease, peer discovery, group formation, bounded TCP
 socket exchange, and cleanup.
 
-Once a leased Quest-side or peer harness has produced a structured
+The 2026-07-05 factory-reset reruns fixed the earlier Android Location Mode
+precondition but did not produce a new promoted topology artifact. Before both
+runs, Windows Mobile Hotspot was stopped because it conflicts with Windows
+Wi-Fi Direct advertising, and the Quest reported secure `location_mode=3`.
+The default helper run wrote:
+
+```text
+S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\qcl041-location3-rerun-20260705-202210\wifi-direct-lifecycle-qcl041-windows.live.json
+```
+
+The UI-thread broker rerun wrote:
+
+```text
+S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\qcl041-location3-broker-rerun-20260705-202431\wifi-direct-lifecycle-qcl041-windows.live.json
+```
+
+Hostess normalized the latest report to
+`target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json` with
+`status=blocked`: Wi-Fi Direct feature, Windows API, and permission state
+passed, but `wifi_direct.peer_discovery`,
+`wifi_direct.group_formation`, `topology.socket_exchange`, and
+`wifi_direct.cleanup` remained blocked. The broker helper reported
+`publisher_started=true`, `listener_ready=true`, `peer_requested=false`,
+`group_formed=false`, `endpoint_pair_count=0`, and no socket exchange. Treat
+Location Mode as solved for this headset; the current work is peer request,
+group formation, socket exchange, and cleanup evidence.
+
+The 2026-07-06 restored branch is inverse topology: the Quest QCL-041 harness
+hosts a temporary credentialed Wi-Fi Direct group and Windows joins it as a
+WLAN client. The raw Rusty Quest artifact and its paired Windows-join summary
+are:
+
+```text
+S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\qcl041-quest-hosted-windows-join-20260705-235850\quest-artifact-raw.json
+S:\Work\repos\active\rusty-quest\target\qcl041-wifi-direct-lifecycle\qcl041-quest-hosted-windows-join-20260705-235850\quest-hosted-windows-join-summary.json
+```
+
+Hostess normalized them to:
+
+```text
+S:\Work\repos\active\rusty-hostess\target\connectivity-probe\qcl041-quest-hosted-windows-join-lifecycle-normalized-20260706.json
+```
+
+The normalized report has `status=pass`, `promotion.allowed=true`,
+`topology.peer_class=windows`, `peer_class_source=quest`, and
+`endpoint_direction=quest_hosted_windows_client_join`. It records the Quest
+group owner as `192.168.49.1`, the Windows client as `192.168.49.158`, and all
+normalization checks pass, including `windows.wifi_direct_join`. This restores
+an AP-less Quest-to-Windows data path, but it does not prove the original
+Windows-hosted autonomous-GO WinRT admission path, which remains blocked by
+association reject status code `12`.
+
+Once a leased or explicitly user-supervised Quest-side or peer harness has produced a structured
 `rusty.quest.connectivity_wifi_direct_lifecycle.v1` artifact, normalize it
 through the same CLI route instead of treating the WPF UI as the promotion
 owner:
@@ -409,6 +461,7 @@ $ProbeId = 'QCL-041'
 $LifecyclePlan = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-plan.json'
 $LifecycleTemplate = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-template.json'
 $LifecycleReport = 'target\connectivity-probe\qcl041-wifi-direct-lifecycle-source.json'
+$WindowsJoinReport = ''
 $TopologyReport = 'target\connectivity-probe\qcl041-live-wifi-direct-lifecycle.json'
 python tools\hostessctl\hostessctl.py connectivity-probe wifi-direct-lifecycle-plan `
   --probe-id $ProbeId `
@@ -424,6 +477,7 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --mode fixture `
   --probe-id $ProbeId `
   --wifi-direct-lifecycle-report $LifecycleReport `
+  --wifi-direct-windows-join-report $WindowsJoinReport `
   --out $TopologyReport `
   --fail-on-error
 ```
@@ -431,14 +485,18 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 The plan route is read-only and non-promoting: it records the PowerShell
 command chain, Agent Board `quest:<quest-serial>` lease policy, expected
 artifacts, external live-source dependency, and the requirement that
-`device.serial` match the Agent Board `quest:<serial>` lease resource that was
-reserved for the live steps. It also requires the source artifact to name a
+`device.serial` match the Agent Board `quest:<serial>` lease resource when
+Agent Board coordination is used. If Agent Board was not explicitly requested,
+a user-supervised run can instead record `lease_id=manual-no-lease`,
+matching `quest:<serial>` resource/device serials, and
+`coordination_mode=manual_supervised_no_agent_board` in the normalized report.
+It also requires the source artifact to name a
 real `run_id`, `harness.harness_id`, and `harness.owner`, so a passing-looking
 phase list cannot masquerade as a traceable live harness run. The template
 route is a local contract aid only: it writes the expected source artifact
 shape with placeholder source identity, `live_evidence=false`, and blocked
 phases, so the normalizer keeps `transport.direct_wifi_live_topology` pending
-until a leased live harness replaces it with real evidence.
+until a live harness replaces it with real evidence.
 
 Use `QCL-040` plus `qcl040-*` artifact names for Android-phone peer lifecycle
 evidence, or `QCL-041` plus `qcl041-*` artifact names for Windows-peer
@@ -456,13 +514,40 @@ source artifact must include a positive `peer_discovery.peer_count`, recorded
 `socket_exchange.messages_sent` and `socket_exchange.messages_received`
 counters, and `cleanup.completed=true`. It must also include a traceable
 source identity (`run_id`, `harness.harness_id`, and `harness.owner`) plus a
-`lease` or `agent_board_lease` object proving an Agent Board
-`quest:<serial>` lease was reserved before live Wi-Fi Direct steps and
-released after cleanup, with a real lease id rather than a placeholder, and
-the source `device.serial` must match the serial portion of the lease
+`lease` or `agent_board_lease` object proving either the Agent Board
+`quest:<serial>` lease lifecycle or the explicit manual/no-lease policy above.
+The source `device.serial` must match the serial portion of the coordination
 resource. A phase with only `status=pass`, or a complete-looking artifact
-without matching source, lease, and device identity evidence, is not enough to
-clear the topology gate.
+without matching source, coordination, and device identity evidence, is not
+enough to clear the topology gate. The QCL-041 Quest-hosted Windows-join branch
+is the only current exception to the positive `peer_discovery.peer_count`
+requirement: it must pass a paired
+`rusty.quest.qcl041.quest_hosted_windows_join_probe.v1` sidecar proving
+Windows joined the Quest group, exchanged bounded TCP, cleaned up, redacted the
+credential, and deleted the temporary Windows WLAN profile.
+
+The QCL-041 Windows `WiFiDirectLegacySettings` AP branch uses a separate
+summary route. It accepts the Rusty Quest Windows legacy AP summary only when
+credentials are redacted and the source, Windows helper, Quest active-Wi-Fi
+client, socket, and cleanup evidence agree on the same run and endpoints:
+
+```powershell
+python tools\hostessctl\hostessctl.py connectivity-probe run `
+  --mode fixture `
+  --probe-id QCL-041 `
+  --wifi-direct-windows-legacy-ap-report <windows-legacy-ap-summary.json> `
+  --out target\connectivity-probe\qcl041-windows-legacy-ap-normalized.json `
+  --fail-on-error
+```
+
+The normalized report sets
+`topology.endpoint_direction=windows_legacy_ap_quest_client_join` and
+`transport.route=windows_wifi_direct_legacy_ap`. It blocks if the summary
+copies passphrases, lacks the Windows owner host or Quest active-Wi-Fi IPv4,
+misses bounded UDP/TCP/ACK bytes, fails to forget the transient Quest profile,
+or cannot prove previous WLAN restoration. This clears only the QCL-041
+topology input; QCL-082 product media over the selected branch still needs a
+branch-matched RMANVID1 receiver/listener report.
 
 LSL, OSC, ZeroMQ, and generic WebSocket protocol-fit smokes are covered by
 host-loopback live reports. These are dependency/protocol checks, not Quest
@@ -632,6 +717,43 @@ any dependency is missing or unready, Hostess writes a blocked receiver result w
 start-source request, does not arm the receiver, and does not start the live
 Android command.
 
+For generic QCL-082 media/runtime promotion that does not claim direct-Wi-Fi
+product topology, the 2026-07-05 PC-hotspot run is the current live receipt:
+
+```text
+S:\Work\repos\active\rusty-hostess\target\connectivity-probe\qcl082-live-pc-hotspot-media-runtime-20260705-203013\qcl082-rmanvid1-receiver-capture.json
+```
+
+That run installed the broker APK, joined the Quest to the Windows Mobile
+Hotspot, confirmed QCL-011 host/device reachability, started the WPF
+`RMANVID1` TCP receiver on `0.0.0.0:9079`, and sent the Manifold
+`command.media_stream.start_source` request for a synthetic MediaCodec surface
+source. The receiver result accepted the connection, closed with
+`max_packets_reached`, and recorded live frame, byte, keyframe, drop, queue,
+backpressure, and runtime-status evidence. The QCL-082 report status is
+`pass`; `protocol.media_stream_runtime_status`,
+`protocol.media_receiver_capture`, `protocol.media_binary_transport`,
+`protocol.media_packet_boundaries`, `protocol.media_timestamp_policy`,
+`protocol.media_backpressure_policy`, `protocol.media_high_rate_json_guard`,
+`protocol.media_receiver_counters`, and
+`protocol.media_product_listener_firewall_gate` pass. The remaining
+`hostess.issue.connectivity_probe.media_direct_wifi_topology_mismatch` is
+intentional because the topology sidecar is QCL-011 PC hotspot rather than a
+promoted QCL-041 direct-Wi-Fi lifecycle artifact.
+
+The focused protocol matrix that swaps the old QCL-082 fixture for this live
+receiver report is:
+
+```text
+S:\Work\repos\active\rusty-hostess\target\connectivity-probe\qcl082-live-pc-hotspot-media-runtime-20260705-203013\protocol-evidence-matrix.full-with-live-qcl082.json
+```
+
+It reports `status=pass`, `all_required_data_protocols_promoted=true`,
+`required_promoted_count=5`, and QCL-082 `promotion_state=promoted` from
+`endpoint_source=rusty-quest-manifold-broker-media-stream-runtime`. It keeps
+QCL-050 blocked and QCL-079 candidate visible without blocking the required
+fold-in.
+
 If verification reports `product_rule_verified=false`, run the same command
 with `--action apply` from an elevated PowerShell session, then rerun
 `--action verify`. A non-elevated apply must emit a blocked report with
@@ -797,6 +919,10 @@ projection, and transport-gate routes so WPF and CLI automation inspect the
 same remaining checklist; it does not run ADB, mutate Wi-Fi Direct, apply
 firewall rules, parse media payloads, or clear pending gates without the
 supplied evidence artifacts.
+For the July 6 Windows legacy AP branch, the plan may consume the normalized
+`windows_wifi_direct_legacy_ap` topology report and a product firewall report
+as ready dependencies, but the QCL-082 product-media row remains planned until
+a branch-matched RMANVID1 receiver capture is supplied.
 Pass `--qcl040-preflight-report` and `--qcl041-preflight-report` when fresh
 live preflight artifacts exist. The plan projects those reports as blocker
 observations for operator guidance, including missing phone-peer harness,
@@ -955,7 +1081,61 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
 
 Live Windows PC-hotspot QCL-011 validation requires Windows Mobile Hotspot on
 and the Quest joined to that hotspot. Use the hotspot interface address
-(`192.168.137.1` on the current Windows default) as `--host-ip`:
+(`192.168.137.1` on the current Windows default) as `--host-ip`.
+
+On 2026-07-05, a factory-reset Quest 3S was joined to Windows Mobile Hotspot
+without manual headset Wi-Fi selection by using the Quest shell Wi-Fi command.
+The route is:
+
+1. Start Windows Mobile Hotspot with the Windows UI or
+   `NetworkOperatorTetheringManager.StartTetheringAsync()`, then verify
+   `TetheringOperationalState=On` and the hotspot adapter is
+   `192.168.137.1/24`. In PowerShell, use a bounded sleep-and-query pattern
+   rather than an unbounded wait on the WinRT async handle.
+2. Read the hotspot SSID and passphrase into local PowerShell variables. Do
+   not print or commit the passphrase.
+3. On the headset, use `adb shell cmd wifi connect-network "<ssid>" wpa2
+   "<passphrase>"`. This Quest build exposes `connect-network`; the shell
+   route for `network-suggestions-set-user-approved` is protected.
+4. If a prior failed placeholder config exists, remove the matching network id
+   from `adb shell cmd wifi list-networks` before retrying. The 2026-07-05
+   exploratory run used network id `1`, but future runs should read the id
+   from `list-networks` instead of hard-coding it.
+5. Wait for DHCP and verify `adb shell cmd wifi status` reports the hotspot
+   SSID and a `192.168.137.x` Quest address; verify Windows reports one
+   hotspot client.
+
+Reusable PowerShell shape:
+
+```powershell
+$Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
+$QuestSerial = 'REPLACE_WITH_QUEST_SERIAL'
+$stateJson = powershell -NoProfile -ExecutionPolicy Bypass -Command '& {
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  [Windows.Networking.Connectivity.NetworkInformation, Windows.Networking.Connectivity, ContentType = WindowsRuntime] | Out-Null
+  [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager, Windows.Networking.NetworkOperators, ContentType = WindowsRuntime] | Out-Null
+  $profile = [Windows.Networking.Connectivity.NetworkInformation]::GetInternetConnectionProfile()
+  $manager = [Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager]::CreateFromConnectionProfile($profile)
+  $config = $manager.GetCurrentAccessPointConfiguration()
+  [pscustomobject]@{
+    ssid = $config.Ssid
+    passphrase = $config.Passphrase
+    state = $manager.TetheringOperationalState.ToString()
+  } | ConvertTo-Json -Compress
+}'
+$state = $stateJson | ConvertFrom-Json
+if ($state.state -ne 'On') { throw "hotspot_not_on:$($state.state)" }
+$remoteSsid = '"' + $state.ssid.Replace('"','\"') + '"'
+$remotePass = '"' + $state.passphrase.Replace('"','\"') + '"'
+
+$networks = & $Adb -s $QuestSerial shell cmd wifi list-networks
+# If needed, parse the hotspot row from $networks and forget only that id.
+& $Adb -s $QuestSerial shell cmd wifi connect-network $remoteSsid wpa2 $remotePass | Out-Null
+Start-Sleep -Seconds 20
+& $Adb -s $QuestSerial shell cmd wifi status
+```
+
+Then run the QCL-011 probe:
 
 ```powershell
 $Adb = 'S:\Work\tools\Android\windows-sdk\platform-tools\adb.exe'
@@ -967,8 +1147,17 @@ python tools\hostessctl\hostessctl.py connectivity-probe run `
   --serial $QuestSerial `
   --host-ip 192.168.137.1 `
   --tcp-echo-port 18766 `
+  --tcp-listener-helper apps\hostess-companion-wpf\bin\Debug\net9.0-windows\HostessCompanion.Wpf.exe `
   --out target\connectivity-probe\qcl011-live-pc-hotspot.json
 ```
+
+The 2026-07-05 live QCL-011 run produced
+`qcl011-live-pc-hotspot-20260705-200220.json`: Windows Mobile Hotspot was on,
+Windows reported one hotspot client, the Quest was `192.168.137.39/24`, same
+subnet passed, the WPF-owned TCP echo passed against `192.168.137.1:18766`,
+the product firewall listener check passed, and the report status was `pass`
+with no issues. Quest-to-PC ICMP remained blocked, which is acceptable for the
+row because the TCP data path is the promotion-relevant check.
 
 The 2026-06-28 live QCL-011 run produced
 `qcl011-live-pc-hotspot-20260628-02.json`: Windows Mobile Hotspot was on,

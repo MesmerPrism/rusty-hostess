@@ -630,6 +630,8 @@ def probe_args(**overrides: object) -> argparse.Namespace:
         "media_stream_topology_report": "",
         "media_stream_firewall_report": "",
         "wifi_direct_lifecycle_report": "",
+        "wifi_direct_windows_join_report": "",
+        "wifi_direct_windows_legacy_ap_report": "",
         "windows_wifi_direct_helper_report": "",
         "capture_out": "target/connectivity-probe/media-stream.rmanvid1",
         "sidecar_out": "target/connectivity-probe/media-stream-receiver-sidecar.json",
@@ -1378,6 +1380,168 @@ def wifi_direct_lifecycle_artifact(
             "tcp_connect_ms": 91,
             "wifi_direct_peer_count": 1,
             "group_formation_ms": 320,
+        },
+    }
+
+
+def quest_hosted_windows_join_summary(
+    *,
+    run_id: str = "qcl-041-unit-test-lifecycle-run",
+    status: str = "pass",
+) -> dict[str, Any]:
+    return {
+        "schema": "rusty.quest.qcl041.quest_hosted_windows_join_probe.v1",
+        "run_id": run_id,
+        "status": status,
+        "ssid": "DIRECT-rq-QCL041PC",
+        "credential_sensitive_redacted": True,
+        "results": {
+            "quest_group_owner_host": "192.168.49.1",
+            "windows_connected_to_quest_go": True,
+            "windows_wifi_direct_ipv4": "192.168.49.158",
+            "tcp_response_bytes": 81,
+            "final_socket_exchange_pass": True,
+            "final_cleanup_pass": True,
+        },
+        "cleanup": {
+            "windows_profile_deleted": True,
+            "windows_reconnected_previous_ssid": True,
+        },
+    }
+
+
+def windows_legacy_ap_helper_report(
+    *,
+    run_id: str = "qcl041-windows-legacy-ap-unit-test",
+    status: str = "pass",
+    udp_bytes: int = 65536,
+    tcp_bytes: int = 65536,
+    tcp_ack_bytes: int = 88,
+    cleanup_completed: bool = True,
+) -> dict[str, Any]:
+    return {
+        "schema": "rusty.hostess.windows.qcl041_wifi_direct_legacy_ap.v1",
+        "schema_version": 1,
+        "run_id": run_id,
+        "status": status,
+        "role": "windows_wifi_direct_legacy_ap_owner",
+        "windows_wifidirect_mode": "autonomous_legacy_ap",
+        "legacy_settings_enabled": True,
+        "autonomous_group_owner": True,
+        "credential_sensitive_redacted": True,
+        "selected_owner_host": "192.168.137.1",
+        "expected_bytes": 65536,
+        "measurements": {
+            "advertisement_started": True,
+            "publisher_status": "Stopped",
+            "udp_packets": 55,
+            "udp_bytes": udp_bytes,
+            "tcp_accepts": 1,
+            "tcp_bytes": tcp_bytes,
+            "tcp_ack_bytes": tcp_ack_bytes,
+            "cleanup_completed": cleanup_completed,
+        },
+        "events": [],
+        "issues": [],
+        "errors": [],
+    }
+
+
+def windows_legacy_ap_client_report(
+    *,
+    run_id: str = "qcl041-windows-legacy-ap-unit-test",
+    status: str = "pass",
+    client_network_bound: bool = True,
+    udp_bytes: int = 65536,
+    tcp_bytes: int = 65536,
+    tcp_ack_bytes: int = 88,
+) -> dict[str, Any]:
+    return {
+        "$schema": "rusty.quest.qcl030.local_only_hotspot_probe.v1",
+        "schema_version": 1,
+        "probe_id": "QCL-030",
+        "run_id": run_id,
+        "status": status,
+        "device": {
+            "model": "Quest",
+            "serial": "TESTQUESTSERIAL",
+            "role": "hotspot_client",
+        },
+        "socket_matrix": {
+            "role": "hotspot_client",
+            "client_join_mode": "active_wifi",
+            "require_active_wifi_ssid_match": True,
+            "client_network_bound": client_network_bound,
+            "client_active_wifi_ssid_match_status": "matched",
+            "client_link_properties": (
+                "{InterfaceName: wlan0 LinkAddresses: "
+                "[ fe80::1/64,192.168.137.43/24 ] Routes: [ 0.0.0.0/0 -> 192.168.137.1 wlan0 ]}"
+            ),
+            "client_udp_sent_bytes": udp_bytes,
+            "client_tcp_sent_bytes": tcp_bytes,
+            "client_tcp_ack_bytes": tcp_ack_bytes,
+        },
+        "cleanup": {"completed": True},
+    }
+
+
+def windows_legacy_ap_summary(
+    *,
+    helper_path: str,
+    client_path: str,
+    run_id: str = "qcl041-windows-legacy-ap-unit-test",
+    status: str = "pass",
+    credential_sensitive_redacted: bool = True,
+    quest_connected: bool = True,
+    socket_bytes: int = 65536,
+    previous_wlan_restored: bool = True,
+) -> dict[str, Any]:
+    cleanup_status = (
+        'Wifi is enabled\r\n==== Primary ClientModeManager instance ====\r\n'
+        'Wifi is connected to "PreviousWLAN"\r\nWifiInfo: SSID: "PreviousWLAN", IP: /192.168.2.65'
+        if previous_wlan_restored
+        else "Wifi is enabled\r\n==== Primary ClientModeManager instance ====\r\nWifi is not connected"
+    )
+    return {
+        "schema": "rusty.quest.qcl041.windows_legacy_ap_probe.v1",
+        "run_id": run_id,
+        "status": status,
+        "serial": "TESTQUESTSERIAL",
+        "owner_host": "192.168.137.1",
+        "socket_bytes": socket_bytes,
+        "credential_sensitive_redacted": credential_sensitive_redacted,
+        "steps": [
+            {"name": "permission_grants", "status": "pass"},
+            {"name": "windows_legacy_ap_start", "status": "pass"},
+            {"name": "quest_join_windows_legacy_ap", "status": "pass"},
+            {"name": "legacy_ap_probe_final", "status": "pass"},
+        ],
+        "results": {
+            "helper_ready_status": "ready",
+            "helper_ready_selected_owner_host": "192.168.137.1",
+            "quest_connected_to_windows_legacy_ap": quest_connected,
+            "quest_wifi_ipv4": "192.168.137.43",
+            "helper_status": "pass",
+            "helper_udp_bytes": socket_bytes,
+            "helper_tcp_bytes": socket_bytes,
+            "helper_tcp_ack_bytes": 88,
+        },
+        "artifacts": {
+            "helper_report": helper_path,
+            "client_artifact": client_path,
+        },
+        "cleanup": {
+            "quest_wifi_forget": {
+                "list_exit_code": 0,
+                "removed": [
+                    {
+                        "network_id": "2",
+                        "exit_code": 0,
+                        "output": "Forget successful",
+                    }
+                ],
+            },
+            "wifi_status_after_cleanup": cleanup_status,
         },
     }
 

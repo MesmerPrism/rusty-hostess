@@ -286,9 +286,12 @@ def status_counts(statuses: set[str], items: list[dict[str, Any]]) -> dict[str, 
 def term_live_or_promoted(term: str, items: list[dict[str, Any]]) -> bool:
     if term == "wifi_direct":
         return any(
-            str(item.get("probe_id") or "") in {"QCL-040", "QCL-041"}
-            and str(item.get("kind") or "") == "connectivity_promotion_gate"
-            and str(item.get("status") or "") == "pass"
+            (
+                str(item.get("probe_id") or "") in {"QCL-040", "QCL-041"}
+                and str(item.get("kind") or "") == "connectivity_promotion_gate"
+                and str(item.get("status") or "") == "pass"
+            )
+            or direct_wifi_product_media_topology_proven(item)
             for item in items
         )
     if term == "tcp":
@@ -303,6 +306,15 @@ def term_live_or_promoted(term: str, items: list[dict[str, Any]]) -> bool:
             for item in items
         )
     return False
+
+
+def direct_wifi_product_media_topology_proven(item: dict[str, Any]) -> bool:
+    return (
+        str(item.get("kind") or "") == "direct_wifi_product_media_dependency"
+        and str(item.get("row_id") or "")
+        == "direct_wifi_product_media_plan.dependency.transport.direct_wifi_live_topology"
+        and str(item.get("status") or "") == "pass"
+    )
 
 
 def tcp_media_promoted(tcp_gate: dict[str, Any]) -> bool:

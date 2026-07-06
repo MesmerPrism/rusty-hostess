@@ -640,6 +640,7 @@ def build_hostessctl_parser(
     companion_report_transport_gates.add_argument("--report-id")
     companion_report_transport_gates.add_argument("--fail-on-error", action="store_true")
     companion_report_transport_gates.add_argument("--fail-on-pending", action="store_true")
+    companion_report_transport_gates.add_argument("--fail-on-product-pending", action="store_true")
     companion_report_transport_gates.add_argument("--fail-on-incomplete", action="store_true")
     companion_report_operator_actions = companion_report_subcommands.add_parser("operator-actions")
     companion_report_operator_actions.add_argument("--out", required=True)
@@ -723,6 +724,8 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--media-stream-firewall-report", default="")
     connectivity_probe_run.add_argument("--wifi-direct-lifecycle-report", default="")
     connectivity_probe_run.add_argument("--windows-wifi-direct-helper-report", default="")
+    connectivity_probe_run.add_argument("--wifi-direct-windows-join-report", default="")
+    connectivity_probe_run.add_argument("--wifi-direct-windows-legacy-ap-report", default="")
     connectivity_probe_run.add_argument(
         "--websocket-source",
         choices=["host-loopback", "broker-owned-websocket", "quest-runtime", "external"],
@@ -1008,6 +1011,7 @@ def build_hostessctl_parser(
     connectivity_probe_run.add_argument("--tcp-echo-port", type=int, default=0)
     connectivity_probe_run.add_argument("--tcp-echo-marker", default="rusty-qcl-tcp-echo")
     connectivity_probe_run.add_argument("--tcp-timeout-seconds", type=float, default=4.0)
+    connectivity_probe_run.add_argument("--tcp-listener-helper", default="")
     connectivity_probe_run.add_argument("--skip-udp-freshness", action="store_true")
     connectivity_probe_run.add_argument("--udp-bind-host", default="0.0.0.0")
     connectivity_probe_run.add_argument("--udp-port", type=int, default=0)

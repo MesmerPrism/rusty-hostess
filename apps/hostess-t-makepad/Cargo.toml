@@ -7,7 +7,7 @@ publish = false
 
 [package.metadata.packager]
 identifier = "io.github.mesmerprism.rustyhostess.makepad"
-product_name = "Rusty Hostess Makepad"
+product_name = "Rusty Morphospace Streaming"
 
 [package.metadata.makepad.android]
 version_code = 1

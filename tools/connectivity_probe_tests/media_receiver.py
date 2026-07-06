@@ -61,6 +61,7 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertIn("--firewall-rule", command_text)
         self.assertIn("--direct-wifi-product-media-plan", command_text)
         self.assertIn("companion-report transport-gates", command_text)
+        self.assertIn("--fail-on-product-pending", command_text)
 
     def test_direct_wifi_product_media_acceptance_plan_surfaces_preflight_blockers(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

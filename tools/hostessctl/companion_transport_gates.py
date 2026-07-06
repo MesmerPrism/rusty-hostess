@@ -28,6 +28,11 @@ HOSTESS_COMPANION_TRANSPORT_GATE_VALIDATION_SCHEMA = (
 )
 TRANSPORT_COVERAGE_ROW_ID = "transport_coverage.summary"
 PROTOCOL_MATRIX_SUMMARY_ROW_ID = "protocol_matrix.summary"
+PRODUCT_TRANSPORT_GATE_IDS = {
+    "transport.direct_wifi_live_topology",
+    "transport.product_tcp_media_listener_firewall",
+    "transport.product_tcp_media_over_direct_wifi",
+}
 
 
 def run_companion_transport_gates(
@@ -57,6 +62,11 @@ def run_companion_transport_gates(
     if getattr(args, "fail_on_error", False) and validation["status"] != "pass":
         return 2
     if getattr(args, "fail_on_pending", False) and report["summary"]["remaining_gate_count"]:
+        return 2
+    if (
+        getattr(args, "fail_on_product_pending", False)
+        and report["summary"]["remaining_product_gate_count"]
+    ):
         return 2
     if (
         getattr(args, "fail_on_incomplete", False)
@@ -95,6 +105,9 @@ def build_companion_transport_gate_report(
         str(gate.get("gate_id") or "")
         for gate in remaining_live_gates
         if str(gate.get("gate_id") or "")
+    ]
+    remaining_product_gate_ids = [
+        gate_id for gate_id in remaining_gate_ids if gate_id in PRODUCT_TRANSPORT_GATE_IDS
     ]
     report_id = str(getattr(args, "report_id", None) or "").strip()
     if not report_id:
@@ -148,6 +161,8 @@ def build_companion_transport_gate_report(
             "completion_blockers": completion_blockers,
             "remaining_gate_count": len(remaining_gate_ids),
             "remaining_gate_ids": remaining_gate_ids,
+            "remaining_product_gate_count": len(remaining_product_gate_ids),
+            "remaining_product_gate_ids": remaining_product_gate_ids,
             "term_gate_count": len(term_gates),
             "term_gate_ids": sorted(term_gates.keys()),
         },

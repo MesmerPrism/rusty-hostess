@@ -233,7 +233,7 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             + "connectivity-probe stream-capability --input $ConnectivityReport --out $StreamCapability } "
             "else { "
             + HOSTESS_CTL
-            + "connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport --adb $Adb --serial $QuestSerial --tcp-echo-port $TcpEchoPort }",
+            + "connectivity-probe run --mode live --probe-id QCL-010 --out $ConnectivityReport --adb $Adb --serial $QuestSerial --tcp-echo-port $TcpEchoPort --tcp-listener-helper $HostessCompanionWpfExe }",
             "rusty.hostess.connectivity_probe.v1; rusty.quest.device_link.stream_capability.v1",
             "Hostess / Rusty Quest",
             "tools.test_hostessctl_connectivity_probe; tools.test_hostessctl_device_link_report; HostessCompanion.Wpf.Tests",

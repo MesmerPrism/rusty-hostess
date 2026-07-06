@@ -55,7 +55,7 @@ from tools.hostessctl.platform_defaults import (
     ANDROID_QCL083_OSC_ACTION,
     ANDROID_REMOTE_QCL083_OSC_EVIDENCE,
 )
-from tools.hostessctl.connectivity_data_protocols_common import protocol_topology_checks
+from tools.hostessctl.connectivity_data_protocols_common import parse_probe_json_stdout, protocol_topology_checks
 
 def live_lsl_report(
     args: argparse.Namespace,

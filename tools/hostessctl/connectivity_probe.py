@@ -206,11 +206,11 @@ def run_connectivity_probe(
 
     run_captured = run_captured_func or default_run_captured
     clock = clock_func or utc_now
-    if getattr(args, "probe_id", "QCL-010") in LIVE_DIRECT_WIFI_PROBE_IDS and getattr(
-        args,
-        "wifi_direct_lifecycle_report",
-        "",
-    ):
+    direct_wifi_report_supplied = bool(
+        getattr(args, "wifi_direct_lifecycle_report", "")
+        or getattr(args, "wifi_direct_windows_legacy_ap_report", "")
+    )
+    if getattr(args, "probe_id", "QCL-010") in LIVE_DIRECT_WIFI_PROBE_IDS and direct_wifi_report_supplied:
         report = wifi_direct_lifecycle_probe_report(
             args,
             observed_at=clock(),

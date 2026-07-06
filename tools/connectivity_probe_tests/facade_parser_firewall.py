@@ -178,6 +178,8 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
                 "QCL-041",
                 "--wifi-direct-lifecycle-report",
                 "target\\connectivity-probe\\qcl041-lifecycle.json",
+                "--wifi-direct-windows-legacy-ap-report",
+                "target\\connectivity-probe\\qcl041-windows-legacy-ap-summary.json",
                 "--out",
                 "target\\connectivity-probe\\qcl041-live-topology.json",
             ]
@@ -189,6 +191,10 @@ class HostessCtlConnectivityProbeFacadeParserFirewallTests(unittest.TestCase):
         self.assertEqual(
             args.wifi_direct_lifecycle_report,
             "target\\connectivity-probe\\qcl041-lifecycle.json",
+        )
+        self.assertEqual(
+            args.wifi_direct_windows_legacy_ap_report,
+            "target\\connectivity-probe\\qcl041-windows-legacy-ap-summary.json",
         )
 
     def test_parser_accepts_wifi_direct_lifecycle_template_route(self) -> None:

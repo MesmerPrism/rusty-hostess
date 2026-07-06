@@ -773,6 +773,113 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
 
         self.assertEqual(status, 2)
 
+    def test_transport_gate_report_can_fail_on_product_pending_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.product-pending-gates",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [
+                                        {
+                                            "gate_id": "transport.general_websocket_capability",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "generic WebSocket capability remains separate",
+                                        },
+                                        {
+                                            "gate_id": "transport.product_tcp_media_over_direct_wifi",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "product media receiver capture required",
+                                        },
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate_path = root / "transport-gates.json"
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(gate_path),
+                    "--fail-on-product-pending",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+            gate_report = read_json(gate_path)
+
+        self.assertEqual(status, 2)
+        self.assertEqual(
+            gate_report["summary"]["remaining_product_gate_ids"],
+            ["transport.product_tcp_media_over_direct_wifi"],
+        )
+
+    def test_transport_gate_report_product_pending_flag_ignores_general_gates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            projection_path = root / "projection.json"
+            projection_path.write_text(
+                json.dumps(
+                    {
+                        "$schema": HOSTESS_COMPANION_REPORT_PROJECTION_SCHEMA,
+                        "projection_id": "projection.general-pending-gates",
+                        "status": "warn",
+                        "rows": [
+                            {
+                                "row_id": "transport_coverage.summary",
+                                "kind": "transport_coverage_summary",
+                                "details": {
+                                    "term_gates": {},
+                                    "remaining_live_gates": [
+                                        {
+                                            "gate_id": "transport.general_websocket_capability",
+                                            "status": "pending_live_evidence",
+                                            "evidence": "generic WebSocket capability remains separate",
+                                        }
+                                    ],
+                                },
+                            }
+                        ],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gate_path = root / "transport-gates.json"
+            args = build_parser().parse_args(
+                [
+                    "companion-report",
+                    "transport-gates",
+                    "--projection",
+                    str(projection_path),
+                    "--out",
+                    str(gate_path),
+                    "--fail-on-product-pending",
+                ]
+            )
+
+            status = run_companion_transport_gates(args, clock_func=fixed_clock)
+            gate_report = read_json(gate_path)
+
+        self.assertEqual(status, 0)
+        self.assertEqual(gate_report["summary"]["remaining_gate_count"], 1)
+        self.assertEqual(gate_report["summary"]["remaining_product_gate_count"], 0)
+
     def test_transport_gate_report_can_fail_on_incomplete_data_protocols(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -1466,6 +1573,62 @@ class HostessCtlCompanionReportProjectionTests(unittest.TestCase):
         coverage = find_row(report, "transport_coverage.summary")
         wifi_direct_gate = coverage["details"]["term_gates"]["wifi_direct"]
         self.assertTrue(wifi_direct_gate["live_or_promoted"])
+        remaining_gate_ids = {
+            gate["gate_id"]
+            for gate in coverage["details"]["remaining_live_gates"]
+        }
+        self.assertNotIn("transport.direct_wifi_live_topology", remaining_gate_ids)
+
+    def test_projection_clears_direct_wifi_gate_with_promoted_product_media_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            plan = direct_wifi_product_media_acceptance_plan_fixture()
+            topology_summary = {
+                "ready": True,
+                "evidence": "promoted direct-Wi-Fi topology report is ready for QCL-082 product media",
+                "issue_codes": [],
+                "probe_id": "QCL-041",
+                "promotion_allowed": True,
+                "report_path": "target/connectivity-probe/qcl041-windows-legacy-ap-normalized.json",
+                "report_present": True,
+                "report_status": "pass",
+                "topology_network_provider": "windows_wifi_direct_legacy_ap",
+                "transport_family": "wifi_direct",
+            }
+            plan["dependencies"][0]["ready"] = True
+            plan["dependencies"][0]["selected"]["summary"] = dict(topology_summary)
+            plan["dependencies"][0]["summary"] = dict(topology_summary)
+            plan["readiness"]["direct_wifi_topology_ready"] = True
+            plan_path = root / "direct-wifi-product-media-plan.json"
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
+
+            report = build_companion_report_projection(
+                argparse.Namespace(
+                    out=str(root / "projection.json"),
+                    validation_out=None,
+                    projection_id="projection.product-plan-direct-wifi",
+                    frontend="wpf",
+                    device_link=[],
+                    connectivity_probe=[],
+                    firewall_rule=[],
+                    direct_wifi_product_media_plan=[str(plan_path)],
+                    protocol_matrix=[],
+                    suite_run=[],
+                    include_protocol_matrix_inputs=False,
+                    fail_on_error=True,
+                ),
+                clock_func=fixed_clock,
+            )
+            validation = validate_companion_report_projection(report)
+
+        self.assertEqual(validation["status"], "pass")
+        topology_row = find_row(
+            report,
+            "direct_wifi_product_media_plan.dependency.transport.direct_wifi_live_topology",
+        )
+        self.assertEqual(topology_row["status"], "pass")
+        coverage = find_row(report, "transport_coverage.summary")
+        self.assertTrue(coverage["details"]["term_gates"]["wifi_direct"]["live_or_promoted"])
         remaining_gate_ids = {
             gate["gate_id"]
             for gate in coverage["details"]["remaining_live_gates"]

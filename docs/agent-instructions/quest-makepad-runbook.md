@@ -21,7 +21,7 @@ active Makepad fork:
 & 'S:\Work\tools\Quest\Use-QuestTooling.ps1'
 cargo install --path S:\Work\repos\active\makepad-morphospace\tools\cargo_makepad --force
 cd S:\Work\repos\active\rusty-hostess\apps\hostess-t-makepad
-cargo makepad android --variant=quest --abi=aarch64 --sdk-path="$env:ANDROID_HOME" --package-name=io.github.mesmerprism.rustyhostess.makepad --app-label="Rusty Hostess Makepad" --quest-camera-permissions=false build -p hostess-t-makepad
+cargo makepad android --variant=quest --abi=aarch64 --sdk-path="$env:ANDROID_HOME" --package-name=io.github.mesmerprism.rustyhostess.makepad --app-label="Rusty Morphospace Streaming" --quest-camera-permissions=false build -p hostess-t-makepad
 ```
 
 Use the default debug profile only for fast functional iteration. For headset
@@ -30,7 +30,7 @@ uses an optimized Hostess-local Cargo profile while keeping the generated APK
 debuggable so `Stage-HostessMakepadSettings.ps1` can still use `run-as`.
 
 The expected APK is
-`apps\hostess-t-makepad\target\android\makepad-android-apk\hostess_t_makepad\apk\rustyhostessmakepad.apk`.
+`apps\hostess-t-makepad\target\android\makepad-android-apk\hostess_t_makepad\apk\rustymorphospacestreaming.apk`.
 The `--variant=quest` flag is required for `.MakepadAppXr` and OpenXR broker
 queries. The explicit package id keeps app-private settings staging aligned
 with Hostess runtime reads. `--quest-camera-permissions=false` is the clean
@@ -99,6 +99,138 @@ permission failures from passive Makepad media discovery, Matter runtime
 markers, `RUSTY_QUEST_MAKEPAD_MATTER_SURFACE_WORKER` with `mode=latest-wins
 workerThread=true renderThreadBlocking=false`, and
 `RUSTY_QUEST_MAKEPAD_WORLD_PARTICLE_DRAW`.
+
+## Rusty Morphospace Streaming QCL Matrix
+
+Use the bundled non-headset-to-headset matrix runner after a headset reset,
+on a fresh Windows workstation, or before a merge checkpoint that needs one
+coherent Quest streaming foreground:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Invoke-RustyMorphospaceStreamingQclMatrix.ps1
+```
+
+For new environments, run the scan first:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Invoke-RustyMorphospaceStreamingQclMatrix.ps1 -EnvironmentScanOnly
+```
+
+For comprehensive lab acceptance on this machine, include the topology-specific
+rows as well:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\rusty-hostess\tools\Invoke-RustyMorphospaceStreamingQclMatrix.ps1 -RunPcHotspotRow -RunQcl050Rfcomm
+```
+
+The scan records ADB/device state, headset foreground/power state, Quest
+Location Mode, active Windows network profile, product Hostess/WPF firewall
+rule state, fixed listener ports, and toolchain paths. It writes
+`environment-scan.summary.json` plus raw ADB/firewall artifacts before any QCL
+row runs. If firewall rules are missing, rerun with
+`-ApplyFirewallRules -LaunchElevatedFirewallHandoff`; this creates one
+UAC-elevated handoff script and verifies the product-scoped rules for QCL-010
+TCP `18766`, QCL-080 UDP `18767`, and QCL-082 TCP `9079`.
+
+The full runner builds and installs three APKs before tests:
+
+- Hostess Android helper: `io.github.mesmerprism.rustyhostess.t`.
+- Rusty Morphospace Streaming foreground: `io.github.mesmerprism.rustyhostess.makepad/.MakepadAppXr`.
+- Manifold broker: `io.github.mesmerprism.rustymanifold.broker/.BrokerStartActivity`.
+
+The broker APK is built from
+`S:\Work\repos\active\rusty-quest\tools\Build-ManifoldBrokerAndroid.ps1`. It is
+required after a headset factory reset; without it, QCL-000 falls back to the
+app-private command path and the Manifold WebSocket command route cannot be
+promoted. With the broker installed, QCL-000 should show `sent`,
+`transport_ok`, `authority_accepted`, `runtime_accepted`, and `applied` through
+the runtime subscriber.
+
+The runner launches the streaming activity with bounded `am start -n` plus a
+separate foreground readback instead of unbounded `am start -W`. This keeps the
+run from hanging if Quest system UI or the VR focus placeholder is active.
+Accept headset prompts while the foreground and Bluetooth/OSC rows run.
+
+After any headset reboot, re-enable the full keep-awake/proximity settings
+before starting or resuming the matrix. Reboot clears the active Companion or
+shell-helper guard even when ADB comes back quickly. In the 2026-07-05
+factory-reset session, the operator restored the required keep-awake settings
+through the Rusty XR Companion app before QCL-041 iteration continued; record
+that readback in the environment scan or run notes before interpreting long
+media/direct-link failures.
+
+The required protocol-matrix fold-in rows are:
+
+- QCL-000 Manifold WebSocket command route: live `companion-session`.
+- QCL-080 app-owned Makepad UDP sender with WPF listener.
+- QCL-081 Manifold-owned LSL broker sample stream.
+- QCL-083 Quest-runtime OSC exchange.
+- QCL-084 native Rust broker-owned ZeroMQ exchange.
+
+QCL-079 generic WebSocket, QCL-051 BLE/GATT, and QCL-082 media are still
+reported by the standard single-headset run, but only QCL-051 is currently
+promoted as the Bluetooth payload row. QCL-050 Classic RFCOMM is opt-in with
+`-RunQcl050Rfcomm` because Windows may not discover the Quest RFCOMM service;
+BLE/GATT is the reliable short-range payload path. QCL-011 PC-hotspot TCP is
+opt-in with `-RunPcHotspotRow` because it only applies when Windows Mobile
+Hotspot is enabled and the Quest is connected to that hotspot.
+
+QCL-011 was proven live on 2026-07-05 after a factory-reset Quest by using
+Windows Mobile Hotspot plus the Quest shell Wi-Fi route. Start the hotspot via
+the Windows `NetworkOperatorTetheringManager.StartTetheringAsync()` WinRT API
+or the Windows UI, then verify it is `On` and that Windows exposes the hotspot
+adapter at `192.168.137.1/24`. In PowerShell, do not block indefinitely on the
+WinRT async handle; the successful lab route issued `StartTetheringAsync()`,
+slept for a bounded window, and then queried
+`TetheringOperationalState`, `ClientCount`, `Ssid`, and the passphrase.
+
+On the Quest side, this Horizon build exposes `adb shell cmd wifi
+connect-network`. Use that route, not Wi-Fi suggestions, to join the headset:
+`network-suggestions-set-user-approved` is protected for shell on this build.
+Keep the Windows hotspot passphrase in a local PowerShell variable and quote
+both the SSID and passphrase before passing them to the remote shell. If an
+earlier failed placeholder config exists, clear the matching network id from
+`adb shell cmd wifi list-networks` before retrying. In the passing run, the
+Quest joined `PROTOYSSERVITOR 8830`, received `192.168.137.39`, and Windows
+reported `client_count=1`.
+
+Acceptance evidence for that run is
+`target\connectivity-probe\qcl011-live-pc-hotspot-20260705-200220.json`:
+`status=pass`, host `192.168.137.1`, device `192.168.137.39`, Mobile Hotspot
+`On`, one hotspot client, WPF TCP echo `pass`, product firewall listener
+`pass`, and no issues.
+
+QCL-082 has live generic broker-owned media evidence as of 2026-07-05. The
+PC-hotspot run in
+`target\connectivity-probe\qcl082-live-pc-hotspot-media-runtime-20260705-203013`
+started the Manifold broker media source, armed the WPF `RMANVID1` receiver on
+TCP `9079`, and folded `protocol.media_stream_runtime_status`, frame/byte
+counters, drop count, queue depth, backpressure, close reason, and scoped
+listener firewall evidence into `qcl082-rmanvid1-receiver-capture.json`.
+`protocol-evidence-matrix.full-with-live-qcl082.json` promotes QCL-082 while
+leaving QCL-050 blocked and QCL-079 candidate by policy. This is not yet
+product media over direct Wi-Fi: the QCL-082 report correctly keeps
+`protocol.media_product_topology_gate=blocked` until the paired topology report
+is a promoted QCL-041 direct-Wi-Fi lifecycle artifact.
+
+QCL-010/QCL-080 should pass when their TCP/UDP data path and product-scoped
+listener rules pass. QCL-010 uses the headless
+`HostessCompanion.Wpf.exe --qcl010-tcp-echo-listener` helper through
+`hostessctl --tcp-listener-helper`, matching the firewall rule owner; QCL-080
+uses the existing WPF UDP listener helper. Public Windows network posture
+remains an environment-scan onboarding warning unless it leaves the listener
+uncovered. QCL-041 direct Wi-Fi lifecycle uses an Agent Board headset lease,
+and Quest Location Mode must be enabled for Android Wi-Fi Direct peer
+discovery. After Location Mode was fixed to secure `location_mode=3`, the
+2026-07-05 factory-reset reruns still blocked at peer discovery, group
+formation, socket exchange, and lifecycle promotion; do not spend more time on
+Location Mode as the current blocker. Headset-to-headset
+QCL-094/QCL-095/QCL-096/QCL-097/QCL-100 rows are skipped by design.
+
+QCL-050, QCL-051, and QCL-083 still use the Java `apps\hostess-t-android`
+helper package for Android Bluetooth/OSC API access. Treat that helper as a
+temporary sidecar until those endpoints are folded into the streaming app
+package; the runner records the sidecar boundary in its final report.
 
 For particle-density sweeps, keep animation and size explicit in evidence:
 `makepad.particles.render.animation_mode=static-ring` and

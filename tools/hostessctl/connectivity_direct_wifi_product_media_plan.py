@@ -721,7 +721,7 @@ def follow_on_projection_commands(paths: dict[str, str]) -> list[dict[str, Any]]
             (
                 "python tools\\hostessctl\\hostessctl.py companion-report transport-gates "
                 f"--projection {ps_quote(paths['projection_out'])} "
-                f"--out {ps_quote(paths['transport_gates_out'])} --fail-on-pending"
+                f"--out {ps_quote(paths['transport_gates_out'])} --fail-on-product-pending"
             ),
             [paths["transport_gates_out"]],
         ),

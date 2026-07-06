@@ -200,6 +200,13 @@ public sealed class HostessctlConnectivityService
         }
 
         var port = ParsePort(portText, DefaultTcpPort);
+        var listenerProgram = DefaultProductProgramPath();
+        if (string.IsNullOrWhiteSpace(listenerProgram) || !File.Exists(listenerProgram))
+        {
+            throw new InvalidOperationException(
+                "The WPF TCP echo listener executable could not be resolved. Build HostessCompanion.Wpf first.");
+        }
+
         var repoRoot = HostessctlServicePaths.LocateRepoRoot();
         var stamp = DateTimeOffset.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture);
         var runId = $"wpf-qcl010-fixed-port-{stamp}";
@@ -229,6 +236,8 @@ public sealed class HostessctlConnectivityService
                     serial.Trim(),
                     "--tcp-echo-port",
                     port.ToString(CultureInfo.InvariantCulture),
+                    "--tcp-listener-helper",
+                    listenerProgram,
                 ],
                 reportPath,
                 cancellationToken)

@@ -880,8 +880,10 @@ def windows_network_profile_status(profile: dict[str, Any]) -> tuple[str, list[s
     if not profile:
         return "skipped", []
     active_profiles = active_windows_network_categories(profile)
+    listener_firewall = object_value(profile.get("listener_firewall"))
+    product_rule_verified = listener_firewall.get("product_rule_verified") is True
     issue_codes: list[str] = []
-    if "Public" in active_profiles:
+    if "Public" in active_profiles and not product_rule_verified:
         issue_codes.append("hostess.issue.connectivity_probe.windows_network_profile_public")
     return ("warn" if issue_codes else "pass"), issue_codes
 
