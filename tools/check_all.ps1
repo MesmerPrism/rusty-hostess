@@ -1,3 +1,7 @@
+param(
+    [switch]$IncludeMakepadLegacy
+)
+
 $ErrorActionPreference = "Stop"
 
 function Invoke-Checked {
@@ -130,7 +134,11 @@ try {
     }
     $GuiDescriptorRootCandidate = Join-Path $RepoRoot "..\rusty-gui\fixtures\descriptors"
     if (Test-Path $GuiDescriptorRootCandidate) {
-        foreach ($Frontend in @("wpf", "makepad")) {
+        $Frontends = @("wpf")
+        if ($IncludeMakepadLegacy) {
+            $Frontends += "makepad"
+        }
+        foreach ($Frontend in $Frontends) {
             $CatalogOut = Join-Path $RepoRoot "target\companion-catalog\check-all-catalog-$Frontend.json"
             New-Item -ItemType Directory -Force -Path (Split-Path $CatalogOut) | Out-Null
             Invoke-Checked "companion catalog descriptor smoke ($Frontend)" "python" @(
@@ -142,6 +150,9 @@ try {
                 $Frontend,
                 "--fail-on-error"
             )
+        }
+        if (-not $IncludeMakepadLegacy) {
+            Write-Host "[SKIP] companion catalog descriptor smoke (makepad): pass -IncludeMakepadLegacy for explicit Makepad work"
         }
     }
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
@@ -202,11 +213,13 @@ try {
             Write-Host "[SKIP] Android Java source compile: missing $PlatformJar or $Javac"
         }
     }
-    if (Test-Path "apps\hostess-t-makepad\Cargo.toml") {
+    if ($IncludeMakepadLegacy -and (Test-Path "apps\hostess-t-makepad\Cargo.toml")) {
         Invoke-Checked "Makepad companion frontend projection tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "companion_frontend")
         Invoke-Checked "Makepad app cargo check" "cargo" @("check", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml")
         Invoke-Checked "Makepad app Hostess contract serde tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "hostess_contracts")
         Invoke-Checked "Makepad app shell regression tests" "cargo" @("test", "--manifest-path", "apps\hostess-t-makepad\Cargo.toml", "--features", "serde", "main_tests")
+    } elseif (Test-Path "apps\hostess-t-makepad\Cargo.toml") {
+        Write-Host "[SKIP] legacy Makepad cargo checks: pass -IncludeMakepadLegacy for explicit Makepad work"
     }
     $AdapterLib = "apps\hostess-t-android\native\polar-runtime-jni\src\lib.rs"
     if ((Test-Path $AdapterLib) -and (Test-Path $PackagesRootCandidate)) {

@@ -24,7 +24,19 @@ requirements; see `docs/LICENSING.md`.
 - Lattice evidence collection for tracked view sets, poses, spatial input
   roles, frame-state binding, calibration, validity, confidence, and runtime
   capabilities when a host run needs situated relation proof.
-- Makepad dependencies only inside Hostess Makepad shell crates.
+- Makepad dependencies only inside Hostess Makepad shell crates, and only for
+  explicit legacy compatibility, migration, or regression work.
+
+## Runtime Surface Default
+
+For new operator and validation work, prefer WPF plus CLI/API-equivalent
+Hostess routes. For Quest runtime work, prefer native OpenXR/Vulkan and Meta
+Spatial SDK apps in `rusty-quest`; Hostess should install, launch, report, and
+project evidence without becoming runtime authority.
+
+Do not start new Makepad APK routes, Makepad profile work, or Makepad parity
+work unless the user explicitly requests Makepad support. Existing Makepad
+shells and evidence tools are legacy/migration surfaces.
 
 ## Non-Scope
 
@@ -57,11 +69,12 @@ requirements; see `docs/LICENSING.md`.
   `rusty.lattice.*`, `rusty.matter.*`, `rusty.optics.*`, `rusty.quest.*`, or
   repo-local names); do not introduce `rusty.morphospace.*` schemas or
   `Morphospace*` core types by default.
-- Every WPF, Makepad, or future operator UI action must have a CLI-equivalent
-  or local API route that automation can exercise with the same inputs,
-  authority checks, and evidence artifacts. UI handlers collect parameters,
-  invoke the route, and project structured evidence; they do not own hidden
-  business logic or acceptance rules.
+- Every WPF, native Quest panel, Spatial SDK tool surface, or explicitly
+  requested legacy Makepad action must have a CLI-equivalent or local API route
+  that automation can exercise with the same inputs, authority checks, and
+  evidence artifacts. UI handlers collect parameters, invoke the route, and
+  project structured evidence; they do not own hidden business logic or
+  acceptance rules.
 - Every operator report view must render a CLI/API report, descriptor, sidecar,
   receipt, or fixture output that automated tests can exercise before the UI
   feature is accepted for human operators.
@@ -73,12 +86,13 @@ Run the narrow checks before committing:
 ```powershell
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_operator_action_rows.py tools\hostessctl\companion_operator_actions.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_report_transport_coverage.py tools\hostessctl\companion_transport_gate_actions.py tools\hostessctl\companion_transport_gates.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_product_plan.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_topology_lifecycle.py tools\hostessctl\connectivity_topology_live.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_session tools.test_makepad_morphospace_boundaries
-cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
-cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
-cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
+
+Run `powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check_all.ps1`
+for the default WPF/CLI/Hostess gate. Pass `-IncludeMakepadLegacy` only when
+Makepad compatibility or migration is explicitly in scope.
 
 For live captures, write raw run artifacts outside the repo and commit only
 generic code or sanitized sample fixtures.
@@ -280,10 +294,12 @@ generic code or sanitized sample fixtures.
   profiles. Add new tests to the family module that owns the behavior instead
   of growing the facade.
 
-## Quest Makepad APK Route
+## Legacy Quest Makepad APK Route
 
-Open `docs\agent-instructions\quest-makepad-runbook.md` before Quest Makepad
-APK builds, headset evidence collection, settings staging, GPU proof, ADF,
+Use this route only for explicit Makepad compatibility, migration, regression
+repair, or historical evidence replay. Open
+`docs\agent-instructions\quest-makepad-runbook.md` before Quest Makepad APK
+builds, headset evidence collection, settings staging, GPU proof, ADF,
 particle, or live/recorded hand validation work.
 
 Keep these first-hop rules visible here:
