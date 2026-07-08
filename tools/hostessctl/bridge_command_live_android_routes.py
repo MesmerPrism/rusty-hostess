@@ -29,6 +29,7 @@ from tools.hostessctl.bridge_route_evidence import (
 from tools.hostessctl.broker_transport import (
     MANIFOLD_BROKER_EVENTS_PATH,
     BrokerWebSocketClient,
+    format_exception,
 )
 from tools.hostessctl.platform_defaults import (
     BROKER_LOCAL_FORWARD_PORT,
@@ -54,6 +55,7 @@ def run_bridge_command_live_android(
     broker_client_factory: Any | None = None,
     clock_ms_func: Any | None = None,
     socket_probe_func: Callable[[str, int, float], bool] | None = None,
+    websocket_ready_probe_func: Any | None = None,
     sleep_func: Callable[[float], None] | None = None,
 ) -> int:
     request = load_bridge_command_request(Path(args.input))
@@ -87,6 +89,7 @@ def run_bridge_command_live_android(
         broker_client_factory=broker_client_factory or BrokerWebSocketClient,
         clock_ms_func=clock_ms_func,
         socket_probe_func=socket_probe_func or broker_port_open,
+        websocket_ready_probe_func=websocket_ready_probe_func or wait_for_broker_websocket_ready,
         sleep_func=sleep_func or time.sleep,
         logcat_out=logcat_out,
     )
@@ -113,11 +116,13 @@ def execute_bridge_command_live_android_request(
     broker_client_factory: Any,
     clock_ms_func: Any | None = None,
     socket_probe_func: Callable[[str, int, float], bool] | None = None,
+    websocket_ready_probe_func: Any | None = None,
     sleep_func: Callable[[float], None] | None = None,
     logcat_out: Path | None = None,
 ) -> dict[str, Any]:
     clock = clock_ms_func or epoch_ms
     socket_probe = socket_probe_func or broker_port_open
+    websocket_ready_probe = websocket_ready_probe_func or wait_for_broker_websocket_ready
     sleep = sleep_func or time.sleep
     if logcat_out is None and getattr(args, "logcat_out", None):
         logcat_out = Path(args.logcat_out)
@@ -195,8 +200,23 @@ def execute_bridge_command_live_android_request(
         socket_probe,
         sleep,
     )
+    websocket_ready = False
+    if socket_ready:
+        readiness_action, readiness_issue = websocket_ready_probe(
+            broker_host,
+            connect_port,
+            broker_path,
+            float(getattr(args, "websocket_ready_wait_seconds", 8.0)),
+            float(getattr(args, "connect_timeout_seconds", 5.0)),
+            broker_client_factory,
+            sleep,
+        )
+        setup_actions.append(readiness_action)
+        if readiness_issue is not None:
+            setup_issues.append(readiness_issue)
+        websocket_ready = str(readiness_action.get("status") or "") == "pass"
 
-    if not getattr(args, "no_launch_makepad", False):
+    if socket_ready and websocket_ready and not getattr(args, "no_launch_makepad", False):
         run_adb_action(
             setup_actions,
             setup_issues,
@@ -206,7 +226,7 @@ def execute_bridge_command_live_android_request(
             required=False,
         )
 
-    if not getattr(args, "no_wait_makepad_process", False):
+    if socket_ready and websocket_ready and not getattr(args, "no_wait_makepad_process", False):
         wait_for_android_pid(
             setup_actions,
             setup_issues,
@@ -219,7 +239,7 @@ def execute_bridge_command_live_android_request(
         )
 
     settle_seconds = max(0.0, float(getattr(args, "launch_settle_seconds", 8.0)))
-    if settle_seconds:
+    if settle_seconds and socket_ready and websocket_ready:
         sleep(settle_seconds)
         setup_actions.append(
             {
@@ -229,7 +249,7 @@ def execute_bridge_command_live_android_request(
             }
         )
 
-    if socket_ready:
+    if socket_ready and websocket_ready:
         retry_count = max(0, int(getattr(args, "runtime_subscriber_retry_count", 1)))
         retry_wait_seconds = max(
             0.0,
@@ -283,11 +303,16 @@ def execute_bridge_command_live_android_request(
     else:
         command_execution = None
         command_issues = []
+        setup_issue_code = (
+            "hostess.issue.bridge_command.live_android.broker_socket_unavailable"
+            if not socket_ready
+            else "hostess.issue.bridge_command.live_android.broker_websocket_not_ready"
+        )
         stage_observations = [
             failed_stage(
                 "sent",
                 int(clock()),
-                "hostess.issue.bridge_command.live_android.broker_socket_unavailable",
+                setup_issue_code,
             )
         ]
         bridge_evidence = failed_bridge_route_evidence(
@@ -340,6 +365,8 @@ def execute_bridge_command_live_android_request(
             "local_forward_port": broker_local_port if use_adb_forward else None,
             "adb_forward": use_adb_forward,
             "path": broker_path,
+            "websocket_ready": websocket_ready,
+            "websocket_ready_wait_seconds": float(getattr(args, "websocket_ready_wait_seconds", 8.0)),
             "runtime_receipt_stream": (
                 None
                 if getattr(args, "no_runtime_receipt_subscribe", False)
@@ -561,6 +588,153 @@ def wait_for_broker_socket(
     return False
 
 
+def wait_for_broker_websocket_ready(
+    host: str,
+    port: int,
+    path: str,
+    timeout_seconds: float,
+    connect_timeout_seconds: float,
+    broker_client_factory: Any,
+    sleep_func: Callable[[float], None],
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    timeout_seconds = max(0.0, timeout_seconds)
+    connect_timeout_seconds = max(0.1, connect_timeout_seconds)
+    attempts: list[dict[str, Any]] = []
+    if timeout_seconds <= 0.0:
+        issue = broker_websocket_not_ready_issue(
+            host,
+            port,
+            path,
+            "websocket readiness wait disabled or zero seconds",
+        )
+        return (
+            {
+                "action": "wait-broker-websocket-ready",
+                "status": "fail",
+                "required": True,
+                "host": host,
+                "port": port,
+                "path": path,
+                "timeout_seconds": timeout_seconds,
+                "attempt_count": 0,
+                "attempts": attempts,
+                "handshake_complete": False,
+                "hello_ack": False,
+            },
+            issue,
+        )
+
+    deadline = time.monotonic() + timeout_seconds
+    attempt = 0
+    last_error = ""
+    while time.monotonic() <= deadline:
+        attempt += 1
+        remaining = max(0.1, deadline - time.monotonic())
+        per_attempt_timeout = max(0.1, min(connect_timeout_seconds, remaining))
+        client = None
+        try:
+            client = broker_client_factory(host, port, path=path, timeout=per_attempt_timeout)
+            request_id = f"request.hostess.bridge_command.websocket_ready.{attempt}"
+            client.send_json(
+                {
+                    "type": "hello",
+                    "schema": "rusty.manifold.broker.hello.v1",
+                    "request_id": request_id,
+                    "client_id": LIVE_ANDROID_CLIENT_ID,
+                }
+            )
+            reply = client.recv_json(timeout=max(0.1, min(0.5, remaining)))
+            hello_ack = (
+                isinstance(reply, dict)
+                and str(reply.get("type") or "") == "hello_ack"
+                and reply.get("accepted") is True
+            )
+            attempt_row = {
+                "attempt": attempt,
+                "status": "pass" if hello_ack else "fail",
+                "handshake_complete": True,
+                "hello_ack": hello_ack,
+                "reply_type": str(reply.get("type") or "") if isinstance(reply, dict) else "",
+                "authority": str(reply.get("authority") or "") if isinstance(reply, dict) else "",
+                "server_id": str(reply.get("server_id") or "") if isinstance(reply, dict) else "",
+            }
+            attempts.append(attempt_row)
+            if hello_ack:
+                return (
+                    {
+                        "action": "wait-broker-websocket-ready",
+                        "status": "pass",
+                        "required": True,
+                        "host": host,
+                        "port": port,
+                        "path": path,
+                        "timeout_seconds": timeout_seconds,
+                        "connect_timeout_seconds": connect_timeout_seconds,
+                        "attempt_count": attempt,
+                        "attempts": attempts,
+                        "handshake_complete": True,
+                        "hello_ack": True,
+                        "authority": attempt_row["authority"],
+                        "server_id": attempt_row["server_id"],
+                    },
+                    None,
+                )
+            last_error = "broker websocket hello_ack missing"
+        except Exception as exc:
+            last_error = format_exception(exc)
+            attempts.append(
+                {
+                    "attempt": attempt,
+                    "status": "fail",
+                    "handshake_complete": False,
+                    "hello_ack": False,
+                    "exception_type": type(exc).__name__,
+                    "error": last_error,
+                }
+            )
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        if time.monotonic() < deadline:
+            sleep_func(min(0.25, max(0.0, deadline - time.monotonic())))
+
+    issue = broker_websocket_not_ready_issue(host, port, path, last_error)
+    return (
+        {
+            "action": "wait-broker-websocket-ready",
+            "status": "fail",
+            "required": True,
+            "host": host,
+            "port": port,
+            "path": path,
+            "timeout_seconds": timeout_seconds,
+            "connect_timeout_seconds": connect_timeout_seconds,
+            "attempt_count": attempt,
+            "attempts": attempts,
+            "handshake_complete": False,
+            "hello_ack": False,
+            "last_error": last_error,
+        },
+        issue,
+    )
+
+
+def broker_websocket_not_ready_issue(
+    host: str,
+    port: int,
+    path: str,
+    reason: str,
+) -> dict[str, Any]:
+    return {
+        "issue_code": "hostess.issue.bridge_command.live_android.broker_websocket_not_ready",
+        "severity": "error",
+        "message": f"broker websocket {host}:{port}{path} was not ready: {reason}",
+    }
+
+
 def failed_bridge_route_evidence(
     request: dict[str, Any],
     *,
@@ -653,4 +827,5 @@ __all__ = [
     "BRIDGE_COMMAND_LIVE_ANDROID_EXECUTION_SCHEMA",
     "execute_bridge_command_live_android_request",
     "run_bridge_command_live_android",
+    "wait_for_broker_websocket_ready",
 ]

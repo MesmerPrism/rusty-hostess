@@ -21,6 +21,7 @@ from tools.hostessctl.broker_transport import (
     BrokerWebSocketClient,
     broker_ack_accepted,
     broker_command_message,
+    format_exception,
 )
 
 
@@ -240,7 +241,8 @@ def execute_bridge_command_request(
             {
                 "issue_code": "hostess.issue.bridge_command.execution_failed",
                 "severity": "error",
-                "message": str(exc),
+                "message": format_exception(exc),
+                "exception_type": type(exc).__name__,
             }
         )
     finally:

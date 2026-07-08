@@ -428,6 +428,7 @@ def build_hostessctl_parser(
     bridge_command_live_android.add_argument("--broker-process-wait-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--makepad-process-wait-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--socket-wait-seconds", type=float, default=8.0)
+    bridge_command_live_android.add_argument("--websocket-ready-wait-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--launch-settle-seconds", type=float, default=8.0)
     bridge_command_live_android.add_argument("--runtime-subscriber-retry-count", type=int, default=1)
     bridge_command_live_android.add_argument(

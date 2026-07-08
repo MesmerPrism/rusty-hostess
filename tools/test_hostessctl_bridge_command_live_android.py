@@ -11,6 +11,7 @@ from tools.hostessctl.bridge_command_live_android_routes import (
     BRIDGE_COMMAND_LIVE_ANDROID_EXECUTION_SCHEMA,
     execute_bridge_command_live_android_request,
     run_bridge_command_live_android,
+    wait_for_broker_websocket_ready,
 )
 from tools.hostessctl.bridge_command_routes import DEFAULT_RUNTIME_RECEIPT_STREAM
 from tools.hostessctl.bridge_route_evidence import (
@@ -60,6 +61,7 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
                 ]
             ),
             socket_probe_func=lambda host, port, timeout: True,
+            websocket_ready_probe_func=websocket_ready_pass,
             sleep_func=lambda seconds: None,
         )
 
@@ -77,6 +79,7 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
                 "adb-forward-broker",
                 "check-broker-adb-forward",
                 "wait-broker-forwarded-socket",
+                "wait-broker-websocket-ready",
                 "launch-hostess-makepad",
                 "wait-hostess-makepad-process",
             }
@@ -146,6 +149,7 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
                 ]
             ),
             socket_probe_func=lambda host, port, timeout: True,
+            websocket_ready_probe_func=websocket_ready_pass,
             sleep_func=lambda seconds: sleeps.append(seconds),
         )
 
@@ -157,6 +161,36 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertIn("retry-bridge-command-after-missing-runtime-subscriber", actions)
         stages = {row["stage"] for row in execution["stage_observations"]}
         self.assertTrue({"runtime_accepted", "applied"} <= stages)
+
+    def test_live_android_websocket_readiness_failure_stops_before_command(self) -> None:
+        request = read_json(BRIDGE_COMMAND_FIXTURES / "hostess-broker-stream-command-request.json")
+        fake_android = FakeLiveAndroidRoute()
+        fake_broker = FakeBrokerClient([])
+
+        execution = execute_bridge_command_live_android_request(
+            request,
+            args=live_android_args("request.json", "evidence.json"),
+            run_captured_func=fake_android.run_captured,
+            broker_client_factory=lambda *args, **kwargs: fake_broker,
+            clock_ms_func=FakeClock([1765020000000, 1765020000005]),
+            socket_probe_func=lambda host, port, timeout: True,
+            websocket_ready_probe_func=websocket_ready_fail,
+            sleep_func=lambda seconds: None,
+        )
+
+        self.assertEqual(execution["status"], "fail")
+        self.assertIsNone(execution["command_execution"])
+        self.assertFalse(execution["broker_stream"]["websocket_ready"])
+        actions = {row["action"]: row for row in execution["setup_actions"]}
+        self.assertEqual(actions["wait-broker-websocket-ready"]["status"], "fail")
+        self.assertTrue(
+            any(
+                issue["issue_code"]
+                == "hostess.issue.bridge_command.live_android.broker_websocket_not_ready"
+                for issue in execution["issues"]
+            )
+        )
+        self.assertEqual(fake_broker.sent, [])
 
     def test_live_android_socket_failure_still_writes_execution_and_validation(self) -> None:
         source_path = BRIDGE_COMMAND_FIXTURES / "hostess-broker-stream-command-request.json"
@@ -236,9 +270,39 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertEqual(args.broker_local_port, 28765)
         self.assertEqual(args.wait_seconds, 0.5)
         self.assertEqual(args.launch_settle_seconds, 0)
+        self.assertEqual(args.websocket_ready_wait_seconds, 8.0)
         self.assertEqual(args.runtime_subscriber_retry_count, 1)
         self.assertEqual(args.runtime_subscriber_retry_wait_seconds, 5.0)
         self.assertFalse(args.no_adb_forward_broker)
+
+    def test_broker_websocket_ready_probe_records_hello_ack(self) -> None:
+        fake_broker = FakeBrokerClient(
+            [
+                {
+                    "type": "hello_ack",
+                    "accepted": True,
+                    "authority": "rusty.manifold",
+                    "server_id": "test-broker",
+                }
+            ]
+        )
+
+        action, issue = wait_for_broker_websocket_ready(
+            "127.0.0.1",
+            28765,
+            "/manifold/v1/events",
+            0.5,
+            0.5,
+            lambda *args, **kwargs: fake_broker,
+            lambda seconds: None,
+        )
+
+        self.assertIsNone(issue)
+        self.assertEqual(action["status"], "pass")
+        self.assertTrue(action["handshake_complete"])
+        self.assertTrue(action["hello_ack"])
+        self.assertEqual(action["server_id"], "test-broker")
+        self.assertEqual(fake_broker.sent[0]["type"], "hello")
 
 
 def live_android_args(
@@ -271,6 +335,7 @@ def live_android_args(
         broker_process_wait_seconds=0.5,
         makepad_process_wait_seconds=0.5,
         socket_wait_seconds=socket_wait_seconds,
+        websocket_ready_wait_seconds=0.5,
         launch_settle_seconds=0.0,
         runtime_subscriber_retry_count=1,
         runtime_subscriber_retry_wait_seconds=5.0,
@@ -371,6 +436,45 @@ class FakeClock:
             return self.last
         self.last = self.values.pop(0)
         return self.last
+
+
+def websocket_ready_pass(*args, **kwargs):
+    return (
+        {
+            "action": "wait-broker-websocket-ready",
+            "status": "pass",
+            "required": True,
+            "host": "127.0.0.1",
+            "port": 28765,
+            "path": "/manifold/v1/events",
+            "attempt_count": 1,
+            "handshake_complete": True,
+            "hello_ack": True,
+        },
+        None,
+    )
+
+
+def websocket_ready_fail(*args, **kwargs):
+    return (
+        {
+            "action": "wait-broker-websocket-ready",
+            "status": "fail",
+            "required": True,
+            "host": "127.0.0.1",
+            "port": 28765,
+            "path": "/manifold/v1/events",
+            "attempt_count": 1,
+            "handshake_complete": False,
+            "hello_ack": False,
+            "last_error": "RuntimeError: broker websocket handshake failed: no HTTP response",
+        },
+        {
+            "issue_code": "hostess.issue.bridge_command.live_android.broker_websocket_not_ready",
+            "severity": "error",
+            "message": "broker websocket 127.0.0.1:28765/manifold/v1/events was not ready",
+        },
+    )
 
 
 def build_parser():

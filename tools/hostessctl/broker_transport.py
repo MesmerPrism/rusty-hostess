@@ -43,7 +43,11 @@ class BrokerWebSocketClient:
         )
         self.sock.sendall(request.encode("ascii"))
         response = self._read_http_response()
+        if not response:
+            raise RuntimeError("broker websocket handshake failed: no HTTP response")
         status_line = response.split(b"\r\n", 1)[0]
+        if not status_line:
+            raise RuntimeError("broker websocket handshake failed: empty HTTP status line")
         if b" 101 " not in status_line:
             raise RuntimeError(f"broker websocket handshake failed: {status_line.decode('ascii', 'replace')}")
         expected_accept = base64.b64encode(
@@ -195,9 +199,18 @@ def connect_broker_websocket_with_retry(
         except RuntimeError as ex:
             last_error = ex
             time.sleep(0.25)
-    message = f"broker websocket connection failed: {last_error}"
+    message = f"broker websocket connection failed: {format_exception(last_error)}"
     errors.append(message)
     raise RuntimeError(message)
+
+
+def format_exception(exc: BaseException | None) -> str:
+    if exc is None:
+        return "unknown error"
+    message = str(exc).strip()
+    if message:
+        return f"{type(exc).__name__}: {message}"
+    return type(exc).__name__
 
 
 def accept_broker_stream_event(
