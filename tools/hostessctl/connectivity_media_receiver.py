@@ -57,6 +57,7 @@ __all__ = [
     "concrete_quest_serial",
     "topology_device_serial",
     "media_product_topology_summary",
+    "qcl082_dependent_media_relay_topology_summary",
     "media_product_listener_firewall_summary",
     "blocked_receiver_capture_result",
     "media_live_dependency_preflight_from_args",

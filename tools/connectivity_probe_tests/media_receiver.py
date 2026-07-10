@@ -605,6 +605,121 @@ class HostessCtlConnectivityProbeMediaReceiverTests(unittest.TestCase):
         self.assertTrue(report["media_stream_receiver_capture"]["product_topology"]["ready"])
         self.assertEqual(validation["status"], "pass")
 
+    def test_qcl082_rmanvid1_receiver_capture_accepts_same_run_relay_lifecycle_product_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            topology_path = root / "qcl041-qcl082-dependent-relay-lifecycle.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            sidecar_path.write_text(
+                json.dumps(media_stream_receiver_sidecar(capture_kind="live_broker_stream")),
+                encoding="utf-8",
+            )
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            topology_report = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            topology_report["run_id"] = "qcl082-camera2-direct-wifi-unit-test"
+            topology_report["lifecycle"]["socket_exchange"] = {
+                "status": "skipped",
+                "evidence": "QCL-082 media relay owned the socket exchange for this run.",
+                "protocol": "tcp",
+                "payload_class": "rmanvid1_media_relay",
+                "bounded": False,
+                "messages_sent": 0,
+                "messages_received": 0,
+            }
+            topology_report["diagnostics"] = {
+                "qcl082_relay": {
+                    "enabled": True,
+                    "status": "pass",
+                    "source_owner": "rusty_manifold_broker_media_stream_runtime",
+                    "bytes_copied": 1201087,
+                    "receiver_connected": True,
+                    "receiver_socket_created_from_wifi_direct_network": True,
+                    "receiver_socket_bound_to_wifi_direct_network": True,
+                    "receiver_connected_local_address": "192.168.49.12",
+                }
+            }
+            topology_path.write_text(json.dumps(topology_report), encoding="utf-8")
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                    media_stream_topology_report=str(topology_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+        product_gate = check(report, "protocol.media_product_topology_gate")
+        observed = product_gate["observed"]
+
+        self.assertEqual(report["status"], "pass")
+        self.assertTrue(report["promotion"]["allowed"])
+        self.assertEqual(product_gate["status"], "pass")
+        self.assertFalse(observed["topology_promotion_allowed"])
+        self.assertEqual(observed["topology_product_acceptance_source"], "dependent_media_relay_lifecycle")
+        self.assertTrue(observed["dependent_media_relay_topology_allowed"])
+        self.assertEqual(observed["dependent_media_relay"]["bytes_copied"], 1201087)
+        self.assertEqual(
+            observed["dependent_media_relay"]["lifecycle_phase_statuses"]["group_formation"],
+            "pass",
+        )
+        self.assertTrue(report["measurements"]["media_product_topology_ready"])
+        self.assertEqual(validation["status"], "pass")
+
+    def test_qcl082_rmanvid1_receiver_capture_rejects_relay_without_wifi_direct_bound_socket(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            root = Path(tmpdir)
+            capture_path = root / "media-stream.rmanvid1"
+            sidecar_path = root / "receiver-sidecar.json"
+            status_path = root / "media-stream-runtime-status.json"
+            topology_path = root / "qcl041-qcl082-dependent-relay-lifecycle.json"
+            capture_path.write_bytes(rmanvid1_capture_bytes())
+            sidecar_path.write_text(
+                json.dumps(media_stream_receiver_sidecar(capture_kind="live_broker_stream")),
+                encoding="utf-8",
+            )
+            status_path.write_text(json.dumps(media_stream_runtime_ack()), encoding="utf-8")
+            topology_report = wifi_direct_lifecycle_artifact(probe_id="QCL-041")
+            topology_report["run_id"] = "qcl082-camera2-direct-wifi-unit-test"
+            topology_report["diagnostics"] = {
+                "qcl082_relay": {
+                    "enabled": True,
+                    "status": "pass",
+                    "source_owner": "rusty_manifold_broker_media_stream_runtime",
+                    "bytes_copied": 1201087,
+                    "receiver_connected": True,
+                    "receiver_socket_created_from_wifi_direct_network": False,
+                    "receiver_socket_bound_to_wifi_direct_network": False,
+                    "receiver_connected_local_address": "192.168.49.12",
+                }
+            }
+            topology_path.write_text(json.dumps(topology_report), encoding="utf-8")
+            report = fixture_report(
+                probe_args(
+                    probe_id="QCL-082",
+                    media_stream_rmanvid1_capture=str(capture_path),
+                    media_stream_receiver_sidecar=str(sidecar_path),
+                    media_stream_runtime_status=str(status_path),
+                    media_stream_topology_report=str(topology_path),
+                ),
+                observed_at=fixed_datetime(),
+            )
+        validation = validate_connectivity_probe_report(report)
+        product_gate = check(report, "protocol.media_product_topology_gate")
+
+        self.assertEqual(product_gate["status"], "warn")
+        self.assertFalse(product_gate["observed"]["dependent_media_relay_topology_allowed"])
+        self.assertIn(
+            "hostess.issue.connectivity_probe.media_dependent_relay_receiver_not_wifi_direct_bound",
+            product_gate["issue_codes"],
+        )
+        self.assertFalse(report["measurements"]["media_product_topology_ready"])
+        self.assertEqual(validation["status"], "pass")
+
     def test_qcl082_rmanvid1_receiver_capture_blocks_product_gate_when_topology_serial_mismatches_lease(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)

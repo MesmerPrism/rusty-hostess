@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from tools.hostessctl.connectivity_firewall import diagnostic_python_program_path
+from tools.hostessctl.connectivity_media import MEDIA_STREAM_RUNTIME_ENDPOINT_SOURCE
 from tools.hostessctl.connectivity_probe_common import object_value
 from tools.hostessctl.connectivity_media_receiver_common import (
     LIVE_CAPTURE_KINDS,
@@ -17,6 +18,10 @@ from tools.hostessctl.connectivity_media_receiver_lease import (
     quest_serial_from_resource,
     topology_device_serial,
 )
+from tools.hostessctl.connectivity_topology_lifecycle import WIFI_DIRECT_LIFECYCLE_SCHEMA
+
+
+QCL082_DEPENDENT_MEDIA_RELAY_STATUSES = {"pass", "pass_with_peer_close"}
 
 
 def media_product_topology_summary(
@@ -42,6 +47,10 @@ def media_product_topology_summary(
     topology_status = str(report.get("status") or "")
     topology_probe_id = str(report.get("probe_id") or "")
     topology_promotion_allowed = promotion.get("allowed") is True
+    dependent_relay = qcl082_dependent_media_relay_topology_summary(report)
+    dependent_relay_allowed = dependent_relay["allowed"]
+    product_topology_allowed = topology_promotion_allowed or dependent_relay_allowed
+    product_topology_status_ok = topology_status == "pass" or dependent_relay_allowed
     device_serial = topology_device_serial(report)
     receiver_quest_serial = str(lease.get("quest_serial") or quest_serial_from_resource(str(lease.get("resource") or "")))
     direct_wifi = any(
@@ -52,7 +61,7 @@ def media_product_topology_summary(
     requires_serial_binding = bool(
         report_present
         and direct_wifi
-        and topology_promotion_allowed
+        and product_topology_allowed
         and capture_kind in LIVE_CAPTURE_KINDS
     )
     serial_binding_ok = bool(
@@ -62,8 +71,8 @@ def media_product_topology_summary(
     ready = (
         report_present
         and direct_wifi
-        and topology_status == "pass"
-        and topology_promotion_allowed
+        and product_topology_status_ok
+        and product_topology_allowed
         and media_promotion_allowed
         and serial_binding_ok
     )
@@ -73,11 +82,15 @@ def media_product_topology_summary(
         issue_codes: list[str] = []
     elif ready:
         check_status_value = "pass"
-        evidence = "RMANVID1 TCP receiver capture is paired with promoted direct-Wi-Fi topology evidence"
+        evidence = (
+            "RMANVID1 TCP receiver capture is paired with same-run QCL-082 Wi-Fi Direct media relay evidence"
+            if dependent_relay_allowed and not topology_promotion_allowed
+            else "RMANVID1 TCP receiver capture is paired with promoted direct-Wi-Fi topology evidence"
+        )
         issue_codes = []
     elif (
         direct_wifi
-        and topology_promotion_allowed
+        and product_topology_allowed
         and media_promotion_allowed
         and requires_serial_binding
         and not device_serial
@@ -89,7 +102,7 @@ def media_product_topology_summary(
         ]
     elif (
         direct_wifi
-        and topology_promotion_allowed
+        and product_topology_allowed
         and media_promotion_allowed
         and requires_serial_binding
         and not receiver_quest_serial
@@ -101,7 +114,7 @@ def media_product_topology_summary(
         ]
     elif (
         direct_wifi
-        and topology_promotion_allowed
+        and product_topology_allowed
         and media_promotion_allowed
         and requires_serial_binding
     ):
@@ -110,11 +123,12 @@ def media_product_topology_summary(
         issue_codes = [
             "hostess.issue.connectivity_probe.media_direct_wifi_topology_lease_serial_mismatch"
         ]
-    elif direct_wifi and not topology_promotion_allowed:
+    elif direct_wifi and not product_topology_allowed:
         check_status_value = "warn"
-        evidence = "direct-Wi-Fi topology is present but not promoted for product media"
+        evidence = "direct-Wi-Fi topology is present but neither promoted nor backed by same-run QCL-082 relay evidence"
         issue_codes = [
-            "hostess.issue.connectivity_probe.media_direct_wifi_topology_not_promoted"
+            "hostess.issue.connectivity_probe.media_direct_wifi_topology_not_promoted",
+            *dependent_relay["issue_codes"],
         ]
     elif direct_wifi and not media_promotion_allowed:
         check_status_value = "warn"
@@ -144,6 +158,12 @@ def media_product_topology_summary(
         "topology_endpoint_direction": endpoint_direction,
         "topology_transport_family": transport_family,
         "topology_promotion_allowed": topology_promotion_allowed,
+        "topology_product_acceptance_source": (
+            "promoted_topology"
+            if topology_promotion_allowed
+            else ("dependent_media_relay_lifecycle" if dependent_relay_allowed else "")
+        ),
+        "topology_product_status_ok": product_topology_status_ok,
         "direct_wifi_topology": direct_wifi,
         "requires_serial_binding": requires_serial_binding,
         "topology_device_serial": device_serial,
@@ -153,6 +173,100 @@ def media_product_topology_summary(
         "media_runtime_ok": runtime_ok,
         "media_promotion_allowed": media_promotion_allowed,
         "receiver_capture_kind": capture_kind,
+        "dependent_media_relay_topology_allowed": dependent_relay_allowed,
+        "dependent_media_relay": dependent_relay,
+    }
+
+
+def qcl082_dependent_media_relay_topology_summary(report: dict[str, Any]) -> dict[str, Any]:
+    diagnostics = object_value(report.get("diagnostics"))
+    relay = object_value(diagnostics.get("qcl082_relay"))
+    lifecycle = object_value(report.get("lifecycle"))
+    schema = str(report.get("$schema") or report.get("schema") or "")
+    probe_id = str(report.get("probe_id") or "")
+    run_id = str(report.get("run_id") or "")
+    capture_kind = str(report.get("capture_kind") or "")
+    relay_status = str(relay.get("status") or "")
+    bytes_copied = int_or_none(relay.get("bytes_copied")) or 0
+    source_owner = str(relay.get("source_owner") or "")
+    source_owner_token = normalize_topology_token(source_owner)
+    lifecycle_phase_statuses = {
+        "feature": str(object_value(lifecycle.get("feature")).get("status") or ""),
+        "windows_wifi_direct_api": str(
+            object_value(lifecycle.get("windows_wifi_direct_api")).get("status") or ""
+        ),
+        "permission_state": str(object_value(lifecycle.get("permission_state")).get("status") or ""),
+        "peer_discovery": str(object_value(lifecycle.get("peer_discovery")).get("status") or ""),
+        "group_formation": str(object_value(lifecycle.get("group_formation")).get("status") or ""),
+        "cleanup": str(object_value(lifecycle.get("cleanup")).get("status") or ""),
+    }
+    lifecycle_ready = all(status == "pass" for status in lifecycle_phase_statuses.values())
+    socket_network_bound = bool(
+        relay.get("receiver_socket_created_from_wifi_direct_network") is True
+        and relay.get("receiver_socket_bound_to_wifi_direct_network") is True
+    )
+    source_owner_ok = bool(
+        source_owner == MEDIA_STREAM_RUNTIME_ENDPOINT_SOURCE
+        or "media_stream_runtime" in source_owner_token
+    )
+    relay_candidate = bool(schema == WIFI_DIRECT_LIFECYCLE_SCHEMA or relay)
+    checks = {
+        "schema_ok": schema == WIFI_DIRECT_LIFECYCLE_SCHEMA,
+        "probe_ok": probe_id == "QCL-041",
+        "live_evidence": report.get("live_evidence") is True
+        and capture_kind == "live_wifi_direct_lifecycle",
+        "run_id_present": bool(run_id),
+        "relay_enabled": relay.get("enabled") is True,
+        "relay_status_ok": relay_status in QCL082_DEPENDENT_MEDIA_RELAY_STATUSES,
+        "relay_bytes_copied": bytes_copied > 0,
+        "receiver_connected": relay.get("receiver_connected") is True,
+        "receiver_socket_network_bound": socket_network_bound,
+        "source_owner_ok": source_owner_ok,
+        "lifecycle_ready_without_diagnostic_socket": lifecycle_ready,
+    }
+    issue_codes: list[str] = []
+    issue_requirements = [
+        ("schema_ok", "media_dependent_relay_lifecycle_schema_invalid"),
+        ("probe_ok", "media_dependent_relay_lifecycle_probe_mismatch"),
+        ("live_evidence", "media_dependent_relay_lifecycle_not_live"),
+        ("run_id_present", "media_dependent_relay_run_id_missing"),
+        ("relay_enabled", "media_dependent_relay_not_enabled"),
+        ("relay_status_ok", "media_dependent_relay_not_passed"),
+        ("relay_bytes_copied", "media_dependent_relay_bytes_missing"),
+        ("receiver_connected", "media_dependent_relay_receiver_not_connected"),
+        ("receiver_socket_network_bound", "media_dependent_relay_receiver_not_wifi_direct_bound"),
+        ("source_owner_ok", "media_dependent_relay_source_not_media_runtime"),
+        ("lifecycle_ready_without_diagnostic_socket", "media_dependent_relay_lifecycle_incomplete"),
+    ]
+    if report and relay_candidate:
+        issue_codes.extend(
+            f"hostess.issue.connectivity_probe.{suffix}"
+            for check, suffix in issue_requirements
+            if not checks[check]
+        )
+    return {
+        "allowed": bool(report and relay_candidate and not issue_codes),
+        "schema": schema,
+        "probe_id": probe_id,
+        "run_id": run_id,
+        "capture_kind": capture_kind,
+        "relay_status": relay_status,
+        "bytes_copied": bytes_copied,
+        "source_owner": source_owner,
+        "receiver_connected": relay.get("receiver_connected") is True,
+        "receiver_socket_created_from_wifi_direct_network": relay.get(
+            "receiver_socket_created_from_wifi_direct_network"
+        )
+        is True,
+        "receiver_socket_bound_to_wifi_direct_network": relay.get(
+            "receiver_socket_bound_to_wifi_direct_network"
+        )
+        is True,
+        "receiver_connected_local_address": str(relay.get("receiver_connected_local_address") or ""),
+        "lifecycle_phase_statuses": lifecycle_phase_statuses,
+        "relay_candidate": relay_candidate,
+        "checks": checks,
+        "issue_codes": issue_codes,
     }
 
 def media_product_listener_firewall_summary(
@@ -244,5 +358,6 @@ def media_product_listener_firewall_summary(
 
 __all__ = [
     "media_product_topology_summary",
+    "qcl082_dependent_media_relay_topology_summary",
     "media_product_listener_firewall_summary",
 ]
