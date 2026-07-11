@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-evidence-profile.schema.json",
+  "title": "Rusty Hostess evidence profile selection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "profile_id", "owner", "owner_schema", "receipt_schema", "binding_schema",
+    "namespace_role", "product_binding", "authority", "required_observations"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.evidence_profile.v1" },
+    "profile_id": { "$ref": "#/$defs/id" },
+    "owner": { "const": "rusty.quest" },
+    "owner_schema": { "const": "rusty.quest.generic_media_session_evidence.v1" },
+    "receipt_schema": { "const": "rusty.quest.generic_media_session_evidence.v1" },
+    "binding_schema": { "const": "rusty.hostess.project_runner.evidence_receipt_binding.v1" },
+    "namespace_role": { "const": "validation-profile" },
+    "product_binding": { "$ref": "#/$defs/binding" },
+    "authority": { "$ref": "#/$defs/authority" },
+    "required_observations": { "$ref": "#/$defs/strings" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" },
+    "strings": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["minimum_revision", "max_age_seconds"],
+      "properties": {
+        "minimum_revision": { "type": "integer", "minimum": 1 },
+        "max_age_seconds": { "type": "integer", "minimum": 1 }
+      }
+    },
+    "binding": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "project_id", "project_revision", "project_spec_sha256", "product_id",
+        "product_lock_id", "product_lock_revision", "product_lock_fingerprint",
+        "product_lock_sha256"
+      ],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/id" },
+        "project_revision": { "type": "integer", "minimum": 1 },
+        "project_spec_sha256": { "$ref": "#/$defs/sha" },
+        "product_id": { "$ref": "#/$defs/id" },
+        "product_lock_id": { "$ref": "#/$defs/id" },
+        "product_lock_revision": { "type": "integer", "minimum": 1 },
+        "product_lock_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" },
+        "product_lock_sha256": { "$ref": "#/$defs/sha" }
+      }
+    },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+  }
+}

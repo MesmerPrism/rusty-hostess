@@ -284,10 +284,28 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   host-loopback WebSocket evidence is candidate-only until broker-owned or
   Quest-runtime endpoint evidence exists.
 - `tools/hostessctl/connectivity_suite.py`: install/environment/protocol suite
-  runner. It executes selected QCL slots, records host network/firewall/tool
-  snapshots, aggregates grouped results, and emits
+  runner retained as frozen compatibility. It runs only when
+  `--legacy-qcl-compatibility` is explicit, executes selected QCL slots,
+  records host network/firewall/tool snapshots, aggregates grouped results, and emits
   `rusty.quest.device_link.install_environment_suite_run.v1` for WPF, CLI,
   installers, and future frontends.
+- `tools/hostessctl/project_runner.py`: source-only declarative workflow
+  planner. It consumes a hash-pinned project spec, exact Manifold product lock,
+  selected capability IDs, Hostess selection profiles that name owner
+  topology/media/evidence schemas, Hostess binding sidecars, canonical owner
+  receipts, risk tier, and cleanup
+  contract. Dry-run is the default and only
+  implemented mode. It validates an exact project-to-lock closure, fresh
+  role-specific owner receipts, and additive risk-tier gates, then emits a
+  Hostess-owned immutable generation plus a last-write completion marker that
+  retain owner artifact paths and SHA-256 values without embedding foreign
+  payloads.
+- `tools/hostessctl/schema_ownership.py`: source ownership audit for the
+  reviewed exact foreign schema/path compatibility inventory under
+  `fixtures/schema-ownership/`. It scans tracked/candidate Python, C#, Rust,
+  Java, Kotlin, and JSON production surfaces, fails on unregistered or stale
+  occurrences, and records the rule that every new Hostess output uses
+  `rusty.hostess.*`.
 - `tools/test_hostessctl_connectivity_probe.py`: compatibility facade for the
   QCL connectivity-probe unittest suite. Test-family implementations live in
   `tools/connectivity_probe_tests/` so fixture reports, QCL-082 media receiver
@@ -486,10 +504,26 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   alignment checks, and links each QCL slot to the fixture/live commands and
   reusable stream capability descriptors that WPF, Makepad, CLI, and future
   frontends can render.
-- `tools/hostessctl/hostessctl.py connectivity-probe run-suite`: executes
-  selected QCL slots from the test-suite descriptor and emits
+- `tools/hostessctl/hostessctl.py connectivity-probe run-suite
+  --legacy-qcl-compatibility`: explicitly enters the frozen compatibility
+  runner, executes selected QCL slots from the test-suite descriptor, and emits
   `rusty.quest.device_link.install_environment_suite_run.v1` with host
   environment snapshots, grouped results, per-slot artifacts, and metrics.
+- `tools/hostessctl/hostessctl.py project-runner run`: validates exact hashes
+  for every project/owner input and writes
+  `rusty.hostess.project_runner.envelope.v1`,
+  `rusty.hostess.project_runner.plan.v1`, and
+  `rusty.hostess.project_runner.receipt.v1` in an immutable generation
+  directory, with a completion marker atomically replaced last. Binding
+  sidecars remain Hostess-owned and point to separate canonical owner receipts.
+  It is a CLI-equivalent API route
+  for automation and does not run devices, transports, cleanup, or Git.
+- `tools/hostessctl/hostessctl.py project-runner inspect`: verifies the
+  completion marker and all generation hashes, then emits the read-only
+  `rusty.hostess.project_runner.projection.v1` consumed by WPF and automation.
+- `tools/hostessctl/hostessctl.py project-runner ownership-audit`: emits
+  `rusty.hostess.schema_ownership.audit.v1` and fails closed on unregistered
+  foreign schema references when `--fail-on-error` is selected.
 - `tools/hostessctl/hostessctl.py snapshot-telemetry`: converts bounded
   replay/live evidence into `rusty.hostess.telemetry.snapshot.v1` checkpoints
   for Makepad and future Rusty GUI surfaces.
@@ -513,6 +547,13 @@ cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
+```
+
+For the declarative project runner boundary:
+
+```powershell
+python -m unittest tools.test_hostessctl_project_runner tools.test_hostessctl_connectivity_suite
+python tools\hostessctl\hostessctl.py project-runner ownership-audit --repo-root . --out target\schema-ownership\audit.json --fail-on-error
 ```
 
 For Makepad running-telemetry validation from a replay checkpoint:

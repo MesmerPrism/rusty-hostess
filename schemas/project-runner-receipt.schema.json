@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-receipt.schema.json",
+  "title": "Rusty Hostess declarative project runner dry-run receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schema_version", "generation_id", "receipt_id", "run_id",
+    "generated_at_utc", "status", "dry_run", "executed", "project", "product",
+    "envelope", "plan", "owner_receipts", "cleanup", "risk_gates", "validation"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.receipt.v1" },
+    "schema_version": { "const": 1 },
+    "generation_id": { "type": "string", "minLength": 1 },
+    "receipt_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at_utc": { "type": "string", "minLength": 1 },
+    "status": { "const": "planned" },
+    "dry_run": { "const": true },
+    "executed": { "const": false },
+    "project": { "type": "object" },
+    "product": { "type": "object" },
+    "envelope": { "$ref": "#/$defs/ref" },
+    "plan": { "$ref": "#/$defs/ref" },
+    "owner_receipts": {
+      "type": "array", "minItems": 3, "maxItems": 3,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role", "path", "sha256", "schema", "owner", "binding", "profile_id", "authority_revision", "expires_at_utc"],
+        "properties": {
+          "role": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "$ref": "#/$defs/sha" },
+          "schema": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "binding": { "$ref": "#/$defs/ref" },
+          "profile_id": { "type": "string", "minLength": 1 },
+          "authority_revision": { "type": "integer", "minimum": 1 },
+          "expires_at_utc": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract", "required_kinds", "status"],
+      "properties": {
+        "contract": { "$ref": "#/$defs/ref" },
+        "required_kinds": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+        "status": { "const": "required-before-execution-acceptance" }
+      }
+    },
+    "risk_gates": { "type": "object" },
+    "validation": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "status", "checked_in_schemas_verified", "exact_hashes_verified",
+        "project_product_closure_exact", "owner_receipts_profile_lock_bound",
+        "owner_receipts_fresh", "capabilities_in_product_lock", "qcl_lane_leakage",
+        "output_schema_owner", "completion_marker_required"
+      ],
+      "properties": {
+        "status": { "const": "pass" },
+        "checked_in_schemas_verified": { "const": true },
+        "exact_hashes_verified": { "const": true },
+        "project_product_closure_exact": { "const": true },
+        "owner_receipts_profile_lock_bound": { "const": true },
+        "owner_receipts_fresh": { "const": true },
+        "capabilities_in_product_lock": { "const": true },
+        "qcl_lane_leakage": { "const": false },
+        "output_schema_owner": { "const": "rusty.hostess" },
+        "completion_marker_required": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "path", "sha256", "schema", "owner"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha" },
+        "schema": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

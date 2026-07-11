@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-owner-evidence-receipt.schema.json",
+  "title": "Compatibility validator for canonical Quest generic-media evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema", "status", "media_session_contract", "route_contract",
+    "validation_profile_ref", "media_layout", "receiver_observed_bytes",
+    "final_window_submitted_frames", "cleanup_complete"
+  ],
+  "properties": {
+    "schema": { "const": "rusty.quest.generic_media_session_evidence.v1" },
+    "status": { "enum": ["pass", "fail"] },
+    "media_session_contract": { "$ref": "#/$defs/id" },
+    "route_contract": { "$ref": "#/$defs/id" },
+    "validation_profile_ref": { "$ref": "#/$defs/id" },
+    "media_layout": { "type": "string", "minLength": 1 },
+    "receiver_observed_bytes": { "type": "integer", "minimum": 0 },
+    "final_window_submitted_frames": { "type": "integer", "minimum": 0 },
+    "cleanup_complete": { "type": "boolean" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" }
+  }
+}

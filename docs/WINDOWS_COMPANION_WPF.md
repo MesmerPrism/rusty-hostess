@@ -17,6 +17,8 @@ Hostess/Manifold evidence routes.
   verification, and QCL-080 UDP stream-capability verification.
 - Evidence view derived from companion module evidence bindings.
 - Workspaces view derived from Rusty GUI companion workspace descriptors.
+- Read-only project-runner view derived from the hash-verified
+  `rusty.hostess.project_runner.projection.v1` CLI artifact.
 - Hostess `companion-readiness` refresh command.
 - Hostess `companion-catalog` descriptor refresh command.
 - Hostess `companion-session run` command for the reusable session
@@ -48,6 +50,9 @@ live in focused page viewmodels:
 - `EvidencePageViewModel`: module evidence artifact rows.
 - `WorkspacesPageViewModel`: workspace composition rows from catalog
   descriptors.
+- `ProjectRunnerPageViewModel`: exact closure, declarative plan-step, fresh
+  owner-receipt, and cleanup-gate rows from a completion-marker-bound
+  generation. It never executes the plan.
 
 The legacy collection and selection properties on `MainWindowViewModel` remain
 as pass-through bindings for XAML stability. New page behavior should be added
@@ -79,6 +84,9 @@ The same test suite runs
 --fail-on-error` and compares the emitted
 `rusty.hostess.companion.operator_action_catalog.v1` rows with the WPF catalog,
 so automation can inspect the operator action surface without clicking UI. The
+`wpf.project_runner.inspect` row maps `LoadProjectRunnerCommand` to
+`project-runner inspect`; neither route mutates the host, a device, or runtime
+authority.
 Hostess report loads its static rows from
 `tools\hostessctl\companion_operator_action_rows.py` and keeps schema/status
 validation in `companion_operator_actions.py`. Those rows also carry typed
@@ -325,6 +333,7 @@ The page can also request the installer-style suite runner:
 
 ```powershell
 python tools\hostessctl\hostessctl.py connectivity-probe run-suite `
+  --legacy-qcl-compatibility `
   --mode fixture `
   --suite-id wpf-connectivity-suite `
   --out target\connectivity-probe\wpf-connectivity-suite.json
@@ -335,6 +344,8 @@ WPF renders the resulting
 phase rows, per-QCL slot rows, metrics, and artifact paths. Fixture suite
 success proves the diagnostic harness is coherent; live protocol promotion
 still comes from the individual QCL reports and stream capability descriptors.
+This is the frozen compatibility runner; new declarative orchestration uses
+`project-runner run` and Hostess-owned envelope/plan/receipt schemas.
 The suite includes QCL-079 as a generic WebSocket protocol-fit slot; it is
 separate from QCL-000 Manifold command/session WebSocket authority.
 

@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-projection.schema.json",
+  "title": "Rusty Hostess read-only project runner operator projection",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schema_version", "generation_id", "run_id", "status",
+    "completion_marker", "risk_tier", "project_id", "product_lock_id",
+    "product_lock_revision", "product_lock_fingerprint", "dry_run", "executed", "rows"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.projection.v1" },
+    "schema_version": { "const": 1 },
+    "generation_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "status": { "const": "complete" },
+    "completion_marker": { "type": "string", "minLength": 1 },
+    "risk_tier": { "enum": ["quick", "standard", "deep", "device", "release"] },
+    "project_id": { "type": "string", "minLength": 1 },
+    "product_lock_id": { "type": "string", "minLength": 1 },
+    "product_lock_revision": { "type": "integer", "minimum": 1 },
+    "product_lock_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" },
+    "dry_run": { "const": true },
+    "executed": { "const": false },
+    "rows": {
+      "type": "array", "minItems": 8,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["row_id", "kind", "title", "status", "owner", "detail"],
+        "properties": {
+          "row_id": { "type": "string", "minLength": 1 },
+          "kind": { "enum": ["closure", "plan_step", "owner_receipt", "cleanup"] },
+          "title": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["pass", "planned", "bound", "required"] },
+          "owner": { "type": "string", "minLength": 1 },
+          "detail": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

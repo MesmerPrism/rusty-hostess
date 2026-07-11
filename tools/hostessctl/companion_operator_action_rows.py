@@ -74,7 +74,7 @@ PROTOCOL_MATRIX_CLI_ROUTE = (
     r"python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult --out $Qcl082ReceiverReport; "
     r"python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback --out $Qcl079HostLoopbackReport; "
     r"python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence --out $Qcl079ManifoldWebSocketReport; "
-    r"python $HostessCtl connectivity-probe run-suite --out $SuiteRun; "
+    r"python $HostessCtl connectivity-probe run-suite --legacy-qcl-compatibility --out $SuiteRun; "
     r"python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-020 --fixture-profile qcl-020-wifi-adb-session-pass --out $Qcl020TopologyReport; "
     r"python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-030 --fixture-profile qcl-030-local-only-hotspot-started --out $Qcl030TopologyReport; "
     r"python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-040 --fixture-profile qcl-040-wifi-direct-phone-peer-pass --out $Qcl040TopologyFixtureReport; "
@@ -250,7 +250,7 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "$Adb = '<adb>'; "
             "$QuestSerial = '<quest-serial>'; "
             + HOSTESS_CTL
-            + "connectivity-probe run-suite --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite --artifact-dir $ConnectivitySuiteArtifacts --listener-program $HostessCompanionWpfExe --listener-protocol '<TCP-or-UDP>' --listener-port '<port>' --adb $Adb --serial $QuestSerial",
+            + "connectivity-probe run-suite --legacy-qcl-compatibility --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite --artifact-dir $ConnectivitySuiteArtifacts --listener-program $HostessCompanionWpfExe --listener-protocol '<TCP-or-UDP>' --listener-port '<port>' --adb $Adb --serial $QuestSerial",
             "rusty.quest.device_link.install_environment_suite_run.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_suite; HostessCompanion.Wpf.Tests",
@@ -281,6 +281,18 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
             requires_elevation=True,
             mutates_host=True,
+        ),
+        action(
+            "wpf.project_runner.inspect",
+            "Load project runner generation",
+            "LoadProjectRunnerCommand",
+            r"$ProjectRunnerCompletion = 'target\project-runner\latest.complete.json'; "
+            r"$ProjectRunnerProjection = 'target\project-runner\wpf-project-runner-projection.json'; "
+            + HOSTESS_CTL
+            + "project-runner inspect --completion $ProjectRunnerCompletion --out $ProjectRunnerProjection",
+            "rusty.hostess.project_runner.projection.v1",
+            "Hostess",
+            "tools.test_hostessctl_project_runner; HostessCompanion.Wpf.Tests",
         ),
     ]
 

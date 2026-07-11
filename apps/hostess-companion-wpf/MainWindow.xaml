@@ -40,6 +40,12 @@
           <TextBlock Text="{Binding ConnectivityStatusLabel}"
                      VerticalAlignment="Center"
                      Foreground="{Binding ConnectivityStatusBrush}"/>
+          <TextBlock Text="  /  "
+                     VerticalAlignment="Center"
+                     Foreground="{StaticResource Brush.Muted}"/>
+          <TextBlock Text="{Binding ProjectRunnerStatusLabel}"
+                     VerticalAlignment="Center"
+                     Foreground="{Binding ProjectRunnerStatusBrush}"/>
         </StackPanel>
       </Grid>
     </Border>
@@ -89,6 +95,10 @@
                 Padding="12"
                 Margin="0,0,0,12">
           <Grid>
+            <Grid.RowDefinitions>
+              <RowDefinition Height="Auto"/>
+              <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
               <ColumnDefinition Width="120"/>
               <ColumnDefinition Width="220"/>
@@ -141,6 +151,25 @@
                     Command="{Binding RunProbeCommand}"
                     Margin="8,0,0,0"
                     Visibility="{Binding IsCommandsSelected, Converter={StaticResource BooleanToVisibility}}"/>
+            <Button Grid.Column="9"
+                    Content="{Binding LoadProjectRunnerButtonLabel}"
+                    Command="{Binding LoadProjectRunnerCommand}"
+                    Margin="8,0,0,0"
+                    ToolTip="Validate the completion marker and load the read-only project-runner projection"
+                    Visibility="{Binding IsProjectRunnerSelected, Converter={StaticResource BooleanToVisibility}}"/>
+            <StackPanel Grid.Row="1"
+                        Grid.ColumnSpan="10"
+                        Orientation="Horizontal"
+                        Margin="0,10,0,0"
+                        Visibility="{Binding IsProjectRunnerSelected, Converter={StaticResource BooleanToVisibility}}">
+              <TextBlock Text="Completion marker"
+                         Width="120"
+                         VerticalAlignment="Center"
+                         Foreground="{StaticResource Brush.Muted}"/>
+              <TextBox Width="520"
+                       Text="{Binding ProjectRunnerCompletionMarker, UpdateSourceTrigger=PropertyChanged}"
+                       ToolTip="Path to a rusty.hostess.project_runner.generation_completion.v1 marker"/>
+            </StackPanel>
           </Grid>
         </Border>
 
@@ -423,6 +452,20 @@
               <DataGridTextColumn Header="Frontends" Binding="{Binding SupportedFrontends}" Width="140"/>
               <DataGridTextColumn Header="Sensitivity" Binding="{Binding Sensitivity}" Width="130"/>
               <DataGridTextColumn Header="Source" Binding="{Binding SourcePath}" Width="*"/>
+            </DataGrid.Columns>
+          </DataGrid>
+
+          <DataGrid ItemsSource="{Binding ProjectRunnerRows}"
+                    SelectedItem="{Binding SelectedProjectRunnerRow}"
+                    AutoGenerateColumns="False"
+                    IsReadOnly="True"
+                    Visibility="{Binding IsProjectRunnerSelected, Converter={StaticResource BooleanToVisibility}}">
+            <DataGrid.Columns>
+              <DataGridTextColumn Header="Kind" Binding="{Binding Kind}" Width="120"/>
+              <DataGridTextColumn Header="Step / receipt" Binding="{Binding Title}" Width="240"/>
+              <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="90"/>
+              <DataGridTextColumn Header="Owner" Binding="{Binding Owner}" Width="130"/>
+              <DataGridTextColumn Header="Detail" Binding="{Binding Detail}" Width="*"/>
             </DataGrid.Columns>
           </DataGrid>
         </Grid>

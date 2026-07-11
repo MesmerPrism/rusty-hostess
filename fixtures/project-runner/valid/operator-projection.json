@@ -1,0 +1,33 @@
+{
+  "$schema": "rusty.hostess.project_runner.projection.v1",
+  "schema_version": 1,
+  "generation_id": "generation.hostess-network-workflow-fixture.0123456789abcdef",
+  "run_id": "hostess-network-workflow-fixture",
+  "status": "complete",
+  "completion_marker": "target/project-runner/fixture.complete.json",
+  "risk_tier": "standard",
+  "project_id": "hostess-network-workflow",
+  "product_lock_id": "lock.broker.media-session.standalone",
+  "product_lock_revision": 1,
+  "product_lock_fingerprint": "fnv1a64-006d1c87d57a0438",
+  "dry_run": true,
+  "executed": false,
+  "rows": [
+    {
+      "row_id": "project-product-closure",
+      "kind": "closure",
+      "title": "Exact project and product closure",
+      "status": "pass",
+      "owner": "rusty.hostess",
+      "detail": "hostess-network-workflow r1 / lock.broker.media-session.standalone r1"
+    },
+    {
+      "row_id": "verify.exact-inputs-and-closure",
+      "kind": "plan_step",
+      "title": "verify.exact-inputs-and-closure",
+      "status": "planned",
+      "owner": "rusty.hostess",
+      "detail": "inputs=; receipts="
+    }
+  ]
+}

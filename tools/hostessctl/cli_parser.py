@@ -650,6 +650,55 @@ def build_hostessctl_parser(
     companion_report_operator_actions.add_argument("--frontend", choices=["wpf"], default="wpf")
     companion_report_operator_actions.add_argument("--fail-on-error", action="store_true")
 
+    project_runner = subcommands.add_parser("project-runner")
+    project_runner_subcommands = project_runner.add_subparsers(
+        dest="project_runner_command",
+        required=True,
+    )
+    project_runner_run = project_runner_subcommands.add_parser("run")
+    project_runner_run.add_argument("--project-spec", required=True)
+    project_runner_run.add_argument("--project-spec-sha256", required=True)
+    project_runner_run.add_argument("--product-lock", required=True)
+    project_runner_run.add_argument("--product-lock-sha256", required=True)
+    project_runner_run.add_argument("--capability-id", action="append", required=True)
+    project_runner_run.add_argument("--topology-profile", required=True)
+    project_runner_run.add_argument("--topology-profile-sha256", required=True)
+    project_runner_run.add_argument("--topology-receipt", required=True)
+    project_runner_run.add_argument("--topology-receipt-sha256", required=True)
+    project_runner_run.add_argument("--media-profile", required=True)
+    project_runner_run.add_argument("--media-profile-sha256", required=True)
+    project_runner_run.add_argument("--media-receipt", required=True)
+    project_runner_run.add_argument("--media-receipt-sha256", required=True)
+    project_runner_run.add_argument("--evidence-profile", required=True)
+    project_runner_run.add_argument("--evidence-profile-sha256", required=True)
+    project_runner_run.add_argument("--evidence-receipt", required=True)
+    project_runner_run.add_argument("--evidence-receipt-sha256", required=True)
+    project_runner_run.add_argument("--cleanup-contract", required=True)
+    project_runner_run.add_argument("--cleanup-contract-sha256", required=True)
+    project_runner_run.add_argument(
+        "--risk-tier",
+        choices=["quick", "standard", "deep", "device", "release"],
+        required=True,
+    )
+    project_runner_run.add_argument("--run-id")
+    project_runner_run.add_argument("--out", required=True)
+    project_runner_run.add_argument("--envelope-out")
+    project_runner_run.add_argument("--plan-out")
+    project_runner_run.add_argument("--completion-out")
+    project_runner_run.add_argument(
+        "--execute",
+        action="store_true",
+        help="Reserved fail-closed execution request; source-only runner currently rejects it.",
+    )
+    project_runner_inspect = project_runner_subcommands.add_parser("inspect")
+    project_runner_inspect.add_argument("--completion", required=True)
+    project_runner_inspect.add_argument("--out", required=True)
+    project_runner_ownership = project_runner_subcommands.add_parser("ownership-audit")
+    project_runner_ownership.add_argument("--repo-root", default=".")
+    project_runner_ownership.add_argument("--inventory")
+    project_runner_ownership.add_argument("--out", required=True)
+    project_runner_ownership.add_argument("--fail-on-error", action="store_true")
+
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(
         dest="connectivity_probe_command",
@@ -1284,6 +1333,11 @@ def build_hostessctl_parser(
     connectivity_probe_run_suite.add_argument("--hostess-android-package", default="io.github.mesmerprism.rustyhostess.t")
     connectivity_probe_run_suite.add_argument("--ping-count", type=int, default=2)
     connectivity_probe_run_suite.add_argument("--ping-timeout-seconds", type=float, default=2.0)
+    connectivity_probe_run_suite.add_argument(
+        "--legacy-qcl-compatibility",
+        action="store_true",
+        help="Explicitly opt into the frozen monolithic QCL compatibility runner.",
+    )
     connectivity_probe_run_suite.add_argument("--fail-on-error", action="store_true")
 
     render = subcommands.add_parser("render-telemetry")

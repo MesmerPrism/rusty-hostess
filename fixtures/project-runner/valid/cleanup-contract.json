@@ -1,0 +1,37 @@
+{
+  "$schema": "rusty.hostess.project_runner.cleanup_contract.v1",
+  "contract_id": "cleanup.direct-p2p.media-session",
+  "steps": [
+    {
+      "step_id": "cleanup.topology.inactive",
+      "kind": "topology_inactive",
+      "owner": "rusty.quest",
+      "action": "remove-group-and-verify-inactive",
+      "receipt_role": "cleanup.topology.receipt",
+      "required": true
+    },
+    {
+      "step_id": "cleanup.packages.removed",
+      "kind": "package_cleanup",
+      "owner": "rusty.quest",
+      "action": "remove-test-packages-and-verify-absent",
+      "receipt_role": "cleanup.packages.receipt",
+      "required": true
+    },
+    {
+      "step_id": "cleanup.fatals.zero",
+      "kind": "zero_fatals",
+      "owner": "rusty.hostess",
+      "action": "verify-bounded-fatal-window-zero",
+      "receipt_role": "cleanup.fatals.receipt",
+      "required": true
+    }
+  ],
+  "terminal_assertions": [
+    {
+      "assertion_id": "terminal.topology-inactive-packages-absent-zero-fatals",
+      "owner": "rusty.hostess",
+      "required": true
+    }
+  ]
+}

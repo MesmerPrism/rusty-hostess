@@ -33,6 +33,9 @@ var tests = new (string Name, Action Test)[]
     ("operator actions map WPF commands to CLI routes", OperatorActionsMapWpfCommandsToCliRoutes),
     ("page viewmodels own WPF rows and selections", PageViewModelsOwnWpfRowsAndSelections),
     ("page viewmodels project backend reports", PageViewModelsProjectBackendReports),
+    ("project runner projection is read-only and completion bound", ProjectRunnerProjectionIsReadOnlyAndCompletionBound),
+    ("project runner projection rejects executed artifacts", ProjectRunnerProjectionRejectsExecutedOrIncompleteArtifacts),
+    ("project runner operator action matches CLI route", ProjectRunnerOperatorActionMatchesReadOnlyCliRoute),
 };
 
 var failed = 0;

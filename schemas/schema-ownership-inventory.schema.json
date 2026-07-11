@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/schema-ownership-inventory.schema.json",
+  "title": "Rusty Hostess exact foreign schema/path compatibility inventory",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "inventory_id", "policy", "foreign_schema_references"],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.schema_ownership.compatibility_inventory.v1" },
+    "inventory_id": { "type": "string", "minLength": 1 },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["new_hostess_outputs", "foreign_schema_additions", "qcl_identifiers", "inventory_granularity", "scan_extensions"],
+      "properties": {
+        "new_hostess_outputs": { "const": "rusty.hostess.* only" },
+        "foreign_schema_additions": { "const": "explicit schema-path-classification-role review required" },
+        "qcl_identifiers": { "const": "evidence-profile references only" },
+        "inventory_granularity": { "const": "exact schema and production path" },
+        "scan_extensions": {
+          "type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true,
+          "items": { "enum": [".py", ".cs", ".rs", ".java", ".kt", ".json"] }
+        }
+      }
+    },
+    "foreign_schema_references": {
+      "type": "array", "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema_id", "path", "owner", "classification", "role", "reason"],
+        "properties": {
+          "schema_id": { "type": "string", "pattern": "^rusty\\.(quest|manifold)\\." },
+          "path": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+(/[-A-Za-z0-9_.]+)+$" },
+          "owner": { "enum": ["rusty.quest", "rusty.manifold"] },
+          "classification": {
+            "enum": ["owner_input", "owner_contract_compatibility", "frozen_qcl_compatibility"]
+          },
+          "role": {
+            "enum": [
+              "input", "contract_reference", "nested_owner_receipt",
+              "platform_projection", "compatibility_input", "compatibility_output",
+              "legacy_validation_compatibility"
+            ]
+          },
+          "reason": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

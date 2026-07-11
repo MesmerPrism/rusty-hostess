@@ -86,6 +86,8 @@ Run the narrow checks before committing:
 ```powershell
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_operator_action_rows.py tools\hostessctl\companion_operator_actions.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_report_transport_coverage.py tools\hostessctl\companion_transport_gate_actions.py tools\hostessctl\companion_transport_gates.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_product_plan.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_topology_lifecycle.py tools\hostessctl\connectivity_topology_live.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_session tools.test_makepad_morphospace_boundaries
+python -m unittest tools.test_hostessctl_project_runner tools.test_hostessctl_connectivity_suite tools.test_hostessctl_companion_operator_actions
+python tools\hostessctl\hostessctl.py project-runner ownership-audit --repo-root . --out target\schema-ownership\audit.json --fail-on-error
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
 ```
@@ -286,6 +288,37 @@ generic code or sanitized sample fixtures.
   and app-owned UDP runtime-marker parsing. `connectivity_probe.py` may
   preserve facade imports and dispatch, but QCL-080 evidence logic belongs in
   the UDP helper.
+- Keep `tools\hostessctl\project_runner.py` as the source-only declarative
+  project workflow owner. It consumes hash-pinned project specs, exact
+  Manifold product locks, Hostess selection profiles that name canonical owner
+  topology/media/evidence schemas, Hostess-owned binding sidecars, canonical
+  owner receipts, a risk tier, and an explicit
+  cleanup contract. It validates every input and output against a checked-in
+  schema; proves the exact selected/denied feature, module, and permission
+  closure; binds each owner receipt to the selected profile and project/lock
+  hashes, lock identity, effective revision, fingerprint, authority revision,
+  freshness, expiry, and required observations. Binding sidecars must use
+  `rusty.hostess.*` schemas and carry the exact owner path/schema/owner/SHA-256;
+  they must never add Hostess fields to a Quest or Manifold schema. The runner
+  publishes an immutable generation directory and only then replaces its
+  completion marker, preserving the last valid marker across failed refreshes.
+  It must default to dry-run,
+  reject execution until an owner adapter is deliberately added, emit only
+  `rusty.hostess.project_runner.*` documents, and reference owner payloads by
+  path plus SHA-256 rather than embedding or redefining them. QCL identifiers
+  are recursively allowed only in the evidence-profile reference lane, never in project, product,
+  capability, topology, media, cleanup, or plan runtime IDs.
+- Keep `tools\hostessctl\connectivity_suite.py` as frozen legacy QCL
+  compatibility. `connectivity-probe run-suite` must require
+  `--legacy-qcl-compatibility`; do not add new behavior or new foreign schemas
+  to that runner. New orchestration belongs in `project_runner.py`.
+- Keep `fixtures\schema-ownership\foreign-schema-compatibility.json` as the
+  reviewed foreign-schema ledger and `schema_ownership.py` as its audit route.
+  New Hostess outputs must use `rusty.hostess.*`; every foreign occurrence is
+  registered by exact schema plus production path, classification, and role.
+  The audit scans tracked/candidate Python, C#, Rust, Java, Kotlin, and JSON
+  production surfaces; any new Quest or Manifold reference requires explicit
+  review instead of a schema-wide allowlist expansion.
 - Keep `tools\test_hostessctl_connectivity_probe.py` as the stable unittest
   facade for QCL connectivity-probe coverage. The
   `tools\connectivity_probe_tests\` package owns split test families for

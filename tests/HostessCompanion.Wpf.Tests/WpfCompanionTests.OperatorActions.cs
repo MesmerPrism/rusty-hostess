@@ -114,7 +114,7 @@ static partial class WpfCompanionTests
         Assert(
             OperatorActionCatalog.All.Any(action =>
                 action.UiCommandProperty == "RunConnectivitySuiteCommand"
-                && action.CliRoute.Contains("connectivity-probe run-suite --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite", StringComparison.Ordinal)
+                && action.CliRoute.Contains("connectivity-probe run-suite --legacy-qcl-compatibility --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite", StringComparison.Ordinal)
                 && action.CliRoute.Contains("--artifact-dir $ConnectivitySuiteArtifacts", StringComparison.Ordinal)
                 && action.CliRoute.Contains("--listener-program $HostessCompanionWpfExe", StringComparison.Ordinal)),
             "connectivity suite must name its suite-run artifact, artifact directory, and product listener input");

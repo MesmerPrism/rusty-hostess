@@ -1,0 +1,112 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-envelope.schema.json",
+  "title": "Rusty Hostess declarative project runner envelope",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schema_version", "generation_id", "run_id", "generated_at_utc",
+    "dry_run", "project", "product", "capability_ids", "profile_ids",
+    "risk_tier", "risk_gates", "inputs", "authority"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.envelope.v1" },
+    "schema_version": { "const": 1 },
+    "generation_id": { "$ref": "#/$defs/id" },
+    "run_id": { "$ref": "#/$defs/id" },
+    "generated_at_utc": { "type": "string", "minLength": 1 },
+    "dry_run": { "const": true },
+    "project": {
+      "type": "object", "additionalProperties": false,
+      "required": ["project_id", "revision", "sha256"],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/id" },
+        "revision": { "type": "integer", "minimum": 1 },
+        "sha256": { "$ref": "#/$defs/sha" }
+      }
+    },
+    "product": { "$ref": "#/$defs/product" },
+    "capability_ids": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "#/$defs/id" } },
+    "profile_ids": {
+      "type": "object", "additionalProperties": false,
+      "required": ["topology", "media", "evidence"],
+      "properties": {
+        "topology": { "$ref": "#/$defs/id" },
+        "media": { "$ref": "#/$defs/id" },
+        "evidence": { "$ref": "#/$defs/id" }
+      }
+    },
+    "risk_tier": { "$ref": "#/$defs/tier" },
+    "risk_gates": { "$ref": "#/$defs/risk" },
+    "inputs": { "type": "array", "minItems": 12, "maxItems": 12, "items": { "$ref": "#/$defs/ref" } },
+    "authority": {
+      "type": "object", "additionalProperties": false,
+      "required": ["planner", "runtime_execution", "product_lock", "platform"],
+      "properties": {
+        "planner": { "const": "rusty.hostess" },
+        "runtime_execution": { "const": "external-owner-adapters" },
+        "product_lock": { "const": "rusty.manifold" },
+        "platform": { "const": "rusty.quest" }
+      }
+    }
+  },
+  "$defs": {
+    "id": { "type": "string", "minLength": 1 },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "tier": { "enum": ["quick", "standard", "deep", "device", "release"] },
+    "strings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "path", "sha256", "schema", "owner"],
+      "properties": {
+        "role": { "$ref": "#/$defs/id" },
+        "path": { "$ref": "#/$defs/id" },
+        "sha256": { "$ref": "#/$defs/sha" },
+        "schema": { "$ref": "#/$defs/id" },
+        "owner": { "$ref": "#/$defs/id" }
+      }
+    },
+    "product": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "project_id", "project_revision", "project_spec_sha256", "product_id",
+        "product_lock_id", "product_lock_revision", "product_lock_fingerprint",
+        "product_lock_sha256", "closure"
+      ],
+      "properties": {
+        "project_id": { "$ref": "#/$defs/id" },
+        "project_revision": { "type": "integer", "minimum": 1 },
+        "project_spec_sha256": { "$ref": "#/$defs/sha" },
+        "product_id": { "$ref": "#/$defs/id" },
+        "product_lock_id": { "$ref": "#/$defs/id" },
+        "product_lock_revision": { "type": "integer", "minimum": 1 },
+        "product_lock_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" },
+        "product_lock_sha256": { "$ref": "#/$defs/sha" },
+        "closure": {
+          "type": "object", "additionalProperties": false,
+          "required": ["selected_features", "denied_features", "selected_modules", "denied_modules", "allowed_permissions", "denied_permissions"],
+          "properties": {
+            "selected_features": { "$ref": "#/$defs/strings" },
+            "denied_features": { "$ref": "#/$defs/strings" },
+            "selected_modules": { "$ref": "#/$defs/strings" },
+            "denied_modules": { "$ref": "#/$defs/strings" },
+            "allowed_permissions": { "$ref": "#/$defs/strings" },
+            "denied_permissions": { "$ref": "#/$defs/strings" }
+          }
+        }
+      }
+    },
+    "risk": {
+      "type": "object", "additionalProperties": false,
+      "required": ["tier", "required_evidence_observations", "required_cleanup_kinds", "max_receipt_age_seconds", "device_gate_required", "release_gate_required"],
+      "properties": {
+        "tier": { "$ref": "#/$defs/tier" },
+        "required_evidence_observations": { "$ref": "#/$defs/strings" },
+        "required_cleanup_kinds": { "$ref": "#/$defs/strings" },
+        "max_receipt_age_seconds": { "type": "integer", "minimum": 1 },
+        "device_gate_required": { "type": "boolean" },
+        "release_gate_required": { "type": "boolean" }
+      }
+    }
+  }
+}

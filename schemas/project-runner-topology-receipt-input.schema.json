@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-topology-receipt-input.schema.json",
+  "title": "Hostess binding for a canonical Manifold topology receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "profile_id", "profile_sha256", "project_id", "project_revision",
+    "project_spec_sha256", "product_id", "product_lock_id", "product_lock_revision",
+    "product_lock_fingerprint", "product_lock_sha256", "authority_revision",
+    "issued_at_utc", "expires_at_utc", "local_peer_role", "observations",
+    "owner_receipt_ref"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.topology_receipt_binding.v1" },
+    "profile_id": { "$ref": "#/$defs/id" },
+    "profile_sha256": { "$ref": "#/$defs/sha" },
+    "project_id": { "$ref": "#/$defs/id" },
+    "project_revision": { "type": "integer", "minimum": 1 },
+    "project_spec_sha256": { "$ref": "#/$defs/sha" },
+    "product_id": { "$ref": "#/$defs/id" },
+    "product_lock_id": { "$ref": "#/$defs/id" },
+    "product_lock_revision": { "type": "integer", "minimum": 1 },
+    "product_lock_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" },
+    "product_lock_sha256": { "$ref": "#/$defs/sha" },
+    "authority_revision": { "type": "integer", "minimum": 1 },
+    "issued_at_utc": { "type": "string", "minLength": 1 },
+    "expires_at_utc": { "type": "string", "minLength": 1 },
+    "local_peer_role": { "enum": ["group_owner", "client"] },
+    "observations": {
+      "type": "object", "additionalProperties": false,
+      "required": ["authorized", "contract_matched", "local_role_matched"],
+      "properties": {
+        "authorized": { "const": true },
+        "contract_matched": { "const": true },
+        "local_role_matched": { "const": true }
+      }
+    },
+    "owner_receipt_ref": { "$ref": "#/$defs/owner_ref" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" },
+    "sha": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "owner_ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["path", "sha256", "schema", "owner"],
+      "properties": {
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "$ref": "#/$defs/sha" },
+        "schema": { "const": "rusty.manifold.peer.topology_authorization.v1" },
+        "owner": { "const": "rusty.manifold" }
+      }
+    }
+  }
+}

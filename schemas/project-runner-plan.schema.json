@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-plan.schema.json",
+  "title": "Rusty Hostess declarative project runner plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schema_version", "generation_id", "plan_id", "run_id",
+    "generated_at_utc", "dry_run", "execution_state", "envelope", "input_refs",
+    "steps", "cleanup", "risk_gates", "constraints"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.plan.v1" },
+    "schema_version": { "const": 1 },
+    "generation_id": { "type": "string", "minLength": 1 },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "generated_at_utc": { "type": "string", "minLength": 1 },
+    "dry_run": { "const": true },
+    "execution_state": { "const": "planned" },
+    "envelope": { "$ref": "#/$defs/ref" },
+    "input_refs": { "type": "array", "minItems": 12, "maxItems": 12, "items": { "$ref": "#/$defs/ref" } },
+    "steps": {
+      "type": "array", "minItems": 5,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["step_id", "owner", "input_roles", "required_receipt_roles", "mode"],
+        "properties": {
+          "step_id": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "input_roles": { "$ref": "#/$defs/strings" },
+          "required_receipt_roles": { "$ref": "#/$defs/strings" },
+          "mode": { "const": "declarative" }
+        }
+      }
+    },
+    "cleanup": {
+      "type": "object", "additionalProperties": false,
+      "required": ["contract", "required_kinds", "execution"],
+      "properties": {
+        "contract": { "$ref": "#/$defs/ref" },
+        "required_kinds": { "$ref": "#/$defs/strings" },
+        "execution": { "const": "not-performed-in-dry-run" }
+      }
+    },
+    "risk_gates": { "type": "object" },
+    "constraints": {
+      "type": "object", "additionalProperties": false,
+      "required": ["qcl_role", "owner_payload_embedding", "device_mutation", "git_mutation", "completion_marker_required"],
+      "properties": {
+        "qcl_role": { "const": "evidence-profile-reference-only" },
+        "owner_payload_embedding": { "const": false },
+        "device_mutation": { "const": false },
+        "git_mutation": { "const": false },
+        "completion_marker_required": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "strings": { "type": "array", "uniqueItems": true, "items": { "type": "string", "minLength": 1 } },
+    "ref": {
+      "type": "object", "additionalProperties": false,
+      "required": ["role", "path", "sha256", "schema", "owner"],
+      "properties": {
+        "role": { "type": "string", "minLength": 1 },
+        "path": { "type": "string", "minLength": 1 },
+        "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "schema": { "type": "string", "minLength": 1 },
+        "owner": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

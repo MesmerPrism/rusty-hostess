@@ -19,6 +19,7 @@ static partial class WpfCompanionTests
         AssertPageProperty("CommandsPage", typeof(CommandsPageViewModel));
         AssertPageProperty("EvidencePage", typeof(EvidencePageViewModel));
         AssertPageProperty("WorkspacesPage", typeof(WorkspacesPageViewModel));
+        AssertPageProperty("ProjectRunnerPage", typeof(ProjectRunnerPageViewModel));
     
         var staleMainWindowFields = new HashSet<string>(StringComparer.Ordinal)
         {
@@ -32,6 +33,7 @@ static partial class WpfCompanionTests
             "selectedCommandStage",
             "selectedEvidenceArtifact",
             "selectedWorkspace",
+            "selectedProjectRunnerRow",
         };
         var mainWindowFields = typeof(MainWindowViewModel)
             .GetFields(BindingFlags.NonPublic | BindingFlags.Instance)
@@ -55,6 +57,8 @@ static partial class WpfCompanionTests
         Assert(ReferenceEquals(vm.CommandStages, vm.CommandsPage.Rows), "command rows must be page-owned");
         Assert(ReferenceEquals(vm.EvidenceArtifacts, vm.EvidencePage.Rows), "evidence rows must be page-owned");
         Assert(ReferenceEquals(vm.Workspaces, vm.WorkspacesPage.Rows), "workspace rows must be page-owned");
+        Assert(ReferenceEquals(vm.ProjectRunnerRows, vm.ProjectRunnerPage.Rows),
+            "project-runner rows must be page-owned");
     
         var connectivityRow = new ConnectivityCheckViewModel(new ConnectivityCheck
         {
@@ -97,6 +101,31 @@ static partial class WpfCompanionTests
             "detail panel must project the selected workspace title");
         Assert(vm.SelectedDetailText.Contains("module.fixture", StringComparison.Ordinal),
             "detail panel must project selected workspace module composition");
+
+        var projectRunnerProjection = new ProjectRunnerProjection
+        {
+            GenerationId = "generation.fixture",
+            RunId = "run.fixture",
+            CompletionMarker = "target/project-runner/fixture.complete.json",
+            Rows =
+            [
+                new ProjectRunnerProjectionRow
+                {
+                    RowId = "closure",
+                    Kind = "closure",
+                    Title = "Exact closure",
+                    Status = "pass",
+                    Owner = "rusty.hostess",
+                    Detail = "lock and project match",
+                },
+            ],
+        };
+        vm.ProjectRunnerPage.ApplyProjection(projectRunnerProjection);
+        vm.SelectedNavigationItem = vm.NavigationItems.Single(item => item.Key == "project-runner");
+        vm.SelectedProjectRunnerRow = vm.ProjectRunnerRows.Single();
+        Assert(vm.IsProjectRunnerSelected, "project runner must have a dedicated navigation surface");
+        Assert(vm.SelectedDetailText.Contains("fixture.complete.json", StringComparison.Ordinal),
+            "project-runner details must preserve the completion-marker source");
     }
     
 

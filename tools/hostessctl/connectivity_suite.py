@@ -33,6 +33,14 @@ def run_connectivity_suite(
 ) -> int:
     """Run selected suite slots and write an aggregate report plus validation sidecar."""
 
+    if not bool(getattr(args, "legacy_qcl_compatibility", False)):
+        print(
+            "connectivity-probe run-suite is frozen compatibility; pass "
+            "--legacy-qcl-compatibility explicitly",
+            file=sys.stderr,
+        )
+        return 2
+
     run_captured = run_captured_func or default_run_captured
     clock = clock_func or utc_now
     report = build_connectivity_suite_run_report(

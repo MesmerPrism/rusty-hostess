@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-cleanup-contract.schema.json",
+  "title": "Rusty Hostess project runner cleanup contract",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "contract_id", "steps", "terminal_assertions"],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.cleanup_contract.v1" },
+    "contract_id": { "type": "string", "minLength": 1 },
+    "steps": {
+      "type": "array",
+      "minItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["step_id", "kind", "owner", "action", "receipt_role", "required"],
+        "properties": {
+          "step_id": { "type": "string", "minLength": 1 },
+          "kind": {
+            "enum": [
+              "topology_inactive", "package_cleanup", "zero_fatals",
+              "device_process_inactive", "release_artifact_cleanup"
+            ]
+          },
+          "owner": { "type": "string", "minLength": 1 },
+          "action": { "type": "string", "minLength": 1 },
+          "receipt_role": { "type": "string", "minLength": 1 },
+          "required": { "const": true }
+        }
+      }
+    },
+    "terminal_assertions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assertion_id", "owner", "required"],
+        "properties": {
+          "assertion_id": { "type": "string", "minLength": 1 },
+          "owner": { "type": "string", "minLength": 1 },
+          "required": { "const": true }
+        }
+      }
+    }
+  }
+}

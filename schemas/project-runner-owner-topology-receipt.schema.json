@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-owner-topology-receipt.schema.json",
+  "title": "Compatibility validator for the canonical Manifold topology authorization",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "decision_id", "session_id", "proposal_id", "authority_revision",
+    "group_owner_peer_id", "client_peer_id", "topology_contract_id", "authorized",
+    "valid_from_ms", "expires_at_ms", "denial_reason"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.manifold.peer.topology_authorization.v1" },
+    "decision_id": { "$ref": "#/$defs/id" },
+    "session_id": { "$ref": "#/$defs/id" },
+    "proposal_id": { "$ref": "#/$defs/id" },
+    "authority_revision": { "type": "integer", "minimum": 1 },
+    "group_owner_peer_id": { "$ref": "#/$defs/id" },
+    "client_peer_id": { "$ref": "#/$defs/id" },
+    "topology_contract_id": { "$ref": "#/$defs/id" },
+    "authorized": { "type": "boolean" },
+    "valid_from_ms": { "type": "integer", "minimum": 0 },
+    "expires_at_ms": { "type": "integer", "minimum": 1 },
+    "denial_reason": { "type": ["string", "null"] }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" }
+  }
+}

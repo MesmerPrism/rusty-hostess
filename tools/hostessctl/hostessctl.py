@@ -37,7 +37,9 @@ from tools.hostessctl import native_breathing_room_setup  # noqa: E402
 from tools.hostessctl import pmb_android_routes  # noqa: E402
 from tools.hostessctl import pmb_desktop_routes  # noqa: E402
 from tools.hostessctl import protocol_evidence_matrix  # noqa: E402
+from tools.hostessctl import project_runner  # noqa: E402
 from tools.hostessctl import questionnaire_bridge  # noqa: E402
+from tools.hostessctl import schema_ownership  # noqa: E402
 from tools.hostessctl import telemetry_routes  # noqa: E402
 from tools.hostessctl.broker_transport import (  # noqa: E402
     MANIFOLD_BROKER_EVENTS_PATH,
@@ -252,6 +254,14 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return companion_transport_gates.run_companion_transport_gates(args)
         if args.companion_report_command == "operator-actions":
             return companion_operator_actions.run_companion_operator_actions(args)
+        return 2
+    if args.command == "project-runner":
+        if args.project_runner_command == "run":
+            return project_runner.run_project_runner(args)
+        if args.project_runner_command == "inspect":
+            return project_runner.run_project_runner_inspect(args)
+        if args.project_runner_command == "ownership-audit":
+            return schema_ownership.run_schema_ownership_audit(args)
         return 2
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":

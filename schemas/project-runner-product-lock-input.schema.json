@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-product-lock-input.schema.json",
+  "title": "Exact Manifold broker product-lock input",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "lock_id", "product_id", "standalone_enabled", "embedded_enabled",
+    "features", "command_ids", "stream_ids", "module_ids", "permissions", "spec_fingerprint"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.manifold.broker.product_lock.v1" },
+    "lock_id": { "$ref": "#/$defs/id" },
+    "product_id": { "$ref": "#/$defs/id" },
+    "standalone_enabled": { "type": "boolean" },
+    "embedded_enabled": { "type": "boolean" },
+    "features": { "$ref": "#/$defs/ids" },
+    "command_ids": { "$ref": "#/$defs/ids" },
+    "stream_ids": { "$ref": "#/$defs/ids" },
+    "module_ids": { "$ref": "#/$defs/ids" },
+    "permissions": { "$ref": "#/$defs/ids" },
+    "spec_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" },
+    "ids": { "type": "array", "uniqueItems": true, "items": { "$ref": "#/$defs/id" } }
+  }
+}

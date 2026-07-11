@@ -69,7 +69,7 @@ public static class OperatorActionCatalog
         "python $HostessCtl connectivity-probe run --probe-id QCL-082 --media-stream-receiver-result $ReceiverResult --out $Qcl082ReceiverReport; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source host-loopback --out $Qcl079HostLoopbackReport; " +
         "python $HostessCtl connectivity-probe run --probe-id QCL-079 --websocket-source broker-owned-websocket --websocket-route-descriptor $ManifoldWebSocketRoute --websocket-route-evidence $ManifoldWebSocketEvidence --out $Qcl079ManifoldWebSocketReport; " +
-        "python $HostessCtl connectivity-probe run-suite --out $SuiteRun; " +
+        "python $HostessCtl connectivity-probe run-suite --legacy-qcl-compatibility --out $SuiteRun; " +
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-020 --fixture-profile qcl-020-wifi-adb-session-pass --out $Qcl020TopologyReport; " +
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-030 --fixture-profile qcl-030-local-only-hotspot-started --out $Qcl030TopologyReport; " +
         "python $HostessCtl connectivity-probe run --mode fixture --probe-id QCL-040 --fixture-profile qcl-040-wifi-direct-phone-peer-pass --out $Qcl040TopologyFixtureReport; " +
@@ -215,7 +215,7 @@ public static class OperatorActionCatalog
             "$HostessCompanionWpfExe = '<HostessCompanion.Wpf.exe>'; " +
             "$Adb = '<adb>'; " +
             "$QuestSerial = '<quest-serial>'; " +
-            HostessCtl + "connectivity-probe run-suite --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite --artifact-dir $ConnectivitySuiteArtifacts --listener-program $HostessCompanionWpfExe --listener-protocol '<TCP-or-UDP>' --listener-port '<port>' --adb $Adb --serial $QuestSerial",
+            HostessCtl + "connectivity-probe run-suite --legacy-qcl-compatibility --mode fixture --suite-id wpf-connectivity-suite --out $ConnectivitySuite --artifact-dir $ConnectivitySuiteArtifacts --listener-program $HostessCompanionWpfExe --listener-protocol '<TCP-or-UDP>' --listener-port '<port>' --adb $Adb --serial $QuestSerial",
             "rusty.quest.device_link.install_environment_suite_run.v1",
             "Hostess",
             "tools.test_hostessctl_connectivity_suite; HostessCompanion.Wpf.Tests"),
@@ -243,5 +243,15 @@ public static class OperatorActionCatalog
             "tools.test_hostessctl_connectivity_probe; HostessCompanion.Wpf.Tests",
             RequiresElevation: true,
             MutatesHost: true),
+        new(
+            "wpf.project_runner.inspect",
+            "Load project runner generation",
+            "LoadProjectRunnerCommand",
+            "$ProjectRunnerCompletion = 'target\\project-runner\\latest.complete.json'; " +
+            "$ProjectRunnerProjection = 'target\\project-runner\\wpf-project-runner-projection.json'; " +
+            HostessCtl + "project-runner inspect --completion $ProjectRunnerCompletion --out $ProjectRunnerProjection",
+            "rusty.hostess.project_runner.projection.v1",
+            "Hostess",
+            "tools.test_hostessctl_project_runner; HostessCompanion.Wpf.Tests"),
     ];
 }

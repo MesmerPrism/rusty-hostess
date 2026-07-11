@@ -34,7 +34,7 @@ class CompanionOperatorActionCatalogTests(unittest.TestCase):
         self.assertEqual(report["status"], "pass")
         self.assertEqual(validation["status"], "pass")
         self.assertEqual(report["frontend"], "wpf")
-        self.assertEqual(report["summary"]["action_count"], 12)
+        self.assertEqual(report["summary"]["action_count"], 13)
         self.assertEqual(report["actions"], operator_action_rows_for_frontend("wpf"))
         self.assertEqual(report["summary"]["requires_elevation_count"], 2)
         self.assertEqual(report["summary"]["requires_quest_lease_count"], 4)

@@ -1,0 +1,11 @@
+{
+  "schema": "rusty.quest.generic_media_session_evidence.v1",
+  "status": "pass",
+  "media_session_contract": "rusty.manifold.media.session_descriptor.v1",
+  "route_contract": "rusty.quest.direct_p2p_socket_route.v1",
+  "validation_profile_ref": "qcl-100-full-stereo",
+  "media_layout": "separate-eye-streams",
+  "receiver_observed_bytes": 4096,
+  "final_window_submitted_frames": 8,
+  "cleanup_complete": true
+}

@@ -271,7 +271,7 @@ python -m unittest tools.test_hostessctl_connectivity_probe
 python -m unittest tools.test_hostessctl_device_link_report
 python -m unittest tools.test_hostessctl_connectivity_suite
 python tools\hostessctl\hostessctl.py connectivity-probe test-suite --out target\connectivity-probe\device-link-test-suite.json --suite-id downloadable-install-suite --fail-on-error
-python tools\hostessctl\hostessctl.py connectivity-probe run-suite --mode fixture --suite-id downloadable-install-suite --out target\connectivity-probe\device-link-suite-run.json --artifact-dir target\connectivity-probe\device-link-suite-run-artifacts --fail-on-error
+python tools\hostessctl\hostessctl.py connectivity-probe run-suite --legacy-qcl-compatibility --mode fixture --suite-id downloadable-install-suite --out target\connectivity-probe\device-link-suite-run.json --artifact-dir target\connectivity-probe\device-link-suite-run-artifacts --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-000 --mode fixture --fixture-profile qcl-000-usb-adb-pass --out target\connectivity-probe\qcl-000.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-010 --mode fixture --fixture-profile qcl-010-router-pass --out target\connectivity-probe\qcl-010-router-pass.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --probe-id QCL-011 --mode fixture --fixture-profile qcl-011-pc-hotspot-pass --out target\connectivity-probe\qcl-011-pc-hotspot-pass.json --fail-on-error
@@ -292,6 +292,25 @@ python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --inp
 python tools\hostessctl\hostessctl.py connectivity-probe stream-capability --input fixtures\connectivity-probe\qcl-081-lsl-loopback-pass.json --out target\connectivity-probe\qcl-081-lsl-loopback.stream-capability.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --suite-run target\connectivity-probe\device-link-suite-run.json --out target\connectivity-probe\device-link-protocol-matrix.json --fail-on-error
 ```
+
+The declarative project runner and schema ownership boundary are covered by:
+
+```powershell
+python -m py_compile tools\hostessctl\json_schema_validation.py tools\hostessctl\project_runner.py tools\hostessctl\schema_ownership.py tools\test_hostessctl_project_runner.py
+python -m unittest tools.test_hostessctl_project_runner tools.test_hostessctl_connectivity_suite tools.test_hostessctl_companion_operator_actions
+python tools\hostessctl\hostessctl.py project-runner ownership-audit --repo-root . --out target\schema-ownership\audit.json --fail-on-error
+```
+
+`tools.test_hostessctl_project_runner` covers a valid complete generation plus
+damaged project/lock closure, selected/denied drift, expanded permission,
+profile/lock mismatch, authority revision, freshness/expiry, required
+observations, exact zero fatals, recursive QCL lane leakage, checked-in schema,
+foreign-schema re-ownership, separate owner-artifact hash drift, partial and
+failed-refresh generation publication, tampered completion artifacts, risk-tier
+evidence/device/cleanup/release gates, exact schema/path inventory drift, and
+unsupported execution cases. The legacy-suite
+test proves `run-suite` performs no work without the explicit compatibility
+flag. No connected headset is required for this source-only validation slice.
 
 `tools.test_hostessctl_connectivity_probe` is intentionally the stable unittest
 entrypoint. The implementation tests live under

@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/schema-ownership-audit.schema.json",
+  "title": "Rusty Hostess exact schema ownership audit",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "schema_version", "status", "inventory_path", "scan_extensions",
+    "scanned_file_count", "hostess_owned_schema_ids", "foreign_schema_references",
+    "unknown_foreign_references", "stale_inventory_references",
+    "unknown_foreign_schema_ids", "unapproved_foreign_reference_paths",
+    "stale_inventory_schema_ids", "stale_approved_reference_paths", "policy"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.schema_ownership.audit.v1" },
+    "schema_version": { "const": 1 },
+    "status": { "enum": ["pass", "fail"] },
+    "inventory_path": { "type": "string", "minLength": 1 },
+    "scan_extensions": { "type": "array", "minItems": 6, "uniqueItems": true },
+    "scanned_file_count": { "type": "integer", "minimum": 0 },
+    "hostess_owned_schema_ids": { "type": "array", "uniqueItems": true },
+    "foreign_schema_references": { "type": "array" },
+    "unknown_foreign_references": { "$ref": "#/$defs/occurrences" },
+    "stale_inventory_references": { "$ref": "#/$defs/occurrences" },
+    "unknown_foreign_schema_ids": { "type": "array", "uniqueItems": true },
+    "unapproved_foreign_reference_paths": { "type": "array", "uniqueItems": true },
+    "stale_inventory_schema_ids": { "type": "array", "uniqueItems": true },
+    "stale_approved_reference_paths": { "type": "array", "uniqueItems": true },
+    "policy": {
+      "type": "object", "additionalProperties": false,
+      "required": [
+        "new_output_prefix", "new_foreign_output_allowed", "qcl_ids",
+        "exact_schema_path_inventory_required", "tracked_production_language_coverage_required",
+        "inventory_additions_require_classification_and_role"
+      ],
+      "properties": {
+        "new_output_prefix": { "const": "rusty.hostess." },
+        "new_foreign_output_allowed": { "const": false },
+        "qcl_ids": { "const": "evidence-profile-reference-only" },
+        "exact_schema_path_inventory_required": { "const": true },
+        "tracked_production_language_coverage_required": { "const": true },
+        "inventory_additions_require_classification_and_role": { "const": true }
+      }
+    }
+  },
+  "$defs": {
+    "occurrences": {
+      "type": "array", "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["schema_id", "path"],
+        "properties": {
+          "schema_id": { "type": "string", "minLength": 1 },
+          "path": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

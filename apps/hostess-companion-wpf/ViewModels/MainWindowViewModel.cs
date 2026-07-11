@@ -13,10 +13,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private readonly HostessctlCommandService commandService;
     private readonly HostessctlSessionService sessionService;
     private readonly HostessctlConnectivityService connectivityService;
+    private readonly HostessctlProjectRunnerService projectRunnerService;
     private bool isBusy;
     private string reportStatus = "not run";
     private string catalogStatus = "not loaded";
     private string connectivityStatus = "not checked";
+    private string projectRunnerStatus = "not loaded";
     private string summaryLabel = "No companion reports loaded.";
     private string serial = "";
     private string connectivityProgram = HostessctlConnectivityService.DefaultProductProgramPath();
@@ -26,6 +28,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private string connectivityRemoteAddress = "LocalSubnet";
     private string connectivityRuleName = "Rusty Hostess WPF QCL-080 UDP Freshness 18767";
     private string connectivityRuleProfile = HostessctlConnectivityService.FirewallRuleProfileQcl080UdpFreshness;
+    private string projectRunnerCompletionMarker = HostessctlProjectRunnerService.DefaultCompletionMarkerPath();
     private bool useQuestProfile = true;
     private bool checkBroker;
     private NavigationItemViewModel? selectedNavigationItem;
@@ -36,13 +39,15 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         HostessctlCatalogService catalogService,
         HostessctlCommandService commandService,
         HostessctlSessionService sessionService,
-        HostessctlConnectivityService connectivityService)
+        HostessctlConnectivityService connectivityService,
+        HostessctlProjectRunnerService? projectRunnerService = null)
     {
         this.readinessService = readinessService;
         this.catalogService = catalogService;
         this.commandService = commandService;
         this.sessionService = sessionService;
         this.connectivityService = connectivityService;
+        this.projectRunnerService = projectRunnerService ?? new HostessctlProjectRunnerService();
         NavigationItems.Add(new NavigationItemViewModel("readiness", "Readiness"));
         NavigationItems.Add(new NavigationItemViewModel("session", "Session"));
         NavigationItems.Add(new NavigationItemViewModel("devices", "Devices"));
@@ -51,6 +56,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         NavigationItems.Add(new NavigationItemViewModel("commands", "Commands"));
         NavigationItems.Add(new NavigationItemViewModel("evidence", "Evidence"));
         NavigationItems.Add(new NavigationItemViewModel("workspaces", "Workspaces"));
+        NavigationItems.Add(new NavigationItemViewModel("project-runner", "Project runner"));
         selectedNavigationItem = NavigationItems[0];
         ConnectDetailNotifications(ReadinessPage, nameof(SelectedCheck));
         ConnectDetailNotifications(DevicesPage, nameof(SelectedDeviceCheck));
@@ -59,6 +65,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         ConnectDetailNotifications(CommandsPage, nameof(SelectedCommandStage));
         ConnectDetailNotifications(EvidencePage, nameof(SelectedEvidenceArtifact));
         ConnectDetailNotifications(WorkspacesPage, nameof(SelectedWorkspace));
+        ConnectDetailNotifications(ProjectRunnerPage, nameof(SelectedProjectRunnerRow));
         ConnectSessionNotifications();
         RefreshCommand = new AsyncRelayCommand(RefreshAsync, () => !IsBusy);
         RunSessionCommand = new AsyncRelayCommand(RunSessionAsync, () => !IsBusy);
@@ -74,6 +81,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         RunConnectivitySuiteCommand = new AsyncRelayCommand(RunConnectivitySuiteAsync, () => !IsBusy);
         RunProtocolMatrixCommand = new AsyncRelayCommand(RunProtocolMatrixAsync, () => !IsBusy);
         RemoveFirewallRuleCommand = new AsyncRelayCommand(RemoveFirewallRuleAsync, () => !IsBusy);
+        LoadProjectRunnerCommand = new AsyncRelayCommand(LoadProjectRunnerAsync, () => !IsBusy);
     }
 
     public ObservableCollection<NavigationItemViewModel> NavigationItems { get; } = [];
@@ -94,6 +102,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public WorkspacesPageViewModel WorkspacesPage { get; } = new();
 
+    public ProjectRunnerPageViewModel ProjectRunnerPage { get; } = new();
+
     public ObservableCollection<CheckViewModel> Checks => ReadinessPage.Rows;
 
     public ObservableCollection<CheckViewModel> DeviceChecks => DevicesPage.Rows;
@@ -113,6 +123,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public ObservableCollection<EvidenceArtifactViewModel> EvidenceArtifacts => EvidencePage.Rows;
 
     public ObservableCollection<WorkspaceViewModel> Workspaces => WorkspacesPage.Rows;
+
+    public ObservableCollection<ProjectRunnerRowViewModel> ProjectRunnerRows => ProjectRunnerPage.Rows;
 
     public IReadOnlyList<OperatorActionDescriptor> OperatorActions => OperatorActionCatalog.All;
 
@@ -142,6 +154,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public AsyncRelayCommand RemoveFirewallRuleCommand { get; }
 
+    public AsyncRelayCommand LoadProjectRunnerCommand { get; }
+
     public bool IsBusy
     {
         get => isBusy;
@@ -161,6 +175,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 RunConnectivitySuiteCommand.RaiseCanExecuteChanged();
                 RunProtocolMatrixCommand.RaiseCanExecuteChanged();
                 RemoveFirewallRuleCommand.RaiseCanExecuteChanged();
+                LoadProjectRunnerCommand.RaiseCanExecuteChanged();
                 OnPropertyChanged(nameof(RefreshButtonLabel));
                 OnPropertyChanged(nameof(RunSessionButtonLabel));
                 OnPropertyChanged(nameof(LoadSessionHistoryButtonLabel));
@@ -173,6 +188,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 OnPropertyChanged(nameof(RunConnectivitySuiteButtonLabel));
                 OnPropertyChanged(nameof(RunProtocolMatrixButtonLabel));
                 OnPropertyChanged(nameof(RemoveFirewallRuleButtonLabel));
+                OnPropertyChanged(nameof(LoadProjectRunnerButtonLabel));
             }
         }
     }
@@ -201,6 +217,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public string RunProtocolMatrixButtonLabel => IsBusy ? "Building" : "Protocol matrix";
 
     public string RemoveFirewallRuleButtonLabel => IsBusy ? "Removing" : "Remove rule";
+
+    public string LoadProjectRunnerButtonLabel => IsBusy ? "Loading" : "Load generation";
 
     public string Serial
     {
@@ -317,6 +335,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         set => SetConnectivityRuleProfile(value, applyDefaults: true);
     }
 
+    public string ProjectRunnerCompletionMarker
+    {
+        get => projectRunnerCompletionMarker;
+        set => SetField(ref projectRunnerCompletionMarker, value ?? "");
+    }
+
     public NavigationItemViewModel? SelectedNavigationItem
     {
         get => selectedNavigationItem;
@@ -333,6 +357,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 OnPropertyChanged(nameof(IsCommandsSelected));
                 OnPropertyChanged(nameof(IsEvidenceSelected));
                 OnPropertyChanged(nameof(IsWorkspacesSelected));
+                OnPropertyChanged(nameof(IsProjectRunnerSelected));
                 OnDetailChanged();
             }
         }
@@ -398,6 +423,12 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         set => WorkspacesPage.SelectedRow = value;
     }
 
+    public ProjectRunnerRowViewModel? SelectedProjectRunnerRow
+    {
+        get => ProjectRunnerPage.SelectedRow;
+        set => ProjectRunnerPage.SelectedRow = value;
+    }
+
     public string PageTitle => SelectedNavigationKey switch
     {
         "session" => "Session",
@@ -407,6 +438,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "commands" => "Commands",
         "evidence" => "Evidence",
         "workspaces" => "Workspaces",
+        "project-runner" => "Project runner",
         _ => "Readiness",
     };
 
@@ -426,6 +458,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public bool IsWorkspacesSelected => SelectedNavigationKey == "workspaces";
 
+    public bool IsProjectRunnerSelected => SelectedNavigationKey == "project-runner";
+
     public string ReportStatusLabel => $"Readiness: {reportStatus}";
 
     public Brush ReportStatusBrush => BrushForStatus(reportStatus);
@@ -437,6 +471,10 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     public string ConnectivityStatusLabel => $"Connectivity: {connectivityStatus}";
 
     public Brush ConnectivityStatusBrush => BrushForStatus(connectivityStatus);
+
+    public string ProjectRunnerStatusLabel => $"Project runner: {projectRunnerStatus}";
+
+    public Brush ProjectRunnerStatusBrush => BrushForStatus(projectRunnerStatus);
 
     public string SummaryLabel
     {
@@ -453,6 +491,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "commands" => CommandsPage.SelectedDetailTitle,
         "evidence" => EvidencePage.SelectedDetailTitle,
         "workspaces" => WorkspacesPage.SelectedDetailTitle,
+        "project-runner" => ProjectRunnerPage.SelectedDetailTitle,
         _ => ReadinessPage.SelectedDetailTitle,
     };
 
@@ -465,6 +504,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "commands" => CommandsPage.SelectedDetailStatusLine,
         "evidence" => EvidencePage.SelectedDetailStatusLine,
         "workspaces" => WorkspacesPage.SelectedDetailStatusLine,
+        "project-runner" => ProjectRunnerPage.SelectedDetailStatusLine,
         _ => ReadinessPage.SelectedDetailStatusLine,
     };
 
@@ -477,6 +517,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "commands" => CommandsPage.SelectedDetailBrush,
         "evidence" => EvidencePage.SelectedDetailBrush,
         "workspaces" => WorkspacesPage.SelectedDetailBrush,
+        "project-runner" => ProjectRunnerPage.SelectedDetailBrush,
         _ => ReadinessPage.SelectedDetailBrush,
     };
 
@@ -489,10 +530,39 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         "commands" => CommandsPage.SelectedDetailText,
         "evidence" => EvidencePage.SelectedDetailText,
         "workspaces" => WorkspacesPage.SelectedDetailText,
+        "project-runner" => ProjectRunnerPage.SelectedDetailText,
         _ => ReadinessPage.SelectedDetailText,
     };
 
     private string SelectedNavigationKey => SelectedNavigationItem?.Key ?? "readiness";
+
+    private async Task LoadProjectRunnerAsync()
+    {
+        IsBusy = true;
+        try
+        {
+            var projection = await projectRunnerService.LoadProjectionAsync(
+                ProjectRunnerCompletionMarker,
+                CancellationToken.None);
+            ProjectRunnerPage.ApplyProjection(projection);
+            projectRunnerStatus = projection.Status;
+            SummaryLabel =
+                $"Project runner {projection.RunId}: {projection.Rows.Count} read-only rows, " +
+                $"risk {projection.RiskTier}, lock {projection.ProductLockId} " +
+                $"r{projection.ProductLockRevision}.";
+        }
+        catch (Exception ex)
+        {
+            projectRunnerStatus = "fail";
+            SummaryLabel = ex.Message;
+        }
+        finally
+        {
+            OnPropertyChanged(nameof(ProjectRunnerStatusLabel));
+            OnPropertyChanged(nameof(ProjectRunnerStatusBrush));
+            IsBusy = false;
+        }
+    }
 
     private async Task RefreshAsync()
     {

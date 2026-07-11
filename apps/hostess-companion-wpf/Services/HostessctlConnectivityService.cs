@@ -383,6 +383,7 @@ public sealed class HostessctlConnectivityService
         {
             "connectivity-probe",
             "run-suite",
+            "--legacy-qcl-compatibility",
             "--mode",
             "fixture",
             "--suite-id",

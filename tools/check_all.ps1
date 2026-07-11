@@ -75,9 +75,12 @@ try {
         "tools\hostessctl\pmb_native_receipts.py",
         "tools\hostessctl\pmb_support.py",
         "tools\hostessctl\protocol_evidence_matrix.py",
+        "tools\hostessctl\json_schema_validation.py",
+        "tools\hostessctl\project_runner.py",
         "tools\hostessctl\questionnaire_bridge.py",
         "tools\hostessctl\recording_evidence.py",
         "tools\hostessctl\runtime.py",
+        "tools\hostessctl\schema_ownership.py",
         "tools\hostessctl\telemetry_render.py",
         "tools\hostessctl\telemetry_routes.py",
         "tools\capture_window_printwindow.py",
@@ -122,6 +125,7 @@ try {
         "tools\test_hostessctl_connectivity_suite.py",
         "tools\test_hostessctl_device_link_report.py",
         "tools\test_hostessctl_protocol_evidence_matrix.py",
+        "tools\test_hostessctl_project_runner.py",
         "tools\test_hostessctl_questionnaire_bridge.py",
         "tools\test_summarize_makepad_quest_gpu_evidence.py",
         "tools\test_hostessctl_pmb_replay.py"
@@ -132,6 +136,16 @@ try {
     if (Test-Path "tools\test_telemetry_snapshot.py") {
         Invoke-Checked "python unit tests" "python" @("-m", "unittest", "discover", "-s", "tools", "-p", "test_*.py")
     }
+    Invoke-Checked "schema ownership audit" "python" @(
+        "tools\hostessctl\hostessctl.py",
+        "project-runner",
+        "ownership-audit",
+        "--repo-root",
+        ".",
+        "--out",
+        "target\schema-ownership\check-all-audit.json",
+        "--fail-on-error"
+    )
     $GuiDescriptorRootCandidate = Join-Path $RepoRoot "..\rusty-gui\fixtures\descriptors"
     if (Test-Path $GuiDescriptorRootCandidate) {
         $Frontends = @("wpf")

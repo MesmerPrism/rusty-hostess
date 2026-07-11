@@ -1,0 +1,1100 @@
+{
+  "$schema": "rusty.hostess.schema_ownership.compatibility_inventory.v1",
+  "inventory_id": "hostess-foreign-schema-path-inventory-2026-07-11",
+  "policy": {
+    "new_hostess_outputs": "rusty.hostess.* only",
+    "foreign_schema_additions": "explicit schema-path-classification-role review required",
+    "qcl_identifiers": "evidence-profile references only",
+    "inventory_granularity": "exact schema and production path",
+    "scan_extensions": [
+      ".py",
+      ".cs",
+      ".rs",
+      ".java",
+      ".kt",
+      ".json"
+    ]
+  },
+  "foreign_schema_references": [
+    {
+      "schema_id": "rusty.manifold.breath.feedback_receipt.v1",
+      "path": "apps/hostess-t-makepad/src/app_projection_target.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.feedback_receipt.v1",
+      "path": "apps/hostess-t-makepad/src/manifold_breath_feedback.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.feedback_receipt.v1",
+      "path": "tools/hostessctl/pmb_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.feedback_state.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.feedback_state.v1",
+      "path": "tools/hostessctl/pmb_broker_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.selection_state.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.selection_state.v1",
+      "path": "tools/hostessctl/pmb_broker_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.state.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.state.v1",
+      "path": "tools/hostessctl/pmb_broker_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.state_value.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.state_value.v1",
+      "path": "tools/hostessctl/pmb_broker_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.volume.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.breath.volume.v1",
+      "path": "tools/hostessctl/pmb_broker_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.bridge.route_descriptor.v1",
+      "path": "tools/hostessctl/bridge_route_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.bridge.route_descriptor.v1",
+      "path": "tools/hostessctl/connectivity_websocket.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.bridge.route_evidence.v1",
+      "path": "tools/hostessctl/bridge_route_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.bridge.route_evidence.v1",
+      "path": "tools/hostessctl/companion_session.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.bridge.route_evidence.v1",
+      "path": "tools/hostessctl/connectivity_websocket.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "fixtures/project-runner/valid/media-profile.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "fixtures/project-runner/valid/media-receipt.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/media-adapter-receipt.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Canonical hash-pinned Manifold receipt remains owned by Manifold; Hostess only validates and references it."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "schemas/project-runner-media-profile.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "schemas/project-runner-media-receipt-input.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "schemas/project-runner-owner-media-receipt.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "compatibility_input",
+      "reason": "Hostess compatibility validator checks the canonical Manifold shape without re-owning or emitting it."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.adapter_receipt.v1",
+      "path": "tools/hostessctl/project_runner.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.hello.v1",
+      "path": "tools/hostessctl/bridge_command_live_android_routes.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.product_lock.v1",
+      "path": "fixtures/project-runner/valid/product-lock.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.product_lock.v1",
+      "path": "schemas/project-runner-product-lock-input.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.broker.product_lock.v1",
+      "path": "tools/hostessctl/project_runner.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.command.ack.v1",
+      "path": "tools/hostessctl/connectivity_media.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbBrokerBridge.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "apps/hostess-t-makepad/src/manifold_breath_feedback.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "apps/hostess-t-makepad/src/manifold_bridge_command_subscriber.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "apps/hostess-t-makepad/src/manifold_pose_publisher.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "tools/hostessctl/broker_transport.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.command.envelope.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.graph.execution_report.v1",
+      "path": "apps/hostess-t-android/native/polar-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.host_run.run_evidence.v1",
+      "path": "tools/hostessctl/pmb_host_run_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.host_run.run_evidence.v1",
+      "path": "tools/hostessctl/recording_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.live_capture_evidence.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/MainActivity.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.live_capture_evidence.v1",
+      "path": "apps/hostess-t-desktop/capture_polar.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.live_capture_evidence.v1",
+      "path": "tools/check_live_capture_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.live_capture_evidence.v1",
+      "path": "tools/hostessctl/live_capture_routes.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.live_capture_validation_report.v1",
+      "path": "tools/check_live_capture_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.media.session_descriptor.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/quest-generic-media-evidence.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.media.session_descriptor.v1",
+      "path": "fixtures/project-runner/valid/media-profile.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.media.session_descriptor.v1",
+      "path": "schemas/project-runner-media-profile.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.media.session_descriptor.v1",
+      "path": "tools/hostessctl/project_runner.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.motion.object_pose.sample.v1",
+      "path": "apps/hostess-t-makepad/src/manifold_pose_publisher.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "fixtures/project-runner/valid/topology-profile.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "fixtures/project-runner/valid/topology-receipt.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/topology-authorization.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Canonical hash-pinned Manifold receipt remains owned by Manifold; Hostess only validates and references it."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "schemas/project-runner-topology-profile.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "schemas/project-runner-topology-receipt-input.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "schemas/project-runner-owner-topology-receipt.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "compatibility_input",
+      "reason": "Hostess compatibility validator checks the canonical Manifold shape without re-owning or emitting it."
+    },
+    {
+      "schema_id": "rusty.manifold.peer.topology_authorization.v1",
+      "path": "tools/hostessctl/project_runner.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.polar_h10.processor_runtime_input.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/MainActivity.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.polar_h10.processor_runtime_input.v1",
+      "path": "tools/polar_runtime_bridge.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.controller_preflight_report.v1",
+      "path": "apps/hostess-t-android/native/pmb-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.controller_preflight_report.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbAndroidEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.core_validation_report.v1",
+      "path": "apps/hostess-t-android/native/pmb-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.core_validation_report.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbAndroidEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+      "path": "apps/hostess-t-android/native/pmb-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbAndroidEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.live_route_report.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbPhysicalLiveRunner.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.live_transport_processor_open.v1",
+      "path": "apps/hostess-t-android/native/pmb-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.projected_motion_breath.live_transport_update.v1",
+      "path": "apps/hostess-t-android/native/pmb-runtime-jni/src/lib.rs",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.runtime_host.application_receipt.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/media-adapter-receipt.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "nested_owner_receipt",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.runtime_host.application_receipt.v1",
+      "path": "schemas/project-runner-owner-media-receipt.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "nested_owner_receipt",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.runtime_host.dispatch_receipt.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/media-adapter-receipt.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "nested_owner_receipt",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.runtime_host.dispatch_receipt.v1",
+      "path": "schemas/project-runner-owner-media-receipt.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "nested_owner_receipt",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.manifold.runtime_host.typed_params_digest.v1",
+      "path": "schemas/project-runner-owner-media-receipt.schema.json",
+      "owner": "rusty.manifold",
+      "classification": "owner_input",
+      "role": "nested_owner_receipt",
+      "reason": "Hostess validates the optional canonical Manifold digest field without owning or emitting it."
+    },
+    {
+      "schema_id": "rusty.manifold.shell.handoff.v1",
+      "path": "tools/hostessctl/pmb_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.shell.handoff.v1",
+      "path": "tools/studio_staging/manifold_handoff_intake.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.shell.handoff.v1",
+      "path": "tools/studio_staging/request_shared.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.shell.handoff_review_receipt.v1",
+      "path": "tools/studio_staging/manifold_handoff_intake.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.shell.handoff_review_receipt.v1",
+      "path": "tools/studio_staging/request_shared.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbAndroidEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbPhysicalLiveEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "apps/hostess-t-android/src/main/java/io/github/mesmerprism/rustyhostess/t/PmbSimulatedLiveEvidence.java",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "tools/hostessctl/makepad_shell_contract.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "tools/hostessctl/pmb_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "tools/hostessctl/pmb_host_run_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.manifold.validation.scorecard.v1",
+      "path": "tools/hostessctl/recording_evidence.py",
+      "owner": "rusty.manifold",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_topology_probe.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_topology_probe.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_topology_probe.v1",
+      "path": "tools/hostessctl/connectivity_probe_common.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_topology_probe.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_topology_probe.v1",
+      "path": "tools/hostessctl/protocol_evidence_matrix.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_wifi_direct_lifecycle.v1",
+      "path": "tools/hostessctl/connectivity_topology_lifecycle.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_windows_firewall_rule.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_windows_firewall_rule.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.connectivity_windows_firewall_rule.v1",
+      "path": "tools/hostessctl/connectivity_firewall.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_suite_run.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_suite_run.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_suite_run.v1",
+      "path": "tools/hostessctl/connectivity_suite.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_suite_run.validation.v1",
+      "path": "tools/hostessctl/connectivity_suite.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_test_suite.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.install_environment_test_suite.validation.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "path": "apps/hostess-t-makepad/src/companion_frontend.rs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.protocol_evidence_matrix.v1",
+      "path": "tools/hostessctl/protocol_evidence_matrix.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.protocol_evidence_matrix.validation.v1",
+      "path": "tools/hostessctl/protocol_evidence_matrix.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.stream_capability.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.stream_capability.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.stream_capability.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.stream_capability.validation.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.v1",
+      "path": "apps/hostess-companion-wpf/Services/HostessctlSessionService.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.v1",
+      "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.v1",
+      "path": "apps/hostess-t-makepad/src/companion_frontend.rs",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.v1",
+      "path": "tools/hostessctl/companion_operator_action_rows.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.device_link.validation.v1",
+      "path": "tools/hostessctl/device_link_report.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.direct_p2p_socket_route.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/quest-generic-media-evidence.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "fixtures/project-runner/valid/evidence-profile.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "fixtures/project-runner/valid/evidence-receipt.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/quest-generic-media-evidence.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Canonical hash-pinned Quest evidence remains owned by Quest; Hostess only validates and references it."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "schemas/project-runner-evidence-profile.schema.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "schemas/project-runner-evidence-receipt-input.schema.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "schemas/project-runner-owner-evidence-receipt.schema.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "compatibility_input",
+      "reason": "Hostess compatibility validator checks the canonical Quest shape without re-owning or emitting it."
+    },
+    {
+      "schema_id": "rusty.quest.generic_media_session_evidence.v1",
+      "path": "tools/hostessctl/project_runner.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.makepad.camera_shell_feature_uniforms.v1",
+      "path": "apps/hostess-t-makepad/src/app_mesh_replay_runtime.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.makepad.camera_shell_render_scale.v1",
+      "path": "apps/hostess-t-makepad/src/app_mesh_replay_runtime.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.makepad.matter_particle_texture.v1",
+      "path": "apps/hostess-t-makepad/src/matter_particle_texture.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.makepad.matter_surface_worker.v1",
+      "path": "apps/hostess-t-makepad/src/matter_surface_runtime.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.makepad.mesh_replay.v1",
+      "path": "apps/hostess-t-makepad/src/makepad_effective_settings/tests.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.media_stream.android_runtime_status.v1",
+      "path": "tools/hostessctl/connectivity_media.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "contract_reference",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.media_stream_session.v1",
+      "path": "tools/hostessctl/connectivity_media.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "contract_reference",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.product_wifi_direct_topology.v1",
+      "path": "fixtures/project-runner/valid/topology-profile.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.product_wifi_direct_topology.v1",
+      "path": "fixtures/project-runner/valid/owner-receipts/topology-authorization.json",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.qcl030.local_only_hotspot_probe.v1",
+      "path": "tools/hostessctl/connectivity_topology_lifecycle.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.qcl041.quest_hosted_windows_join_probe.v1",
+      "path": "tools/hostessctl/connectivity_topology_lifecycle.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.qcl041.windows_legacy_ap_probe.v1",
+      "path": "tools/hostessctl/connectivity_topology_lifecycle.py",
+      "owner": "rusty.quest",
+      "classification": "frozen_qcl_compatibility",
+      "role": "legacy_validation_compatibility",
+      "reason": "Frozen legacy validation compatibility reference; new Hostess outputs may not adopt this schema."
+    },
+    {
+      "schema_id": "rusty.quest.runtime_profile.v1",
+      "path": "tools/hostessctl/native_breathing_room_setup.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "contract_reference",
+      "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    }
+  ]
+}

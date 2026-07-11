@@ -1,0 +1,92 @@
+{
+  "$schema": "https://github.com/MesmerPrism/rusty-morphospace-work-environment/schemas/project-spec-v2.schema.json",
+  "schema": "rusty.morphospace.workflow.project_spec.v2",
+  "project_id": "hostess-network-workflow",
+  "revision": 1,
+  "owner": "Rusty Hostess",
+  "purpose": "Compose an exact product-locked peer topology and receiver-first media validation workflow.",
+  "activation_model": {
+    "default": "disabled",
+    "unlisted_modules": "inert",
+    "runtime_rule": "selected-lock-and-runtime-input"
+  },
+  "composition": {
+    "selected_features": ["media-session"],
+    "denied_features": ["application-policy"],
+    "selected_modules": ["media-session", "runtime-host"],
+    "denied_modules": [],
+    "allowed_permissions": [
+      "internet",
+      "user_notifications",
+      "background_service",
+      "background_data_sync"
+    ],
+    "denied_permissions": ["camera"],
+    "data_classes": ["bounded-validation-evidence"]
+  },
+  "authority_map": [
+    {
+      "parameter": "peer.topology",
+      "owner": "rusty-manifold",
+      "adapters": ["rusty-quest"]
+    }
+  ],
+  "repositories": [
+    {
+      "repo_id": "rusty-hostess",
+      "role": "tool",
+      "path": ".",
+      "allowed_paths": ["tools", "fixtures", "schemas", "docs"]
+    }
+  ],
+  "modules": [
+    {
+      "module_id": "media-session",
+      "feature_id": "media-session",
+      "lane": "rusty-manifold",
+      "maturity": "candidate",
+      "contract": "rusty.manifold.media.session",
+      "contract_revision": "v1",
+      "source_repo": "rusty-manifold",
+      "dependencies": [],
+      "selected": true
+    },
+    {
+      "module_id": "runtime-host",
+      "feature_id": "media-session",
+      "lane": "rusty-manifold",
+      "maturity": "stable",
+      "contract": "rusty.manifold.runtime_host",
+      "contract_revision": "v1",
+      "source_repo": "rusty-manifold",
+      "dependencies": [],
+      "selected": true
+    }
+  ],
+  "non_scope": ["application-specific policy", "QCL identifiers as runtime IDs"],
+  "validation_profiles": [
+    {
+      "profile_id": "network-stream-validation",
+      "commands": ["owner-issued validation adapter"]
+    }
+  ],
+  "acceptance_profiles": [
+    {
+      "profile_id": "network-acceptance",
+      "commands": ["verify owner receipts and cleanup"]
+    }
+  ],
+  "release_policy": {
+    "versioning": "semver",
+    "commit_policy": "checkpointed owner commits",
+    "push_checkpoint": "integration-batch",
+    "source_first": true,
+    "planning_last": true,
+    "force_push_allowed": false
+  },
+  "public_boundary": {
+    "mode": "public",
+    "private_overlay": "none",
+    "prohibited_evidence": ["device serials", "private endpoints", "raw logs"]
+  }
+}

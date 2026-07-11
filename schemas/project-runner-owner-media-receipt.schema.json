@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-owner-media-receipt.schema.json",
+  "title": "Compatibility validator for the canonical Manifold broker adapter receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema", "adapter_id", "mode", "adapter_role", "product_lock_id",
+    "product_lock_fingerprint", "authority_host_id", "authority_owner_id",
+    "dispatch", "application"
+  ],
+  "properties": {
+    "$schema": { "const": "rusty.manifold.broker.adapter_receipt.v1" },
+    "adapter_id": { "$ref": "#/$defs/id" },
+    "mode": { "enum": ["standalone", "embedded"] },
+    "adapter_role": { "enum": ["process_transport_adapter", "in_process_transport_adapter"] },
+    "product_lock_id": { "$ref": "#/$defs/id" },
+    "product_lock_fingerprint": { "type": "string", "pattern": "^fnv1a64-[0-9a-f]{16}$" },
+    "authority_host_id": { "$ref": "#/$defs/id" },
+    "authority_owner_id": { "const": "module.runtime.host" },
+    "dispatch": { "$ref": "#/$defs/dispatch" },
+    "application": { "$ref": "#/$defs/application" }
+  },
+  "$defs": {
+    "id": { "type": "string", "pattern": "^[a-z0-9][a-z0-9_.-]{2,127}$" },
+    "params_digest": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "params_type_id", "canonical_sha256", "canonical_size_bytes"],
+      "properties": {
+        "$schema": { "const": "rusty.manifold.runtime_host.typed_params_digest.v1" },
+        "params_type_id": { "$ref": "#/$defs/id" },
+        "canonical_sha256": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "canonical_size_bytes": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "dispatch": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "dispatch_id", "request_id", "command_id", "reviewed_authority_revision", "outcome", "rejection_reason"],
+      "properties": {
+        "$schema": { "const": "rusty.manifold.runtime_host.dispatch_receipt.v1" },
+        "dispatch_id": { "$ref": "#/$defs/id" },
+        "request_id": { "$ref": "#/$defs/id" },
+        "command_id": { "$ref": "#/$defs/id" },
+        "params_digest": { "$ref": "#/$defs/params_digest" },
+        "reviewed_authority_revision": { "type": "integer", "minimum": 1 },
+        "outcome": { "enum": ["ready", "rejected"] },
+        "rejection_reason": { "type": ["string", "null"] }
+      }
+    },
+    "application": {
+      "type": "object", "additionalProperties": false,
+      "required": ["$schema", "receipt_id", "dispatch_id", "request_id", "applied", "prior_authority_revision", "resulting_authority_revision", "rejection_reason"],
+      "properties": {
+        "$schema": { "const": "rusty.manifold.runtime_host.application_receipt.v1" },
+        "receipt_id": { "$ref": "#/$defs/id" },
+        "dispatch_id": { "$ref": "#/$defs/id" },
+        "request_id": { "$ref": "#/$defs/id" },
+        "params_digest": { "$ref": "#/$defs/params_digest" },
+        "applied": { "type": "boolean" },
+        "prior_authority_revision": { "type": "integer", "minimum": 1 },
+        "resulting_authority_revision": { "type": "integer", "minimum": 1 },
+        "rejection_reason": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

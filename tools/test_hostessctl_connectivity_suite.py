@@ -81,6 +81,20 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
         self.assertEqual(validation["status"], "pass")
         self.assertEqual(validation["slot_count"], 11)
 
+    def test_run_connectivity_suite_requires_explicit_compatibility_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out = Path(tmpdir) / "suite-run.json"
+            args = suite_args(out)
+            args.legacy_qcl_compatibility = False
+            status = run_connectivity_suite(
+                args,
+                run_captured_func=SnapshotRunner(),
+                clock_func=lambda: "2026-06-28T00:00:00Z",
+            )
+
+        self.assertEqual(status, 2)
+        self.assertFalse(out.exists())
+
     def test_public_profile_single_connection_object_keeps_suite_warn(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
@@ -105,6 +119,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
             [
                 "connectivity-probe",
                 "run-suite",
+                "--legacy-qcl-compatibility",
                 "--mode",
                 "fixture",
                 "--probe-id",
@@ -131,6 +146,7 @@ class HostessCtlConnectivitySuiteTests(unittest.TestCase):
 
         self.assertEqual(args.command, "connectivity-probe")
         self.assertEqual(args.connectivity_probe_command, "run-suite")
+        self.assertTrue(args.legacy_qcl_compatibility)
         self.assertEqual(args.mode, "fixture")
         self.assertEqual(args.probe_id, ["QCL-080"])
         self.assertEqual(args.suite_id, "installer-smoke")
@@ -284,6 +300,7 @@ def suite_args(out: Path) -> argparse.Namespace:
         websocket_timeout_seconds=1.0,
         websocket_route_descriptor="",
         websocket_route_evidence="",
+        legacy_qcl_compatibility=True,
         fail_on_error=True,
     )
 

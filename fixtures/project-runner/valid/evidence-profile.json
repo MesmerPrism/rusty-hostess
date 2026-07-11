@@ -1,0 +1,24 @@
+{
+  "$schema": "rusty.hostess.project_runner.evidence_profile.v1",
+  "profile_id": "qcl-100-full-stereo",
+  "owner": "rusty.quest",
+  "owner_schema": "rusty.quest.generic_media_session_evidence.v1",
+  "receipt_schema": "rusty.quest.generic_media_session_evidence.v1",
+  "binding_schema": "rusty.hostess.project_runner.evidence_receipt_binding.v1",
+  "namespace_role": "validation-profile",
+  "product_binding": {
+    "project_id": "hostess-network-workflow",
+    "project_revision": 1,
+    "project_spec_sha256": "6aacae990b037e0579e4d40addd12f09bb28b1436bdcd95646e50a11274cdc01",
+    "product_id": "broker.media-session.standalone",
+    "product_lock_id": "lock.broker.media-session.standalone",
+    "product_lock_revision": 1,
+    "product_lock_fingerprint": "fnv1a64-006d1c87d57a0438",
+    "product_lock_sha256": "d99c51fa2b5f4a7dfa8a66268f9ca1d98c87bff307dff35a81d491c7e5943657"
+  },
+  "authority": {
+    "minimum_revision": 11,
+    "max_age_seconds": 900
+  },
+  "required_observations": ["bounded_exchange", "inactive_cleanup", "package_cleanup", "zero_fatals"]
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "rusty.manifold.broker.adapter_receipt.v1",
+  "adapter_id": "adapter.broker.standalone",
+  "mode": "standalone",
+  "adapter_role": "process_transport_adapter",
+  "product_lock_id": "lock.broker.media-session.standalone",
+  "product_lock_fingerprint": "fnv1a64-006d1c87d57a0438",
+  "authority_host_id": "host.broker.media-session",
+  "authority_owner_id": "module.runtime.host",
+  "dispatch": {
+    "$schema": "rusty.manifold.runtime_host.dispatch_receipt.v1",
+    "dispatch_id": "dispatch.runtime.request.media-session-fixture",
+    "request_id": "request.media-session-fixture",
+    "command_id": "command.media.session.start",
+    "reviewed_authority_revision": 1,
+    "outcome": "ready",
+    "rejection_reason": null
+  },
+  "application": {
+    "$schema": "rusty.manifold.runtime_host.application_receipt.v1",
+    "receipt_id": "receipt.runtime.request.media-session-fixture",
+    "dispatch_id": "dispatch.runtime.request.media-session-fixture",
+    "request_id": "request.media-session-fixture",
+    "applied": true,
+    "prior_authority_revision": 1,
+    "resulting_authority_revision": 2,
+    "rejection_reason": null
+  }
+}

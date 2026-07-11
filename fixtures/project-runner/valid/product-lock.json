@@ -1,0 +1,23 @@
+{
+  "$schema": "rusty.manifold.broker.product_lock.v1",
+  "lock_id": "lock.broker.media-session.standalone",
+  "product_id": "broker.media-session.standalone",
+  "standalone_enabled": true,
+  "embedded_enabled": false,
+  "features": ["media_session"],
+  "command_ids": [
+    "command.media.session.start",
+    "command.media.session.stop",
+    "command.peer.status.get",
+    "command.session.list"
+  ],
+  "stream_ids": ["stream.media.video", "stream.peer.status"],
+  "module_ids": ["module.media.session", "module.runtime.host"],
+  "permissions": [
+    "internet",
+    "user_notifications",
+    "background_service",
+    "background_data_sync"
+  ],
+  "spec_fingerprint": "fnv1a64-006d1c87d57a0438"
+}

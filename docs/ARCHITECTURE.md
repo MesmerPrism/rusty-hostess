@@ -12,6 +12,51 @@ registries, audit records, and scorecards.
 Hostess T owns platform packaging, permission probes, launch/install routes,
 small app UI surfaces, command bridging, and evidence export.
 
+## Declarative Project Workflow Boundary
+
+`tools/hostessctl/project_runner.py` is the source-only Hostess orchestration
+boundary for project-scoped networking and media validation. Its input set is
+deliberately complete: one hash-pinned Morphospace project spec, one exact
+hash-pinned Manifold product lock, explicit capability IDs, separate Hostess
+selection profiles that bind canonical owner topology/media/evidence schemas,
+Hostess-owned binding sidecars, hash-pinned canonical owner receipts, a risk
+tier, and a Hostess cleanup contract. Every
+input is validated against a checked-in schema, read once, and verified against
+its expected SHA-256 before a plan is written. The project composition must
+exactly close over the Manifold lock's selected features, modules, and
+permissions while every denied item remains absent. Selection profiles and
+binding sidecars bind the exact project/lock hashes, profile hash, lock identity, effective
+revision, fingerprint, authority revision, freshness window, expiry, and
+role-specific observations, including an exact zero-fatal count. Each sidecar
+references a separate canonical owner artifact by path, schema, owner, and
+SHA-256; Hostess never extends a foreign receipt schema with application fields.
+
+The route writes only `rusty.hostess.project_runner.envelope.v1`,
+`rusty.hostess.project_runner.plan.v1`, and
+`rusty.hostess.project_runner.receipt.v1`, followed by
+`rusty.hostess.project_runner.generation_completion.v1` as the last-write
+acceptance marker. Envelope, plan, and receipt first enter one immutable
+generation directory; convenience aliases are non-authoritative. A failed
+refresh leaves the previous marker and generation valid. These artifacts carry owner schema,
+path, and SHA-256 references; they do not embed or redefine Manifold or Quest
+payloads. QCL IDs may identify the evidence profile and its evidence receipt,
+but are rejected from product locks, capability IDs, topology/media profiles,
+cleanup steps, and plan/runtime IDs. Dry-run is the only implemented mode;
+`--execute` fails closed until separately reviewed owner execution adapters
+exist.
+Quick, standard, deep, device, and release tiers have additive evidence,
+freshness, cleanup, device, and release gates; requesting a higher tier with a
+lower-tier receipt fails closed.
+
+The previous `connectivity-probe run-suite` implementation remains intact as
+frozen compatibility and requires `--legacy-qcl-compatibility`. The reviewed
+foreign-schema ledger is
+`fixtures/schema-ownership/foreign-schema-compatibility.json`; the
+`project-runner ownership-audit` route reconciles every exact foreign
+schema/path occurrence across tracked Python, C#, Rust, Java, Kotlin, and JSON
+production surfaces and makes `rusty.hostess.*` the required owner for all new
+Hostess outputs.
+
 ## Current Slice
 
 The first implementation supports one live package slot:
@@ -349,7 +394,8 @@ readiness from an action label, preflight row, anonymous harness output, or
 status-only lifecycle artifact.
 Source artifacts remain authoritative: `device_link_report.py` owns device and
 command-route evidence, `connectivity_probe.py` owns QCL probe reports and
-topology classification, `connectivity_suite.py` owns suite execution, and
+topology classification, `connectivity_suite.py` owns only explicitly selected
+legacy-suite compatibility execution, and
 `protocol_evidence_matrix.py` owns promotion policy and latest-artifact selection.
 Quest device-link report adaptation lives in
 `tools/hostessctl/device_link_report.py`. It summarizes Hostess readiness and
@@ -370,18 +416,22 @@ The same device-link adapter owns the planned downloadable
 `rusty.quest.device_link.install_environment_test_suite.v1` descriptor. That
 suite is the frontend-neutral map for host install checks, network adapter and
 firewall checks, Quest device checks, protocol capability checks, and RTT/clock
-alignment strategy. Hostess still owns execution through QCL reports; WPF,
-Makepad, CLI, and future installers should render and request the suite rather
-than embedding protocol-specific dependency logic.
-Suite execution lives in `tools/hostessctl/connectivity_suite.py`. It consumes
-the descriptor, runs selected QCL slots through the existing probe adapters,
-records a host snapshot for tools, network profiles, firewall listener state,
-hotspot state, and Bluetooth readiness, then emits
+alignment strategy. Hostess preserves compatibility execution through QCL
+reports; WPF, Makepad, CLI, and future installers may render and explicitly
+request that legacy suite rather than embedding protocol-specific dependency
+logic. Frozen suite execution lives in
+`tools/hostessctl/connectivity_suite.py` and is unreachable without
+`--legacy-qcl-compatibility`. It consumes the descriptor, runs selected QCL
+slots through the existing probe adapters, records a host snapshot for tools,
+network profiles, firewall listener state, hotspot state, and Bluetooth
+readiness, then emits
 `rusty.quest.device_link.install_environment_suite_run.v1`. Aggregate status is
 allowed to warn on host posture, such as Public firewall profile or missing
 listener allow rule, even when all fixture protocol slots pass. That makes the
 future installer and WPF page honest about the install environment without
-turning either frontend into a validator.
+turning either frontend into a validator. New project-scoped composition must
+use `project_runner.py`; it references owner receipts and never extends the
+frozen Quest-schema suite family.
 Windows firewall listener lifecycle also stays in Hostess:
 `connectivity-probe windows-firewall-rule --action plan|apply|verify|remove`
 emits the rule report and verification evidence. WPF requests these actions and

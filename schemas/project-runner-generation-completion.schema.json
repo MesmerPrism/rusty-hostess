@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/project-runner-generation-completion.schema.json",
+  "title": "Rusty Hostess project-runner generation completion marker",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "schema_version", "generation_id", "run_id", "completed_at_utc", "status", "artifacts"],
+  "properties": {
+    "$schema": { "const": "rusty.hostess.project_runner.generation_completion.v1" },
+    "schema_version": { "const": 1 },
+    "generation_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": "string", "minLength": 1 },
+    "completed_at_utc": { "type": "string", "minLength": 1 },
+    "status": { "const": "complete" },
+    "artifacts": {
+      "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["role", "path", "sha256", "schema", "owner"],
+        "properties": {
+          "role": { "enum": ["hostess.envelope", "hostess.plan", "hostess.receipt"] },
+          "path": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+          "schema": {
+            "enum": [
+              "rusty.hostess.project_runner.envelope.v1",
+              "rusty.hostess.project_runner.plan.v1",
+              "rusty.hostess.project_runner.receipt.v1"
+            ]
+          },
+          "owner": { "const": "rusty.hostess" }
+        }
+      }
+    }
+  }
+}
