@@ -1014,8 +1014,11 @@ cargo run -q -p rusty-manifold-zmq --example zmq_pub_sub_loopback --features run
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source native-rust-broker --zeromq-pattern pub-sub --zeromq-manifold-root S:\Work\repos\active\rusty-manifold --out target\connectivity-probe\qcl084-live-native-rust-broker.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe protocol-matrix --input target\connectivity-probe\qcl084-live-native-rust-broker.json --out target\connectivity-probe\qcl084-native-rust-broker.protocol-matrix.json --fail-on-error
 python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source rusty-xr-zmq-loopback --zeromq-pattern pub-sub --out target\connectivity-probe\qcl084-live-rusty-xr-zmq-loopback.json
-powershell -NoProfile -ExecutionPolicy Bypass -File S:\Work\repos\active\Rusty-XR-Private-Planning\prototypes\gonzo-zmq-bridge\tools\Invoke-GoofiNodeSmoke.ps1
-python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source goofi-sidecar --zeromq-pattern pub-sub --out target\connectivity-probe\qcl084-live-goofi-sidecar.json
+# Historical/legacy opt-in only. Materialize the explicitly requested
+# non-git-planning-artifact-archive entry first; never auto-discover it.
+$legacyGoofiRoot = '<explicit-materialized-gonzo-zmq-bridge-path>'
+powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $legacyGoofiRoot 'tools\Invoke-GoofiNodeSmoke.ps1')
+python tools\hostessctl\hostessctl.py connectivity-probe run --mode live --probe-id QCL-084 --zeromq-source goofi-sidecar --zeromq-pattern pub-sub --zeromq-goofi-bridge-root $legacyGoofiRoot --out target\connectivity-probe\qcl084-live-goofi-sidecar.json
 ```
 
 `native-rust-broker` is the broker-owned promotion path for ZeroMQ. Hostess
