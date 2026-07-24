@@ -1033,13 +1033,11 @@ def zeromq_goofi_sidecar_probe(args: argparse.Namespace) -> dict[str, Any]:
 
 def resolve_goofi_bridge_root(args: argparse.Namespace) -> Path | None:
     explicit = str(getattr(args, "zeromq_goofi_bridge_root", "") or "").strip()
-    candidates = []
-    if explicit:
-        candidates.append(Path(explicit))
-    candidates.append(Path("S:/Work/repos/active/Rusty-XR-Private-Planning/prototypes/gonzo-zmq-bridge"))
-    for candidate in candidates:
-        if (candidate / "Cargo.toml").is_file() and (candidate / "tools" / "goofi_pair_to_gargoyle_pub.py").is_file():
-            return candidate
+    if not explicit:
+        return None
+    candidate = Path(explicit)
+    if (candidate / "Cargo.toml").is_file() and (candidate / "tools" / "goofi_pair_to_gargoyle_pub.py").is_file():
+        return candidate
     return None
 
 def zeromq_checks_from_probe(result: dict[str, Any]) -> list[dict[str, Any]]:
