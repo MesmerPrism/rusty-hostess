@@ -161,6 +161,9 @@ $sourceVerifiedAtUtc = $null
 if ($BuildKind -eq "signed-release" -and -not $VerifyPublicSource) {
     throw "A signed release requires VerifyPublicSource."
 }
+if ($BuildKind -eq "unsigned-dev" -and $VerifyPublicSource) {
+    throw "Unsigned development metadata cannot assert public-source verification."
+}
 if ($VerifyPublicSource) {
     $headers = @{
         Accept = "application/vnd.github+json"
