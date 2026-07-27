@@ -1,11 +1,34 @@
 #requires -Version 7.0
-param([string]$OutDir = "target\windows-hotspot-provider")
+param(
+    [string] $OutDir = "target\windows-hotspot-provider",
+    [ValidatePattern("^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")]
+    [string] $ProviderVersion = "0.1.0"
+)
 $ErrorActionPreference = "Stop"
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw "PowerShell 7 or newer is required." }
 $RepoRoot = Resolve-Path (Join-Path $PSScriptRoot "..")
 $Project = Join-Path $RepoRoot "tools\windows_hotspot_provider\RustyHostess.WindowsHotspot.Provider.csproj"
 $Publish = Join-Path $RepoRoot $OutDir
-dotnet publish $Project -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o $Publish
+$SourceRevision = (& git -C $RepoRoot rev-parse HEAD).Trim()
+if ($LASTEXITCODE -ne 0 -or $SourceRevision -cnotmatch "^[0-9a-f]{40}$") {
+    throw "Could not resolve the provider source revision."
+}
+$SourceDirt = @(& git -C $RepoRoot status --porcelain=v1 --untracked-files=all)
+$SourceClaim = if ($SourceDirt.Count -eq 0) {
+    $SourceRevision
+} else {
+    "dirty.$SourceRevision"
+}
+dotnet publish $Project `
+    -c Release `
+    -r win-x64 `
+    --self-contained true `
+    -p:PublishSingleFile=true `
+    -p:Version=$ProviderVersion `
+    -p:InformationalVersion="$ProviderVersion+$SourceClaim" `
+    -p:RepositoryCommit=$SourceRevision `
+    -p:SourceRevisionId=$SourceRevision `
+    -o $Publish
 if ($LASTEXITCODE -ne 0) { throw "Provider publish failed." }
 $Exe = Join-Path $Publish "rusty-hostess-hotspot-provider.exe"
 if (-not (Test-Path $Exe)) { throw "Expected single-file provider executable was not published." }

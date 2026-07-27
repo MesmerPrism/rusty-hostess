@@ -13,7 +13,9 @@ param(
 
     [string] $OutputDirectory = "target\windows-hotspot-provider-release-metadata",
 
-    [string] $SourceAvailabilityUrl
+    [string] $SourceAvailabilityUrl,
+
+    [switch] $VerifyPublicSource
 )
 
 $ErrorActionPreference = "Stop"
@@ -79,6 +81,29 @@ if ($sourceUri.Scheme -cne "https" -or
         "/MesmerPrism/rusty-hostess/tree/$revision") {
     throw "SourceAvailabilityUrl must identify the exact public source revision."
 }
+$sourceAvailabilityState = "unverified_development"
+$sourceVerifiedAtUtc = $null
+if ($BuildKind -eq "signed-release" -and -not $VerifyPublicSource) {
+    throw "A signed release requires VerifyPublicSource."
+}
+if ($VerifyPublicSource) {
+    $headers = @{
+        Accept = "application/vnd.github+json"
+        "User-Agent" = "rusty-hostess-release-metadata"
+    }
+    if ($env:GITHUB_TOKEN) {
+        $headers.Authorization = "Bearer $($env:GITHUB_TOKEN)"
+    }
+    $publicCommit = Invoke-RestMethod `
+        -Uri "https://api.github.com/repos/MesmerPrism/rusty-hostess/git/commits/$revision" `
+        -Headers $headers `
+        -Method Get
+    if ($publicCommit.sha -cne $revision -or $publicCommit.tree.sha -cne $tree) {
+        throw "Public source evidence does not match the local commit and tree."
+    }
+    $sourceAvailabilityState = "verified_public"
+    $sourceVerifiedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
+}
 
 $signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
 $signatureVerified =
@@ -95,6 +120,13 @@ $signing = [ordered]@{
     } else {
         $null
     }
+}
+$expectedProductVersion = "$ProviderVersion+$revision"
+$productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+    $artifact.FullName
+).ProductVersion
+if ($productVersion -cne $expectedProductVersion) {
+    throw "Artifact product version does not bind the exact clean source revision."
 }
 
 & dotnet restore $projectPath -r win-x64 | Out-Host
@@ -222,6 +254,43 @@ foreach ($name in @($dependencyVersions.Keys | Sort-Object)) {
     }
 }
 
+$rebuildRoot = Join-Path (
+    Join-Path $repoRoot "target"
+) (".windows-hotspot-provider-rebuild-" + [Guid]::NewGuid().ToString("N"))
+try {
+    & dotnet publish $projectPath `
+        -c Release `
+        -r win-x64 `
+        --self-contained true `
+        -p:PublishSingleFile=true `
+        -p:Version=$ProviderVersion `
+        -p:InformationalVersion="$ProviderVersion+$revision" `
+        -p:RepositoryCommit=$revision `
+        -p:SourceRevisionId=$revision `
+        -o $rebuildRoot | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Reproducible provider rebuild failed." }
+    $rebuiltArtifact = Join-Path $rebuildRoot "rusty-hostess-hotspot-provider.exe"
+    $unsignedArtifactSha256 = Get-Sha256 -LiteralPath $rebuiltArtifact
+    $unsignedArtifactSize = (Get-Item -LiteralPath $rebuiltArtifact).Length
+    if ($BuildKind -eq "unsigned-dev" -and (
+        $unsignedArtifactSha256 -cne (Get-Sha256 -LiteralPath $artifact.FullName) -or
+        $unsignedArtifactSize -ne $artifact.Length
+    )) {
+        throw "Unsigned artifact is not the reproducible output of the recorded source."
+    }
+}
+finally {
+    $targetRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "target")) +
+        [System.IO.Path]::DirectorySeparatorChar
+    $resolvedRebuild = [System.IO.Path]::GetFullPath($rebuildRoot)
+    if (-not $resolvedRebuild.StartsWith($targetRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove rebuild output outside the repository target directory."
+    }
+    if (Test-Path -LiteralPath $resolvedRebuild) {
+        Remove-Item -LiteralPath $resolvedRebuild -Recurse -Force
+    }
+}
+
 $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
     [System.IO.Path]::GetFullPath($OutputDirectory)
 } else {
@@ -253,12 +322,15 @@ $provenance = [ordered]@{
         name = $artifact.Name
         sha256 = Get-Sha256 -LiteralPath $artifact.FullName
         size_bytes = $artifact.Length
+        product_version = $productVersion
     }
     source = [ordered]@{
         repository = $sourceRepository
         revision = $revision
         tree = $tree
         availability_url = $SourceAvailabilityUrl
+        availability_state = $sourceAvailabilityState
+        verified_at_utc = $sourceVerifiedAtUtc
         tree_clean = $true
     }
     build = [ordered]@{
@@ -266,6 +338,8 @@ $provenance = [ordered]@{
         framework = "net9.0-windows10.0.19041.0"
         runtime_identifier = "win-x64"
         source_date_epoch = $sourceDateEpoch
+        unsigned_artifact_sha256 = $unsignedArtifactSha256
+        unsigned_artifact_size_bytes = $unsignedArtifactSize
     }
     dependencies = @($dependencies)
     bundled_native_libraries = $nativeLibraries

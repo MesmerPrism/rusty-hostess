@@ -20,10 +20,16 @@ The output contains:
 
 The provenance binds the artifact digest and size to the exact source commit
 and tree, dependency report, embedded native-library inputs, companion
-documents, source-availability URL, and Authenticode state. An
-`unsigned-dev` result is explicitly `development_only`. Publication tooling
-must accept only `signed-release` metadata with a verified Authenticode
-identity.
+documents, source-availability URL, and Authenticode state. The executable
+also embeds its exact source revision. Unsigned output must byte-match a fresh
+clean rebuild before metadata is emitted. An `unsigned-dev` result is
+explicitly `development_only`.
+
+Publication tooling must accept only `signed-release` metadata with a
+signature revalidated against the artifact and public-source verification.
+The signed-release generator therefore also requires
+`-VerifyPublicSource`; it checks the exact commit and tree through GitHub
+before declaring the source publicly available.
 
 Validate metadata and its artifact offline:
 

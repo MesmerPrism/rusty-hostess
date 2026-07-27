@@ -104,4 +104,5 @@ Before another product packages it, generate and validate the Hostess-owned
 release metadata described in
 `packaging/windows-hotspot-provider/README.md`. Unsigned development metadata
 is explicitly local-only; publication requires a valid Authenticode identity
-and `signed_release` eligibility.
+revalidated against the artifact, verified public availability of the exact
+source commit/tree, and `signed_release` eligibility.

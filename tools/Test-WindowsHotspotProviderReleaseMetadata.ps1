@@ -63,13 +63,24 @@ Assert-ExactProperties $provenance @(
     "distribution"
 ) "provenance"
 Assert-ExactProperties $provenance.artifact @(
-    "name", "sha256", "size_bytes"
+    "name", "sha256", "size_bytes", "product_version"
 ) "artifact"
 Assert-ExactProperties $provenance.source @(
-    "repository", "revision", "tree", "availability_url", "tree_clean"
+    "repository",
+    "revision",
+    "tree",
+    "availability_url",
+    "availability_state",
+    "verified_at_utc",
+    "tree_clean"
 ) "source"
 Assert-ExactProperties $provenance.build @(
-    "kind", "framework", "runtime_identifier", "source_date_epoch"
+    "kind",
+    "framework",
+    "runtime_identifier",
+    "source_date_epoch",
+    "unsigned_artifact_sha256",
+    "unsigned_artifact_size_bytes"
 ) "build"
 Assert-ExactProperties $provenance.signing @(
     "state", "status", "subject", "thumbprint"
@@ -87,6 +98,15 @@ if ($provenance.artifact.name -cne "rusty-hostess-hotspot-provider.exe" -or
     (Get-Sha256 -LiteralPath $artifact.FullName) -cne $provenance.artifact.sha256) {
     throw "Provider artifact does not match owner provenance."
 }
+$observedProductVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
+    $artifact.FullName
+).ProductVersion
+$expectedProductVersion =
+    "$($provenance.provider_version)+$($provenance.source.revision)"
+if ($provenance.artifact.product_version -cne $expectedProductVersion -or
+    $observedProductVersion -cne $expectedProductVersion) {
+    throw "Provider artifact does not embed the exact source revision."
+}
 if ($provenance.source.repository -cne "https://github.com/MesmerPrism/rusty-hostess" -or
     $provenance.source.revision -cnotmatch "^[0-9a-f]{40}$" -or
     $provenance.source.tree -cnotmatch "^[0-9a-f]{40}$" -or
@@ -103,6 +123,10 @@ if ($sourceUri.Scheme -cne "https" -or
 if (@($provenance.dependencies).Count -eq 0 -or
     @($provenance.bundled_native_libraries).Count -eq 0) {
     throw "Dependency or bundled native-library inventory is empty."
+}
+if ($provenance.build.unsigned_artifact_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+    [long] $provenance.build.unsigned_artifact_size_bytes -le 0) {
+    throw "Reproducible unsigned artifact evidence is invalid."
 }
 foreach ($dependency in @($provenance.dependencies)) {
     Assert-ExactProperties $dependency @(
@@ -153,17 +177,39 @@ if ($provenanceText -match "(?i)[a-z]:\\\\|\\\\\\\\") {
     throw "Provenance contains a machine-private path."
 }
 if ($RequireSignedRelease) {
+    $observedSignature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
+    $observedSignatureValid =
+        $observedSignature.Status -eq
+            [System.Management.Automation.SignatureStatus]::Valid
+    $verifiedAt = [DateTimeOffset]::MinValue
+    $verifiedAtValid = [DateTimeOffset]::TryParse(
+        [string] $provenance.source.verified_at_utc,
+        [ref] $verifiedAt
+    )
     if ($provenance.build.kind -cne "signed-release" -or
         $provenance.distribution.eligibility -cne "signed_release" -or
         $provenance.signing.state -cne "verified" -or
         [string]::IsNullOrWhiteSpace($provenance.signing.subject) -or
-        $provenance.signing.thumbprint -cnotmatch "^[0-9a-f]+$") {
+        $provenance.signing.thumbprint -cnotmatch "^[0-9a-f]+$" -or
+        -not $observedSignatureValid -or
+        $observedSignature.SignerCertificate.Subject -cne
+            $provenance.signing.subject -or
+        $observedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
+            $provenance.signing.thumbprint -or
+        $provenance.source.availability_state -cne "verified_public" -or
+        -not $verifiedAtValid) {
         throw "Metadata is not eligible for signed publication."
     }
 }
 elseif ($provenance.build.kind -eq "unsigned-dev" -and
-    $provenance.distribution.eligibility -cne "development_only") {
-    throw "Unsigned development metadata must remain development-only."
+    ($provenance.distribution.eligibility -cne "development_only" -or
+     $provenance.source.availability_state -cne "unverified_development" -or
+     $null -ne $provenance.source.verified_at_utc -or
+     $provenance.build.unsigned_artifact_sha256 -cne
+        $provenance.artifact.sha256 -or
+     $provenance.build.unsigned_artifact_size_bytes -ne
+        $provenance.artifact.size_bytes)) {
+    throw "Unsigned development metadata is not causally bound and development-only."
 }
 
 [ordered]@{
