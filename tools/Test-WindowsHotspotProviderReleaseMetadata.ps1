@@ -7,7 +7,9 @@ param(
     [Parameter(Mandatory)]
     [string] $ArtifactPath,
 
-    [switch] $RequireSignedRelease
+    [switch] $RequireSignedRelease,
+
+    [string] $ExpectedSignerThumbprint
 )
 
 $ErrorActionPreference = "Stop"
@@ -27,6 +29,74 @@ function Assert-ExactProperties {
     $actual = @($Object.PSObject.Properties.Name | Sort-Object)
     if (Compare-Object ($Expected | Sort-Object) $actual) {
         throw "$Context has missing or unknown fields."
+    }
+}
+
+function Get-PeCanonicalPayload {
+    param(
+        [Parameter(Mandatory)][string] $LiteralPath,
+        [Parameter(Mandatory)][long] $ExpectedPayloadSize
+    )
+    [byte[]] $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+    if ($bytes.Length -lt 512) { throw "PE artifact is unexpectedly small." }
+    $peOffset = [int] [BitConverter]::ToUInt32($bytes, 0x3c)
+    if ($peOffset -lt 64 -or $peOffset + 256 -gt $bytes.Length -or
+        $bytes[$peOffset] -ne 0x50 -or
+        $bytes[$peOffset + 1] -ne 0x45 -or
+        $bytes[$peOffset + 2] -ne 0 -or
+        $bytes[$peOffset + 3] -ne 0) {
+        throw "Artifact does not have a valid PE header."
+    }
+    $optionalHeader = $peOffset + 24
+    $magic = [BitConverter]::ToUInt16($bytes, $optionalHeader)
+    $dataDirectories = switch ($magic) {
+        0x10b { $optionalHeader + 96 }
+        0x20b { $optionalHeader + 112 }
+        default { throw "Artifact has an unsupported PE optional header." }
+    }
+    $checksumOffset = $optionalHeader + 64
+    $certificateDirectory = $dataDirectories + (4 * 8)
+    if ($certificateDirectory + 8 -gt $bytes.Length) {
+        throw "Artifact PE certificate directory is truncated."
+    }
+    $certificateOffset = [long] [BitConverter]::ToUInt32(
+        $bytes,
+        $certificateDirectory
+    )
+    $certificateSize = [long] [BitConverter]::ToUInt32(
+        $bytes,
+        $certificateDirectory + 4
+    )
+    if (($certificateOffset -eq 0) -xor ($certificateSize -eq 0)) {
+        throw "Artifact PE certificate directory is inconsistent."
+    }
+    $physicalPayloadSize = [long] $bytes.Length
+    if ($certificateOffset -ne 0) {
+        if ($certificateOffset % 8 -ne 0 -or
+            $certificateSize -lt 8 -or
+            $certificateOffset + $certificateSize -ne $bytes.Length) {
+            throw "Artifact Authenticode certificate table is malformed or has an overlay."
+        }
+        $physicalPayloadSize = $certificateOffset
+    }
+    if ($ExpectedPayloadSize -le $certificateDirectory + 8 -or
+        $ExpectedPayloadSize -gt $physicalPayloadSize) {
+        throw "Artifact canonical payload size is invalid."
+    }
+    for ($index = $ExpectedPayloadSize; $index -lt $physicalPayloadSize; $index++) {
+        if ($bytes[$index] -ne 0) {
+            throw "Artifact has nonzero data between its payload and certificate table."
+        }
+    }
+    [byte[]] $payload = [byte[]]::new($ExpectedPayloadSize)
+    [Array]::Copy($bytes, 0, $payload, 0, $ExpectedPayloadSize)
+    [Array]::Clear($payload, $checksumOffset, 4)
+    [Array]::Clear($payload, $certificateDirectory, 8)
+    [ordered]@{
+        sha256 = [Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($payload)
+        ).ToLowerInvariant()
+        size_bytes = $ExpectedPayloadSize
     }
 }
 
@@ -80,10 +150,12 @@ Assert-ExactProperties $provenance.build @(
     "runtime_identifier",
     "source_date_epoch",
     "unsigned_artifact_sha256",
-    "unsigned_artifact_size_bytes"
+    "unsigned_artifact_size_bytes",
+    "canonical_payload_sha256",
+    "canonical_payload_size_bytes"
 ) "build"
 Assert-ExactProperties $provenance.signing @(
-    "state", "status", "subject", "thumbprint"
+    "state", "status", "subject", "thumbprint", "authorized_thumbprint"
 ) "signing"
 Assert-ExactProperties $provenance.distribution @(
     "eligibility", "binary_authority"
@@ -113,6 +185,9 @@ if ($provenance.source.repository -cne "https://github.com/MesmerPrism/rusty-hos
     -not [bool] $provenance.source.tree_clean) {
     throw "Provider source evidence is incomplete."
 }
+if ($provenance.build.kind -cnotin @("unsigned-dev", "signed-release")) {
+    throw "Provider build kind is not closed."
+}
 $sourceUri = [Uri] $provenance.source.availability_url
 if ($sourceUri.Scheme -cne "https" -or
     $sourceUri.Host -cne "github.com" -or
@@ -125,8 +200,19 @@ if (@($provenance.dependencies).Count -eq 0 -or
     throw "Dependency or bundled native-library inventory is empty."
 }
 if ($provenance.build.unsigned_artifact_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
-    [long] $provenance.build.unsigned_artifact_size_bytes -le 0) {
+    [long] $provenance.build.unsigned_artifact_size_bytes -le 0 -or
+    $provenance.build.canonical_payload_sha256 -cnotmatch "^[0-9a-f]{64}$" -or
+    [long] $provenance.build.canonical_payload_size_bytes -le 0) {
     throw "Reproducible unsigned artifact evidence is invalid."
+}
+$canonicalPayload = Get-PeCanonicalPayload `
+    -LiteralPath $artifact.FullName `
+    -ExpectedPayloadSize $provenance.build.canonical_payload_size_bytes
+if ($canonicalPayload.sha256 -cne
+        $provenance.build.canonical_payload_sha256 -or
+    $canonicalPayload.size_bytes -ne
+        $provenance.build.canonical_payload_size_bytes) {
+    throw "Artifact PE payload does not match owner provenance."
 }
 foreach ($dependency in @($provenance.dependencies)) {
     Assert-ExactProperties $dependency @(
@@ -177,6 +263,11 @@ if ($provenanceText -match "(?i)[a-z]:\\\\|\\\\\\\\") {
     throw "Provenance contains a machine-private path."
 }
 if ($RequireSignedRelease) {
+    $normalizedExpectedSigner = if ($ExpectedSignerThumbprint) {
+        $ExpectedSignerThumbprint.Replace(" ", "").ToLowerInvariant()
+    } else {
+        $null
+    }
     $observedSignature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
     $observedSignatureValid =
         $observedSignature.Status -eq
@@ -191,20 +282,29 @@ if ($RequireSignedRelease) {
         $provenance.signing.state -cne "verified" -or
         [string]::IsNullOrWhiteSpace($provenance.signing.subject) -or
         $provenance.signing.thumbprint -cnotmatch "^[0-9a-f]+$" -or
+        $normalizedExpectedSigner -cnotmatch "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" -or
+        $provenance.signing.authorized_thumbprint -cne
+            $normalizedExpectedSigner -or
         -not $observedSignatureValid -or
         $observedSignature.SignerCertificate.Subject -cne
             $provenance.signing.subject -or
         $observedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
             $provenance.signing.thumbprint -or
+        $observedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
+            $normalizedExpectedSigner -or
         $provenance.source.availability_state -cne "verified_public" -or
         -not $verifiedAtValid) {
         throw "Metadata is not eligible for signed publication."
     }
 }
+elseif ($provenance.build.kind -eq "signed-release") {
+    throw "Signed metadata requires explicit RequireSignedRelease validation."
+}
 elseif ($provenance.build.kind -eq "unsigned-dev" -and
     ($provenance.distribution.eligibility -cne "development_only" -or
      $provenance.source.availability_state -cne "unverified_development" -or
      $null -ne $provenance.source.verified_at_utc -or
+     $null -ne $provenance.signing.authorized_thumbprint -or
      $provenance.build.unsigned_artifact_sha256 -cne
         $provenance.artifact.sha256 -or
      $provenance.build.unsigned_artifact_size_bytes -ne

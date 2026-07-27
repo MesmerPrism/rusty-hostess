@@ -29,7 +29,12 @@ Publication tooling must accept only `signed-release` metadata with a
 signature revalidated against the artifact and public-source verification.
 The signed-release generator therefore also requires
 `-VerifyPublicSource`; it checks the exact commit and tree through GitHub
-before declaring the source publicly available.
+before declaring the source publicly available. It also requires
+`-AllowedSignerThumbprint`, verifies that exact owner certificate, and
+compares the signed PE payload (excluding only the standard Authenticode
+checksum/certificate locations) with the clean unsigned rebuild. Offline
+signed-release validation requires the same thumbprint through
+`-ExpectedSignerThumbprint`.
 
 Validate metadata and its artifact offline:
 

@@ -15,7 +15,9 @@ param(
 
     [string] $SourceAvailabilityUrl,
 
-    [switch] $VerifyPublicSource
+    [switch] $VerifyPublicSource,
+
+    [string] $AllowedSignerThumbprint
 )
 
 $ErrorActionPreference = "Stop"
@@ -48,6 +50,79 @@ function Get-NuspecValue {
     )
     if ($null -eq $node) { return $null }
     $node.InnerText
+}
+
+function Get-PeCanonicalPayload {
+    param(
+        [Parameter(Mandatory)][string] $LiteralPath,
+        [long] $ExpectedPayloadSize = 0
+    )
+    [byte[]] $bytes = [System.IO.File]::ReadAllBytes($LiteralPath)
+    if ($bytes.Length -lt 512) { throw "PE artifact is unexpectedly small." }
+    $peOffset = [int] [BitConverter]::ToUInt32($bytes, 0x3c)
+    if ($peOffset -lt 64 -or $peOffset + 256 -gt $bytes.Length -or
+        $bytes[$peOffset] -ne 0x50 -or
+        $bytes[$peOffset + 1] -ne 0x45 -or
+        $bytes[$peOffset + 2] -ne 0 -or
+        $bytes[$peOffset + 3] -ne 0) {
+        throw "Artifact does not have a valid PE header."
+    }
+    $optionalHeader = $peOffset + 24
+    $magic = [BitConverter]::ToUInt16($bytes, $optionalHeader)
+    $dataDirectories = switch ($magic) {
+        0x10b { $optionalHeader + 96 }
+        0x20b { $optionalHeader + 112 }
+        default { throw "Artifact has an unsupported PE optional header." }
+    }
+    $checksumOffset = $optionalHeader + 64
+    $certificateDirectory = $dataDirectories + (4 * 8)
+    if ($certificateDirectory + 8 -gt $bytes.Length) {
+        throw "Artifact PE certificate directory is truncated."
+    }
+    $certificateOffset = [long] [BitConverter]::ToUInt32(
+        $bytes,
+        $certificateDirectory
+    )
+    $certificateSize = [long] [BitConverter]::ToUInt32(
+        $bytes,
+        $certificateDirectory + 4
+    )
+    if (($certificateOffset -eq 0) -xor ($certificateSize -eq 0)) {
+        throw "Artifact PE certificate directory is inconsistent."
+    }
+    $physicalPayloadSize = [long] $bytes.Length
+    if ($certificateOffset -ne 0) {
+        if ($certificateOffset % 8 -ne 0 -or
+            $certificateSize -lt 8 -or
+            $certificateOffset + $certificateSize -ne $bytes.Length) {
+            throw "Artifact Authenticode certificate table is malformed or has an overlay."
+        }
+        $physicalPayloadSize = $certificateOffset
+    }
+    $payloadSize = if ($ExpectedPayloadSize -gt 0) {
+        $ExpectedPayloadSize
+    } else {
+        $physicalPayloadSize
+    }
+    if ($payloadSize -le $certificateDirectory + 8 -or
+        $payloadSize -gt $physicalPayloadSize) {
+        throw "Artifact canonical payload size is invalid."
+    }
+    for ($index = $payloadSize; $index -lt $physicalPayloadSize; $index++) {
+        if ($bytes[$index] -ne 0) {
+            throw "Artifact has nonzero data between its payload and certificate table."
+        }
+    }
+    [byte[]] $payload = [byte[]]::new($payloadSize)
+    [Array]::Copy($bytes, 0, $payload, 0, $payloadSize)
+    [Array]::Clear($payload, $checksumOffset, 4)
+    [Array]::Clear($payload, $certificateDirectory, 8)
+    [ordered]@{
+        sha256 = [Convert]::ToHexString(
+            [System.Security.Cryptography.SHA256]::HashData($payload)
+        ).ToLowerInvariant()
+        size_bytes = $payloadSize
+    }
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
@@ -111,6 +186,18 @@ $signatureVerified =
 if ($BuildKind -eq "signed-release" -and -not $signatureVerified) {
     throw "A signed release requires a valid Authenticode signature."
 }
+$normalizedAllowedSigner = if ($AllowedSignerThumbprint) {
+    $AllowedSignerThumbprint.Replace(" ", "").ToLowerInvariant()
+} else {
+    $null
+}
+if ($BuildKind -eq "signed-release" -and (
+    $normalizedAllowedSigner -cnotmatch "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" -or
+    $signature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
+        $normalizedAllowedSigner
+)) {
+    throw "Signed release signer is not the configured Rusty Hostess owner."
+}
 $signing = [ordered]@{
     state = if ($signatureVerified) { "verified" } else { "unsigned" }
     status = [string] $signature.Status
@@ -120,6 +207,7 @@ $signing = [ordered]@{
     } else {
         $null
     }
+    authorized_thumbprint = $normalizedAllowedSigner
 }
 $expectedProductVersion = "$ProviderVersion+$revision"
 $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
@@ -273,6 +361,14 @@ try {
     $rebuiltArtifact = Join-Path $rebuildRoot "rusty-hostess-hotspot-provider.exe"
     $unsignedArtifactSha256 = Get-Sha256 -LiteralPath $rebuiltArtifact
     $unsignedArtifactSize = (Get-Item -LiteralPath $rebuiltArtifact).Length
+    $rebuiltCanonical = Get-PeCanonicalPayload -LiteralPath $rebuiltArtifact
+    $artifactCanonical = Get-PeCanonicalPayload `
+        -LiteralPath $artifact.FullName `
+        -ExpectedPayloadSize $rebuiltCanonical.size_bytes
+    if ($artifactCanonical.sha256 -cne $rebuiltCanonical.sha256 -or
+        $artifactCanonical.size_bytes -ne $rebuiltCanonical.size_bytes) {
+        throw "Artifact PE payload is not the reproducible output of the recorded source."
+    }
     if ($BuildKind -eq "unsigned-dev" -and (
         $unsignedArtifactSha256 -cne (Get-Sha256 -LiteralPath $artifact.FullName) -or
         $unsignedArtifactSize -ne $artifact.Length
@@ -341,6 +437,8 @@ $provenance = [ordered]@{
         source_date_epoch = $sourceDateEpoch
         unsigned_artifact_sha256 = $unsignedArtifactSha256
         unsigned_artifact_size_bytes = $unsignedArtifactSize
+        canonical_payload_sha256 = $rebuiltCanonical.sha256
+        canonical_payload_size_bytes = $rebuiltCanonical.size_bytes
     }
     dependencies = @($dependencies)
     bundled_native_libraries = $nativeLibraries
