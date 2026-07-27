@@ -32,7 +32,7 @@ $StatusRequest = [ordered]@{
     expires_at_utc = $StatusExpiry
     timeout_ms = 30000
 } | ConvertTo-Json -Compress
-$StatusRequest | & $Exe integration windows-hotspot --json 1> $StatusOut 2> $StatusErr
+$StatusRequest | & $Exe integration windows-hotspot --json --artifact-readonly-probe 1> $StatusOut 2> $StatusErr
 $StatusExit = $LASTEXITCODE
 if ($StatusExit -notin @(0, 1, 3)) { throw "Read-only status smoke returned unexpected exit $StatusExit." }
 if ((Get-Item $StatusErr).Length -ne 0) { throw "Read-only status smoke wrote stderr." }
@@ -42,7 +42,35 @@ if ($StatusReceipt.schema -ne "rusty.hostess.windows_hotspot.provider_receipt.v1
     $StatusReceipt.outcome -notin @("verified", "failed", "unavailable")) {
     throw "Invalid read-only status smoke receipt."
 }
+$ExpectedStatusExit = @{
+    verified = 0
+    failed = 1
+    unavailable = 3
+}[$StatusReceipt.outcome]
+if ($StatusExit -ne $ExpectedStatusExit) {
+    throw "Read-only status outcome $($StatusReceipt.outcome) did not map to exit $ExpectedStatusExit."
+}
 Remove-Item -LiteralPath $StatusOut, $StatusErr
+$ProbeStartOut = Join-Path $Publish "probe-start.stdout.json"
+$ProbeStartErr = Join-Path $Publish "probe-start.stderr.txt"
+$ProbeStartId = [guid]::NewGuid().ToString("N")
+$ProbeStartRequest = [ordered]@{
+    schema = "rusty.hostess.windows_hotspot.provider_request.v1"
+    request_id = "artifact-probe-start-$ProbeStartId"
+    operation_id = "artifact-probe-start-$ProbeStartId"
+    action = "start"
+    expires_at_utc = [DateTimeOffset]::UtcNow.AddMinutes(2).ToString("O")
+    timeout_ms = 30000
+} | ConvertTo-Json -Compress
+$ProbeStartRequest | & $Exe integration windows-hotspot --json --artifact-readonly-probe 1> $ProbeStartOut 2> $ProbeStartErr
+if ($LASTEXITCODE -ne 2) { throw "Artifact probe accepted a mutating request." }
+if ((Get-Item $ProbeStartErr).Length -ne 0) { throw "Artifact probe rejection wrote stderr." }
+$ProbeStartReceipt = Get-Content -Raw $ProbeStartOut | ConvertFrom-Json
+if ($ProbeStartReceipt.outcome -ne "rejected" -or
+    $ProbeStartReceipt.reason -ne "artifact_probe.status_only") {
+    throw "Artifact probe did not reject a mutating request with the closed reason."
+}
+Remove-Item -LiteralPath $ProbeStartOut, $ProbeStartErr
 $BadOut = Join-Path $Publish "bad-args.stdout.txt"
 $BadErr = Join-Path $Publish "bad-args.stderr.txt"
 & $Exe integration Windows-Hotspot --json 1> $BadOut 2> $BadErr

@@ -97,6 +97,18 @@ internal sealed class FileStateStore : IStateStore
     }
 }
 
+// Artifact validation must exercise the real process and WinRT read boundary
+// without reading, reconciling, or writing the installed provider's ownership
+// journal.
+internal sealed class VolatileStateStore : IStateStore
+{
+    private StateRecord state = new();
+
+    public StateRecord Load() => state;
+
+    public void Save(StateRecord next) => state = next;
+}
+
 internal sealed class SystemClock : IClock
 {
     public DateTimeOffset UtcNow => DateTimeOffset.UtcNow;

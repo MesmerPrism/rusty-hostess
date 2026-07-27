@@ -92,6 +92,16 @@ pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
 Tests inject a fake backend, clock, and private state store. The artifact smoke
 uses an expired request plus a valid read-only `status` request, so automated
 validation never mutates the live hotspot and still exercises the real
-process-level synchronization and WinRT readback boundary. The publish gate
-produces the self-contained single-file
+process-level synchronization and WinRT readback boundary. The valid probe uses
+an internal, status-only volatile journal and therefore cannot read, reconcile,
+or write the installed provider's ownership state. The probe switch is an
+artifact-test surface, not part of the Fleet provider contract. The publish
+gate produces the self-contained single-file
 `target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe`.
+
+That executable is a build artifact, not a distributable release on its own.
+Before another product packages it, generate and validate the Hostess-owned
+release metadata described in
+`packaging/windows-hotspot-provider/README.md`. Unsigned development metadata
+is explicitly local-only; publication requires a valid Authenticode identity
+and `signed_release` eligibility.

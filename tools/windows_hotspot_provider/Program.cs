@@ -1,7 +1,18 @@
 using System.Text.Json;
 using RustyHostess.WindowsHotspot;
 
-if (args.Length != 3 || args[0] != "integration" || args[1] != "windows-hotspot" || args[2] != "--json")
+var standardInvocation =
+    args.Length == 3 &&
+    args[0] == "integration" &&
+    args[1] == "windows-hotspot" &&
+    args[2] == "--json";
+var artifactReadOnlyProbe =
+    args.Length == 4 &&
+    args[0] == "integration" &&
+    args[1] == "windows-hotspot" &&
+    args[2] == "--json" &&
+    args[3] == "--artifact-readonly-probe";
+if (!standardInvocation && !artifactReadOnlyProbe)
     return 2;
 
 var clock = new SystemClock();
@@ -15,6 +26,14 @@ catch (RejectedException)
 {
     Console.Out.Write(JsonSerializer.Serialize(new Receipt {
         Outcome = "rejected", Reason = "request.rejected", ObservedAtUtc = clock.UtcNow.ToString("O")
+    }));
+    return 2;
+}
+if (artifactReadOnlyProbe && request.Action != "status")
+{
+    Console.Out.Write(JsonSerializer.Serialize(new Receipt {
+        RequestId = request.RequestId, OperationId = request.OperationId, Action = request.Action,
+        Outcome = "rejected", Reason = "artifact_probe.status_only", ObservedAtUtc = clock.UtcNow.ToString("O")
     }));
     return 2;
 }
@@ -43,7 +62,8 @@ try
     using var timeout = new CancellationTokenSource(TimeSpan.FromMilliseconds(request.TimeoutMs));
     using var expiry = new CancellationTokenSource(remaining);
     using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, expiry.Token);
-    var provider = new Provider(new WindowsHotspotBackend(), new FileStateStore(), clock);
+    IStateStore stateStore = artifactReadOnlyProbe ? new VolatileStateStore() : new FileStateStore();
+    var provider = new Provider(new WindowsHotspotBackend(), stateStore, clock);
     // Mutex ownership is thread-affine. Block the console entrypoint on the
     // asynchronous WinRT operation so this thread also performs ReleaseMutex.
     var result = provider.ExecuteAsync(request, combined.Token).GetAwaiter().GetResult();
