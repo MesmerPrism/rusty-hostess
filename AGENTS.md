@@ -308,7 +308,10 @@ generic code or sanitized sample fixtures.
   signed or publishable release artifact. Derive its version from assembly
   metadata and enforce SemVer 2.0 core/prerelease rules plus the shared
   lowercase-prerelease vocabulary; strip valid build metadata and fail closed
-  on malformed or misleading version metadata.
+  on malformed or misleading version metadata. Artifact publication,
+  release-metadata generation, and release validation must enforce the same
+  no-build-metadata provider-version predicate before rebuild or provenance
+  work begins.
 - Keep repo-local `tools\check_all.ps1` portable: it may skip the external
   discovery validator when no contract root is supplied, but must say that
   cross-repository acceptance remains incomplete. Cross-repository acceptance

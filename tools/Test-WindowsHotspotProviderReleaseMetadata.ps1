@@ -83,6 +83,42 @@ foreach ($InvalidVersion in @(
     }
 }
 
+$Generator = Join-Path $PSScriptRoot `
+    "New-WindowsHotspotProviderReleaseMetadata.ps1"
+$MissingArtifact = Join-Path (
+    [IO.Path]::GetTempPath()
+) "rusty-hostess-generator-input-$([guid]::NewGuid().ToString('N')).missing"
+foreach ($InvalidGeneratorVersion in @(
+    "01.0.0",
+    "1.0.0-01",
+    "1.0.0-RC1",
+    "1.0.0-alpha..1"
+)) {
+    $RejectedAtBinding = $false
+    try {
+        & $Generator `
+            -ArtifactPath $MissingArtifact `
+            -ProviderVersion $InvalidGeneratorVersion `
+            -BuildKind unsigned-dev |
+            Out-Null
+    }
+    catch {
+        if ($_.FullyQualifiedErrorId -notmatch
+            "^ParameterArgumentValidationError") {
+            throw (
+                "Generator version '$InvalidGeneratorVersion' reached its " +
+                "body instead of failing parameter validation: " +
+                $_.FullyQualifiedErrorId)
+        }
+        $RejectedAtBinding = $true
+    }
+    if (-not $RejectedAtBinding) {
+        throw (
+            "Generator accepted malformed provider version " +
+            "'$InvalidGeneratorVersion'.")
+    }
+}
+
 function Get-PeCanonicalPayload {
     param(
         [Parameter(Mandatory)][string] $LiteralPath,

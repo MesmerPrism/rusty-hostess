@@ -5,7 +5,28 @@ param(
     [string] $ArtifactPath,
 
     [Parameter(Mandatory)]
-    [ValidatePattern("^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")]
+    [ValidateScript({
+        $Match = [regex]::Match(
+            $_,
+            "^(?:0|[1-9][0-9]*)\." +
+            "(?:0|[1-9][0-9]*)\." +
+            "(?:0|[1-9][0-9]*)" +
+            "(?:-(?<prerelease>[0-9a-z-]+(?:\.[0-9a-z-]+)*))?$",
+            [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+        if (-not $Match.Success) {
+            return $false
+        }
+        foreach ($Identifier in $Match.Groups["prerelease"].Value.Split(".")) {
+            if ($Identifier -cmatch "^[0-9]+$" -and
+                $Identifier.Length -gt 1 -and
+                $Identifier.StartsWith(
+                    "0",
+                    [StringComparison]::Ordinal)) {
+                return $false
+            }
+        }
+        return $true
+    })]
     [string] $ProviderVersion,
 
     [ValidateSet("unsigned-dev", "signed-release")]

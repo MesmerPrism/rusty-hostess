@@ -165,3 +165,7 @@ revalidated against the artifact, verified public availability of the exact
 source commit/tree, and `signed_release` eligibility.
 The time-varying discovery document is never included in provenance, hashed
 as a release input, signed, or treated as a publishable artifact.
+Artifact validation, release-metadata generation, and release validation use
+the same descriptor-compatible provider-version predicate. The generator
+rejects malformed core or prerelease identifiers during parameter binding,
+before artifact inspection, dependency inventory, or clean rebuild work.
