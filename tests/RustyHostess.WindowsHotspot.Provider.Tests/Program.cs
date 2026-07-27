@@ -15,6 +15,9 @@ var tests = new (string, Func<Task>)[]
     ("receipt redaction", Redaction),
     ("exit mapping and unavailable", ExitMapping),
     ("abandoned mutex is acquired", AbandonedMutex),
+    ("durable transition reconciliation", DurableTransitions),
+    ("private state migration and validation", StateMigration),
+    ("boot identity ignores clock correction", ClockCorrection),
 };
 var failed = 0;
 foreach (var (name, test) in tests)
@@ -28,6 +31,8 @@ static Request Request(FakeClock clock, string action, string? generation = null
     new(requestId ?? Guid.NewGuid().ToString("N"), operationId ?? Guid.NewGuid().ToString("N"), action, clock.UtcNow.AddMinutes(1), 1000, generation);
 static Snapshot Off() => new(true, "Enabled", "Off", 0, 8, "FiveGigahertz", "InternetAccess");
 static Snapshot On() => Off() with { OperationalState = "On", ClientCount = 1 };
+static StateRecord Active(FakeClock clock, string generation) =>
+    new() { BootId = clock.BootId, OwnershipPhase = "active", OwnershipGeneration = generation };
 static void Equal<T>(T expected, T actual) { if (!EqualityComparer<T>.Default.Equals(expected, actual)) throw new Exception($"expected {expected}, got {actual}"); }
 static void True(bool value, string message = "assertion failed") { if (!value) throw new Exception(message); }
 
@@ -84,7 +89,7 @@ static async Task EnsureStop()
 static async Task EnsureRestart()
 {
     var clock = new FakeClock();
-    var store = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var store = new MemoryStore { State = Active(clock, "owned") };
     var backend = new FakeBackend(Off()) { AfterStart = On() };
     var restarted = await new Provider(backend, store, clock).ExecuteAsync(Request(clock, "ensure", "owned"), default);
     Equal(Outcome.Verified, restarted.Outcome);
@@ -92,13 +97,13 @@ static async Task EnsureRestart()
     Equal("owned", restarted.Receipt.OwnershipGeneration);
     Equal("owned", store.State.OwnershipGeneration);
 
-    var failedStore = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var failedStore = new MemoryStore { State = Active(clock, "owned") };
     var apiFailure = await new Provider(new FakeBackend(Off()) { StartSuccess = false }, failedStore, clock)
         .ExecuteAsync(Request(clock, "ensure", "owned"), default);
     Equal(Outcome.Failed, apiFailure.Outcome);
     Equal("owned", failedStore.State.OwnershipGeneration);
 
-    var readbackStore = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var readbackStore = new MemoryStore { State = Active(clock, "owned") };
     var readbackFailure = await new Provider(new FakeBackend(Off()) { AfterStart = Off() }, readbackStore, clock)
         .ExecuteAsync(Request(clock, "ensure", "owned"), default);
     Equal(Outcome.Failed, readbackFailure.Outcome);
@@ -109,7 +114,7 @@ static async Task FailuresTimeout()
 {
     var clock = new FakeClock();
     Equal(Outcome.Failed, (await new Provider(new FakeBackend(Off()) { StartSuccess = false }, new MemoryStore(), clock).ExecuteAsync(Request(clock, "start"), default)).Outcome);
-    var owned = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "g" } };
+    var owned = new MemoryStore { State = Active(clock, "g") };
     Equal(Outcome.Failed, (await new Provider(new FakeBackend(On()) { StopSuccess = false }, owned, clock).ExecuteAsync(Request(clock, "stop", "g"), default)).Outcome);
     using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
     Equal(Outcome.Failed, (await new Provider(new FakeBackend(Off()) { Delay = true }, new MemoryStore(), clock).ExecuteAsync(Request(clock, "status"), cancelled.Token)).Outcome);
@@ -117,7 +122,7 @@ static async Task FailuresTimeout()
 
 static async Task ConcurrentOwnership()
 {
-    var clock = new FakeClock(); var store = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owner-a" } };
+    var clock = new FakeClock(); var store = new MemoryStore { State = Active(clock, "owner-a") };
     var result = await new Provider(new FakeBackend(On()), store, clock).ExecuteAsync(Request(clock, "ensure", "owner-b"), default);
     Equal(Outcome.Rejected, result.Outcome); Equal("owner-a", store.State.OwnershipGeneration);
 }
@@ -126,7 +131,7 @@ static async Task RestartDamaged()
 {
     var clock = new FakeClock();
     var stale = new StateRecord {
-        BootId = "previous", OwnershipGeneration = "old",
+        BootId = "previous", OwnershipPhase = "active", OwnershipGeneration = "old",
         RequestIds = ["stale-request"], OperationIds = ["stale-operation"]
     };
     var statusStore = new MemoryStore { State = stale };
@@ -165,7 +170,8 @@ static async Task RestartDamaged()
         clock).ExecuteAsync(failedRecoveryRequest, default);
     Equal(Outcome.Failed, failedRecovery.Outcome);
     Equal(clock.BootId, failedRecoveryStore.State.BootId);
-    Equal<string?>(null, failedRecoveryStore.State.OwnershipGeneration);
+    Equal("starting", failedRecoveryStore.State.OwnershipPhase);
+    True(failedRecoveryStore.State.OwnershipGeneration is not null);
     Equal(Outcome.Rejected, (await new Provider(new FakeBackend(Off()), failedRecoveryStore, clock)
         .ExecuteAsync(failedRecoveryRequest, default)).Outcome);
 
@@ -217,6 +223,74 @@ static Task AbandonedMutex()
     return Task.CompletedTask;
 }
 
+static async Task DurableTransitions()
+{
+    var clock = new FakeClock();
+    var startStore = new MemoryStore { FailOnSaveCall = 3 };
+    var startBackend = new FakeBackend(Off()) { AfterStart = On() };
+    var startRequest = Request(clock, "start");
+    var partialStart = await new Provider(startBackend, startStore, clock).ExecuteAsync(startRequest, default);
+    Equal(Outcome.Failed, partialStart.Outcome); Equal("state.active_commit_failed", partialStart.Receipt.Reason);
+    Equal("starting", startStore.State.OwnershipPhase);
+    Equal(Outcome.Rejected, (await new Provider(startBackend, startStore, clock).ExecuteAsync(startRequest, default)).Outcome);
+    var generation = startStore.State.OwnershipGeneration;
+    var reconciledStart = await new Provider(startBackend, startStore, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal(Outcome.Verified, reconciledStart.Outcome); Equal("active", startStore.State.OwnershipPhase);
+    Equal(generation, startStore.State.OwnershipGeneration);
+
+    var stopStore = new MemoryStore { State = Active(clock, "stop-owner"), FailOnSaveCall = 3 };
+    var stopBackend = new FakeBackend(On()) { AfterStop = Off() };
+    var stopRequest = Request(clock, "stop", "stop-owner");
+    var partialStop = await new Provider(stopBackend, stopStore, clock).ExecuteAsync(stopRequest, default);
+    Equal(Outcome.Failed, partialStop.Outcome); Equal("state.none_commit_failed", partialStop.Receipt.Reason);
+    Equal("stopping", stopStore.State.OwnershipPhase);
+    Equal(Outcome.Rejected, (await new Provider(stopBackend, stopStore, clock).ExecuteAsync(stopRequest, default)).Outcome);
+    var blockedEnsure = await new Provider(new FakeBackend(On()), stopStore, clock)
+        .ExecuteAsync(Request(clock, "ensure", "stop-owner"), default);
+    Equal(Outcome.Rejected, blockedEnsure.Outcome); Equal("ownership.stop_in_progress", blockedEnsure.Receipt.Reason);
+    var reconciledStop = await new Provider(stopBackend, stopStore, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal(Outcome.Verified, reconciledStop.Outcome); Equal("none", stopStore.State.OwnershipPhase);
+    Equal<string?>(null, stopStore.State.OwnershipGeneration);
+
+    var crashStart = new MemoryStore {
+        State = new() { BootId = clock.BootId, OwnershipPhase = "starting", OwnershipGeneration = "new", TransitionOrigin = "none" }
+    };
+    await new Provider(new FakeBackend(Off()), crashStart, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal("none", crashStart.State.OwnershipPhase);
+    var crashEnsure = new MemoryStore {
+        State = new() { BootId = clock.BootId, OwnershipPhase = "starting", OwnershipGeneration = "owned", TransitionOrigin = "active" }
+    };
+    await new Provider(new FakeBackend(Off()), crashEnsure, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal("active", crashEnsure.State.OwnershipPhase); Equal("owned", crashEnsure.State.OwnershipGeneration);
+}
+
+static Task StateMigration()
+{
+    var root = Path.Combine(Path.GetTempPath(), $"hostess-hotspot-state-{Guid.NewGuid():N}");
+    Directory.CreateDirectory(root);
+    try
+    {
+        var path = Path.Combine(root, "state.json");
+        File.WriteAllText(path, """{"schema":"rusty.hostess.windows_hotspot.private_state.v1","boot_id":"boot","ownership_generation":"legacy","request_ids":["r"],"operation_ids":["o"]}""");
+        var migrated = new FileStateStore(path).Load();
+        Equal("active", migrated.OwnershipPhase); Equal("legacy", migrated.OwnershipGeneration);
+        File.WriteAllText(path, """{"schema":"rusty.hostess.windows_hotspot.private_state.v2","boot_id":"boot","ownership_phase":"stopping","ownership_generation":null,"transition_origin":"active","request_ids":[],"operation_ids":[]}""");
+        try { new FileStateStore(path).Load(); throw new Exception("accepted invalid phase state"); }
+        catch (InvalidDataException) { }
+    }
+    finally { Directory.Delete(root, true); }
+    return Task.CompletedTask;
+}
+
+static async Task ClockCorrection()
+{
+    var clock = new FakeClock();
+    var store = new MemoryStore { State = Active(clock, "g") };
+    clock.UtcNow = clock.UtcNow.AddHours(-3);
+    var status = await new Provider(new FakeBackend(On()), store, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal(Outcome.Verified, status.Outcome); Equal("status.read", status.Receipt.Reason);
+}
+
 sealed class FakeClock : IClock
 {
     public DateTimeOffset UtcNow { get; set; } = new(2026, 7, 27, 12, 0, 0, TimeSpan.Zero);
@@ -226,8 +300,15 @@ sealed class MemoryStore : IStateStore
 {
     public StateRecord State { get; set; } = new();
     public bool ThrowOnLoad { get; set; }
+    public int? FailOnSaveCall { get; set; }
+    private int saveCalls;
     public StateRecord Load() => ThrowOnLoad ? throw new InvalidDataException() : State;
-    public void Save(StateRecord state) => State = state;
+    public void Save(StateRecord state)
+    {
+        saveCalls++;
+        if (saveCalls == FailOnSaveCall) throw new IOException("injected save failure");
+        State = state;
+    }
 }
 sealed class FakeBackend(Snapshot snapshot) : IHotspotBackend
 {

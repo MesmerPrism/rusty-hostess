@@ -61,6 +61,25 @@ stopped. Stop and ensure failures retain ownership for later recovery. The
 private record contains only boot identity, ownership generation, and bounded
 replay IDs; it contains no hotspot configuration or credentials.
 
+Private state schema v2 uses explicit `none`, `starting`, `active`, and
+`stopping` phases. A generation is written in `starting` before calling the
+Windows start API, and `stopping` is written before calling stop. Fresh
+readback reconciles interrupted transitions: starting+On becomes active,
+new-start starting+Off becomes none, ensure-restart starting+Off restores
+active ownership, and stopping+Off becomes none. A stopping generation can
+retry stop but can never ensure/restart. Final state-write failures therefore
+produce failed receipts with truthful fresh readback while leaving a durable
+phase that the next invocation can reconcile. Replay IDs are consumed before
+effects and remain one-use across partial writes.
+
+The loader strictly validates v2 phase/generation combinations and migrates
+the previous v1 nullable-generation record to none/active. Unknown, duplicate,
+or malformed private fields fail closed. Boot ownership uses the Windows boot
+environment GUID, not a wall-clock/uptime calculation, so clock correction
+does not resemble a restart. Provider processes serialize through a
+cross-session `Global\RustyHostess.WindowsHotspot.Provider.v1` mutex; an
+abandoned mutex is safely treated as acquired.
+
 ## Build and validation
 
 The maintained script requires PowerShell 7:

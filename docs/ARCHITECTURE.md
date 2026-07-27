@@ -31,6 +31,11 @@ Same-generation ensure may restart a freshly Off owned hotspot while
 preserving ownership. Prior-boot generations cannot ensure or stop; only an
 explicit start against fresh Off state may replace stale ownership with a new
 generation, while fresh On state remains external.
+The private effect journal uses write-ahead starting/active/stopping phases,
+strict v1-to-v2 migration, and fresh-readback reconciliation so failed final
+writes cannot orphan an On effect or revive a completed stop. A stable Windows
+boot-environment GUID binds generations across wall-clock corrections, and a
+Global named mutex serializes same-user provider processes across sessions.
 
 ## Declarative Project Workflow Boundary
 

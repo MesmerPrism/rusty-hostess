@@ -287,6 +287,9 @@ generic code or sanitized sample fixtures.
   capability and fresh operational readback through
   `NetworkOperatorTetheringManager`, bounded start/stop effects, replay
   rejection, and private current-user generation-bound ownership state. It
+  uses write-ahead starting/active/stopping phases, strict private-state
+  migration/validation, fresh-readback reconciliation, a stable Windows boot
+  environment identifier, and a cross-session Global mutex. It
   must not accept, expose, or persist SSID, passphrase, profile identity, path,
   IP, or credentials; adopt an externally started hotspot; become Fleet
   policy; or be conflated with QCL-011 observation or the QCL-041 Wi-Fi Direct

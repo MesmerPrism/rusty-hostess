@@ -19,7 +19,7 @@ catch (RejectedException)
     return 2;
 }
 
-using var mutex = new Mutex(false, "Local\\RustyHostess.WindowsHotspot.Provider.v1");
+using var mutex = new Mutex(false, "Global\\RustyHostess.WindowsHotspot.Provider.v1");
 var acquired = MutexGate.TryAcquire(mutex, TimeSpan.FromSeconds(2));
 if (!acquired)
 {
