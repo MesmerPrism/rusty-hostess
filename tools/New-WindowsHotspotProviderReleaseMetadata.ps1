@@ -109,7 +109,12 @@ foreach ($library in $assets.libraries.Keys) {
 foreach ($framework in $assets.project.frameworks.Values) {
     foreach ($download in @($framework.downloadDependencies)) {
         if ($null -eq $download) { continue }
-        $version = ([string] $download.version).Trim("[", "]")
+        $versionRange = [string] $download.version
+        if ($versionRange -notmatch "^\[(?<minimum>[^,]+),\s*(?<maximum>[^\]]+)\]$" -or
+            $Matches.minimum -cne $Matches.maximum) {
+            throw "Framework download dependency is not pinned to one exact version."
+        }
+        $version = $Matches.minimum
         $dependencyVersions[[string] $download.name] = $version
     }
 }
