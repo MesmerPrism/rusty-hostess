@@ -9,7 +9,7 @@ Request request;
 try
 {
     using var reader = new StreamReader(Console.OpenStandardInput());
-    request = Protocol.ParseRequest(await reader.ReadToEndAsync(), clock.UtcNow);
+    request = Protocol.ParseRequest(reader.ReadToEnd(), clock.UtcNow);
 }
 catch (RejectedException)
 {
@@ -44,7 +44,9 @@ try
     using var expiry = new CancellationTokenSource(remaining);
     using var combined = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, expiry.Token);
     var provider = new Provider(new WindowsHotspotBackend(), new FileStateStore(), clock);
-    var result = await provider.ExecuteAsync(request, combined.Token);
+    // Mutex ownership is thread-affine. Block the console entrypoint on the
+    // asynchronous WinRT operation so this thread also performs ReleaseMutex.
+    var result = provider.ExecuteAsync(request, combined.Token).GetAwaiter().GetResult();
     Console.Out.Write(JsonSerializer.Serialize(result.Receipt));
     return (int)result.Outcome;
 }

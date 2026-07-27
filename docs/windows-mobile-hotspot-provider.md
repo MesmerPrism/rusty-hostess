@@ -90,6 +90,8 @@ pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
 ```
 
 Tests inject a fake backend, clock, and private state store. The artifact smoke
-uses an expired request, so automated validation never mutates the live
-hotspot. The publish gate produces the self-contained single-file
+uses an expired request plus a valid read-only `status` request, so automated
+validation never mutates the live hotspot and still exercises the real
+process-level synchronization and WinRT readback boundary. The publish gate
+produces the self-contained single-file
 `target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe`.
