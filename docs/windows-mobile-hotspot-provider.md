@@ -6,9 +6,9 @@ from the QCL-041 Wi-Fi Direct `LegacySettings` helper. Fleet owns scheduling,
 policy, retries, and desired state; this executable owns only bounded Windows
 Mobile Hotspot effects and receipts.
 
-## Invocation and protocol
+## Invocation and execution protocol
 
-The only accepted command line is case-sensitive:
+The only accepted execution command line is case-sensitive:
 
 ```text
 rusty-hostess-hotspot-provider.exe integration windows-hotspot --json
@@ -34,6 +34,49 @@ configured band, and source connectivity. They never contain SSID,
 passphrase, connection-profile identity, paths, IP addresses, or credentials.
 Exit codes are `0` verified from fresh readback, `1` failed, `2` rejected, and
 `3` unavailable.
+
+## Inert capability discovery
+
+The executable also accepts exactly:
+
+```text
+rusty-hostess-hotspot-provider.exe --describe-json
+```
+
+This route runs before stdin is read and before the effect-runtime system
+clock, mutex, Windows backend, private state store, or effect provider is
+initialized. It emits one compact
+`rusty.quest.workflow.provider_capability_discovery.v1` document and exits.
+Mixed, extra, alternate, or case-varied arguments fail closed with no output.
+
+The descriptor is derived from `Protocol.Actions`; closed metadata must have
+an exact key for every action or description fails. `status` is `observe`.
+`start`, `ensure`, and `stop` are `effect`. Every action lists
+`process-access-control` and `caller-authority-external` as minimum
+authentication requirements. Effect actions also list
+`effect-owner-profile`, and `stop` lists its mandatory
+`ownership-generation`. Ensure's generation remains conditional and optional
+under the existing execution request, so it is not presented as an
+unconditional authentication requirement. These labels are descriptive
+minimums, not execution grants.
+
+The capability advertises only the existing
+`rusty.hostess.windows_hotspot.provider_request.v1` contract, Hostess effect
+owner, and existing `rusty.hostess.windows_hotspot.provider_receipt.v1`
+receipt. Provider version comes from the executable's assembly/release
+metadata and must use the shared contract's lowercase-prerelease SemVer
+vocabulary; invalid informational metadata fails discovery instead of
+advertising a different version. Availability lasts exactly 300 seconds and
+means only that the provider described its registry. It does not prove
+Windows support, authorization, configured-profile readiness, hotspot
+activation, effective state, Fleet admission, or release eligibility.
+
+The shared schema and semantic validator remain owned by
+`meta-quest-agent-workflow`; Hostess does not copy them. The Hostess validation
+script requires the accepted exact shared commit and tree before applying that
+validator. The descriptor carries no invocation, path, endpoint, network
+name, credential, configured profile data, private owner state, target,
+coordination record, approval, or generic execution surface.
 
 ## Effect and ownership rules
 
@@ -87,16 +130,19 @@ The maintained script requires PowerShell 7:
 ```powershell
 dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
 pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1 -ContractRoot <meta-quest-agent-workflow-root>
 ```
 
 Tests inject a fake backend, clock, and private state store. The artifact smoke
-uses an expired request plus a valid read-only `status` request, so automated
-validation never mutates the live hotspot and still exercises the real
-process-level synchronization and WinRT readback boundary. The valid probe uses
-an internal, status-only volatile journal and therefore cannot read, reconcile,
-or write the installed provider's ownership state. The probe switch is an
-artifact-test surface, not part of the Fleet provider contract. The publish
-gate produces the self-contained single-file
+first proves that process-level discovery exits promptly with empty stderr and
+does not create or change private state. It then uses an expired request plus a
+valid read-only `status` request, so automated validation never mutates the
+live hotspot and still exercises the real process-level synchronization and
+WinRT readback boundary. The valid probe uses an internal, status-only
+volatile journal and therefore cannot read, reconcile, or write the installed
+provider's ownership state. The probe switch is an artifact-test surface, not
+part of the Fleet provider contract. The publish gate produces the
+self-contained single-file
 `target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe`.
 
 That executable is a build artifact, not a distributable release on its own.
@@ -106,3 +152,5 @@ release metadata described in
 is explicitly local-only; publication requires a valid Authenticode identity
 revalidated against the artifact, verified public availability of the exact
 source commit/tree, and `signed_release` eligibility.
+The time-varying discovery document is never included in provenance, hashed
+as a release input, signed, or treated as a publishable artifact.

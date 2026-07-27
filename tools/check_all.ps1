@@ -1,5 +1,6 @@
 param(
-    [switch]$IncludeMakepadLegacy
+    [switch]$IncludeMakepadLegacy,
+    [string]$ProviderContractRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -180,6 +181,23 @@ try {
         Invoke-Checked "Windows Mobile Hotspot provider artifact gate" "pwsh" @(
             "-NoProfile", "-File", "tools\Test-WindowsHotspotProviderArtifact.ps1"
         )
+        if ([string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
+            Write-Host (
+                "[SKIP] Windows Mobile Hotspot provider shared-contract gate: " +
+                "pass -ProviderContractRoot to bind the pinned contract worktree")
+        }
+        else {
+            Invoke-Checked `
+                "Windows Mobile Hotspot provider shared-contract gate" `
+                "pwsh" @(
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File",
+                    "tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1",
+                    "-ContractRoot",
+                    $ProviderContractRoot
+                )
+        }
     }
     if (Test-Path "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj") {
         Invoke-Checked "QCL-041 Wi-Fi Direct peer helper build" "dotnet" @("build", "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj")

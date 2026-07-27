@@ -18,6 +18,9 @@ var tests = new (string, Func<Task>)[]
     ("durable transition reconciliation", DurableTransitions),
     ("private state migration and validation", StateMigration),
     ("boot identity ignores clock correction", ClockCorrection),
+    ("provider capability descriptor parity", CapabilityDescriptorParity),
+    ("provider discovery version parity", DiscoveryVersionParity),
+    ("description route is inert and exact", DescriptionRoute),
 };
 var failed = 0;
 foreach (var (name, test) in tests)
@@ -290,6 +293,183 @@ static async Task ClockCorrection()
     var status = await new Provider(new FakeBackend(On()), store, clock).ExecuteAsync(Request(clock, "status"), default);
     Equal(Outcome.Verified, status.Outcome); Equal("status.read", status.Receipt.Reason);
 }
+
+static Task CapabilityDescriptorParity()
+{
+    var observed = new DateTimeOffset(
+        2026,
+        7,
+        27,
+        12,
+        0,
+        0,
+        TimeSpan.Zero);
+    var descriptor = CapabilityDiscovery.Create(observed, "0.1.0");
+    Equal(CapabilityDiscovery.Schema, descriptor.Schema);
+    Equal(CapabilityDiscovery.ProviderId, descriptor.Provider.Id);
+    Equal("0.1.0", descriptor.Provider.Version);
+    Equal("windows-host-process", descriptor.Placement);
+    Equal("descriptor-available", descriptor.Availability.Status);
+    Equal(observed.ToString("O"), descriptor.Availability.ObservedAtUtc);
+    Equal(
+        observed.AddSeconds(CapabilityDiscovery.MaximumAgeSeconds).ToString("O"),
+        descriptor.Availability.ExpiresAtUtc);
+    Equal(
+        CapabilityDiscovery.MaximumAgeSeconds,
+        descriptor.Availability.MaximumAgeSeconds);
+    Equal("none", descriptor.DescriptionAuthentication);
+    True(!descriptor.AuthorizesExecution);
+    True(!descriptor.TargetSpecific);
+    Equal(1, descriptor.Capabilities.Count);
+
+    var capability = descriptor.Capabilities.Single();
+    Equal(CapabilityDiscovery.CapabilityId, capability.Id);
+    True(capability.ContractVersions.SequenceEqual([Protocol.RequestSchema]));
+    Equal(CapabilityDiscovery.EffectOwner, capability.EffectOwner);
+    Equal(Protocol.ReceiptSchema, capability.ReceiptSchema);
+    True(
+        capability.Actions.Select(action => action.Id).ToHashSet(
+            StringComparer.Ordinal).SetEquals(Protocol.Actions),
+        "discovery actions do not match Protocol.Actions");
+    Equal(
+        Protocol.Actions.Count,
+        capability.Actions.Count);
+
+    var expected = new Dictionary<string, (string Kind, string[] Authentication)>(
+        StringComparer.Ordinal)
+    {
+        ["status"] = (
+            "observe",
+            ["process-access-control", "caller-authority-external"]),
+        ["start"] = (
+            "effect",
+            [
+                "process-access-control",
+                "caller-authority-external",
+                "effect-owner-profile"
+            ]),
+        ["ensure"] = (
+            "effect",
+            [
+                "process-access-control",
+                "caller-authority-external",
+                "effect-owner-profile"
+            ]),
+        ["stop"] = (
+            "effect",
+            [
+                "process-access-control",
+                "caller-authority-external",
+                "effect-owner-profile",
+                "ownership-generation"
+            ])
+    };
+    foreach (var action in capability.Actions)
+    {
+        True(expected.TryGetValue(action.Id, out var metadata));
+        Equal(metadata.Kind, action.Kind);
+        True(
+            metadata.Authentication.SequenceEqual(
+                action.AuthenticationRequirements),
+            $"authentication requirements differ for {action.Id}");
+    }
+    True(
+        !capability.Actions.Single(action => action.Id == "ensure")
+            .AuthenticationRequirements.Contains(
+                "ownership-generation",
+                StringComparer.Ordinal),
+        "ensure incorrectly advertises its optional generation as required");
+    True(
+        capability.Actions.Single(action => action.Id == "stop")
+            .AuthenticationRequirements.Contains(
+                "ownership-generation",
+                StringComparer.Ordinal),
+        "stop did not advertise its required ownership generation");
+    return Task.CompletedTask;
+}
+
+static Task DescriptionRoute()
+{
+    var observed = new DateTimeOffset(
+        2026,
+        7,
+        27,
+        12,
+        0,
+        0,
+        TimeSpan.Zero);
+    using var output = new StringWriter();
+    var result = ProviderCli.Run(
+        ["--describe-json"],
+        ThrowFactory<TextReader>,
+        output,
+        ThrowFactory<IClock>,
+        ThrowFactory<IHotspotBackend>,
+        ThrowFactory<IStateStore>,
+        ThrowFactory<IStateStore>,
+        () => observed,
+        () => "0.1.0");
+    Equal(0, result);
+    using var document = JsonDocument.Parse(output.ToString());
+    Equal(
+        CapabilityDiscovery.Schema,
+        document.RootElement.GetProperty("schema").GetString());
+
+    var rejectedArguments = new[]
+    {
+        Array.Empty<string>(),
+        new[] { "--Describe-Json" },
+        new[] { "describe-json" },
+        new[] { "--describe-json", "extra" },
+        new[]
+        {
+            "integration",
+            "windows-hotspot",
+            "--json",
+            "--describe-json"
+        }
+    };
+    foreach (var rejected in rejectedArguments)
+    {
+        using var rejectedOutput = new StringWriter();
+        Equal(
+            2,
+            ProviderCli.Run(
+                rejected,
+                ThrowFactory<TextReader>,
+                rejectedOutput,
+                ThrowFactory<IClock>,
+                ThrowFactory<IHotspotBackend>,
+                ThrowFactory<IStateStore>,
+                ThrowFactory<IStateStore>,
+                () => throw new Exception(
+                    "invalid arguments consulted the discovery clock"),
+                () => throw new Exception(
+                    "invalid arguments consulted the provider version")));
+        Equal("", rejectedOutput.ToString());
+    }
+    return Task.CompletedTask;
+}
+
+static Task DiscoveryVersionParity()
+{
+    Equal(
+        "0.1.0-rc.1",
+        ProviderAssemblyVersion.ParseInformationalVersion(
+            "0.1.0-rc.1+source.0123456789abcdef"));
+    try
+    {
+        ProviderAssemblyVersion.ParseInformationalVersion("0.1.0-RC1+source");
+        throw new Exception("accepted uppercase prerelease metadata");
+    }
+    catch (InvalidOperationException)
+    {
+    }
+    return Task.CompletedTask;
+}
+
+static T ThrowFactory<T>() =>
+    throw new Exception($"inert route instantiated {typeof(T).Name}");
 
 sealed class FakeClock : IClock
 {

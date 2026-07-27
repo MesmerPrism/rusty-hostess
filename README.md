@@ -210,8 +210,13 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   start/ensure/stop/status effect adapter for Fleet. It publishes the
   self-contained single-file `rusty-hostess-hotspot-provider.exe`, uses strict
   Hostess-owned request/receipt schemas, fresh WinRT readback, and a private
-  generation-bound current-user ownership record. It is not the QCL-011
-  observer or Wi-Fi Direct LegacySettings helper; see
+  generation-bound current-user ownership record. Its exact
+  `--describe-json` route projects the `Protocol.Actions` registry through the
+  shared, target-free provider-capability discovery contract without reading
+  stdin or initializing Windows/state/effect machinery. Descriptor
+  availability neither authorizes execution nor proves platform support,
+  effective hotspot state, Fleet admission, or release eligibility. It is not
+  the QCL-011 observer or Wi-Fi Direct LegacySettings helper; see
   `docs/windows-mobile-hotspot-provider.md`.
 - `tools/hostessctl/connectivity_probe_common.py`: shared connectivity report
   helpers for the QCL report skeleton, check rows, issue rows,
@@ -556,6 +561,7 @@ cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde ma
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
 pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1 -ContractRoot <meta-quest-agent-workflow-root>
 ```
 
 For the declarative project runner boundary:

@@ -164,6 +164,11 @@ if ($provenance.schema -cne "rusty.hostess.windows_hotspot.release_provenance.v1
     $provenance.product_id -cne "rusty-hostess-windows-hotspot-provider") {
     throw "Unexpected Hostess provider provenance identity."
 }
+if ($provenance.provider_version -isnot [string] -or
+    $provenance.provider_version -cnotmatch
+        "^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$") {
+    throw "Provider version is incompatible with capability discovery."
+}
 if ($provenance.artifact.name -cne "rusty-hostess-hotspot-provider.exe" -or
     $artifact.Name -cne $provenance.artifact.name -or
     $artifact.Length -ne $provenance.artifact.size_bytes -or
@@ -261,6 +266,12 @@ foreach ($document in @($provenance.companion_documents)) {
 }
 if ($provenanceText -match "(?i)[a-z]:\\\\|\\\\\\\\") {
     throw "Provenance contains a machine-private path."
+}
+if ($provenanceText -match
+    "(?i)provider_capability_discovery|descriptor-available|describe-json") {
+    throw (
+        "Time-varying capability discovery must not be signed, hashed, or " +
+        "treated as release provenance.")
 }
 if ($RequireSignedRelease) {
     $normalizedExpectedSigner = if ($ExpectedSignerThumbprint) {

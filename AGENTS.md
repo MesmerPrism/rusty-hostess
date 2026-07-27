@@ -295,6 +295,17 @@ generic code or sanitized sample fixtures.
   policy; or be conflated with QCL-011 observation or the QCL-041 Wi-Fi Direct
   LegacySettings helper. Automated tests use injected backends and must not
   mutate the live hotspot.
+- Keep the hotspot provider's exact `--describe-json` route target-free,
+  short-lived, and non-authorizing. It must run before stdin is read and
+  before the effect-runtime clock, Windows backend, state store, mutex, or
+  effect provider is initialized. Derive its action set from
+  `Protocol.Actions`, bind each action to closed discovery metadata, and fail
+  if those registries diverge. The
+  descriptor may name only the existing request/receipt contracts,
+  minimum external authentication requirements, Hostess effect owner, and
+  public exclusions; it must not expose execution inputs, configured hotspot
+  data, owner state, or release eligibility. Discovery metadata is not a
+  signed or publishable release artifact.
 - Keep `tools\hostessctl\connectivity_udp.py` as the QCL-080 UDP freshness
   owner. It owns the live QCL-080 report assembly, UDP sender/listener
   mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,

@@ -1,7 +1,7 @@
 #requires -Version 7.0
 param(
     [string] $OutDir = "target\windows-hotspot-provider",
-    [ValidatePattern("^[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$")]
+    [ValidatePattern("^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$")]
     [string] $ProviderVersion = "0.1.0"
 )
 $ErrorActionPreference = "Stop"
@@ -35,6 +35,76 @@ $Exe = Join-Path $Publish "rusty-hostess-hotspot-provider.exe"
 if (-not (Test-Path $Exe)) { throw "Expected single-file provider executable was not published." }
 $Unexpected = @(Get-ChildItem $Publish -File | Where-Object Name -NotIn @("rusty-hostess-hotspot-provider.exe", "rusty-hostess-hotspot-provider.pdb"))
 if ($Unexpected.Count -ne 0) { throw "Unexpected publish artifacts: $($Unexpected.Name -join ', ')" }
+$PrivateState = Join-Path (
+    [Environment]::GetFolderPath(
+        [Environment+SpecialFolder]::LocalApplicationData)
+) "RustyHostess\WindowsHotspotProvider\private-state.json"
+$StateBefore = if (Test-Path -LiteralPath $PrivateState -PathType Leaf) {
+    "present:$((Get-FileHash -Algorithm SHA256 -LiteralPath $PrivateState).Hash)"
+} else {
+    "absent"
+}
+$DescribeOut = Join-Path $Publish "describe.stdout.json"
+$DescribeErr = Join-Path $Publish "describe.stderr.txt"
+$DescribeIn = Join-Path $Publish "describe.stdin.txt"
+[IO.File]::WriteAllText($DescribeIn, "")
+$DescribeProcess = Start-Process `
+    -FilePath $Exe `
+    -ArgumentList @("--describe-json") `
+    -RedirectStandardInput $DescribeIn `
+    -RedirectStandardOutput $DescribeOut `
+    -RedirectStandardError $DescribeErr `
+    -WindowStyle Hidden `
+    -PassThru
+if (-not $DescribeProcess.WaitForExit(5000)) {
+    $DescribeProcess.Kill($true)
+    throw "Capability discovery did not exit promptly."
+}
+if ($DescribeProcess.ExitCode -ne 0) {
+    throw "Capability discovery exited $($DescribeProcess.ExitCode)."
+}
+if ((Get-Item $DescribeErr).Length -ne 0) {
+    throw "Capability discovery wrote stderr."
+}
+$Descriptor = Get-Content -Raw $DescribeOut | ConvertFrom-Json
+if ($Descriptor.schema -cne
+        "rusty.quest.workflow.provider_capability_discovery.v1" -or
+    $Descriptor.provider.id -cne
+        "rusty.hostess.windows-hotspot-provider" -or
+    $Descriptor.provider.version -cne $ProviderVersion -or
+    $Descriptor.authorizes_execution -ne $false -or
+    $Descriptor.target_specific -ne $false -or
+    @($Descriptor.capabilities).Count -ne 1 -or
+    $Descriptor.capabilities[0].receipt_schema -cne
+        "rusty.hostess.windows_hotspot.provider_receipt.v1") {
+    throw "Capability discovery emitted an invalid provider description."
+}
+$StateAfter = if (Test-Path -LiteralPath $PrivateState -PathType Leaf) {
+    "present:$((Get-FileHash -Algorithm SHA256 -LiteralPath $PrivateState).Hash)"
+} else {
+    "absent"
+}
+if ($StateAfter -cne $StateBefore) {
+    throw "Capability discovery read or changed provider state."
+}
+Remove-Item -LiteralPath $DescribeOut, $DescribeErr, $DescribeIn
+$BadDescribeOut = Join-Path $Publish "bad-describe.stdout.txt"
+$BadDescribeErr = Join-Path $Publish "bad-describe.stderr.txt"
+foreach ($BadDescribeArguments in @(
+    @("--Describe-Json"),
+    @("--describe-json", "extra"),
+    @("integration", "windows-hotspot", "--json", "--describe-json")
+)) {
+    & $Exe @BadDescribeArguments 1> $BadDescribeOut 2> $BadDescribeErr
+    if ($LASTEXITCODE -ne 2) {
+        throw "Non-exact capability-discovery arguments were accepted."
+    }
+    if ((Get-Item $BadDescribeOut).Length -ne 0 -or
+        (Get-Item $BadDescribeErr).Length -ne 0) {
+        throw "Capability-discovery argument rejection wrote output."
+    }
+}
+Remove-Item -LiteralPath $BadDescribeOut, $BadDescribeErr
 $Stdout = Join-Path $Publish "smoke.stdout.json"
 $Stderr = Join-Path $Publish "smoke.stderr.txt"
 $Request = '{"schema":"rusty.hostess.windows_hotspot.provider_request.v1","request_id":"smoke","operation_id":"smoke","action":"status","expires_at_utc":"2000-01-01T00:00:00.0000000+00:00","timeout_ms":1000}'

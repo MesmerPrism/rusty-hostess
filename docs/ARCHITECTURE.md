@@ -37,6 +37,14 @@ writes cannot orphan an On effect or revive a completed stop. A stable Windows
 boot-environment GUID binds generations across wall-clock corrections, and a
 Global named mutex serializes same-user provider processes across sessions.
 
+An exact `--describe-json` route projects the existing `Protocol.Actions`
+registry through the shared provider-capability discovery contract before
+stdin, Windows, state, mutex, or effect initialization. That short-lived
+target-free document names typed contracts, minimum authentication
+requirements, Hostess effect ownership, receipt schema, and exclusions only.
+It is description rather than support, authorization, activation,
+owner-effective evidence, Fleet policy, or release metadata.
+
 ## Declarative Project Workflow Boundary
 
 `tools/hostessctl/project_runner.py` is the source-only Hostess orchestration
