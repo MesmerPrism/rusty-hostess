@@ -97,34 +97,83 @@ $signing = [ordered]@{
     }
 }
 
-& dotnet restore $projectPath | Out-Host
+& dotnet restore $projectPath -r win-x64 | Out-Host
 if ($LASTEXITCODE -ne 0) { throw "Provider restore failed." }
 $assetsPath = Join-Path $repoRoot "tools\windows_hotspot_provider\obj\project.assets.json"
 $assets = Get-Content -Raw -LiteralPath $assetsPath | ConvertFrom-Json -AsHashtable
 $dependencyVersions = [ordered]@{}
-foreach ($library in $assets.libraries.Keys) {
-    $parts = $library -split "/", 2
-    if ($parts.Count -eq 2) { $dependencyVersions[$parts[0]] = $parts[1] }
-}
-foreach ($framework in $assets.project.frameworks.Values) {
-    foreach ($download in @($framework.downloadDependencies)) {
-        if ($null -eq $download) { continue }
-        $versionRange = [string] $download.version
-        if ($versionRange -notmatch "^\[(?<minimum>[^,]+),\s*(?<maximum>[^\]]+)\]$" -or
-            $Matches.minimum -cne $Matches.maximum) {
-            throw "Framework download dependency is not pinned to one exact version."
+$packageRoots = @($assets.packageFolders.Keys)
+
+$inventoryRoot = Join-Path (
+    Join-Path $repoRoot "target"
+) (".windows-hotspot-provider-inventory-" + [Guid]::NewGuid().ToString("N"))
+$nativeLibraries = @()
+try {
+    & dotnet publish $projectPath `
+        -c Release `
+        -r win-x64 `
+        --self-contained true `
+        -p:PublishSingleFile=false `
+        -p:DebugType=None `
+        -p:DebugSymbols=false `
+        -o $inventoryRoot | Out-Host
+    if ($LASTEXITCODE -ne 0) { throw "Expanded provider inventory publish failed." }
+    $publishedDepsPath = Join-Path $inventoryRoot "rusty-hostess-hotspot-provider.deps.json"
+    $publishedDeps = Get-Content -Raw -LiteralPath $publishedDepsPath |
+        ConvertFrom-Json -AsHashtable
+    foreach ($library in $publishedDeps.libraries.Keys) {
+        $parts = $library -split "/", 2
+        if ($parts.Count -ne 2 -or
+            $parts[0] -eq "rusty-hostess-hotspot-provider") {
+            continue
         }
-        $version = $Matches.minimum
-        $dependencyVersions[[string] $download.name] = $version
+        $packageName = $parts[0]
+        if ($packageName.StartsWith("runtimepack.", [StringComparison]::Ordinal)) {
+            $packageName = $packageName.Substring("runtimepack.".Length)
+        }
+        $dependencyVersions[$packageName] = $parts[1]
+    }
+    foreach ($file in Get-ChildItem -LiteralPath $inventoryRoot -Filter *.dll -File) {
+        $managed = $true
+        try {
+            [void] [System.Reflection.AssemblyName]::GetAssemblyName($file.FullName)
+        }
+        catch {
+            $managed = $false
+        }
+        if (-not $managed) {
+            $nativeLibraries += [ordered]@{
+                name = $file.Name
+                sha256 = Get-Sha256 -LiteralPath $file.FullName
+                size_bytes = $file.Length
+            }
+        }
     }
 }
+finally {
+    $targetRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "target")) +
+        [System.IO.Path]::DirectorySeparatorChar
+    $resolvedInventory = [System.IO.Path]::GetFullPath($inventoryRoot)
+    if (-not $resolvedInventory.StartsWith($targetRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Refusing to remove inventory outside the repository target directory."
+    }
+    if (Test-Path -LiteralPath $resolvedInventory) {
+        Remove-Item -LiteralPath $resolvedInventory -Recurse -Force
+    }
+}
+$nativeLibraries = @($nativeLibraries | Sort-Object name)
+if ($nativeLibraries.Count -eq 0) {
+    throw "Native-library inventory was unexpectedly empty."
+}
+if ($dependencyVersions.Count -eq 0) {
+    throw "Published dependency report was unexpectedly empty."
+}
 
-$packageRoots = @($assets.packageFolders.Keys)
 $dependencies = @()
 $noticeSections = @(
     "Rusty Hostess Windows hotspot provider third-party notices",
     "",
-    "Generated from the exact restored dependency graph for source revision $revision.",
+    "Generated from the exact published dependency graph for source revision $revision.",
     "Package license terms remain with their respective owners."
 )
 foreach ($name in @($dependencyVersions.Keys | Sort-Object)) {
@@ -171,53 +220,6 @@ foreach ($name in @($dependencyVersions.Keys | Sort-Object)) {
         $noticeSections += "--- $($noticeFile.Name) ---"
         $noticeSections += (Get-Content -Raw -LiteralPath $noticeFile.FullName).TrimEnd()
     }
-}
-
-$inventoryRoot = Join-Path (
-    Join-Path $repoRoot "target"
-) (".windows-hotspot-provider-inventory-" + [Guid]::NewGuid().ToString("N"))
-$nativeLibraries = @()
-try {
-    & dotnet publish $projectPath `
-        -c Release `
-        -r win-x64 `
-        --self-contained true `
-        -p:PublishSingleFile=false `
-        -p:DebugType=None `
-        -p:DebugSymbols=false `
-        -o $inventoryRoot | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "Expanded provider inventory publish failed." }
-    foreach ($file in Get-ChildItem -LiteralPath $inventoryRoot -Filter *.dll -File) {
-        $managed = $true
-        try {
-            [void] [System.Reflection.AssemblyName]::GetAssemblyName($file.FullName)
-        }
-        catch {
-            $managed = $false
-        }
-        if (-not $managed) {
-            $nativeLibraries += [ordered]@{
-                name = $file.Name
-                sha256 = Get-Sha256 -LiteralPath $file.FullName
-                size_bytes = $file.Length
-            }
-        }
-    }
-}
-finally {
-    $targetRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot "target")) +
-        [System.IO.Path]::DirectorySeparatorChar
-    $resolvedInventory = [System.IO.Path]::GetFullPath($inventoryRoot)
-    if (-not $resolvedInventory.StartsWith($targetRoot, [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Refusing to remove inventory outside the repository target directory."
-    }
-    if (Test-Path -LiteralPath $resolvedInventory) {
-        Remove-Item -LiteralPath $resolvedInventory -Recurse -Force
-    }
-}
-$nativeLibraries = @($nativeLibraries | Sort-Object name)
-if ($nativeLibraries.Count -eq 0) {
-    throw "Native-library inventory was unexpectedly empty."
 }
 
 $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
