@@ -1,7 +1,28 @@
 #requires -Version 7.0
 param(
     [string] $OutDir = "target\windows-hotspot-provider",
-    [ValidatePattern("^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$")]
+    [ValidateScript({
+        $Match = [regex]::Match(
+            $_,
+            "^(?:0|[1-9][0-9]*)\." +
+            "(?:0|[1-9][0-9]*)\." +
+            "(?:0|[1-9][0-9]*)" +
+            "(?:-(?<prerelease>[0-9a-z-]+(?:\.[0-9a-z-]+)*))?$",
+            [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+        if (-not $Match.Success) {
+            return $false
+        }
+        foreach ($Identifier in $Match.Groups["prerelease"].Value.Split(".")) {
+            if ($Identifier -cmatch "^[0-9]+$" -and
+                $Identifier.Length -gt 1 -and
+                $Identifier.StartsWith(
+                    "0",
+                    [StringComparison]::Ordinal)) {
+                return $false
+            }
+        }
+        return $true
+    })]
     [string] $ProviderVersion = "0.1.0"
 )
 $ErrorActionPreference = "Stop"

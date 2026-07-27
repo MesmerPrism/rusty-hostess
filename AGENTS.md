@@ -305,7 +305,17 @@ generic code or sanitized sample fixtures.
   minimum external authentication requirements, Hostess effect owner, and
   public exclusions; it must not expose execution inputs, configured hotspot
   data, owner state, or release eligibility. Discovery metadata is not a
-  signed or publishable release artifact.
+  signed or publishable release artifact. Derive its version from assembly
+  metadata and enforce SemVer 2.0 core/prerelease rules plus the shared
+  lowercase-prerelease vocabulary; strip valid build metadata and fail closed
+  on malformed or misleading version metadata.
+- Keep repo-local `tools\check_all.ps1` portable: it may skip the external
+  discovery validator when no contract root is supplied, but must say that
+  cross-repository acceptance remains incomplete. Cross-repository acceptance
+  must run `Test-WindowsHotspotProviderCapabilityDiscovery.ps1` separately or
+  invoke `check_all.ps1 -RequireProviderContract -ProviderContractRoot
+  <meta-quest-agent-workflow-root>`. Required integration mode fails closed
+  instead of inferring a sibling or machine path.
 - Keep `tools\hostessctl\connectivity_udp.py` as the QCL-080 UDP freshness
   owner. It owns the live QCL-080 report assembly, UDP sender/listener
   mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,

@@ -453,17 +453,47 @@ static Task DescriptionRoute()
 
 static Task DiscoveryVersionParity()
 {
-    Equal(
-        "0.1.0-rc.1",
-        ProviderAssemblyVersion.ParseInformationalVersion(
-            "0.1.0-rc.1+source.0123456789abcdef"));
-    try
+    var valid = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ProviderAssemblyVersion.ParseInformationalVersion("0.1.0-RC1+source");
-        throw new Exception("accepted uppercase prerelease metadata");
+        ["0.0.0"] = "0.0.0",
+        ["1.2.3+source.0123456789ABCDEF"] = "1.2.3",
+        ["0.1.0-0+source"] = "0.1.0-0",
+        ["0.1.0-rc.1+source.0123456789abcdef"] = "0.1.0-rc.1",
+        ["10.20.30-alpha-beta.9"] = "10.20.30-alpha-beta.9"
+    };
+    foreach (var (informationalVersion, expected) in valid)
+    {
+        Equal(
+            expected,
+            ProviderAssemblyVersion.ParseInformationalVersion(
+                informationalVersion));
     }
-    catch (InvalidOperationException)
+
+    foreach (var malformed in new[]
     {
+        "",
+        "01.0.0",
+        "1.01.0",
+        "1.0.01",
+        "1.0.0-01",
+        "1.0.0-alpha..1",
+        "1.0.0--.",
+        "1.0.0-RC1",
+        "1.0.0+",
+        "1.0.0+source..hash",
+        "1.0.0+source+hash"
+    })
+    {
+        var rejected = false;
+        try
+        {
+            ProviderAssemblyVersion.ParseInformationalVersion(malformed);
+        }
+        catch (InvalidOperationException)
+        {
+            rejected = true;
+        }
+        True(rejected, $"accepted malformed SemVer '{malformed}'");
     }
     return Task.CompletedTask;
 }

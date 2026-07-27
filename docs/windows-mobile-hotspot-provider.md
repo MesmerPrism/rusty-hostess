@@ -65,11 +65,15 @@ The capability advertises only the existing
 owner, and existing `rusty.hostess.windows_hotspot.provider_receipt.v1`
 receipt. Provider version comes from the executable's assembly/release
 metadata and must use the shared contract's lowercase-prerelease SemVer
-vocabulary; invalid informational metadata fails discovery instead of
-advertising a different version. Availability lasts exactly 300 seconds and
-means only that the provider described its registry. It does not prove
-Windows support, authorization, configured-profile readiness, hotspot
-activation, effective state, Fleet admission, or release eligibility.
+vocabulary. Core and numeric prerelease identifiers cannot have leading
+zeroes, and dot-separated prerelease/build identifiers cannot be empty.
+Valid assembly build metadata is checked and removed because the discovery
+schema carries no build metadata; invalid informational metadata fails
+discovery instead of advertising a different version. Availability lasts
+exactly 300 seconds and means only that the provider described its registry.
+It does not prove Windows support, authorization, configured-profile
+readiness, hotspot activation, effective state, Fleet admission, or release
+eligibility.
 
 The shared schema and semantic validator remain owned by
 `meta-quest-agent-workflow`; Hostess does not copy them. The Hostess validation
@@ -131,6 +135,7 @@ The maintained script requires PowerShell 7:
 dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
 pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
 pwsh -NoProfile -ExecutionPolicy Bypass -File tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1 -ContractRoot <meta-quest-agent-workflow-root>
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools\check_all.ps1 -RequireProviderContract -ProviderContractRoot <meta-quest-agent-workflow-root>
 ```
 
 Tests inject a fake backend, clock, and private state store. The artifact smoke
@@ -144,6 +149,12 @@ provider's ownership state. The probe switch is an artifact-test surface, not
 part of the Fleet provider contract. The publish gate produces the
 self-contained single-file
 `target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe`.
+
+Plain `tools\check_all.ps1` intentionally remains a portable repo-local gate.
+It reports shared-contract validation as skipped without a supplied root.
+Cross-repository acceptance uses the dedicated validator command or the
+explicit `-RequireProviderContract` combined mode, which fails closed when its
+root is absent and never infers a machine or sibling path.
 
 That executable is a build artifact, not a distributable release on its own.
 Before another product packages it, generate and validate the Hostess-owned

@@ -1,7 +1,6 @@
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 
 namespace RustyHostess.WindowsHotspot;
 
@@ -125,13 +124,8 @@ internal static class CapabilityDiscovery
         IReadOnlyList<string> AuthenticationRequirements);
 }
 
-internal static partial class ProviderAssemblyVersion
+internal static class ProviderAssemblyVersion
 {
-    [GeneratedRegex(
-        "^(?<version>[0-9]+\\.[0-9]+\\.[0-9]+(?:-[a-z0-9.-]+)?)(?:\\+[0-9A-Za-z.-]+)?$",
-        RegexOptions.CultureInvariant)]
-    private static partial Regex SemVerPattern();
-
     internal static string Read()
     {
         var informationalVersion = typeof(ProviderAssemblyVersion)
@@ -153,15 +147,86 @@ internal static partial class ProviderAssemblyVersion
     internal static string ParseInformationalVersion(
         string informationalVersion)
     {
-        var match = SemVerPattern().Match(informationalVersion);
-        if (!match.Success)
+        if (string.IsNullOrEmpty(informationalVersion))
+            throw InvalidInformationalVersion();
+
+        var buildSeparator = informationalVersion.IndexOf('+');
+        string descriptorVersion;
+        if (buildSeparator >= 0)
         {
-            throw new InvalidOperationException(
-                "Provider informational version is not compatible with " +
-                "the discovery SemVer contract.");
+            if (buildSeparator != informationalVersion.LastIndexOf('+'))
+                throw InvalidInformationalVersion();
+            descriptorVersion = informationalVersion[..buildSeparator];
+            ValidateIdentifiers(
+                informationalVersion[(buildSeparator + 1)..],
+                allowUppercase: true,
+                rejectNumericLeadingZero: false);
         }
-        return match.Groups["version"].Value;
+        else
+        {
+            descriptorVersion = informationalVersion;
+        }
+
+        var prereleaseSeparator = descriptorVersion.IndexOf('-');
+        var core = prereleaseSeparator >= 0
+            ? descriptorVersion[..prereleaseSeparator]
+            : descriptorVersion;
+        var coreIdentifiers = core.Split('.', StringSplitOptions.None);
+        if (coreIdentifiers.Length != 3 ||
+            coreIdentifiers.Any(identifier =>
+                !IsNumericIdentifier(identifier) ||
+                HasNumericLeadingZero(identifier)))
+        {
+            throw InvalidInformationalVersion();
+        }
+
+        if (prereleaseSeparator >= 0)
+        {
+            ValidateIdentifiers(
+                descriptorVersion[(prereleaseSeparator + 1)..],
+                allowUppercase: false,
+                rejectNumericLeadingZero: true);
+        }
+        return descriptorVersion;
     }
+
+    private static void ValidateIdentifiers(
+        string value,
+        bool allowUppercase,
+        bool rejectNumericLeadingZero)
+    {
+        var identifiers = value.Split('.', StringSplitOptions.None);
+        if (identifiers.Any(identifier =>
+            identifier.Length == 0 ||
+            identifier.Any(character =>
+                !IsIdentifierCharacter(character, allowUppercase)) ||
+            (rejectNumericLeadingZero &&
+             IsNumericIdentifier(identifier) &&
+             HasNumericLeadingZero(identifier))))
+        {
+            throw InvalidInformationalVersion();
+        }
+    }
+
+    private static bool IsIdentifierCharacter(
+        char character,
+        bool allowUppercase) =>
+        character is >= '0' and <= '9' ||
+        character is >= 'a' and <= 'z' ||
+        allowUppercase && character is >= 'A' and <= 'Z' ||
+        character == '-';
+
+    private static bool IsNumericIdentifier(string value) =>
+        value.Length > 0 &&
+        value.All(character => character is >= '0' and <= '9');
+
+    private static bool HasNumericLeadingZero(string value) =>
+        value.Length > 1 && value[0] == '0';
+
+    private static InvalidOperationException InvalidInformationalVersion() =>
+        new(
+            "Provider informational version is not compatible with the " +
+            "discovery SemVer contract.");
 }
 
 internal sealed record DiscoveryDescriptor

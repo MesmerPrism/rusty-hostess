@@ -562,7 +562,13 @@ dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
 pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
 pwsh -NoProfile -ExecutionPolicy Bypass -File tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1 -ContractRoot <meta-quest-agent-workflow-root>
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools\check_all.ps1 -RequireProviderContract -ProviderContractRoot <meta-quest-agent-workflow-root>
 ```
+
+Plain `tools\check_all.ps1` remains portable and repo-local. It reports the
+external contract check as skipped when no root is supplied; cross-repository
+acceptance requires either the dedicated contract command or the explicit
+fail-closed combined mode above.
 
 For the declarative project runner boundary:
 

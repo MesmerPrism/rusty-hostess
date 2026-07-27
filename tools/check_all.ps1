@@ -1,9 +1,16 @@
 param(
     [switch]$IncludeMakepadLegacy,
-    [string]$ProviderContractRoot = ""
+    [string]$ProviderContractRoot = "",
+    [switch]$RequireProviderContract
 )
 
 $ErrorActionPreference = "Stop"
+if ($RequireProviderContract -and
+    [string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
+    throw (
+        "-RequireProviderContract needs an explicit " +
+        "-ProviderContractRoot; no sibling or machine path is inferred.")
+}
 
 function Invoke-Checked {
     param(
@@ -184,7 +191,10 @@ try {
         if ([string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
             Write-Host (
                 "[SKIP] Windows Mobile Hotspot provider shared-contract gate: " +
-                "pass -ProviderContractRoot to bind the pinned contract worktree")
+                "standalone repo-local mode. Cross-repo acceptance must run " +
+                "Test-WindowsHotspotProviderCapabilityDiscovery.ps1 " +
+                "separately or pass -RequireProviderContract with an explicit " +
+                "-ProviderContractRoot.")
         }
         else {
             Invoke-Checked `

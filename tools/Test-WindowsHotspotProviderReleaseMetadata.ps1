@@ -20,6 +20,31 @@ function Get-Sha256 {
     (Get-FileHash -Algorithm SHA256 -LiteralPath $LiteralPath).Hash.ToLowerInvariant()
 }
 
+function Test-ProviderDiscoverySemVer {
+    param([Parameter(Mandatory)][string] $Value)
+
+    if ($Value -cnotmatch (
+        "^(?:0|[1-9][0-9]*)\." +
+        "(?:0|[1-9][0-9]*)\." +
+        "(?:0|[1-9][0-9]*)" +
+        "(?:-(?<prerelease>[0-9a-z-]+(?:\.[0-9a-z-]+)*))?$"
+    )) {
+        return $false
+    }
+    $Prerelease = $Matches["prerelease"]
+    if ([string]::IsNullOrEmpty($Prerelease)) {
+        return $true
+    }
+    foreach ($Identifier in $Prerelease.Split(".")) {
+        if ($Identifier -cmatch "^[0-9]+$" -and
+            $Identifier.Length -gt 1 -and
+            $Identifier.StartsWith("0", [StringComparison]::Ordinal)) {
+            return $false
+        }
+    }
+    return $true
+}
+
 function Assert-ExactProperties {
     param(
         [Parameter(Mandatory)] $Object,
@@ -29,6 +54,32 @@ function Assert-ExactProperties {
     $actual = @($Object.PSObject.Properties.Name | Sort-Object)
     if (Compare-Object ($Expected | Sort-Object) $actual) {
         throw "$Context has missing or unknown fields."
+    }
+}
+
+foreach ($ValidVersion in @(
+    "0.0.0",
+    "1.2.3",
+    "1.0.0-0",
+    "1.0.0-alpha.1",
+    "10.20.30-alpha-beta.9"
+)) {
+    if (-not (Test-ProviderDiscoverySemVer -Value $ValidVersion)) {
+        throw "Release metadata SemVer gate rejected '$ValidVersion'."
+    }
+}
+foreach ($InvalidVersion in @(
+    "01.0.0",
+    "1.01.0",
+    "1.0.01",
+    "1.0.0-01",
+    "1.0.0-alpha..1",
+    "1.0.0--.",
+    "1.0.0-RC1",
+    "1.0.0+build"
+)) {
+    if (Test-ProviderDiscoverySemVer -Value $InvalidVersion) {
+        throw "Release metadata SemVer gate accepted '$InvalidVersion'."
     }
 }
 
@@ -165,8 +216,8 @@ if ($provenance.schema -cne "rusty.hostess.windows_hotspot.release_provenance.v1
     throw "Unexpected Hostess provider provenance identity."
 }
 if ($provenance.provider_version -isnot [string] -or
-    $provenance.provider_version -cnotmatch
-        "^[0-9]+\.[0-9]+\.[0-9]+(?:-[a-z0-9.-]+)?$") {
+    -not (Test-ProviderDiscoverySemVer `
+        -Value $provenance.provider_version)) {
     throw "Provider version is incompatible with capability discovery."
 }
 if ($provenance.artifact.name -cne "rusty-hostess-hotspot-provider.exe" -or
