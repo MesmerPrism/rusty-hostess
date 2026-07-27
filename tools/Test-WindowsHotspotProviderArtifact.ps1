@@ -26,6 +26,7 @@ dotnet publish $Project `
     -p:PublishSingleFile=true `
     -p:Version=$ProviderVersion `
     -p:InformationalVersion="$ProviderVersion+$SourceClaim" `
+    -p:IncludeSourceRevisionInInformationalVersion=false `
     -p:RepositoryCommit=$SourceRevision `
     -p:SourceRevisionId=$SourceRevision `
     -o $Publish

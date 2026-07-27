@@ -265,6 +265,7 @@ try {
         -p:PublishSingleFile=true `
         -p:Version=$ProviderVersion `
         -p:InformationalVersion="$ProviderVersion+$revision" `
+        -p:IncludeSourceRevisionInInformationalVersion=false `
         -p:RepositoryCommit=$revision `
         -p:SourceRevisionId=$revision `
         -o $rebuildRoot | Out-Host
