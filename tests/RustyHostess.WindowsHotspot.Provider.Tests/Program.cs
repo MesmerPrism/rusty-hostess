@@ -153,6 +153,22 @@ static async Task RestartDamaged()
     True(recoveryStore.State.RequestIds.SequenceEqual(["new-request"]));
     True(recoveryStore.State.OperationIds.SequenceEqual(["new-operation"]));
 
+    var failedRecoveryStore = new MemoryStore { State = stale };
+    var failedRecoveryRequest = Request(
+        clock,
+        "start",
+        requestId: "failed-recovery-request",
+        operationId: "failed-recovery-operation");
+    var failedRecovery = await new Provider(
+        new FakeBackend(Off()) { StartSuccess = false },
+        failedRecoveryStore,
+        clock).ExecuteAsync(failedRecoveryRequest, default);
+    Equal(Outcome.Failed, failedRecovery.Outcome);
+    Equal(clock.BootId, failedRecoveryStore.State.BootId);
+    Equal<string?>(null, failedRecoveryStore.State.OwnershipGeneration);
+    Equal(Outcome.Rejected, (await new Provider(new FakeBackend(Off()), failedRecoveryStore, clock)
+        .ExecuteAsync(failedRecoveryRequest, default)).Outcome);
+
     var externalStore = new MemoryStore { State = stale };
     var external = await new Provider(new FakeBackend(On()), externalStore, clock)
         .ExecuteAsync(Request(clock, "start"), default);

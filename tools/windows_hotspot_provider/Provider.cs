@@ -79,6 +79,14 @@ internal sealed class Provider(IHotspotBackend backend, IStateStore store, ICloc
                 if (snapshot.OperationalState != "Off")
                     return Result(Outcome.Rejected, request, "ownership.external_hotspot_on", snapshot, null);
 
+                var recoveringState = new StateRecord {
+                    BootId = clock.BootId,
+                    OwnershipGeneration = null,
+                    RequestIds = [request.RequestId],
+                    OperationIds = [request.OperationId]
+                };
+                try { store.Save(recoveringState); }
+                catch { return Result(Outcome.Failed, request, "state.write_failed", snapshot, null); }
                 var start = await backend.StartAsync(cancellationToken);
                 if (!start.Success)
                     return Result(Outcome.Failed, request, "start.result_failed", await backend.ReadAsync(cancellationToken), null);
@@ -86,12 +94,7 @@ internal sealed class Provider(IHotspotBackend backend, IStateStore store, ICloc
                 if (after.OperationalState != "On")
                     return Result(Outcome.Failed, request, "start.readback_not_on", after, null);
                 var recoveredGeneration = Guid.NewGuid().ToString("N");
-                var recoveredState = new StateRecord {
-                    BootId = clock.BootId,
-                    OwnershipGeneration = recoveredGeneration,
-                    RequestIds = [request.RequestId],
-                    OperationIds = [request.OperationId]
-                };
+                var recoveredState = recoveringState with { OwnershipGeneration = recoveredGeneration };
                 store.Save(recoveredState);
                 return Result(Outcome.Verified, request, "start.restart_recovery_verified", after, recoveredGeneration);
             }
