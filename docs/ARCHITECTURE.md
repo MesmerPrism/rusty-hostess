@@ -27,6 +27,10 @@ profile without accepting, returning, or persisting SSID, passphrase, profile
 identity, IP, path, or credential data. It never adopts an externally started
 hotspot and never treats the WinRT operation result alone as proof. See
 `docs/windows-mobile-hotspot-provider.md` for the public protocol.
+Same-generation ensure may restart a freshly Off owned hotspot while
+preserving ownership. Prior-boot generations cannot ensure or stop; only an
+explicit start against fresh Off state may replace stale ownership with a new
+generation, while fresh On state remains external.
 
 ## Declarative Project Workflow Boundary
 

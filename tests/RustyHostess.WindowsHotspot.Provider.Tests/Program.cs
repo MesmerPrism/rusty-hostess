@@ -8,11 +8,13 @@ var tests = new (string, Func<Task>)[]
     ("external already-on", ExternalOn),
     ("start and readback", StartReadback),
     ("ensure and wrong-generation stop", EnsureStop),
+    ("owned ensure restarts from off", EnsureRestart),
     ("operation failures and timeout", FailuresTimeout),
     ("concurrent ownership", ConcurrentOwnership),
-    ("restart and damaged state", RestartDamaged),
+    ("prior-boot recovery and damaged state", RestartDamaged),
     ("receipt redaction", Redaction),
     ("exit mapping and unavailable", ExitMapping),
+    ("abandoned mutex is acquired", AbandonedMutex),
 };
 var failed = 0;
 foreach (var (name, test) in tests)
@@ -79,6 +81,30 @@ static async Task EnsureStop()
     Equal(Outcome.Verified, (await provider.ExecuteAsync(Request(clock, "stop", generation), default)).Outcome);
 }
 
+static async Task EnsureRestart()
+{
+    var clock = new FakeClock();
+    var store = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var backend = new FakeBackend(Off()) { AfterStart = On() };
+    var restarted = await new Provider(backend, store, clock).ExecuteAsync(Request(clock, "ensure", "owned"), default);
+    Equal(Outcome.Verified, restarted.Outcome);
+    Equal("ensure.restart_readback_verified", restarted.Receipt.Reason);
+    Equal("owned", restarted.Receipt.OwnershipGeneration);
+    Equal("owned", store.State.OwnershipGeneration);
+
+    var failedStore = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var apiFailure = await new Provider(new FakeBackend(Off()) { StartSuccess = false }, failedStore, clock)
+        .ExecuteAsync(Request(clock, "ensure", "owned"), default);
+    Equal(Outcome.Failed, apiFailure.Outcome);
+    Equal("owned", failedStore.State.OwnershipGeneration);
+
+    var readbackStore = new MemoryStore { State = new() { BootId = clock.BootId, OwnershipGeneration = "owned" } };
+    var readbackFailure = await new Provider(new FakeBackend(Off()) { AfterStart = Off() }, readbackStore, clock)
+        .ExecuteAsync(Request(clock, "ensure", "owned"), default);
+    Equal(Outcome.Failed, readbackFailure.Outcome);
+    Equal("owned", readbackStore.State.OwnershipGeneration);
+}
+
 static async Task FailuresTimeout()
 {
     var clock = new FakeClock();
@@ -99,8 +125,40 @@ static async Task ConcurrentOwnership()
 static async Task RestartDamaged()
 {
     var clock = new FakeClock();
-    var restarted = new MemoryStore { State = new() { BootId = "previous", OwnershipGeneration = "g" } };
-    Equal("state.restart_detected", (await new Provider(new FakeBackend(On()), restarted, clock).ExecuteAsync(Request(clock, "status"), default)).Receipt.Reason);
+    var stale = new StateRecord {
+        BootId = "previous", OwnershipGeneration = "old",
+        RequestIds = ["stale-request"], OperationIds = ["stale-operation"]
+    };
+    var statusStore = new MemoryStore { State = stale };
+    var status = await new Provider(new FakeBackend(Off()), statusStore, clock).ExecuteAsync(Request(clock, "status"), default);
+    Equal(Outcome.Failed, status.Outcome); Equal("state.restart_detected", status.Receipt.Reason);
+    Equal("Off", status.Receipt.OperationalState); Equal<string?>(null, status.Receipt.OwnershipGeneration);
+
+    foreach (var action in new[] { "ensure", "stop" })
+    {
+        var oldGeneration = new MemoryStore { State = stale };
+        var rejected = await new Provider(new FakeBackend(Off()), oldGeneration, clock)
+            .ExecuteAsync(Request(clock, action, "old"), default);
+        Equal(Outcome.Rejected, rejected.Outcome);
+        Equal("ownership.prior_boot_generation", rejected.Receipt.Reason);
+        Equal("old", oldGeneration.State.OwnershipGeneration);
+    }
+
+    var recoveryStore = new MemoryStore { State = stale };
+    var recovered = await new Provider(new FakeBackend(Off()) { AfterStart = On() }, recoveryStore, clock)
+        .ExecuteAsync(Request(clock, "start", requestId: "new-request", operationId: "new-operation"), default);
+    Equal(Outcome.Verified, recovered.Outcome); Equal("start.restart_recovery_verified", recovered.Receipt.Reason);
+    True(recoveryStore.State.OwnershipGeneration is not null && recoveryStore.State.OwnershipGeneration != "old");
+    Equal(clock.BootId, recoveryStore.State.BootId);
+    True(recoveryStore.State.RequestIds.SequenceEqual(["new-request"]));
+    True(recoveryStore.State.OperationIds.SequenceEqual(["new-operation"]));
+
+    var externalStore = new MemoryStore { State = stale };
+    var external = await new Provider(new FakeBackend(On()), externalStore, clock)
+        .ExecuteAsync(Request(clock, "start"), default);
+    Equal(Outcome.Rejected, external.Outcome); Equal("ownership.external_hotspot_on", external.Receipt.Reason);
+    Equal("old", externalStore.State.OwnershipGeneration);
+
     var damaged = new MemoryStore { ThrowOnLoad = true };
     Equal("state.damaged", (await new Provider(new FakeBackend(Off()), damaged, clock).ExecuteAsync(Request(clock, "status"), default)).Receipt.Reason);
 }
@@ -122,6 +180,25 @@ static async Task ExitMapping()
     Equal(Outcome.Unavailable,
         (await new Provider(new FakeBackend(unavailable), new MemoryStore(), clock)
             .ExecuteAsync(Request(clock, "status"), default)).Outcome);
+}
+
+static Task AbandonedMutex()
+{
+    var name = $"Local\\RustyHostess.WindowsHotspot.Provider.Test.{Guid.NewGuid():N}";
+    using var ready = new ManualResetEventSlim();
+    var thread = new Thread(() =>
+    {
+        using var abandoned = new Mutex(false, name);
+        abandoned.WaitOne();
+        ready.Set();
+    });
+    thread.Start();
+    True(ready.Wait(TimeSpan.FromSeconds(2)), "abandoning thread did not acquire mutex");
+    thread.Join();
+    using var mutex = new Mutex(false, name);
+    True(MutexGate.TryAcquire(mutex, TimeSpan.FromSeconds(2)), "abandoned mutex was not treated as acquired");
+    mutex.ReleaseMutex();
+    return Task.CompletedTask;
 }
 
 sealed class FakeClock : IClock

@@ -20,7 +20,8 @@ catch (RejectedException)
 }
 
 using var mutex = new Mutex(false, "Local\\RustyHostess.WindowsHotspot.Provider.v1");
-if (!mutex.WaitOne(TimeSpan.FromSeconds(2)))
+var acquired = MutexGate.TryAcquire(mutex, TimeSpan.FromSeconds(2));
+if (!acquired)
 {
     Console.Out.Write(JsonSerializer.Serialize(new Receipt {
         RequestId = request.RequestId, OperationId = request.OperationId, Action = request.Action,

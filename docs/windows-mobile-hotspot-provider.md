@@ -48,9 +48,18 @@ The provider never adopts a hotspot that is already on. A successful start
 creates a random ownership generation in a current-user LocalAppData record.
 Ensure and stop preserve or require that exact generation. Wrong-generation,
 takeover, damaged-state, inconsistent-state, and host-restart cases fail
-closed. Stop failures retain ownership for later recovery. The private record
-contains only boot identity, ownership generation, and bounded replay IDs; it
-contains no hotspot configuration or credentials.
+closed. If an owned hotspot is freshly read back as Off, `ensure` with the
+exact current generation may restart it only after fresh On readback and
+retains the same generation on success or failure.
+
+After a host restart, `status` returns `state.restart_detected` with a fresh
+redacted snapshot, while `ensure` and `stop` reject the prior-boot generation.
+An explicit new `start` can recover only from fresh Off state: successful
+start/readback replaces stale ownership and replay history with a new
+generation. Fresh On state is treated as external and is never adopted or
+stopped. Stop and ensure failures retain ownership for later recovery. The
+private record contains only boot identity, ownership generation, and bounded
+replay IDs; it contains no hotspot configuration or credentials.
 
 ## Build and validation
 
