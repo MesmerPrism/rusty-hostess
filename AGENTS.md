@@ -282,6 +282,16 @@ generic code or sanitized sample fixtures.
   probes, including QCL-010/QCL-011 live report assembly. `connectivity_probe.py`
   may preserve facade imports and route dispatch, but LAN probing mechanics
   belong in the helper.
+- Keep `tools\windows_hotspot_provider` as the Windows Mobile Hotspot effect
+  owner for Fleet. It owns only strict Hostess request/receipt handling,
+  capability and fresh operational readback through
+  `NetworkOperatorTetheringManager`, bounded start/stop effects, replay
+  rejection, and private current-user generation-bound ownership state. It
+  must not accept, expose, or persist SSID, passphrase, profile identity, path,
+  IP, or credentials; adopt an externally started hotspot; become Fleet
+  policy; or be conflated with QCL-011 observation or the QCL-041 Wi-Fi Direct
+  LegacySettings helper. Automated tests use injected backends and must not
+  mutate the live hotspot.
 - Keep `tools\hostessctl\connectivity_udp.py` as the QCL-080 UDP freshness
   owner. It owns the live QCL-080 report assembly, UDP sender/listener
   mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,

@@ -206,6 +206,13 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   for serial-scoped Quest ADB identity, host IPv4 selection, same-subnet checks,
   ICMP probes, Windows Mobile Hotspot state collection, TCP echo probes, and
   QCL-010/QCL-011 live report assembly.
+- `tools/windows_hotspot_provider`: production Windows Mobile Hotspot
+  start/ensure/stop/status effect adapter for Fleet. It publishes the
+  self-contained single-file `rusty-hostess-hotspot-provider.exe`, uses strict
+  Hostess-owned request/receipt schemas, fresh WinRT readback, and a private
+  generation-bound current-user ownership record. It is not the QCL-011
+  observer or Wi-Fi Direct LegacySettings helper; see
+  `docs/windows-mobile-hotspot-provider.md`.
 - `tools/hostessctl/connectivity_probe_common.py`: shared connectivity report
   helpers for the QCL report skeleton, check rows, issue rows,
   JSON/ADB/PowerShell cleanup, Android readback, and small measurement
@@ -547,6 +554,8 @@ cargo check --manifest-path apps\hostess-t-makepad\Cargo.toml
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde hostess_contracts
 cargo test --manifest-path apps\hostess-t-makepad\Cargo.toml --features serde main_tests
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
+dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
+pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
 ```
 
 For the declarative project runner boundary:

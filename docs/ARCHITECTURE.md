@@ -12,6 +12,22 @@ registries, audit records, and scorecards.
 Hostess T owns platform packaging, permission probes, launch/install routes,
 small app UI surfaces, command bridging, and evidence export.
 
+## Windows Mobile Hotspot Effect Boundary
+
+`tools/windows_hotspot_provider` is the platform effect owner consumed by
+Rusty Fleet through a strict one-request/one-receipt process protocol. Hostess
+owns Windows Mobile Hotspot capability checks, bounded start/stop calls, fresh
+operational readback, replay protection, and a private generation-bound
+current-user ownership record. Fleet retains desired-state, scheduling, retry,
+and orchestration policy.
+
+This adapter is separate from QCL-011 observation and QCL-041 Wi-Fi Direct
+LegacySettings mechanics. It consumes the configured Windows Mobile Hotspot
+profile without accepting, returning, or persisting SSID, passphrase, profile
+identity, IP, path, or credential data. It never adopts an externally started
+hotspot and never treats the WinRT operation result alone as proof. See
+`docs/windows-mobile-hotspot-provider.md` for the public protocol.
+
 ## Declarative Project Workflow Boundary
 
 `tools/hostessctl/project_runner.py` is the source-only Hostess orchestration

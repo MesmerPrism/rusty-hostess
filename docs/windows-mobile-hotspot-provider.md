@@ -1,0 +1,67 @@
+# Windows Mobile Hotspot Provider
+
+`rusty-hostess-hotspot-provider.exe` is the Hostess-owned Windows effect
+adapter for Rusty Fleet. It is separate from the QCL-011 read-only probe and
+from the QCL-041 Wi-Fi Direct `LegacySettings` helper. Fleet owns scheduling,
+policy, retries, and desired state; this executable owns only bounded Windows
+Mobile Hotspot effects and receipts.
+
+## Invocation and protocol
+
+The only accepted command line is case-sensitive:
+
+```text
+rusty-hostess-hotspot-provider.exe integration windows-hotspot --json
+```
+
+The process reads exactly one JSON object from stdin and writes exactly one
+compact JSON receipt to stdout. Handled outcomes leave stderr empty.
+
+Request schema: `rusty.hostess.windows_hotspot.provider_request.v1`
+
+Required fields are `schema`, `request_id`, `operation_id`, `action`,
+`expires_at_utc`, and `timeout_ms`. `action` is exactly one of `status`,
+`start`, `ensure`, or `stop`. `ownership_generation` is required for `stop`,
+optional for `ensure`, and forbidden for `status` and `start`. Unknown,
+duplicate, incorrectly cased, or malformed fields are rejected. Expiry must be
+in the future and no more than ten minutes away; timeouts are 100–120000 ms.
+Request and operation IDs are replay-protected by the private state store.
+
+Receipt schema: `rusty.hostess.windows_hotspot.provider_receipt.v1`
+
+Receipts distinguish capability, operational state, client count and maximum,
+configured band, and source connectivity. They never contain SSID,
+passphrase, connection-profile identity, paths, IP addresses, or credentials.
+Exit codes are `0` verified from fresh readback, `1` failed, `2` rejected, and
+`3` unavailable.
+
+## Effect and ownership rules
+
+The Windows backend uses
+`Windows.Networking.NetworkOperators.NetworkOperatorTetheringManager` against
+the current Internet connection profile. It uses the already configured
+Mobile Hotspot profile without reading or changing its SSID or passphrase.
+Start/stop API results are not success evidence: a second fresh manager
+readback must show `On`/`Off`.
+
+The provider never adopts a hotspot that is already on. A successful start
+creates a random ownership generation in a current-user LocalAppData record.
+Ensure and stop preserve or require that exact generation. Wrong-generation,
+takeover, damaged-state, inconsistent-state, and host-restart cases fail
+closed. Stop failures retain ownership for later recovery. The private record
+contains only boot identity, ownership generation, and bounded replay IDs; it
+contains no hotspot configuration or credentials.
+
+## Build and validation
+
+The maintained script requires PowerShell 7:
+
+```powershell
+dotnet run --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj
+pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1
+```
+
+Tests inject a fake backend, clock, and private state store. The artifact smoke
+uses an expired request, so automated validation never mutates the live
+hotspot. The publish gate produces the self-contained single-file
+`target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe`.

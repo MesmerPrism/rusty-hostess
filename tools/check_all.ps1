@@ -172,6 +172,15 @@ try {
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
         Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
     }
+    if (Test-Path "tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj") {
+        Invoke-Checked "Windows Mobile Hotspot provider tests" "dotnet" @(
+            "run", "--project",
+            "tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj"
+        )
+        Invoke-Checked "Windows Mobile Hotspot provider artifact gate" "pwsh" @(
+            "-NoProfile", "-File", "tools\Test-WindowsHotspotProviderArtifact.ps1"
+        )
+    }
     if (Test-Path "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj") {
         Invoke-Checked "QCL-041 Wi-Fi Direct peer helper build" "dotnet" @("build", "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj")
     }
