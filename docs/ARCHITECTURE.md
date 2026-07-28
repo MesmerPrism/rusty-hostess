@@ -45,6 +45,27 @@ requirements, Hostess effect ownership, receipt schema, and exclusions only.
 It is description rather than support, authorization, activation,
 owner-effective evidence, Fleet policy, or release metadata.
 
+## Offline Projection Replay Boundary
+
+The offline projection replay host under `apps/hostess-projection-replay`
+owns generic desktop Vulkan execution and visual evidence only. A provider
+owns its SPIR-V, uniform values, input recordings, projection semantics, and
+acceptance policy. Capsules reference those inputs by path; Hostess records
+their hashes but does not import them into this repository. A future WPF page
+may project the replay report, but it must invoke the same CLI path and cannot
+hide alternate rendering logic in UI handlers.
+`execution_plan.rs` owns fail-closed validation and deterministic normalization
+for the effect-neutral Hostess v2 capsule graph. `v1_compat.rs` is the explicit
+compatibility adapter from the unchanged v1 capsule to `ReplayExecutionPlan`;
+it preserves the six-pass/five-target schedule, descriptor ABI, exports, and
+output overrides. The Vulkan backend and all capture/control/profile routes
+remain explicitly v1 until a separate generic backend adapter can execute a
+normalized plan without importing provider semantics.
+The application-local interactive replay controls follow that rule now: they
+edit a bounded capsule control state, execute the same Vulkan capsule renderer,
+and publish the effective capsule and receipt after each successful update.
+They do not own provider effect formulas or a second rendering path.
+
 ## Declarative Project Workflow Boundary
 
 `tools/hostessctl/project_runner.py` is the source-only Hostess orchestration

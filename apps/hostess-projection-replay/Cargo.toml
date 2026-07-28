@@ -1,0 +1,26 @@
+[package]
+name = "hostess-projection-replay"
+version = "0.1.0"
+edition = "2021"
+publish = false
+description = "Hostess-owned offline Vulkan projection replay and visual evidence host."
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+anyhow = "1"
+ash = "0.38"
+clap = { version = "4", features = ["derive"] }
+eframe = { version = "0.35", default-features = false, features = ["default_fonts", "glow"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
+minifb = "0.28"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+
+[lints.rust]
+unsafe_code = "allow"
+missing_docs = "allow"
+
+[lints.clippy]
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

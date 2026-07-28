@@ -689,6 +689,22 @@
       "reason": "Existing compatibility contract reference; the foreign lane remains schema and runtime authority."
     },
     {
+      "schema_id": "rusty.quest.camera_replay_capture.v1",
+      "path": "apps/hostess-projection-replay/src/sequence.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "compatibility_input",
+      "reason": "Hostess validates and replays the Quest-owned local camera capture manifest without owning or emitting that schema."
+    },
+    {
+      "schema_id": "rusty.quest.spatial_camera_panel.control_profile.v1",
+      "path": "apps/hostess-projection-replay/src/control_profile.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "compatibility_input",
+      "reason": "Hostess keeps existing stored Quest profiles as a strictly read-only legacy import; new saves use the Hostess-owned replay control-state schema and distinct suffix."
+    },
+    {
       "schema_id": "rusty.quest.connectivity_topology_probe.v1",
       "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
       "owner": "rusty.quest",
