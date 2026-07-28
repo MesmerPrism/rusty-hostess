@@ -21,6 +21,8 @@ The check covers the available local surface:
 - Companion catalog descriptor smoke when the sibling Rusty GUI descriptor
   folder is present.
 - WPF companion build and projection tests when the WPF projects exist.
+- Windows Mobile Hotspot provider unit, self-contained artifact, and
+  immutable release-workflow policy gates.
 
 For fast CLI/evidence edits, run the Python path first:
 

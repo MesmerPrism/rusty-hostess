@@ -188,6 +188,11 @@ try {
         Invoke-Checked "Windows Mobile Hotspot provider artifact gate" "pwsh" @(
             "-NoProfile", "-File", "tools\Test-WindowsHotspotProviderArtifact.ps1"
         )
+        Invoke-Checked "Windows Mobile Hotspot provider release-workflow gate" "pwsh" @(
+            "-NoProfile",
+            "-File",
+            "tools\Test-WindowsHotspotProviderReleaseWorkflow.ps1"
+        )
         if ([string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
             Write-Host (
                 "[SKIP] Windows Mobile Hotspot provider shared-contract gate: " +

@@ -43,3 +43,52 @@ pwsh -NoProfile -File tools\Test-WindowsHotspotProviderReleaseMetadata.ps1 `
   -MetadataDirectory target\windows-hotspot-provider-release-metadata `
   -ArtifactPath target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe
 ```
+
+## Immutable public release
+
+The owner release workflow is
+`.github/workflows/windows-hotspot-provider-release.yml`. It runs only for a
+pre-existing tag named
+`windows-hotspot-provider-v<provider-version>`, for example
+`windows-hotspot-provider-v0.1.0`. The tag must resolve to the exact clean
+checkout. The workflow never creates, moves, or overwrites a tag and refuses
+to continue when a GitHub Release already exists for it.
+
+Configure the protected GitHub environment
+`windows-hotspot-provider-release` with required reviewers. Before creating
+any provider tag, enable GitHub release immutability for the Rusty Hostess
+repository. The workflow verifies that setting and fails before building when
+it is disabled. Configure these environment inputs:
+
+- secret `RUSTY_HOSTESS_AUTHENTICODE_PFX_BASE64`: base64 of the owner
+  Authenticode PFX;
+- secret `RUSTY_HOSTESS_AUTHENTICODE_PFX_PASSWORD`: its password;
+- secret `RUSTY_HOSTESS_RELEASE_POLICY_TOKEN`: a fine-grained token limited to
+  Rusty Hostess with repository Administration read permission, used only to
+  verify that GitHub release immutability is enabled;
+- environment variable `RUSTY_HOSTESS_AUTHENTICODE_SIGNER_THUMBPRINT`: the
+  independently reviewed SHA-1 or SHA-256 certificate thumbprint.
+
+The workflow validates that the PFX contains exactly that code-signing
+identity, signs the exact self-contained provider, verifies the resulting
+Authenticode signature, generates owner provenance with public commit/tree
+verification, and revalidates the complete bundle. It then creates one
+immutable GitHub Release containing exactly:
+
+- `rusty-hostess-hotspot-provider.exe`;
+- `rusty-hostess-hotspot-provider.provenance.json`;
+- `LICENSE`;
+- `THIRD-PARTY-NOTICES.txt`.
+
+GitHub Releases is the binary authority. Provider discovery remains a
+time-varying, non-authorizing description surface and is never a release
+asset. After publication, the workflow reads back GitHub's immutable flag and
+the SHA-256 digest and size of every asset. It has no asset-update,
+release-edit, tag-creation, tag-move, or clobber path. A failed or existing
+release requires a new version and tag, not replacement.
+
+Validate this policy locally without signing or publishing:
+
+```powershell
+pwsh -NoProfile -File tools\Test-WindowsHotspotProviderReleaseWorkflow.ps1
+```
