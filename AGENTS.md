@@ -21,6 +21,10 @@ requirements; see `docs/LICENSING.md`.
 - Minimal host apps and scripts that consume Manifold package manifests.
 - Live package validation slots for desktop, mobile, and headset profiles.
 - Evidence JSON, validators, and build scripts for clean host tests.
+- Offline Vulkan projection replay from explicit provider-owned capsules and
+  shader assets. Hostess may own generic descriptor recreation, image
+  generation, readback, hashing, and evidence reports; it must not own or copy
+  private shaders, product presets, camera captures, or effect formulas.
 - Lattice evidence collection for tracked view sets, poses, spatial input
   roles, frame-state binding, calibration, validity, confidence, and runtime
   capabilities when a host run needs situated relation proof.
