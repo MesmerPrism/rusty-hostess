@@ -169,3 +169,9 @@ Artifact validation, release-metadata generation, and release validation use
 the same descriptor-compatible provider-version predicate. The generator
 rejects malformed core or prerelease identifiers during parameter binding,
 before artifact inspection, dependency inventory, or clean rebuild work.
+The tag-driven owner workflow documented in
+`packaging/windows-hotspot-provider/README.md` is the only automated public
+binary publication route. It requires protected Authenticode inputs, a
+separately configured signer thumbprint, exact public source verification,
+and a new immutable GitHub Release. The discovery document remains
+non-authorizing and is not included among the four release assets.

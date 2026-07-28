@@ -1,0 +1,378 @@
+name: Release Windows hotspot provider
+
+on:
+  push:
+    tags:
+      - "windows-hotspot-provider-v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows-hotspot-provider-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-2025
+    environment: windows-hotspot-provider-release
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Resolve immutable tag and provider version
+        id: version
+        shell: pwsh
+        run: |
+          $tagName = $env:GITHUB_REF_NAME
+          $match = [regex]::Match(
+            $tagName,
+            '^windows-hotspot-provider-v(?<version>(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)(?:-[0-9a-z-]+(?:\.[0-9a-z-]+)*)?)$',
+            [Text.RegularExpressions.RegexOptions]::CultureInvariant)
+          if (-not $match.Success) {
+            throw "Release tag must use windows-hotspot-provider-v<semver>."
+          }
+          $providerVersion = $match.Groups['version'].Value
+          foreach ($identifier in @(
+            ($providerVersion -split '-', 2)[1] -split '\.'
+          )) {
+            if ($identifier -cmatch '^[0-9]+$' -and
+                $identifier.Length -gt 1 -and
+                $identifier.StartsWith('0', [StringComparison]::Ordinal)) {
+              throw "Release tag contains a leading-zero prerelease identifier."
+            }
+          }
+
+          $headRevision = (& git rev-parse HEAD).Trim()
+          $tagRevision = (& git rev-parse "$tagName^{commit}").Trim()
+          $sourceTree = (& git rev-parse 'HEAD^{tree}').Trim()
+          $sourceDirt = @(& git status --porcelain=v1 --untracked-files=all)
+          if ($LASTEXITCODE -ne 0 -or
+              $headRevision -cnotmatch '^[0-9a-f]{40}$' -or
+              $sourceTree -cnotmatch '^[0-9a-f]{40}$' -or
+              $headRevision -cne $env:GITHUB_SHA -or
+              $tagRevision -cne $headRevision -or
+              $sourceDirt.Count -ne 0) {
+            throw "Release checkout is not the exact clean commit named by the tag event."
+          }
+
+          "provider_version=$providerVersion" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "tag_name=$tagName" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "source_revision=$headRevision" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "source_tree=$sourceTree" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Require GitHub immutable-release enforcement
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.RUSTY_HOSTESS_RELEASE_POLICY_TOKEN }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:GH_TOKEN)) {
+            throw "Protected Administration-read token is required to verify release immutability."
+          }
+          $policy = gh api `
+            -H 'X-GitHub-Api-Version: 2026-03-10' `
+            "repos/$env:GITHUB_REPOSITORY/immutable-releases" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or -not [bool] $policy.enabled) {
+            throw "GitHub immutable releases must be enabled before provider publication."
+          }
+
+      - name: Test and build exact self-contained provider
+        shell: pwsh
+        env:
+          PROVIDER_VERSION: ${{ steps.version.outputs.provider_version }}
+        run: |
+          dotnet run `
+            --project tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj `
+            -c Release
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows hotspot provider tests failed."
+          }
+          pwsh -NoProfile -File tools\Test-WindowsHotspotProviderArtifact.ps1 `
+            -ProviderVersion $env:PROVIDER_VERSION
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows hotspot provider artifact gate failed."
+          }
+          pwsh -NoProfile -File tools\Test-WindowsHotspotProviderReleaseWorkflow.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows hotspot provider release-workflow gate failed."
+          }
+
+      - name: Restore and verify protected Authenticode identity
+        id: signing
+        shell: pwsh
+        env:
+          AUTHENTICODE_PFX_BASE64: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_BASE64 }}
+          AUTHENTICODE_PFX_PASSWORD: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_PASSWORD }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.RUSTY_HOSTESS_AUTHENTICODE_SIGNER_THUMBPRINT }}
+        run: |
+          foreach ($required in @(
+            $env:AUTHENTICODE_PFX_BASE64,
+            $env:AUTHENTICODE_PFX_PASSWORD,
+            $env:EXPECTED_SIGNER_THUMBPRINT
+          )) {
+            if ([string]::IsNullOrWhiteSpace($required)) {
+              throw "Protected signing inputs and independent signer thumbprint are required."
+            }
+          }
+          $expectedThumbprint = (
+            $env:EXPECTED_SIGNER_THUMBPRINT -replace '\s', ''
+          ).ToLowerInvariant()
+          if ($expectedThumbprint -cnotmatch '^(?:[0-9a-f]{40}|[0-9a-f]{64})$') {
+            throw "The independently configured signer thumbprint is malformed."
+          }
+
+          $pfxPath = Join-Path $env:RUNNER_TEMP 'rusty-hostess-authenticode.pfx'
+          [IO.File]::WriteAllBytes(
+            $pfxPath,
+            [Convert]::FromBase64String($env:AUTHENTICODE_PFX_BASE64))
+          $password = ConvertTo-SecureString `
+            $env:AUTHENTICODE_PFX_PASSWORD `
+            -AsPlainText `
+            -Force
+          $certificates = @(
+            Get-PfxCertificate `
+              -LiteralPath $pfxPath `
+              -Password $password `
+              -NoPromptForPassword
+          )
+          if ($certificates.Count -ne 1) {
+            throw "The protected PFX must contain exactly one end-entity certificate."
+          }
+          $certificate = $certificates[0]
+          $observedThumbprint = (
+            $certificate.Thumbprint -replace '\s', ''
+          ).ToLowerInvariant()
+          $codeSigningEku = @(
+            $certificate.EnhancedKeyUsageList |
+              ForEach-Object { $_.ObjectId.Value }
+          )
+          if (-not $certificate.HasPrivateKey -or
+              $observedThumbprint -cne $expectedThumbprint -or
+              '1.3.6.1.5.5.7.3.3' -notin $codeSigningEku) {
+            throw "The protected PFX is not the independently authorized code-signing identity."
+          }
+
+          "pfx_path=$pfxPath" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+          "signer_thumbprint=$expectedThumbprint" |
+            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: Sign provider and issue owner provenance
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          PROVIDER_VERSION: ${{ steps.version.outputs.provider_version }}
+          SOURCE_REVISION: ${{ steps.version.outputs.source_revision }}
+          SOURCE_TREE: ${{ steps.version.outputs.source_tree }}
+          SIGNER_THUMBPRINT: ${{ steps.signing.outputs.signer_thumbprint }}
+          PFX_PATH: ${{ steps.signing.outputs.pfx_path }}
+          AUTHENTICODE_PFX_PASSWORD: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_PASSWORD }}
+        run: |
+          $artifact = (
+            Resolve-Path `
+              'target\windows-hotspot-provider\rusty-hostess-hotspot-provider.exe'
+          ).Path
+          $password = ConvertTo-SecureString `
+            $env:AUTHENTICODE_PFX_PASSWORD `
+            -AsPlainText `
+            -Force
+          $certificate = @(
+            Get-PfxCertificate `
+              -LiteralPath $env:PFX_PATH `
+              -Password $password `
+              -NoPromptForPassword
+          )[0]
+          $signature = Set-AuthenticodeSignature `
+            -LiteralPath $artifact `
+            -Certificate $certificate `
+            -HashAlgorithm SHA256 `
+            -TimestampServer 'http://timestamp.digicert.com' `
+            -IncludeChain All
+          if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid) {
+            throw "Authenticode signing failed with status $($signature.Status)."
+          }
+          $observedSignature = Get-AuthenticodeSignature -LiteralPath $artifact
+          if ($observedSignature.Status -ne
+                [Management.Automation.SignatureStatus]::Valid -or
+              $observedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
+                $env:SIGNER_THUMBPRINT) {
+            throw "Signed provider does not carry the authorized Authenticode identity."
+          }
+
+          $metadataDirectory =
+            'target\windows-hotspot-provider-release-metadata'
+          pwsh -NoProfile `
+            -File tools\New-WindowsHotspotProviderReleaseMetadata.ps1 `
+            -ArtifactPath $artifact `
+            -ProviderVersion $env:PROVIDER_VERSION `
+            -BuildKind signed-release `
+            -OutputDirectory $metadataDirectory `
+            -VerifyPublicSource `
+            -AllowedSignerThumbprint $env:SIGNER_THUMBPRINT
+          if ($LASTEXITCODE -ne 0) {
+            throw "Owner release-provenance generation failed."
+          }
+          pwsh -NoProfile `
+            -File tools\Test-WindowsHotspotProviderReleaseMetadata.ps1 `
+            -MetadataDirectory $metadataDirectory `
+            -ArtifactPath $artifact `
+            -RequireSignedRelease `
+            -ExpectedSignerThumbprint $env:SIGNER_THUMBPRINT
+          if ($LASTEXITCODE -ne 0) {
+            throw "Signed release-provenance validation failed."
+          }
+
+          $provenancePath = Join-Path $metadataDirectory `
+            'rusty-hostess-hotspot-provider.provenance.json'
+          $provenance = Get-Content -Raw -LiteralPath $provenancePath |
+            ConvertFrom-Json
+          if ($provenance.source.revision -cne $env:SOURCE_REVISION -or
+              $provenance.source.tree -cne $env:SOURCE_TREE -or
+              $provenance.provider_version -cne $env:PROVIDER_VERSION -or
+              $provenance.source.availability_state -cne 'verified_public' -or
+              $provenance.distribution.eligibility -cne 'signed_release') {
+            throw "Owner provenance does not bind the exact public release source."
+          }
+
+          $releaseDirectory = 'target\windows-hotspot-provider-release'
+          if (Test-Path -LiteralPath $releaseDirectory) {
+            throw "Release staging directory already exists."
+          }
+          [IO.Directory]::CreateDirectory($releaseDirectory) | Out-Null
+          Copy-Item -LiteralPath $artifact -Destination (
+            Join-Path $releaseDirectory 'rusty-hostess-hotspot-provider.exe'
+          )
+          foreach ($name in @(
+            'rusty-hostess-hotspot-provider.provenance.json',
+            'LICENSE',
+            'THIRD-PARTY-NOTICES.txt'
+          )) {
+            Copy-Item `
+              -LiteralPath (Join-Path $metadataDirectory $name) `
+              -Destination (Join-Path $releaseDirectory $name)
+          }
+          $expectedAssets = @(
+            'LICENSE',
+            'THIRD-PARTY-NOTICES.txt',
+            'rusty-hostess-hotspot-provider.exe',
+            'rusty-hostess-hotspot-provider.provenance.json'
+          ) | Sort-Object
+          $observedAssets = @(
+            Get-ChildItem -LiteralPath $releaseDirectory -File |
+              Select-Object -ExpandProperty Name |
+              Sort-Object
+          )
+          if (Compare-Object $expectedAssets $observedAssets) {
+            throw "Release staging does not contain exactly the four owner assets."
+          }
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: rusty-hostess-windows-hotspot-provider-${{ steps.version.outputs.provider_version }}
+          path: target/windows-hotspot-provider-release
+          if-no-files-found: error
+          compression-level: 0
+
+      - name: Create immutable GitHub Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ steps.version.outputs.tag_name }}
+          PROVIDER_VERSION: ${{ steps.version.outputs.provider_version }}
+        run: |
+          $releaseError = Join-Path $env:RUNNER_TEMP 'existing-release.stderr.txt'
+          gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG_NAME" `
+            2> $releaseError |
+            Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            throw "Release $env:TAG_NAME already exists; assets are immutable."
+          }
+          $releaseErrorText = Get-Content -Raw -LiteralPath $releaseError
+          if ($releaseErrorText -notmatch 'HTTP 404') {
+            throw "Could not prove release absence: $releaseErrorText"
+          }
+
+          $releaseDirectory = (
+            Resolve-Path 'target\windows-hotspot-provider-release'
+          ).Path
+          $assets = @(
+            'rusty-hostess-hotspot-provider.exe',
+            'rusty-hostess-hotspot-provider.provenance.json',
+            'LICENSE',
+            'THIRD-PARTY-NOTICES.txt'
+          ) | ForEach-Object { Join-Path $releaseDirectory $_ }
+          $arguments = @(
+            'release',
+            'create',
+            $env:TAG_NAME
+          ) + $assets + @(
+            '--repo',
+            $env:GITHUB_REPOSITORY,
+            '--verify-tag',
+            '--title',
+            "Rusty Hostess Windows hotspot provider v$env:PROVIDER_VERSION",
+            '--notes',
+            (
+              "Immutable Authenticode-signed Windows x64 provider release. " +
+              "Verify the executable, exact public source commit/tree, " +
+              "dependencies, and companion documents through the attached provenance."
+            )
+          )
+          & gh @arguments
+          if ($LASTEXITCODE -ne 0) {
+            throw "GitHub Release creation failed; no existing release is replaced."
+          }
+
+          $release = gh api `
+            -H 'X-GitHub-Api-Version: 2026-03-10' `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:TAG_NAME" |
+            ConvertFrom-Json
+          $expectedAssets = @(
+            'LICENSE',
+            'THIRD-PARTY-NOTICES.txt',
+            'rusty-hostess-hotspot-provider.exe',
+            'rusty-hostess-hotspot-provider.provenance.json'
+          ) | Sort-Object
+          $observedAssets = @($release.assets.name | Sort-Object)
+          if ($release.tag_name -cne $env:TAG_NAME -or
+              [bool] $release.draft -or
+              -not [bool] $release.immutable -or
+              $null -ne (Compare-Object $expectedAssets $observedAssets)) {
+            throw "Published release readback does not match the immutable asset set."
+          }
+          foreach ($asset in @($release.assets)) {
+            $localAsset = Join-Path $releaseDirectory $asset.name
+            $localHash = (
+              Get-FileHash -Algorithm SHA256 -LiteralPath $localAsset
+            ).Hash.ToLowerInvariant()
+            $localDigest = "sha256:$localHash"
+            if (-not (Test-Path -LiteralPath $localAsset -PathType Leaf) -or
+                [long] $asset.size -ne
+                  (Get-Item -LiteralPath $localAsset).Length -or
+                $asset.digest -cne $localDigest) {
+              throw "Published asset digest does not match local staging: $($asset.name)"
+            }
+          }
+          Write-Host "Published immutable provider release: $($release.html_url)"
+
+      - name: Remove temporary signing material
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item `
+            -LiteralPath (Join-Path $env:RUNNER_TEMP 'rusty-hostess-authenticode.pfx') `
+            -Force `
+            -ErrorAction SilentlyContinue
