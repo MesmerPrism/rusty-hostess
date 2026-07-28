@@ -267,6 +267,9 @@ strict UTF-8, and parses JSON once before routing the schema from that same
 immutable value. Applying a loaded state is transactional: the complete
 candidate, descriptor/capsule identity, exact phase-key set, provider ranges,
 and compatibility rate are validated on a clone before live controls change.
+The saved `replay_layer.layer_token` is authoritative during reload; Hostess
+does not substitute another output merely because it shares the same numeric
+override.
 
 Saving a state does not contact a headset. Rusty Quest alone converts it:
 

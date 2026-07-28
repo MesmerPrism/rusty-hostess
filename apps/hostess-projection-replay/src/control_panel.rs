@@ -2217,6 +2217,34 @@ mod tests {
     }
 
     #[test]
+    fn persisted_replay_layer_token_controls_reload_when_override_is_ambiguous() {
+        let mut baseline = test_capsule();
+        baseline.outputs.push(OutputLayer {
+            name: "duplicate-override".to_string(),
+            override_value: 0.0,
+        });
+        let mut profile = stored_state_for_layer(&baseline, "duplicate-override", 0.0, None);
+        profile.state_id = "persisted-layer-reload".to_string();
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock")
+            .as_nanos();
+        let directory = std::env::temp_dir().join(format!(
+            "hostess-replay-layer-reload-{}-{nonce}",
+            std::process::id()
+        ));
+        let path = profile.write(&directory).expect("persisted state");
+        let reloaded = read_stored_control(&path, &baseline).expect("reloaded persisted state");
+        let mut controls =
+            ReplayControlState::from_capsule(&baseline, "final", None).expect("controls");
+        controls
+            .apply_control_profile(&reloaded, &baseline)
+            .expect("token-selected persisted state");
+        assert_eq!(controls.layer, "duplicate-override");
+        std::fs::remove_dir_all(directory).expect("remove test state");
+    }
+
+    #[test]
     fn stored_preview_layer_must_agree_with_replay_layer() {
         let baseline = test_capsule();
         let profile = stored_state_for_layer(&baseline, "final", 0.0, Some("raw-brightness"));
