@@ -282,6 +282,43 @@ generic code or sanitized sample fixtures.
   probes, including QCL-010/QCL-011 live report assembly. `connectivity_probe.py`
   may preserve facade imports and route dispatch, but LAN probing mechanics
   belong in the helper.
+- Keep `tools\windows_hotspot_provider` as the Windows Mobile Hotspot effect
+  owner for Fleet. It owns only strict Hostess request/receipt handling,
+  capability and fresh operational readback through
+  `NetworkOperatorTetheringManager`, bounded start/stop effects, replay
+  rejection, and private current-user generation-bound ownership state. It
+  uses write-ahead starting/active/stopping phases, strict private-state
+  migration/validation, fresh-readback reconciliation, a stable Windows boot
+  environment identifier, and a cross-session Global mutex. It
+  must not accept, expose, or persist SSID, passphrase, profile identity, path,
+  IP, or credentials; adopt an externally started hotspot; become Fleet
+  policy; or be conflated with QCL-011 observation or the QCL-041 Wi-Fi Direct
+  LegacySettings helper. Automated tests use injected backends and must not
+  mutate the live hotspot.
+- Keep the hotspot provider's exact `--describe-json` route target-free,
+  short-lived, and non-authorizing. It must run before stdin is read and
+  before the effect-runtime clock, Windows backend, state store, mutex, or
+  effect provider is initialized. Derive its action set from
+  `Protocol.Actions`, bind each action to closed discovery metadata, and fail
+  if those registries diverge. The
+  descriptor may name only the existing request/receipt contracts,
+  minimum external authentication requirements, Hostess effect owner, and
+  public exclusions; it must not expose execution inputs, configured hotspot
+  data, owner state, or release eligibility. Discovery metadata is not a
+  signed or publishable release artifact. Derive its version from assembly
+  metadata and enforce SemVer 2.0 core/prerelease rules plus the shared
+  lowercase-prerelease vocabulary; strip valid build metadata and fail closed
+  on malformed or misleading version metadata. Artifact publication,
+  release-metadata generation, and release validation must enforce the same
+  no-build-metadata provider-version predicate before rebuild or provenance
+  work begins.
+- Keep repo-local `tools\check_all.ps1` portable: it may skip the external
+  discovery validator when no contract root is supplied, but must say that
+  cross-repository acceptance remains incomplete. Cross-repository acceptance
+  must run `Test-WindowsHotspotProviderCapabilityDiscovery.ps1` separately or
+  invoke `check_all.ps1 -RequireProviderContract -ProviderContractRoot
+  <meta-quest-agent-workflow-root>`. Required integration mode fails closed
+  instead of inferring a sibling or machine path.
 - Keep `tools\hostessctl\connectivity_udp.py` as the QCL-080 UDP freshness
   owner. It owns the live QCL-080 report assembly, UDP sender/listener
   mechanics, Makepad runtime UDP sender setup, WPF listener-helper ingestion,

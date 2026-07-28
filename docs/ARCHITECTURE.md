@@ -12,6 +12,39 @@ registries, audit records, and scorecards.
 Hostess T owns platform packaging, permission probes, launch/install routes,
 small app UI surfaces, command bridging, and evidence export.
 
+## Windows Mobile Hotspot Effect Boundary
+
+`tools/windows_hotspot_provider` is the platform effect owner consumed by
+Rusty Fleet through a strict one-request/one-receipt process protocol. Hostess
+owns Windows Mobile Hotspot capability checks, bounded start/stop calls, fresh
+operational readback, replay protection, and a private generation-bound
+current-user ownership record. Fleet retains desired-state, scheduling, retry,
+and orchestration policy.
+
+This adapter is separate from QCL-011 observation and QCL-041 Wi-Fi Direct
+LegacySettings mechanics. It consumes the configured Windows Mobile Hotspot
+profile without accepting, returning, or persisting SSID, passphrase, profile
+identity, IP, path, or credential data. It never adopts an externally started
+hotspot and never treats the WinRT operation result alone as proof. See
+`docs/windows-mobile-hotspot-provider.md` for the public protocol.
+Same-generation ensure may restart a freshly Off owned hotspot while
+preserving ownership. Prior-boot generations cannot ensure or stop; only an
+explicit start against fresh Off state may replace stale ownership with a new
+generation, while fresh On state remains external.
+The private effect journal uses write-ahead starting/active/stopping phases,
+strict v1-to-v2 migration, and fresh-readback reconciliation so failed final
+writes cannot orphan an On effect or revive a completed stop. A stable Windows
+boot-environment GUID binds generations across wall-clock corrections, and a
+Global named mutex serializes same-user provider processes across sessions.
+
+An exact `--describe-json` route projects the existing `Protocol.Actions`
+registry through the shared provider-capability discovery contract before
+stdin, Windows, state, mutex, or effect initialization. That short-lived
+target-free document names typed contracts, minimum authentication
+requirements, Hostess effect ownership, receipt schema, and exclusions only.
+It is description rather than support, authorization, activation,
+owner-effective evidence, Fleet policy, or release metadata.
+
 ## Declarative Project Workflow Boundary
 
 `tools/hostessctl/project_runner.py` is the source-only Hostess orchestration

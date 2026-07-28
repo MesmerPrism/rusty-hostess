@@ -1095,6 +1095,14 @@
       "classification": "owner_input",
       "role": "contract_reference",
       "reason": "Hash-pinned owner input or checked-in selector reference; the foreign lane remains authoritative."
+    },
+    {
+      "schema_id": "rusty.quest.workflow.provider_capability_discovery.v1",
+      "path": "tools/windows_hotspot_provider/CapabilityDiscovery.cs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess projects the accepted read-only discovery contract from its own typed registry without taking schema or execution authority."
     }
   ]
 }

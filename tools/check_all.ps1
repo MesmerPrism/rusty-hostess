@@ -1,8 +1,16 @@
 param(
-    [switch]$IncludeMakepadLegacy
+    [switch]$IncludeMakepadLegacy,
+    [string]$ProviderContractRoot = "",
+    [switch]$RequireProviderContract
 )
 
 $ErrorActionPreference = "Stop"
+if ($RequireProviderContract -and
+    [string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
+    throw (
+        "-RequireProviderContract needs an explicit " +
+        "-ProviderContractRoot; no sibling or machine path is inferred.")
+}
 
 function Invoke-Checked {
     param(
@@ -171,6 +179,35 @@ try {
     }
     if (Test-Path "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj") {
         Invoke-Checked "WPF companion build" "dotnet" @("build", "apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj")
+    }
+    if (Test-Path "tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj") {
+        Invoke-Checked "Windows Mobile Hotspot provider tests" "dotnet" @(
+            "run", "--project",
+            "tests\RustyHostess.WindowsHotspot.Provider.Tests\RustyHostess.WindowsHotspot.Provider.Tests.csproj"
+        )
+        Invoke-Checked "Windows Mobile Hotspot provider artifact gate" "pwsh" @(
+            "-NoProfile", "-File", "tools\Test-WindowsHotspotProviderArtifact.ps1"
+        )
+        if ([string]::IsNullOrWhiteSpace($ProviderContractRoot)) {
+            Write-Host (
+                "[SKIP] Windows Mobile Hotspot provider shared-contract gate: " +
+                "standalone repo-local mode. Cross-repo acceptance must run " +
+                "Test-WindowsHotspotProviderCapabilityDiscovery.ps1 " +
+                "separately or pass -RequireProviderContract with an explicit " +
+                "-ProviderContractRoot.")
+        }
+        else {
+            Invoke-Checked `
+                "Windows Mobile Hotspot provider shared-contract gate" `
+                "pwsh" @(
+                    "-NoProfile",
+                    "-ExecutionPolicy", "Bypass",
+                    "-File",
+                    "tools\Test-WindowsHotspotProviderCapabilityDiscovery.ps1",
+                    "-ContractRoot",
+                    $ProviderContractRoot
+                )
+        }
     }
     if (Test-Path "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj") {
         Invoke-Checked "QCL-041 Wi-Fi Direct peer helper build" "dotnet" @("build", "tools\connectivity_probe\qcl041_wifi_direct_peer_helper\qcl041-wifi-direct-peer-helper.csproj")
