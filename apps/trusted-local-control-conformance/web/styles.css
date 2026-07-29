@@ -1,0 +1,59 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, sans-serif;
+  background: #111827;
+  color: #e5e7eb;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  width: min(42rem, calc(100% - 2rem));
+  margin: 2rem auto;
+}
+
+section {
+  border: 1px solid #374151;
+  border-radius: 0.75rem;
+  margin: 1rem 0;
+  padding: 1rem;
+  background: #1f2937;
+}
+
+form,
+.actions {
+  display: grid;
+  gap: 0.65rem;
+}
+
+input,
+select,
+button {
+  box-sizing: border-box;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  font: inherit;
+}
+
+button {
+  border: 0;
+  border-radius: 0.45rem;
+  background: #38bdf8;
+  color: #082f49;
+  font-weight: 700;
+}
+
+button:disabled {
+  opacity: 0.45;
+}
+
+.eyebrow {
+  color: #7dd3fc;
+  letter-spacing: 0.08em;
+}
+
+#security-note {
+  color: #fbbf24;
+}

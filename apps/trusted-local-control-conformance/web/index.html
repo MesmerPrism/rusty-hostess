@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quest local video control</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main>
+    <p class="eyebrow">trusted_local_http_v1</p>
+    <h1>Quest local video control</h1>
+    <p id="security-note">Trusted local network authentication; no confidentiality. Never send secrets.</p>
+
+    <section aria-labelledby="connection-title">
+      <h2 id="connection-title">Connection</h2>
+      <p id="listener-state">Listener: explicitly enabled for this bounded test window</p>
+      <form id="pair-form">
+        <label for="pairing-code">Single-use pairing code</label>
+        <input id="pairing-code" name="pairing_code" inputmode="numeric" maxlength="6" required>
+        <button type="submit">Pair</button>
+      </form>
+      <output id="connection-status">Not paired</output>
+    </section>
+
+    <section aria-labelledby="player-title">
+      <h2 id="player-title">Player</h2>
+      <p id="active-state">No state received</p>
+      <label for="video-select">Bundled video</label>
+      <select id="video-select" disabled></select>
+      <div class="actions">
+        <button id="select-video" type="button" disabled>Select video</button>
+        <button id="play" type="button" disabled>Play</button>
+        <button id="pause" type="button" disabled>Pause</button>
+      </div>
+      <ol id="events" aria-label="Recent control events"></ol>
+    </section>
+  </main>
+</body>
+</html>

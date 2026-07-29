@@ -1,0 +1,36 @@
+{
+  "schema": "rusty.hostess.trusted_local_control.manifold_fixture_receipts.v1",
+  "synthetic": true,
+  "source_authority": "rusty.manifold",
+  "purpose": "non-authoritative deterministic conformance oracle",
+  "templates": {
+    "listener_enabled": {
+      "decision": "accepted",
+      "receipt_kind": "listener_enabled"
+    },
+    "pair_accepted": {
+      "decision": "accepted",
+      "receipt_kind": "controller_lease_issued"
+    },
+    "pair_rejected": {
+      "decision": "rejected",
+      "receipt_kind": "pairing_rejected"
+    },
+    "command_accepted": {
+      "decision": "accepted",
+      "receipt_kind": "command_accepted"
+    },
+    "command_rejected": {
+      "decision": "rejected",
+      "receipt_kind": "command_rejected"
+    },
+    "controller_revoked": {
+      "decision": "accepted",
+      "receipt_kind": "controller_revoked"
+    },
+    "session_expired": {
+      "decision": "accepted",
+      "receipt_kind": "session_expired"
+    }
+  }
+}
