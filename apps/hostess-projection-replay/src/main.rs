@@ -268,6 +268,7 @@ fn control_transport_conformance(
         .zip(selected)
         .map(|(control, value)| (control.control_id.clone(), value))
         .collect();
+    let surface_feature_uniform_f32 = effective.projection.surface_feature_uniform.clone();
     let state = control_profile::ReplayControlState {
         schema: control_profile::REPLAY_CONTROL_STATE_SCHEMA.to_string(),
         state_id,
@@ -283,6 +284,7 @@ fn control_transport_conformance(
             displacement_uniform_f32: effective.projection.displacement_uniform,
             displacement_enabled: effective.projection.displacement_enabled,
             zone_uniform_f32: effective.projection.zone_uniform,
+            surface_feature_uniform_f32,
         },
         control_transport: Some(control_profile::ControlTransportState {
             transport_id: transport.transport_id,
@@ -371,7 +373,37 @@ fn render(args_capsule: PathBuf, args_out: PathBuf, adapter: Option<String>) -> 
             projection_push_bytes: capsule.projection.push_left.len() * 4,
             rgb_uniform_bytes: capsule.projection.rgb_uniform.len() * 4,
             displacement_uniform_bytes: capsule.projection.displacement_uniform.len() * 4,
+            projection_surface_uniform_bytes: capsule.projection_surface_uniform().len() * 4,
+            projection_surface_uniform_abi_version: if capsule
+                .projection
+                .surface_feature_uniform
+                .is_some()
+            {
+                2
+            } else {
+                1
+            },
+            projection_surface_uniform_prefix_bytes: capsule::SURFACE_UNIFORM_V1_BYTES,
+            projection_surface_uniform_suffix_bytes: if capsule
+                .projection
+                .surface_feature_uniform
+                .is_some()
+            {
+                capsule::SURFACE_UNIFORM_V2_BYTES - capsule::SURFACE_UNIFORM_V1_BYTES
+            } else {
+                0
+            },
+            projection_surface_uniform_stages: if capsule
+                .projection
+                .surface_feature_uniform
+                .is_some()
+            {
+                vec!["vertex", "fragment"]
+            } else {
+                vec!["vertex"]
+            },
             zone_uniform_bytes: capsule.projection.zone_uniform.len() * 4,
+            surface_features: capsule.surface_feature_evidence(true),
         },
     };
     let report_path = output_dir.join("replay-report.json");

@@ -68,6 +68,7 @@ pub(crate) enum Target {
     ProjectionPush { view: View, index: usize },
     GuidePush { view: View, index: usize },
     ProjectionZoneUniform { index: usize },
+    ProjectionSurfaceUniform { index: usize },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize, Serialize)]
@@ -130,7 +131,7 @@ impl ControlTransport {
             if !ids.insert(&control.control_id) {
                 bail!("duplicate phase control id");
             }
-            if control.label.as_bytes().len() > MAX_LABEL_BYTES {
+            if control.label.len() > MAX_LABEL_BYTES {
                 bail!("phase label exceeds 256 UTF-8 bytes");
             }
             bounds(
@@ -216,7 +217,9 @@ fn validate_target_object_fields(root: &serde_json::Value) -> Result<()> {
             .context("control target discriminator must be a string")?;
         let allowed: &[&str] = match kind {
             "projection-push" | "guide-push" => &["target", "view", "index", "scale", "offset"],
-            "projection-zone-uniform" => &["target", "index", "scale", "offset"],
+            "projection-zone-uniform" | "projection-surface-uniform" => {
+                &["target", "index", "scale", "offset"]
+            }
             _ => bail!("unsupported control target {kind}"),
         };
         if object.keys().any(|key| !allowed.contains(&key.as_str())) {
@@ -268,6 +271,19 @@ fn expanded_keys(target: &Target, capsule: &ReplayCapsule) -> Result<Vec<String>
             }
             return Ok(vec![format!("projection-zone-uniform:{index}")]);
         }
+        Target::ProjectionSurfaceUniform { index } => {
+            let surface = capsule
+                .projection
+                .surface_feature_uniform
+                .as_ref()
+                .context("projection-surface-uniform requires surface uniform ABI v2")?;
+            if !(16..=29).contains(index) || *index >= surface.len() {
+                bail!(
+                    "projection-surface-uniform may target only the neutral v2 suffix indices 16..=29"
+                );
+            }
+            return Ok(vec![format!("projection-surface-uniform:{index}")]);
+        }
     };
     let view = view.expect("push targets have a view");
     if matches!(view, View::Left | View::Both) && index >= left_len {
@@ -312,6 +328,15 @@ fn write_target(capsule: &mut ReplayCapsule, mapping: &TargetMapping, value: f32
                 .zone_uniform
                 .get_mut(index)
                 .context("projection-zone-uniform index changed after validation")? = written
+        }
+        Target::ProjectionSurfaceUniform { index } => {
+            *capsule
+                .projection
+                .surface_feature_uniform
+                .as_mut()
+                .context("projection-surface-uniform ABI changed after validation")?
+                .get_mut(index)
+                .context("projection-surface-uniform index changed after validation")? = written
         }
     }
     Ok(())
@@ -408,6 +433,7 @@ mod tests {
                 scissor_right: vec![0.0; 4],
                 rgb_uniform: vec![0.0; 24],
                 displacement_uniform: vec![0.0; 16],
+                surface_feature_uniform: None,
                 zone_uniform: vec![0.0; 92],
                 displacement_enabled: false,
             },
@@ -573,5 +599,52 @@ mod tests {
             transport.phase_controls[0].control_id = rejected;
             assert!(transport.validate(&capsule(), &"a".repeat(64)).is_err());
         }
+    }
+
+    #[test]
+    fn v2_transport_can_address_exact_mask_and_stretch_policy_without_prefix_writes() {
+        let mut capsule = capsule();
+        capsule.projection.surface_feature_uniform = Some(
+            crate::capsule::disabled_surface_feature_uniform(
+                &capsule.projection.displacement_uniform,
+                0,
+            )
+            .expect("surface"),
+        );
+        let mut transport = descriptor();
+        transport.clock = None;
+        transport.phase_controls[0].initial_phase = 0.0;
+        transport.phase_controls[0].default_phase = 0.0;
+        transport.phase_controls[0].rate_hz = 0.0;
+        transport.phase_controls[0].targets = vec![
+            TargetMapping {
+                target: Target::ProjectionSurfaceUniform { index: 23 },
+                scale: 0.0,
+                offset: 1.0,
+            },
+            TargetMapping {
+                target: Target::ProjectionSurfaceUniform { index: 28 },
+                scale: 0.0,
+                offset: 1.0,
+            },
+        ];
+        transport
+            .validate(&capsule, &"a".repeat(64))
+            .expect("v2 targets");
+        transport.apply(&mut capsule, 0.0, &[0.0]).expect("apply");
+        let surface = capsule
+            .projection
+            .surface_feature_uniform
+            .as_ref()
+            .expect("surface");
+        assert_eq!(surface[23], 1.0);
+        assert_eq!(surface[28], 1.0);
+
+        transport.phase_controls[0].targets =
+            vec![mapping(Target::ProjectionSurfaceUniform { index: 15 })];
+        assert!(transport.validate(&capsule, &"a".repeat(64)).is_err());
+        transport.phase_controls[0].targets =
+            vec![mapping(Target::ProjectionSurfaceUniform { index: 30 })];
+        assert!(transport.validate(&capsule, &"a".repeat(64)).is_err());
     }
 }

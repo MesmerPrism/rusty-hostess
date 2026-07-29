@@ -24,7 +24,10 @@ pub fn normalize(capsule: &ReplayCapsule) -> ReplayExecutionPlan {
         image("depth", true, "r32-sfloat"),
         image("video", true, "rgba8-unorm"),
         buffer("rgb-uniform", 96),
-        buffer("displacement-uniform", 64),
+        buffer(
+            "displacement-uniform",
+            capsule.projection_surface_uniform().len() as u64 * 4,
+        ),
         buffer("zone-uniform", 368),
     ];
     resources.extend(
@@ -78,7 +81,7 @@ pub fn normalize(capsule: &ReplayCapsule) -> ReplayExecutionPlan {
         shaders: vec![
             shader(
                 ShaderStage::Vertex,
-                if capsule.projection.displacement_enabled {
+                if capsule.tessellated_projection_requested() {
                     capsule
                         .shaders
                         .displacement_vertex_spirv
@@ -93,7 +96,7 @@ pub fn normalize(capsule: &ReplayCapsule) -> ReplayExecutionPlan {
                 &capsule.shaders.projection_fragment_spirv,
             ),
         ],
-        descriptor_bindings: projection_bindings(),
+        descriptor_bindings: projection_bindings(capsule),
         push_ranges: vec![PushRange {
             offset: 0,
             byte_size: 128,
@@ -193,7 +196,7 @@ fn guide_bindings(_index: usize) -> Vec<PlanDescriptorBinding> {
     bindings
 }
 
-fn projection_bindings() -> Vec<PlanDescriptorBinding> {
+fn projection_bindings(capsule: &ReplayCapsule) -> Vec<PlanDescriptorBinding> {
     let mut bindings = vec![
         sampled(0, 0, "camera-left", vec![ShaderStage::Fragment]),
         sampled(0, 1, "camera-right", vec![ShaderStage::Fragment]),
@@ -209,7 +212,17 @@ fn projection_bindings() -> Vec<PlanDescriptorBinding> {
     bindings.extend([
         sampled(2, 0, "depth", vec![ShaderStage::Fragment]),
         uniform(3, 0, "rgb-uniform", 96, vec![ShaderStage::Fragment]),
-        uniform(3, 1, "displacement-uniform", 64, vec![ShaderStage::Vertex]),
+        uniform(
+            3,
+            1,
+            "displacement-uniform",
+            capsule.projection_surface_uniform().len() as u64 * 4,
+            if capsule.projection.surface_feature_uniform.is_some() {
+                vec![ShaderStage::Vertex, ShaderStage::Fragment]
+            } else {
+                vec![ShaderStage::Vertex]
+            },
+        ),
         sampled(4, 0, "video", vec![ShaderStage::Fragment]),
         uniform(5, 0, "zone-uniform", 368, vec![ShaderStage::Fragment]),
     ]);
@@ -294,6 +307,7 @@ mod tests {
                 scissor_right: vec![0.0; 4],
                 rgb_uniform: vec![0.0; 24],
                 displacement_uniform: vec![0.0; 16],
+                surface_feature_uniform: None,
                 zone_uniform: vec![0.0; 92],
                 displacement_enabled: false,
             },
@@ -356,5 +370,41 @@ mod tests {
         assert!(plan.exports[5..]
             .iter()
             .all(|export| export.resource == "projection-output"));
+    }
+
+    #[test]
+    fn additive_surface_uniform_normalizes_to_128_bytes_and_fragment_visibility() {
+        let mut capsule = capsule();
+        capsule.shaders.displacement_vertex_spirv = Some(PathBuf::from("surface-tessellated.spv"));
+        let mut surface = crate::capsule::disabled_surface_feature_uniform(
+            &capsule.projection.displacement_uniform,
+            1,
+        )
+        .expect("surface uniform");
+        surface[16] = 1.0;
+        surface[17] = 1.0;
+        capsule.projection.surface_feature_uniform = Some(surface);
+        let plan = normalize(&capsule);
+        assert_eq!(
+            plan.resources
+                .iter()
+                .filter_map(|resource| resource.byte_size)
+                .collect::<Vec<_>>(),
+            vec![96, 128, 368]
+        );
+        let binding = plan.passes[6]
+            .descriptor_bindings
+            .iter()
+            .find(|binding| binding.set == 3 && binding.binding == 1)
+            .expect("surface binding");
+        assert_eq!(binding.byte_size, Some(128));
+        assert_eq!(
+            binding.stages,
+            vec![ShaderStage::Vertex, ShaderStage::Fragment]
+        );
+        assert_eq!(
+            plan.passes[6].shaders[0].path,
+            PathBuf::from("surface-tessellated.spv")
+        );
     }
 }

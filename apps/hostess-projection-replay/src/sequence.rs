@@ -155,6 +155,13 @@ pub(crate) fn prepare(
     if camera_only {
         capsule.inputs.video = ColorInput::Transparent;
         capsule.projection.displacement_enabled = false;
+        if capsule.projection.surface_feature_uniform.is_some() {
+            capsule.projection.surface_feature_uniform =
+                Some(crate::capsule::disabled_surface_feature_uniform(
+                    &capsule.projection.displacement_uniform,
+                    0,
+                )?);
+        }
         // ProjectionZoneUniform::zone starts after six vec4 rectangles.
         // coverage=0 selects the provider shader's legacy camera-only path;
         // debug=0 also prevents a stale synthetic diagnostic from leaking in.

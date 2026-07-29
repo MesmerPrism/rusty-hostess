@@ -54,6 +54,10 @@ acceptance policy. Capsules reference those inputs by path; Hostess records
 their hashes but does not import them into this repository. A future WPF page
 may project the replay report, but it must invoke the same CLI path and cannot
 hide alternate rendering logic in UI handlers.
+Descriptor set 3, binding 1 accepts the retained 64-byte surface prefix or an
+additive 128-byte neutral surface uniform. Hostess validates and replays the
+transport, projects requested/supported/render-effective evidence, and exposes
+generic controls; geometry and alpha formulas remain provider authority.
 `execution_plan.rs` owns fail-closed validation and deterministic normalization
 for the effect-neutral Hostess v2 capsule graph. `v1_compat.rs` is the explicit
 compatibility adapter from the unchanged v1 capsule to `ReplayExecutionPlan`;
