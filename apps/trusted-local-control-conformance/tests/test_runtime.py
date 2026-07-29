@@ -85,13 +85,13 @@ class RuntimeBoundaryTests(unittest.TestCase):
                 fixture,
                 "select_video",
                 request_id,
-                {"video_id": "synthetic-grid"},
+                {"video_id": "synthetic-blue-2s"},
             ),
         )
 
         self.assertTrue(response["accepted"])
         self.assertTrue(response["application_pending"])
-        self.assertEqual(fixture.player.selected_video_id, "synthetic-blue")
+        self.assertEqual(fixture.player.selected_video_id, "synthetic-grid-1s")
         self.assertFalse(fixture.player.playing)
         self.assertEqual(fixture.state_revision, 0)
         self.assertEqual(
@@ -102,7 +102,7 @@ class RuntimeBoundaryTests(unittest.TestCase):
         applied = fixture.apply_next_player_callback()
 
         self.assertIsNotNone(applied)
-        self.assertEqual(fixture.player.selected_video_id, "synthetic-grid")
+        self.assertEqual(fixture.player.selected_video_id, "synthetic-blue-2s")
         self.assertFalse(fixture.player.playing)
         self.assertEqual(applied["state"]["revision"], 1)
         self.assertEqual(applied["request_id"], request_id)
@@ -126,6 +126,46 @@ class RuntimeBoundaryTests(unittest.TestCase):
         self.assertTrue(fixture.player.playing)
         fixture.apply_next_player_callback()
         self.assertFalse(fixture.player.playing)
+
+    def test_query_results_match_the_quest_ui_projection(self) -> None:
+        fixture, token = paired_fixture()
+        state_result = fixture.handle_command(
+            session_token=token,
+            envelope=envelope(fixture, "get_state", "state-runtime-0001"),
+        )
+        projected_state = state_result["result"]["state"]
+
+        self.assertEqual(
+            set(projected_state),
+            {
+                "authority_revision",
+                "controller_connected",
+                "controller_label",
+                "enabled",
+                "player",
+            },
+        )
+        self.assertEqual(projected_state["player"], fixture.state())
+
+        videos_result = fixture.handle_command(
+            session_token=token,
+            envelope=envelope(fixture, "list_videos", "videos-runtime-001"),
+        )
+        self.assertEqual(
+            videos_result["result"]["videos"],
+            [
+                {
+                    "duration_ms": 1_000,
+                    "title": "Synthetic grid",
+                    "video_id": "synthetic-grid-1s",
+                },
+                {
+                    "duration_ms": 2_000,
+                    "title": "Synthetic blue",
+                    "video_id": "synthetic-blue-2s",
+                },
+            ],
+        )
 
     def test_replay_and_stale_revisions_fail_closed(self) -> None:
         fixture, token = paired_fixture()

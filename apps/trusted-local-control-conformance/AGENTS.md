@@ -34,8 +34,10 @@ Run from this directory:
 ```powershell
 python -m unittest discover -s tests -v
 python run_conformance.py
-python run_browser_smoke.py --quest-root path\to\rusty-quest
+python run_browser_smoke.py --browser msedge --quest-root path\to\rusty-quest
 ```
 
 The browser smoke exits with code `77` when `playwright-cli` is unavailable;
-that optional result does not block the standard-library unit suite.
+that optional result does not block the standard-library unit suite. It runs
+from a disposable directory and must pair, select without playing, play, and
+pause before making a browser claim.

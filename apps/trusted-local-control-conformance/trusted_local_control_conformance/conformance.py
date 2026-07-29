@@ -137,7 +137,7 @@ def exercise_fixture() -> dict[str, bool]:
             fixture,
             "select_video",
             select_id,
-            {"video_id": "synthetic-grid"},
+            {"video_id": "synthetic-blue-2s"},
         ),
     )
     accepted_index = next(
@@ -147,7 +147,7 @@ def exercise_fixture() -> dict[str, bool]:
     )
     checks["acceptance_not_effect"] = (
         select.get("accepted") is True
-        and fixture.player.selected_video_id == "synthetic-blue"
+        and fixture.player.selected_video_id == "synthetic-grid-1s"
         and fixture.state_revision == 0
     )
     applied = fixture.apply_next_player_callback()
@@ -164,7 +164,7 @@ def exercise_fixture() -> dict[str, bool]:
         and applied["state"]["revision"] == 1
     )
     checks["select_does_not_play"] = (
-        fixture.player.selected_video_id == "synthetic-grid"
+        fixture.player.selected_video_id == "synthetic-blue-2s"
         and fixture.player.playing is False
     )
 

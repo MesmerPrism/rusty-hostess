@@ -68,13 +68,18 @@ perform mDNS discovery, or infer an endpoint.
 If `playwright-cli` is already installed and its browser is already available:
 
 ```powershell
-python run_browser_smoke.py --quest-root path\to\rusty-quest
+python run_browser_smoke.py --browser msedge --quest-root path\to\rusty-quest
 ```
 
 The entrypoint starts the same port-`0` loopback fixture, opens its packaged UI,
-checks the visible disabled/no-confidentiality posture, and closes the browser.
+enters the synthetic one-use code, selects the other bundled video without
+starting it, plays, pauses, checks the final visible state, and closes the
+browser. It uses a unique Playwright session and disposable working directory.
 It never installs Playwright or downloads a browser. Missing prerequisites
-produce exit code `77` with a skip message.
+produce exit code `77` with a skip message. `--browser` accepts only `msedge`
+or `chrome`. Browser console errors fail the run except the browser's
+non-functional same-origin `/favicon.ico` probe, which is reported as a
+bounded ignored `favicon-404`.
 
 Use `--fixture-assets` only for an explicitly labeled Hostess fixture smoke; it
 does not support a Quest product-asset claim.

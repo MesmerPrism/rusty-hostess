@@ -41,13 +41,14 @@ class FakeClock:
 class Video:
     video_id: str
     title: str
+    duration_ms: int
     provenance: str
 
-    def as_dict(self) -> dict[str, str]:
+    def as_dict(self) -> dict[str, str | int]:
         return {
+            "duration_ms": self.duration_ms,
             "video_id": self.video_id,
             "title": self.title,
-            "provenance": self.provenance,
         }
 
 
@@ -56,8 +57,8 @@ class FakePlayer:
 
     def __init__(self) -> None:
         self.videos = (
-            Video("synthetic-blue", "Synthetic blue field", "generated-test-media"),
-            Video("synthetic-grid", "Synthetic calibration grid", "generated-test-media"),
+            Video("synthetic-grid-1s", "Synthetic grid", 1_000, "generated-test-media"),
+            Video("synthetic-blue-2s", "Synthetic blue", 2_000, "generated-test-media"),
         )
         self.selected_video_id = self.videos[0].video_id
         self.playing = False
@@ -462,7 +463,7 @@ class TrustedLocalControlFixture:
             "selected_video_id": self.player.selected_video_id,
         }
 
-    def list_videos(self) -> list[dict[str, str]]:
+    def list_videos(self) -> list[dict[str, str | int]]:
         return [video.as_dict() for video in self.player.videos]
 
     def handle_command(self, *, session_token: str, envelope: Any) -> dict[str, Any]:
@@ -568,7 +569,16 @@ class TrustedLocalControlFixture:
                 "protocol": build_descriptor()["profile"],
             }
         if command == "get_state":
-            return {"state": self.state(), "controller": self.authority.controller_state()}
+            controller = self.authority.controller_state()
+            return {
+                "state": {
+                    "authority_revision": controller["authority_revision"],
+                    "controller_connected": controller["controller_id"] is not None,
+                    "controller_label": controller["controller_id"],
+                    "enabled": controller["listener_enabled"],
+                    "player": self.state(),
+                }
+            }
         if command == "list_videos":
             return {"videos": self.list_videos()}
         raise AssertionError(f"unhandled query command {command}")

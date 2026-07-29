@@ -211,7 +211,7 @@ class LoopbackServerTests(unittest.TestCase):
                     "command": "select_video",
                     "expected_authority_revision": pair_response["authority_revision"],
                     "expected_player_revision": 0,
-                    "payload": {"video_id": "synthetic-grid"},
+                    "payload": {"video_id": "synthetic-blue-2s"},
                     "request_id": "select-loopback-001",
                 }
                 send_client_text(client, select)
@@ -219,7 +219,7 @@ class LoopbackServerTests(unittest.TestCase):
 
                 self.assertEqual(accepted["event"], "command_accepted")
                 self.assertEqual(accepted["request_id"], select["request_id"])
-                self.assertEqual(server.fixture.player.selected_video_id, "synthetic-blue")
+                self.assertEqual(server.fixture.player.selected_video_id, "synthetic-grid-1s")
                 self.assertEqual(server.fixture.state_revision, 0)
 
                 applied = server.fixture.apply_next_player_callback()
@@ -228,7 +228,7 @@ class LoopbackServerTests(unittest.TestCase):
 
                 self.assertEqual(observed["event"], "command_applied")
                 self.assertEqual(observed["request_id"], select["request_id"])
-                self.assertEqual(observed["state"]["selected_video_id"], "synthetic-grid")
+                self.assertEqual(observed["state"]["selected_video_id"], "synthetic-blue-2s")
                 self.assertFalse(observed["state"]["playing"])
                 self.assertEqual(observed["state"]["revision"], 1)
             finally:
