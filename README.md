@@ -63,8 +63,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `apps/hostess-projection-replay`: Windows/Linux offline Vulkan validation
   host for projection effects. It consumes an explicit replay capsule plus
   external SPIR-V and image/depth inputs, recreates the declared descriptor and
-  uniform ABI, writes guide/layer PNGs with a hash-bound report, and can loop a
-  Quest-owned packed stereo camera recording in a desktop window. Effect
+  64-byte or additive 128-byte surface-uniform ABI, writes guide/layer PNGs
+  with requested/supported/effective neutral markers in a hash-bound report,
+  and can loop a Quest-owned packed stereo camera recording in a desktop
+  window. Effect
   formulas, product presets, captured camera data, and private shader assets
   stay with the provider and are never copied into Hostess.
 - `tools/hostessctl/hostessctl.py`: compatibility facade for command dispatch,

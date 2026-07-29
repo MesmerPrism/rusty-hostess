@@ -11,7 +11,10 @@ use eframe::egui::{self, Color32, RichText, TextureHandle};
 use serde::Serialize;
 
 use crate::{
-    capsule::{ColorInput, ReplayCapsule},
+    capsule::{
+        validate_surface_feature_uniform, ColorInput, ReplayCapsule, SurfaceFeatureEvidence,
+        SURFACE_UNIFORM_V2_ABI_VERSION,
+    },
     control_profile::{
         profile_file_stem, profile_files, read_stored_control, ControlTransportState,
         DesktopPreviewProfile, ProjectionControlState,
@@ -203,6 +206,113 @@ enum SurfaceDisplacementPreset {
     Deep,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum SurfaceTopology {
+    Continuous,
+    Tiled,
+}
+
+impl SurfaceTopology {
+    fn from_uniform(value: f32) -> Self {
+        if value == 1.0 {
+            Self::Tiled
+        } else {
+            Self::Continuous
+        }
+    }
+
+    fn uniform(self) -> f32 {
+        if self == Self::Tiled {
+            1.0
+        } else {
+            0.0
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum SurfaceScope {
+    CoreAndStretch,
+    CoreOnly,
+}
+
+impl SurfaceScope {
+    fn from_uniform(value: f32) -> Self {
+        if value == 1.0 {
+            Self::CoreOnly
+        } else {
+            Self::CoreAndStretch
+        }
+    }
+
+    fn uniform(self) -> f32 {
+        if self == Self::CoreOnly {
+            1.0
+        } else {
+            0.0
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum InnerAlphaDriver {
+    Red,
+    Green,
+    Blue,
+    Luma,
+    Max,
+}
+
+impl InnerAlphaDriver {
+    fn from_uniform(value: f32) -> Self {
+        match value as i32 {
+            0 => Self::Red,
+            1 => Self::Green,
+            2 => Self::Blue,
+            4 => Self::Max,
+            _ => Self::Luma,
+        }
+    }
+
+    fn uniform(self) -> f32 {
+        match self {
+            Self::Red => 0.0,
+            Self::Green => 1.0,
+            Self::Blue => 2.0,
+            Self::Luma => 3.0,
+            Self::Max => 4.0,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+enum InnerAlphaStretchPolicy {
+    FollowProjection,
+    OpaqueIndependent,
+}
+
+impl InnerAlphaStretchPolicy {
+    fn from_uniform(value: f32) -> Self {
+        if value == 1.0 {
+            Self::OpaqueIndependent
+        } else {
+            Self::FollowProjection
+        }
+    }
+
+    fn uniform(self) -> f32 {
+        if self == Self::OpaqueIndependent {
+            1.0
+        } else {
+            0.0
+        }
+    }
+}
+
 impl SurfaceDisplacementPreset {
     fn from_capsule(capsule: &ReplayCapsule) -> Self {
         if !capsule.projection.displacement_enabled
@@ -242,6 +352,20 @@ struct ReplayControlState {
     rgb_channels: [RgbChannelControl; 3],
     projection_edge_guard_enabled: bool,
     surface_displacement: SurfaceDisplacementPreset,
+    surface_feature_abi_v2: bool,
+    surface_tiling_enabled: bool,
+    surface_topology: SurfaceTopology,
+    surface_tile_gap_normalized: f32,
+    surface_depth_flexibility: f32,
+    surface_scope: SurfaceScope,
+    inner_alpha_enabled: bool,
+    inner_alpha_driver: InnerAlphaDriver,
+    inner_alpha_threshold: f32,
+    inner_alpha_softness: f32,
+    inner_alpha_amount: f32,
+    inner_alpha_invert: bool,
+    inner_alpha_stretch_policy: InnerAlphaStretchPolicy,
+    inner_alpha_stretch_obeys_exact_projection_mask: bool,
     coverage: CoverageMode,
     stretch_source: StretchSource,
     debug_view: DebugView,
@@ -282,6 +406,7 @@ impl ReplayControlState {
                     .map(|control| control.initial_phase)
                     .collect()
             });
+        let surface = capsule.projection.surface_feature_uniform.as_deref();
         Ok(Self {
             layer: layer.to_string(),
             effect_clock_running: true,
@@ -304,6 +429,30 @@ impl ReplayControlState {
                 DISABLE_PROJECTION_EDGE_GUARD_FLAG,
             ),
             surface_displacement: SurfaceDisplacementPreset::from_capsule(capsule),
+            surface_feature_abi_v2: surface.is_some(),
+            surface_tiling_enabled: surface.is_some_and(|values| values[16] >= 0.5),
+            surface_topology: surface.map_or(SurfaceTopology::Continuous, |values| {
+                SurfaceTopology::from_uniform(values[17])
+            }),
+            surface_tile_gap_normalized: surface.map_or(0.0, |values| values[18]),
+            surface_depth_flexibility: surface.map_or(1.0, |values| values[19]),
+            surface_scope: surface.map_or(SurfaceScope::CoreAndStretch, |values| {
+                SurfaceScope::from_uniform(values[20])
+            }),
+            inner_alpha_enabled: surface.is_some_and(|values| values[21] >= 0.5),
+            inner_alpha_driver: surface.map_or(InnerAlphaDriver::Luma, |values| {
+                InnerAlphaDriver::from_uniform(values[22])
+            }),
+            inner_alpha_threshold: surface.map_or(0.5, |values| values[24]),
+            inner_alpha_softness: surface.map_or(0.1, |values| values[25]),
+            inner_alpha_amount: surface.map_or(0.0, |values| values[26]),
+            inner_alpha_invert: surface.is_some_and(|values| values[27] >= 0.5),
+            inner_alpha_stretch_policy: surface
+                .map_or(InnerAlphaStretchPolicy::FollowProjection, |values| {
+                    InnerAlphaStretchPolicy::from_uniform(values[23])
+                }),
+            inner_alpha_stretch_obeys_exact_projection_mask: surface
+                .is_some_and(|values| values[28] >= 0.5),
             coverage: CoverageMode::from_uniform(zone[24]),
             stretch_source: StretchSource::from_uniform(zone[25]),
             debug_view: DebugView::from_uniform(zone[26]),
@@ -392,6 +541,7 @@ impl ReplayControlState {
             1.0,
         );
         apply_surface_displacement(capsule, baseline, self)?;
+        apply_surface_features(capsule, self)?;
         Ok(())
     }
 
@@ -497,6 +647,47 @@ impl ReplayControlState {
             rgb_control_from_profile(&rgb_channel_transform.blue),
         ];
         self.surface_displacement = surface_preset_from_profile(&projection_surface_displacement);
+        match (
+            profile.projection.surface_feature_uniform_f32.as_deref(),
+            baseline.projection.surface_feature_uniform.as_deref(),
+        ) {
+            (Some(surface), Some(_)) => {
+                self.surface_feature_abi_v2 = true;
+                self.surface_tiling_enabled = surface[16] >= 0.5;
+                self.surface_topology = SurfaceTopology::from_uniform(surface[17]);
+                self.surface_tile_gap_normalized = surface[18];
+                self.surface_depth_flexibility = surface[19];
+                self.surface_scope = SurfaceScope::from_uniform(surface[20]);
+                self.inner_alpha_enabled = surface[21] >= 0.5;
+                self.inner_alpha_driver = InnerAlphaDriver::from_uniform(surface[22]);
+                self.inner_alpha_stretch_policy =
+                    InnerAlphaStretchPolicy::from_uniform(surface[23]);
+                self.inner_alpha_threshold = surface[24];
+                self.inner_alpha_softness = surface[25];
+                self.inner_alpha_amount = surface[26];
+                self.inner_alpha_invert = surface[27] >= 0.5;
+                self.inner_alpha_stretch_obeys_exact_projection_mask = surface[28] >= 0.5;
+            }
+            (Some(_), None) => {
+                bail!("control state requires projection surface uniform ABI v2")
+            }
+            (None, _) => {
+                self.surface_feature_abi_v2 = baseline.projection.surface_feature_uniform.is_some();
+                self.surface_tiling_enabled = false;
+                self.surface_topology = SurfaceTopology::Continuous;
+                self.surface_tile_gap_normalized = 0.0;
+                self.surface_depth_flexibility = 1.0;
+                self.surface_scope = SurfaceScope::CoreAndStretch;
+                self.inner_alpha_enabled = false;
+                self.inner_alpha_driver = InnerAlphaDriver::Luma;
+                self.inner_alpha_threshold = 0.5;
+                self.inner_alpha_softness = 0.1;
+                self.inner_alpha_amount = 0.0;
+                self.inner_alpha_invert = false;
+                self.inner_alpha_stretch_policy = InnerAlphaStretchPolicy::FollowProjection;
+                self.inner_alpha_stretch_obeys_exact_projection_mask = false;
+            }
+        }
 
         if let Some(desktop) = &profile.preview {
             self.effect_clock_speed = desktop.effect_clock_speed;
@@ -686,6 +877,62 @@ fn apply_surface_displacement(
     Ok(())
 }
 
+fn apply_surface_features(
+    capsule: &mut ReplayCapsule,
+    controls: &ReplayControlState,
+) -> Result<()> {
+    if controls.surface_tiling_enabled && capsule.shaders.displacement_vertex_spirv.is_none() {
+        bail!("surface tiling requires a tessellated projection vertex shader");
+    }
+    let Some(surface) = capsule.projection.surface_feature_uniform.as_mut() else {
+        if controls.surface_feature_abi_v2
+            || controls.surface_tiling_enabled
+            || controls.inner_alpha_enabled
+        {
+            bail!("capsule does not declare projection surface uniform ABI v2");
+        }
+        return Ok(());
+    };
+    if !controls.surface_feature_abi_v2 {
+        bail!(
+            "surface uniform ABI v2 controls cannot be disabled independently of the capsule ABI"
+        );
+    }
+    surface[..16].copy_from_slice(&capsule.projection.displacement_uniform);
+    if controls.surface_tiling_enabled {
+        surface[16] = 1.0;
+        surface[17] = controls.surface_topology.uniform();
+        surface[18] = controls.surface_tile_gap_normalized.clamp(0.0, 0.45);
+        surface[19] = controls.surface_depth_flexibility.clamp(0.0, 1.0);
+        surface[20] = controls.surface_scope.uniform();
+    } else {
+        surface[16..21].copy_from_slice(&[0.0, 0.0, 0.0, 1.0, 0.0]);
+    }
+    if controls.inner_alpha_enabled && controls.inner_alpha_amount > 0.0001 {
+        surface[21] = 1.0;
+        surface[22] = controls.inner_alpha_driver.uniform();
+        surface[23] = controls.inner_alpha_stretch_policy.uniform();
+        surface[24] = controls.inner_alpha_threshold.clamp(0.0, 1.0);
+        surface[25] = controls.inner_alpha_softness.clamp(0.001, 0.5);
+        surface[26] = controls.inner_alpha_amount.clamp(0.0, 1.0);
+        surface[27] = if controls.inner_alpha_invert {
+            1.0
+        } else {
+            0.0
+        };
+        surface[28] = if controls.inner_alpha_stretch_obeys_exact_projection_mask {
+            1.0
+        } else {
+            0.0
+        };
+    } else {
+        surface[21..29].copy_from_slice(&[0.0, 3.0, 0.0, 0.5, 0.1, 0.0, 0.0, 0.0]);
+    }
+    surface[30] = SURFACE_UNIFORM_V2_ABI_VERSION as f32;
+    surface[31] = 0.0;
+    validate_surface_feature_uniform(surface, &capsule.projection.displacement_uniform)
+}
+
 fn scale_packed_rect(target: &mut [f32], baseline: &[f32], scale: f32, x_min: f32, x_max: f32) {
     let rect = scaled_rect(&baseline[0..4], scale, x_min, x_max);
     target[0..4].copy_from_slice(&rect);
@@ -721,6 +968,7 @@ struct ControlReceipt<'a> {
     revision: u64,
     frame_index: usize,
     state: &'a ReplayControlState,
+    surface_features: SurfaceFeatureEvidence,
     effective_capsule_path: String,
     effective_capsule_sha256: String,
     rendered_png: String,
@@ -808,6 +1056,7 @@ struct ControlApp {
 }
 
 impl ControlApp {
+    #[allow(clippy::too_many_arguments)]
     fn new(
         creation_context: &eframe::CreationContext<'_>,
         sequence: PreparedSequence,
@@ -915,6 +1164,7 @@ impl ControlApp {
                     displacement_uniform_f32: capsule.projection.displacement_uniform.clone(),
                     displacement_enabled: capsule.projection.displacement_enabled,
                     zone_uniform_f32: capsule.projection.zone_uniform.clone(),
+                    surface_feature_uniform_f32: capsule.projection.surface_feature_uniform.clone(),
                 },
                 control_transport: self.controls.control_transport.as_ref().map(|transport| {
                     ControlTransportState {
@@ -1371,6 +1621,113 @@ impl ControlApp {
                 "Deep",
             );
         });
+        ui.label("Tiled surface");
+        if self.controls.surface_feature_abi_v2 {
+            ui.label(
+                RichText::new("Surface uniform ABI v2 · 128 bytes")
+                    .small()
+                    .color(Color32::from_rgb(99, 210, 255)),
+            );
+        } else {
+            ui.label(
+                RichText::new("Unavailable: capsule retains ABI v1 · 64 bytes")
+                    .small()
+                    .color(Color32::from_rgb(170, 179, 194)),
+            );
+        }
+        ui.add_enabled_ui(self.controls.surface_feature_abi_v2, |ui| {
+            ui.checkbox(&mut self.controls.surface_tiling_enabled, "Enable tiling");
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(
+                    &mut self.controls.surface_topology,
+                    SurfaceTopology::Continuous,
+                    "Continuous",
+                );
+                ui.selectable_value(
+                    &mut self.controls.surface_topology,
+                    SurfaceTopology::Tiled,
+                    "Tiled",
+                );
+            });
+            value_slider(
+                ui,
+                &mut self.controls.surface_tile_gap_normalized,
+                0.0..=0.45,
+                "Tile gap",
+            );
+            value_slider(
+                ui,
+                &mut self.controls.surface_depth_flexibility,
+                0.0..=1.0,
+                "Depth flexibility",
+            );
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(
+                    &mut self.controls.surface_scope,
+                    SurfaceScope::CoreAndStretch,
+                    "Core + stretch",
+                );
+                ui.selectable_value(
+                    &mut self.controls.surface_scope,
+                    SurfaceScope::CoreOnly,
+                    "Core only",
+                );
+            });
+
+            ui.label("Inner alpha");
+            ui.checkbox(
+                &mut self.controls.inner_alpha_enabled,
+                "Enable processed-core alpha",
+            );
+            ui.horizontal_wrapped(|ui| {
+                for (driver, label) in [
+                    (InnerAlphaDriver::Red, "Red"),
+                    (InnerAlphaDriver::Green, "Green"),
+                    (InnerAlphaDriver::Blue, "Blue"),
+                    (InnerAlphaDriver::Luma, "Luma"),
+                    (InnerAlphaDriver::Max, "Max"),
+                ] {
+                    ui.selectable_value(&mut self.controls.inner_alpha_driver, driver, label);
+                }
+            });
+            value_slider(
+                ui,
+                &mut self.controls.inner_alpha_threshold,
+                0.0..=1.0,
+                "Threshold",
+            );
+            value_slider(
+                ui,
+                &mut self.controls.inner_alpha_softness,
+                0.001..=0.5,
+                "Softness",
+            );
+            value_slider(
+                ui,
+                &mut self.controls.inner_alpha_amount,
+                0.0..=1.0,
+                "Amount",
+            );
+            ui.checkbox(&mut self.controls.inner_alpha_invert, "Invert driver");
+            ui.horizontal_wrapped(|ui| {
+                ui.selectable_value(
+                    &mut self.controls.inner_alpha_stretch_policy,
+                    InnerAlphaStretchPolicy::FollowProjection,
+                    "Follow projection",
+                );
+                ui.selectable_value(
+                    &mut self.controls.inner_alpha_stretch_policy,
+                    InnerAlphaStretchPolicy::OpaqueIndependent,
+                    "Opaque independent",
+                );
+            });
+            ui.checkbox(
+                &mut self
+                    .controls
+                    .inner_alpha_stretch_obeys_exact_projection_mask,
+                "Stretch obeys exact projection mask",
+            );
+        });
         ui.label("Projection effect edge guard");
         ui.horizontal_wrapped(|ui| {
             ui.selectable_value(&mut self.controls.projection_edge_guard_enabled, true, "On")
@@ -1806,6 +2163,7 @@ fn write_preview_evidence(task: EvidenceTask) -> Result<PathBuf> {
         revision: task.revision,
         frame_index: task.frame_index,
         state: &task.state,
+        surface_features: task.capsule.surface_feature_evidence(true),
         effective_capsule_path: effective_capsule_path.display().to_string(),
         effective_capsule_sha256: sha256_file(&effective_capsule_path)?,
         rendered_png: rendered_path.display().to_string(),
@@ -1911,6 +2269,7 @@ fn configure_style(context: &egui::Context) {
     });
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn run(
     sequence: PreparedSequence,
     capsule_path: &Path,
@@ -1932,6 +2291,17 @@ pub(crate) fn run(
     if camera_only {
         baseline_capsule.inputs.video = ColorInput::Transparent;
         baseline_capsule.projection.displacement_enabled = false;
+        if baseline_capsule
+            .projection
+            .surface_feature_uniform
+            .is_some()
+        {
+            baseline_capsule.projection.surface_feature_uniform =
+                Some(crate::capsule::disabled_surface_feature_uniform(
+                    &baseline_capsule.projection.displacement_uniform,
+                    0,
+                )?);
+        }
         baseline_capsule.projection.zone_uniform[24] = 0.0;
         baseline_capsule.projection.zone_uniform[26] = 0.0;
     }
@@ -2050,6 +2420,7 @@ mod tests {
                 scissor_right: vec![0.0; 4],
                 rgb_uniform,
                 displacement_uniform: vec![0.0; 16],
+                surface_feature_uniform: None,
                 zone_uniform,
                 displacement_enabled: false,
             },
@@ -2185,6 +2556,7 @@ mod tests {
                 displacement_uniform_f32: displacement,
                 displacement_enabled: false,
                 zone_uniform_f32: zone,
+                surface_feature_uniform_f32: None,
             },
             control_transport: None,
             preview: preview_layer.map(|token| DesktopPreviewProfile {
@@ -2554,6 +2926,112 @@ mod tests {
             .expect("apply off controls");
         assert!(!capsule.projection.displacement_enabled);
         assert_eq!(capsule.projection.displacement_uniform[0], 0.0);
+    }
+
+    #[test]
+    fn neutral_surface_controls_round_trip_exact_v2_suffix_and_independent_defaults() {
+        let mut baseline = test_capsule();
+        baseline.shaders.displacement_vertex_spirv = Some(PathBuf::from("surface.vert.spv"));
+        baseline.projection.surface_feature_uniform = Some(
+            crate::capsule::disabled_surface_feature_uniform(
+                &baseline.projection.displacement_uniform,
+                4,
+            )
+            .expect("surface"),
+        );
+        let mut capsule = baseline.clone();
+        let mut controls =
+            ReplayControlState::from_capsule(&baseline, "final", None).expect("controls");
+        controls.surface_tiling_enabled = true;
+        controls.surface_topology = SurfaceTopology::Tiled;
+        controls.surface_tile_gap_normalized = 0.08;
+        controls.surface_depth_flexibility = 0.0;
+        controls.surface_scope = SurfaceScope::CoreOnly;
+        controls.inner_alpha_enabled = true;
+        controls.inner_alpha_driver = InnerAlphaDriver::Max;
+        controls.inner_alpha_threshold = 0.4;
+        controls.inner_alpha_softness = 0.05;
+        controls.inner_alpha_amount = 0.75;
+        controls.inner_alpha_invert = true;
+        controls.inner_alpha_stretch_policy = InnerAlphaStretchPolicy::OpaqueIndependent;
+        controls.inner_alpha_stretch_obeys_exact_projection_mask = true;
+        controls
+            .apply_to_capsule(&mut capsule, &baseline)
+            .expect("apply features");
+        let surface = capsule
+            .projection
+            .surface_feature_uniform
+            .as_ref()
+            .expect("surface");
+        assert_eq!(
+            &surface[..16],
+            capsule.projection.displacement_uniform.as_slice()
+        );
+        assert_eq!(&surface[16..21], &[1.0, 1.0, 0.08, 0.0, 1.0]);
+        assert_eq!(&surface[21..24], &[1.0, 4.0, 1.0]);
+        assert_eq!(&surface[24..29], &[0.4, 0.05, 0.75, 1.0, 1.0]);
+        assert_eq!(&surface[29..], &[4.0, 2.0, 0.0]);
+
+        controls.inner_alpha_enabled = false;
+        controls
+            .apply_to_capsule(&mut capsule, &baseline)
+            .expect("disable alpha only");
+        let surface = capsule
+            .projection
+            .surface_feature_uniform
+            .as_ref()
+            .expect("surface");
+        assert_eq!(&surface[16..21], &[1.0, 1.0, 0.08, 0.0, 1.0]);
+        assert_eq!(&surface[21..29], &[0.0, 3.0, 0.0, 0.5, 0.1, 0.0, 0.0, 0.0]);
+    }
+
+    #[test]
+    fn stored_v2_surface_state_applies_transactionally_to_v2_capsule() {
+        let mut baseline = test_capsule();
+        baseline.shaders.displacement_vertex_spirv = Some(PathBuf::from("surface.vert.spv"));
+        baseline.projection.surface_feature_uniform = Some(
+            crate::capsule::disabled_surface_feature_uniform(
+                &baseline.projection.displacement_uniform,
+                3,
+            )
+            .expect("baseline surface"),
+        );
+        let mut profile = stored_state_for_layer(&baseline, "final", 0.0, None);
+        let mut surface = crate::capsule::disabled_surface_feature_uniform(
+            &profile.projection.displacement_uniform_f32,
+            3,
+        )
+        .expect("surface");
+        surface[16..21].copy_from_slice(&[1.0, 1.0, 0.12, 0.25, 1.0]);
+        surface[21..29].copy_from_slice(&[1.0, 2.0, 0.0, 0.6, 0.08, 0.9, 0.0, 1.0]);
+        profile.projection.surface_feature_uniform_f32 = Some(surface.clone());
+        let mut controls =
+            ReplayControlState::from_capsule(&baseline, "final", None).expect("controls");
+        controls
+            .apply_control_profile(&profile, &baseline)
+            .expect("apply profile");
+        let mut effective = baseline.clone();
+        controls
+            .apply_to_capsule(&mut effective, &baseline)
+            .expect("apply controls");
+        let effective_surface = effective
+            .projection
+            .surface_feature_uniform
+            .as_ref()
+            .expect("effective");
+        assert_eq!(
+            &effective_surface[..16],
+            effective.projection.displacement_uniform.as_slice()
+        );
+        assert_eq!(&effective_surface[16..], &surface[16..]);
+
+        let mut v1_baseline = test_capsule();
+        v1_baseline.projection.surface_feature_uniform = None;
+        let mut v1_controls =
+            ReplayControlState::from_capsule(&v1_baseline, "final", None).expect("v1 controls");
+        assert!(v1_controls
+            .apply_control_profile(&profile, &v1_baseline)
+            .is_err());
     }
 
     #[test]

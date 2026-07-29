@@ -38,7 +38,8 @@ capsule contract in this slice and binds:
 - independent left/right color sources, one packed video source, and a
   two-layer depth source;
 - exact 112-byte guide pushes, 128-byte projection pushes, 96-byte RGB
-  transport, 64-byte displacement transport, and 368-byte zone transport;
+  transport, a 64-byte displacement transport or additive 128-byte surface
+  transport, and 368-byte zone transport;
 - independent projection scissors and named output-layer override values.
 
 The packed video input may be a bounded `png-sequence` of one through 120
@@ -52,6 +53,18 @@ not sampled or flattened by Hostess.
 The runner uses Vulkan combined image samplers at sets 0, 1, 2, and 4 and
 uniform buffers at sets 3 and 5. It loads the referenced SPIR-V directly
 through Vulkan; it does not translate the provider shader to another language.
+
+The optional `projection.surface_feature_uniform` is the neutral public
+surface-uniform ABI v2. It contains exactly 32 finite floats at set 3,
+binding 1, visible to both vertex and fragment stages. Floats 0 through 15
+must exactly equal the existing 64-byte `displacement_uniform`; floats 16
+through 31 are the additive 64-byte suffix. Hostess accepts only ABI sizes 64
+and 128, validates the bounded neutral controls, revision, ABI version, and
+reserved field, and never assigns private formulas to them. The exact
+disabled-v2 identity uses continuous topology, zero gap, full depth
+flexibility, core-and-stretch scope, luma driver, zero amount,
+follow-projection stretch, and no exact-mask request. Omitting the additive
+block retains v1 behavior.
 
 The additive `rusty.hostess.projection_replay_capsule.v2` contract is an
 effect-neutral declarative graph. It declares bounded resources, graphics
@@ -95,9 +108,11 @@ apps\hostess-projection-replay\target\release\hostess-projection-replay.exe `
 The explicit v1 compatibility adapter projects the existing six guide passes
 onto the exact five-target reuse schedule
 `0,1,2,3,1,4`, retains the existing descriptor sets and bindings, 112-byte
-guide pushes, 128-byte projection pushes, 96/64/368-byte uniform buffers, five
-guide exports, and each named final export's output override. It does not
-replace or mutate the v1 capsule.
+guide pushes, 128-byte projection pushes, 96/64/368-byte uniform buffers for
+legacy capsules or 96/128/368 bytes for surface-uniform ABI v2, five guide
+exports, and each named final export's output override. The additive binding
+is vertex-and-fragment visible; the legacy 64-byte binding remains valid. The
+adapter does not replace or mutate the v1 capsule.
 
 `render`, `play-capture`, `control-capture`, provider controls, and portable
 profile authoring intentionally remain on the explicit v1 path. The
@@ -128,6 +143,11 @@ apps\hostess-projection-replay\target\release\hostess-projection-replay.exe `
 The output directory receives all five guide targets, each requested final
 layer, and `replay-report.json`. The report records the adapter, exact shader
 hashes, capsule hash, output hashes, alpha extrema, and accepted ABI sizes.
+For the additive surface transport it also records the actual ABI size,
+prefix/suffix sizes, descriptor stages, neutral control values, and separate
+requested, supported, and render-effective markers. `effective` means that an
+ABI-v2 provider capsule completed the Hostess Vulkan render with that request;
+it is desktop replay evidence, not Quest composition acceptance.
 
 Compare two runs, including runs from different Vulkan drivers:
 
@@ -198,10 +218,13 @@ capsule's declared output layers. The optional
 `rusty.hostess.projection_replay_control_transport.v1` sidecar is limited to
 64 KiB, binds the exact capsule v1 SHA-256, and declares an optional bounded
 clock plus up to eight opaque phase controls. Labels, initial/default values,
-ranges, rates, and projection-push, guide-push, or projection-zone-uniform
-destinations come only from that sidecar. Without it, no provider phase UI is
-shown and Hostess performs no implicit provider control writes. The UI also
-exposes clock speed, RGB off/independent/linked mode,
+ranges, rates, and projection-push, guide-push, projection-zone-uniform, or
+projection-surface-uniform destinations come only from that sidecar.
+Surface-uniform targets are limited to neutral suffix indices 16 through 29;
+the compatibility prefix, ABI version, and reserved word cannot be targeted.
+Without a sidecar, no provider phase UI is shown and Hostess performs no
+implicit provider control writes. The UI also exposes clock speed, RGB
+off/independent/linked mode,
 per-channel phase/rate/strength/image-scale/coverage-scale, edge behavior, and
 off/gentle/deep projection-surface displacement presets. A top-level
 stereo/mono preview switch can enlarge either eye for tuning without changing
@@ -210,6 +233,15 @@ controls cover coverage, projection and buffer footprint scale, an
 enabled-by-default projection-effect edge guard with an explicit unguarded A/B
 mode, stretch source/insets/curve, inner and outer blend-band width/curve, and
 normal/region/sample-UV views.
+
+When the capsule declares surface-uniform ABI v2, the same panel exposes only
+the neutral public controls: continuous/tiled topology, gap,
+rigid-to-flexible depth, core-and-stretch/core-only scope, and independently
+enabled processed-core inner alpha with red/green/blue/luma/max driver,
+threshold, softness, amount, inversion, follow-projection or
+opaque-independent stretch, and exact projection-mask following. ABI-v1
+capsules display those controls as unavailable rather than silently upgrading
+provider support. Both features remain disabled by default.
 
 The live path keeps its Vulkan device, shader pipelines, descriptors, guide
 targets, output target, and readback buffer alive. Shader time is sampled
@@ -239,6 +271,11 @@ projection scale, exact bounded capsule ABI control blocks, and desktop
 preview state. The 24-float RGB, 16-float displacement, and 92-float zone
 blocks remain effect-neutral and capsule-native; semantic interpretation is
 owned by the provider or consumer adapter.
+V2 states may additionally include `surface_feature_uniform_f32`, an exact
+32-float copy of the additive surface uniform. Its first 16 floats must match
+`displacement_uniform_f32`; ABI version must be 2 and the reserved value zero.
+V1 states reject this field. Existing v1 capsules and profiles remain valid
+without it.
 When a control transport is present, v2 stores descriptor-keyed selected
 values bound to the transport identifier and capsule SHA-256. V1 remains a
 read-only compatibility input: its former phase/rate pair is accepted only

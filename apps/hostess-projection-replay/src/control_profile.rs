@@ -8,7 +8,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::capsule::ReplayCapsule;
+use crate::capsule::{validate_surface_feature_uniform, ReplayCapsule};
 
 pub(crate) const LEGACY_CONTROL_PROFILE_SCHEMA: &str =
     "rusty.quest.spatial_camera_panel.control_profile.v1";
@@ -167,6 +167,8 @@ pub(crate) struct ProjectionControlState {
     pub(crate) displacement_uniform_f32: Vec<f32>,
     pub(crate) displacement_enabled: bool,
     pub(crate) zone_uniform_f32: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) surface_feature_uniform_f32: Option<Vec<f32>>,
 }
 
 impl LegacyControlProfile {
@@ -301,8 +303,12 @@ impl ReplayControlState {
                     }
                 }
             }
-        } else if self.control_transport.is_some() {
-            bail!("v1 control state must not contain v2 control_transport values");
+        } else if self.control_transport.is_some()
+            || self.projection.surface_feature_uniform_f32.is_some()
+        {
+            bail!(
+                "v1 control state must not contain v2 control_transport or surface feature values"
+            );
         }
         validate_profile_id(&self.state_id)?;
         if self.replay_layer.layer_token.trim().is_empty()
@@ -332,6 +338,9 @@ impl ReplayControlState {
             &self.projection.zone_uniform_f32,
             92,
         )?;
+        if let Some(surface) = &self.projection.surface_feature_uniform_f32 {
+            validate_surface_feature_uniform(surface, &self.projection.displacement_uniform_f32)?;
+        }
         // Reuse the bounds already enforced by the Hostess editor without assigning
         // provider semantics to the opaque ABI blocks.
         RgbTransformProfile::from_uniform(&self.projection.rgb_uniform_f32)?.validate()?;
@@ -403,6 +412,7 @@ impl ReplayControlState {
                     .projection_surface_displacement
                     .enabled,
                 zone_uniform_f32: zone,
+                surface_feature_uniform_f32: None,
             },
             control_transport: None,
             preview: legacy.desktop_preview.clone(),
@@ -1243,6 +1253,7 @@ mod tests {
                 scissor_right: vec![0.0; 4],
                 rgb_uniform: rgb,
                 displacement_uniform: displacement,
+                surface_feature_uniform: None,
                 zone_uniform: zone,
                 displacement_enabled: true,
             },
@@ -1301,6 +1312,7 @@ mod tests {
                 displacement_uniform_f32: source.projection.displacement_uniform,
                 displacement_enabled: true,
                 zone_uniform_f32: source.projection.zone_uniform,
+                surface_feature_uniform_f32: None,
             },
             control_transport: None,
             preview: Some(DesktopPreviewProfile {
@@ -1356,6 +1368,39 @@ mod tests {
         let mut short = state;
         short.projection.zone_uniform_f32.pop();
         assert!(short.validate().is_err());
+    }
+
+    #[test]
+    fn replay_v2_accepts_exact_surface_suffix_and_v1_rejects_it() {
+        let mut state = replay_state();
+        let surface = crate::capsule::disabled_surface_feature_uniform(
+            &state.projection.displacement_uniform_f32,
+            9,
+        )
+        .expect("surface");
+        state.projection.surface_feature_uniform_f32 = Some(surface);
+        state.validate().expect("v2 state");
+
+        let mut v1 = state.clone();
+        v1.schema = REPLAY_CONTROL_STATE_V1_SCHEMA.to_string();
+        assert!(v1.validate().is_err());
+    }
+
+    #[test]
+    fn replay_v2_rejects_surface_prefix_abi_and_reserved_damage() {
+        let state = replay_state();
+        let baseline = crate::capsule::disabled_surface_feature_uniform(
+            &state.projection.displacement_uniform_f32,
+            0,
+        )
+        .expect("surface");
+        for (index, value) in [(0, baseline[0] + 0.25), (30, 1.0), (31, 1.0)] {
+            let mut damaged = state.clone();
+            let mut surface = baseline.clone();
+            surface[index] = value;
+            damaged.projection.surface_feature_uniform_f32 = Some(surface);
+            assert!(damaged.validate().is_err(), "index {index}");
+        }
     }
 
     #[test]
