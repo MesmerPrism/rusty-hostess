@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+import _app_path  # noqa: F401 - repo-root unittest discovery bootstrap
+
 from trusted_local_control_conformance.fake_runtime import (
     FakeClock,
     FixtureManifoldPort,

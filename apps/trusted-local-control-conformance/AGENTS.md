@@ -34,7 +34,7 @@ Run from this directory:
 ```powershell
 python -m unittest discover -s tests -v
 python run_conformance.py
-python run_browser_smoke.py
+python run_browser_smoke.py --quest-root path\to\rusty-quest
 ```
 
 The browser smoke exits with code `77` when `playwright-cli` is unavailable;

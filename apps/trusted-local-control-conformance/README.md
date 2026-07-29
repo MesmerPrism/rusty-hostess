@@ -68,13 +68,16 @@ perform mDNS discovery, or infer an endpoint.
 If `playwright-cli` is already installed and its browser is already available:
 
 ```powershell
-python run_browser_smoke.py
+python run_browser_smoke.py --quest-root path\to\rusty-quest
 ```
 
 The entrypoint starts the same port-`0` loopback fixture, opens its packaged UI,
 checks the visible disabled/no-confidentiality posture, and closes the browser.
 It never installs Playwright or downloads a browser. Missing prerequisites
 produce exit code `77` with a skip message.
+
+Use `--fixture-assets` only for an explicitly labeled Hostess fixture smoke; it
+does not support a Quest product-asset claim.
 
 ## Non-scope
 

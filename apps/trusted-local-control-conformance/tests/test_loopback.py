@@ -7,6 +7,8 @@ import os
 import socket
 import unittest
 
+import _app_path  # noqa: F401 - repo-root unittest discovery bootstrap
+
 from trusted_local_control_conformance.contract import canonical_json_bytes
 from trusted_local_control_conformance.loopback_server import LoopbackTestServer
 
