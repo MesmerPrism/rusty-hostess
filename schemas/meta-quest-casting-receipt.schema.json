@@ -1,0 +1,559 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rusty.hostess.meta_quest_casting.receipt.v1",
+  "title": "Rusty Hostess Meta Quest Casting receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "action",
+    "operation_id",
+    "observed_at_utc",
+    "outcome",
+    "reason_code",
+    "authority",
+    "transport",
+    "compatibility",
+    "device",
+    "session",
+    "presentation",
+    "recording",
+    "cleanup",
+    "issues"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "rusty.hostess.meta_quest_casting.receipt.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "action": {
+      "enum": [
+        "doctor",
+        "start",
+        "status",
+        "stop"
+      ]
+    },
+    "operation_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "observed_at_utc": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "outcome": {
+      "enum": [
+        "pass",
+        "blocked",
+        "active",
+        "launched_unconfirmed",
+        "inactive",
+        "stopped",
+        "cleanup_incomplete"
+      ]
+    },
+    "reason_code": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 96
+    },
+    "authority": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "lifecycle_owner",
+        "casting_runtime_owner",
+        "device_service_owner"
+      ],
+      "properties": {
+        "lifecycle_owner": {
+          "const": "Rusty Hostess"
+        },
+        "casting_runtime_owner": {
+          "const": "Meta Platforms"
+        },
+        "device_service_owner": {
+          "const": "Meta Platforms"
+        }
+      }
+    },
+    "transport": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "owner",
+        "observability",
+        "frame_access",
+        "hostess_media_route"
+      ],
+      "properties": {
+        "owner": {
+          "const": "Meta Platforms"
+        },
+        "observability": {
+          "const": "opaque"
+        },
+        "frame_access": {
+          "const": false
+        },
+        "hostess_media_route": {
+          "const": false
+        }
+      }
+    },
+    "compatibility": {
+      "$ref": "#/$defs/compatibility"
+    },
+    "device": {
+      "$ref": "#/$defs/device"
+    },
+    "session": {
+      "$ref": "#/$defs/session"
+    },
+    "presentation": {
+      "$ref": "#/$defs/presentation"
+    },
+    "recording": {
+      "$ref": "#/$defs/recording"
+    },
+    "cleanup": {
+      "$ref": "#/$defs/cleanup"
+    },
+    "issues": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "detail"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "detail": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "compatibility": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "mqdh_version",
+        "mqdh_signature_status",
+        "mqdh_signer_thumbprint",
+        "mqdh_sha256",
+        "files_present",
+        "canonical_install_root",
+        "install_path_has_reparse_component",
+        "casting_is_reparse_point",
+        "adb_is_reparse_point",
+        "adb_dependency_is_reparse_point",
+        "signature_status",
+        "signer_subject",
+        "signer_thumbprint",
+        "casting_sha256",
+        "adb_signature_status",
+        "adb_signer_thumbprint",
+        "adb_sha256",
+        "adb_api_signature_status",
+        "adb_api_signer_thumbprint",
+        "adb_api_sha256",
+        "adb_usb_api_signature_status",
+        "adb_usb_api_signer_thumbprint",
+        "adb_usb_api_sha256",
+        "supported",
+        "profile_id",
+        "feature_profile_sha256",
+        "features"
+      ],
+      "properties": {
+        "mqdh_version": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "mqdh_signature_status": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "mqdh_signer_thumbprint": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{40}$"
+        },
+        "mqdh_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "files_present": {
+          "type": "boolean"
+        },
+        "canonical_install_root": {
+          "type": "boolean"
+        },
+        "install_path_has_reparse_component": {
+          "type": "boolean"
+        },
+        "casting_is_reparse_point": {
+          "type": "boolean"
+        },
+        "adb_is_reparse_point": {
+          "type": "boolean"
+        },
+        "adb_dependency_is_reparse_point": {
+          "type": "boolean"
+        },
+        "signature_status": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "signer_subject": {
+          "type": "string",
+          "maxLength": 512
+        },
+        "signer_thumbprint": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{40}$"
+        },
+        "casting_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "adb_signature_status": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "adb_signer_thumbprint": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{40}$"
+        },
+        "adb_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "adb_api_signature_status": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "adb_api_signer_thumbprint": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{40}$"
+        },
+        "adb_api_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "adb_usb_api_signature_status": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "adb_usb_api_signer_thumbprint": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{40}$"
+        },
+        "adb_usb_api_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "supported": {
+          "type": "boolean"
+        },
+        "profile_id": {
+          "type": "string",
+          "maxLength": 96
+        },
+        "feature_profile_sha256": {
+          "type": "string",
+          "pattern": "^$|^[A-F0-9]{64}$"
+        },
+        "features": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          }
+        }
+      }
+    },
+    "companion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "package",
+        "installed",
+        "version_name",
+        "version_code"
+      ],
+      "properties": {
+        "package": {
+          "const": "com.oculus.magicislandcastingservice"
+        },
+        "installed": {
+          "type": "boolean"
+        },
+        "version_name": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "version_code": {
+          "type": "string",
+          "pattern": "^$|^[0-9]{1,32}$"
+        }
+      }
+    },
+    "device": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "serial",
+        "state",
+        "product",
+        "model",
+        "device",
+        "transport_id",
+        "transport",
+        "companion"
+      ],
+      "properties": {
+        "serial": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "state": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "product": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "model": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "device": {
+          "type": "string",
+          "maxLength": 128
+        },
+        "transport_id": {
+          "type": "string",
+          "maxLength": 32
+        },
+        "transport": {
+          "enum": [
+            "usb",
+            "network"
+          ]
+        },
+        "companion": {
+          "$ref": "#/$defs/companion"
+        }
+      }
+    },
+    "session": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "session_id",
+        "phase",
+        "pid",
+        "process_creation_time_utc",
+        "main_window_observed"
+      ],
+      "properties": {
+        "session_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64
+        },
+        "phase": {
+          "enum": [
+            "starting",
+            "active",
+            "launched_unconfirmed",
+            "failed",
+            "stale",
+            "stopping",
+            "stopped",
+            "failed_pending_cleanup"
+          ]
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "process_creation_time_utc": {
+          "type": "string",
+          "maxLength": 64
+        },
+        "main_window_observed": {
+          "type": "boolean"
+        }
+      }
+    },
+    "presentation": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "window_observed",
+        "presentation_ready",
+        "cinematic_mode"
+      ],
+      "properties": {
+        "window_observed": {
+          "type": "boolean"
+        },
+        "presentation_ready": {
+          "enum": [
+            "unconfirmed",
+            "observed_ready",
+            "observed_not_ready"
+          ]
+        },
+        "cinematic_mode": {
+          "enum": [
+            "unconfirmed",
+            "observed_cinematic_16_9",
+            "observed_other"
+          ]
+        }
+      }
+    },
+    "recording": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "requested",
+        "active",
+        "finalized",
+        "artifact"
+      ],
+      "properties": {
+        "requested": {
+          "type": "boolean"
+        },
+        "active": {
+          "enum": [
+            "unconfirmed",
+            "observed_active",
+            "observed_inactive"
+          ]
+        },
+        "finalized": {
+          "enum": [
+            "unconfirmed",
+            "observed_finalized",
+            "observed_not_finalized"
+          ]
+        },
+        "artifact": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "size_bytes",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 1024
+            },
+            "size_bytes": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[A-F0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "cleanup": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "required": [
+        "identity_confirmed",
+        "graceful_close_requested",
+        "host_process_exited",
+        "forced_termination",
+        "device_session_stopped",
+        "fov_restored",
+        "cleanup_complete"
+      ],
+      "properties": {
+        "identity_confirmed": {
+          "type": "boolean"
+        },
+        "graceful_close_requested": {
+          "type": "boolean"
+        },
+        "host_process_exited": {
+          "type": "boolean"
+        },
+        "forced_termination": {
+          "const": false
+        },
+        "device_session_stopped": {
+          "enum": [
+            "unconfirmed",
+            "observed_stopped",
+            "observed_active"
+          ]
+        },
+        "fov_restored": {
+          "enum": [
+            "unconfirmed",
+            "observed_restored",
+            "observed_not_restored"
+          ]
+        },
+        "cleanup_complete": {
+          "type": "boolean"
+        }
+      }
+    }
+  }
+}
