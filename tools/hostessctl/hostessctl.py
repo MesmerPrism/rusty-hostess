@@ -33,6 +33,7 @@ from tools.hostessctl import device_link_report  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
+from tools.hostessctl import meta_quest_casting  # noqa: E402
 from tools.hostessctl import native_breathing_room_setup  # noqa: E402
 from tools.hostessctl import pmb_android_routes  # noqa: E402
 from tools.hostessctl import pmb_desktop_routes  # noqa: E402
@@ -198,6 +199,8 @@ def main() -> int:
 
 
 def dispatch_command(args: argparse.Namespace) -> int:
+    if args.command == "meta-quest-casting":
+        return meta_quest_casting.run_meta_quest_casting(args)
     if args.command == "install-android":
         return install_android(args)
     if args.command == "run-live":

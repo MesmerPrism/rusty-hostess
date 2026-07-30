@@ -77,6 +77,13 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   helpers.
 - `tools/hostessctl/runtime.py`: shared process execution helpers and repo-root
   resolution for command route modules.
+- `tools/hostessctl/meta_quest_casting.py` and
+  `meta_quest_casting_windows.py`: Windows-only experimental lifecycle adapter
+  for the separately installed Meta Quest Developer Hub Cast window. It owns
+  closed compatibility checks, exact-target preflight, Hostess process
+  identity, and bounded cleanup receipts while treating Meta's casting
+  transport, presentation, and recording as opaque. See
+  `docs/meta-quest-casting-adapter.md`.
 - `tools/hostessctl/live_capture_routes.py`: desktop live capture, Polar
   selected-module replay, Android live/replay launch, live evidence validation,
   and runtime artifact pulls.
