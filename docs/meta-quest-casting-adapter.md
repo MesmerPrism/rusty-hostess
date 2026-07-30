@@ -111,6 +111,19 @@ one process with the exact reviewed executable path and launch-session UUID.
 Status and stop additionally bind PID, creation time, executable path, and
 session UUID; stop sends no window input after an identity mismatch.
 
+## Interaction boundary
+
+The completed adapter is a supervised presentation provider, not an
+interactive remote-desktop route. Input forwarding, keyboard/controller
+forwarding, and the MQDH 2D-app panel surface are outside this validated slice.
+A successful Cinematic Cast session authorizes none of those actions and
+provides no input-effect receipt.
+
+Do not add them by driving undocumented Cast-window controls. A future
+interaction slice must pin its own Meta versions, use the officially supported
+resolution/mode for that capability, keep input acceptance separate from
+visual presentation, and prove cleanup independently.
+
 ## Live validation
 
 Live validation requires one exact Quest and appropriate external
@@ -138,9 +151,16 @@ Recording selector values from other Meta capture surfaces or older builds are
 historical evidence only and must not be copied into this contract without
 current Cast-window validation.
 
-The reviewed MQDH 6.4.1 matrix proved stable Hostess launch, live visual
-presentation, and a Cast overlay that explicitly reported Cinematic 16:9. It
-also proved exact graceful host-process shutdown without forced termination.
+The
+[sanitized reviewed-run summary](evidence/meta-quest-casting-mqdh-6.4.1-validation-summary.json)
+records stable Hostess launch, live visual presentation, and a Cast overlay
+that explicitly reported Cinematic 16:9 on MQDH 6.4.1. It also records exact
+graceful host-process shutdown without forced termination. The summary is
+hash-bound to the tested implementation and compatibility profile, but is not
+an owner-issued runtime receipt and intentionally excludes private raw logs and
+device identifiers.
+Input forwarding and 2D-app-panel interaction were not part of the accepted
+matrix and remain deferred.
 The Cast recorder control did not expose an observable active transition and
 produced no new host or Quest artifact in the isolated attempt, so recording
 remains operator-assisted/unproven. The Meta device service remained resident

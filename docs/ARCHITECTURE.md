@@ -694,7 +694,10 @@ observations separate from `presentation_ready`, Cinematic selection,
 recording requested/active/finalized state, artifact metadata, device-session
 stop, FOV restoration, and `cleanup_complete`; those effect claims remain
 unconfirmed until their own evidence is observed. The target-free `describe`
-route is metadata-only and explicitly non-authorizing. See
+route is metadata-only and explicitly non-authorizing. The completed provider
+slice covers supervised presentation only; input forwarding and arbitrary
+2D-panel interaction remain separate, unvalidated capabilities and cannot be
+inferred from a successful Cast session. See
 `docs/meta-quest-casting-adapter.md`.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode

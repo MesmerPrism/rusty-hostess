@@ -82,7 +82,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   for the separately installed Meta Quest Developer Hub Cast window. It owns
   closed compatibility checks, exact-target preflight, Hostess process
   identity, and bounded cleanup receipts while treating Meta's casting
-  transport, presentation, and recording as opaque. See
+  transport, presentation, and recording as opaque. The
+  [sanitized reviewed-run summary](docs/evidence/meta-quest-casting-mqdh-6.4.1-validation-summary.json)
+  records stable live Cinematic 16:9 presentation and graceful owned-host exit
+  on MQDH 6.4.1; recording, Meta device/FOV cleanup, input forwarding, and
+  arbitrary 2D-panel interaction remain unproven or out of scope. See
   `docs/meta-quest-casting-adapter.md`.
 - `tools/hostessctl/live_capture_routes.py`: desktop live capture, Polar
   selected-module replay, Android live/replay launch, live evidence validation,

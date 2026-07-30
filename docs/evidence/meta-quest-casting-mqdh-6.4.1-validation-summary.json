@@ -1,0 +1,73 @@
+{
+  "$schema": "rusty.hostess.meta_quest_casting.sanitized_validation_summary.v1",
+  "summary_id": "mqdh-6.4.1-cinematic-supervised-20260730",
+  "authority": "review_record_only",
+  "authorizes_execution": false,
+  "raw_evidence_published": false,
+  "subject_source_commit": "8b03676ee2573c4184c90346bbb8a9b78af4b078",
+  "compatibility_binding": {
+    "profile_id": "mqdh-6.4.1-high-pov-v1",
+    "mqdh_version": "6.4.1",
+    "mqdh_sha256": "A64EC9300B411074AEAB01A7A99F68ED193226B166B6C678B2FE872D1A01284F",
+    "casting_sha256": "C8ECD63A7BD17A9822FF1A39340BB5443BB3F5923682826CFA19D559D4AFE77F",
+    "companion_version_name": "2.0.0.0.7440",
+    "companion_version_code": "839205053"
+  },
+  "scope": {
+    "environment": "single reviewed Windows developer machine",
+    "operation": "supervised source-only local validation",
+    "distribution_claim": "none"
+  },
+  "claims": [
+    {
+      "claim": "stable_host_launch",
+      "owner": "rusty-hostess",
+      "status": "observed"
+    },
+    {
+      "claim": "live_visual_presentation",
+      "owner": "meta-casting-provider",
+      "status": "observed_by_operator"
+    },
+    {
+      "claim": "cinematic_16_9_label",
+      "owner": "meta-casting-provider",
+      "status": "observed_by_operator"
+    },
+    {
+      "claim": "graceful_owned_host_process_exit",
+      "owner": "rusty-hostess",
+      "status": "observed"
+    },
+    {
+      "claim": "recording_finalized_with_new_artifact",
+      "owner": "meta-casting-provider",
+      "status": "unproven"
+    },
+    {
+      "claim": "meta_device_session_stopped",
+      "owner": "meta-casting-provider",
+      "status": "unconfirmed"
+    },
+    {
+      "claim": "fov_restored",
+      "owner": "meta-casting-provider",
+      "status": "unconfirmed"
+    },
+    {
+      "claim": "input_forwarding",
+      "owner": "meta-casting-provider",
+      "status": "not_tested"
+    },
+    {
+      "claim": "arbitrary_2d_panel_interaction",
+      "owner": "meta-casting-provider",
+      "status": "not_tested"
+    }
+  ],
+  "limitations": [
+    "This sanitized summary is addressable review evidence, not an owner-issued runtime receipt.",
+    "Private raw logs and device identifiers are intentionally not published.",
+    "The observed presentation claims do not imply recording, input, device-session cleanup, FOV restoration, or general distribution readiness."
+  ]
+}

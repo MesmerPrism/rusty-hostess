@@ -214,6 +214,9 @@ generic code or sanitized sample fixtures.
   Manifold/Quest media source, expose raw launch arguments, manage the ADB
   daemon, redistribute Meta software, or infer presentation, recording,
   extended-FOV, or device-cleanup effectiveness from a process or window.
+  Keep input forwarding and arbitrary 2D-panel interaction outside this
+  provider until a separate exact-version validation proves their own
+  lifecycle, input-effect, and cleanup evidence.
 - Keep `tools\hostessctl\connectivity_media_product_plan.py` as the read-only
   QCL-082 product-media direct-Wi-Fi plan artifact owner. It may bind the
   existing Hostess CLI routes, dependencies, lease policy, and acceptance
