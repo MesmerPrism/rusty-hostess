@@ -809,9 +809,9 @@ The checker command remains the stable entrypoint; the
 the force-authority evidence family so new evidence families can be split
 without growing the CLI facade.
 
-The first camera-free Quest ADF proof is recorded at
-`S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
-`AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.
+The first camera-free Quest ADF proof is recorded under
+`<ignored-quest-makepad-adf-evidence-root>`; its exact APK SHA-256 remains in
+the ignored local evidence manifest.
 That run used generated/local effective settings selecting
 `makepad.sdf_adf.overlay_mode=adf`, staged recorded mesh replay files as
 app-private data-plane assets, and logged ADF-ready Matter runtime markers

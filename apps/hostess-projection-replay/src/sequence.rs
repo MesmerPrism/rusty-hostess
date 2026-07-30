@@ -11,7 +11,7 @@ use minifb::{Key, Window, WindowOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    capsule::{ColorInput, ReplayCapsule},
+    capsule::{ColorInput, ProjectionConfiguration, ReplayCapsule},
     sha256_file, vulkan,
 };
 
@@ -117,6 +117,21 @@ pub(crate) struct PreparedSequence {
     pub(crate) report_path: PathBuf,
 }
 
+fn apply_camera_only_projection_overrides(projection: &mut ProjectionConfiguration) -> Result<()> {
+    projection.displacement_enabled = false;
+    if projection.surface_feature_uniform.is_some() {
+        projection.surface_feature_uniform = Some(
+            crate::capsule::disabled_surface_feature_uniform(&projection.displacement_uniform, 0)?,
+        );
+    }
+    // ProjectionZoneUniform::zone starts after six vec4 rectangles.
+    // coverage=0 selects the provider shader's legacy camera-only path;
+    // debug=0 also prevents a stale synthetic diagnostic from leaking in.
+    projection.zone_uniform[24] = 0.0;
+    projection.zone_uniform[26] = 0.0;
+    Ok(())
+}
+
 pub(crate) fn prepare(
     capture_manifest: &Path,
     capsule_path: &Path,
@@ -154,19 +169,7 @@ pub(crate) fn prepare(
     };
     if camera_only {
         capsule.inputs.video = ColorInput::Transparent;
-        capsule.projection.displacement_enabled = false;
-        if capsule.projection.surface_feature_uniform.is_some() {
-            capsule.projection.surface_feature_uniform =
-                Some(crate::capsule::disabled_surface_feature_uniform(
-                    &capsule.projection.displacement_uniform,
-                    0,
-                )?);
-        }
-        // ProjectionZoneUniform::zone starts after six vec4 rectangles.
-        // coverage=0 selects the provider shader's legacy camera-only path;
-        // debug=0 also prevents a stale synthetic diagnostic from leaking in.
-        capsule.projection.zone_uniform[24] = 0.0;
-        capsule.projection.zone_uniform[26] = 0.0;
+        apply_camera_only_projection_overrides(&mut capsule.projection)?;
     }
     if let Some(paths) = &flat_video_frames {
         if !camera_only && paths.len() != 1 && paths.len() != manifest.frames.len() {
@@ -477,6 +480,65 @@ mod tests {
     fn capture_frame_path_rejects_traversal() {
         assert!(safe_child_path(Path::new("C:/capture"), "../frame.rgba").is_err());
         assert!(safe_child_path(Path::new("C:/capture"), "frame-0000.rgba").is_ok());
+    }
+
+    #[test]
+    fn camera_only_replay_resets_v2_surface_features_to_exact_disabled_identity() {
+        let displacement_uniform = (0..16).map(|index| index as f32 / 16.0).collect::<Vec<_>>();
+        let mut requested_surface =
+            crate::capsule::disabled_surface_feature_uniform(&displacement_uniform, 7)
+                .expect("valid surface uniform");
+        requested_surface[16] = 1.0;
+        requested_surface[17] = 1.0;
+        requested_surface[18] = 0.25;
+        requested_surface[19] = 0.0;
+        requested_surface[20] = 1.0;
+        requested_surface[21] = 1.0;
+        requested_surface[22] = 4.0;
+        requested_surface[23] = 1.0;
+        requested_surface[24] = 0.5;
+        requested_surface[25] = 0.1;
+        requested_surface[26] = 1.0;
+        requested_surface[27] = 1.0;
+        requested_surface[28] = 1.0;
+
+        let mut zone_uniform = vec![0.0; 92];
+        zone_uniform[24] = 2.0;
+        zone_uniform[25] = 1.0;
+        zone_uniform[26] = 3.0;
+        let mut projection = ProjectionConfiguration {
+            push_left: vec![0.0; 32],
+            push_right: vec![0.0; 32],
+            scissor_left: vec![0.0; 4],
+            scissor_right: vec![0.0; 4],
+            rgb_uniform: vec![0.0; 24],
+            displacement_uniform: displacement_uniform.clone(),
+            surface_feature_uniform: Some(requested_surface),
+            zone_uniform,
+            displacement_enabled: true,
+        };
+
+        apply_camera_only_projection_overrides(&mut projection)
+            .expect("camera-only projection overrides");
+
+        let expected_surface =
+            crate::capsule::disabled_surface_feature_uniform(&displacement_uniform, 0)
+                .expect("disabled surface uniform");
+        assert!(!projection.displacement_enabled);
+        assert_eq!(
+            projection.surface_feature_uniform.as_deref(),
+            Some(expected_surface.as_slice())
+        );
+        assert_eq!(
+            &projection
+                .surface_feature_uniform
+                .as_ref()
+                .expect("v2 surface")[..16],
+            projection.displacement_uniform.as_slice()
+        );
+        assert_eq!(projection.zone_uniform[24], 0.0);
+        assert_eq!(projection.zone_uniform[25], 1.0);
+        assert_eq!(projection.zone_uniform[26], 0.0);
     }
 
     #[test]
