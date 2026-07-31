@@ -2,41 +2,101 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/hostess-windows-complete-product.schema.json",
   "type": "object",
-  "required": ["schema", "product", "channel", "prerelease", "version", "release_tag", "source", "features", "authority_exclusions", "files"],
+  "required": ["schema", "product", "display_name", "channel", "prerelease", "version", "release_tag", "package_identity", "install_root", "state_root", "source", "runtimes", "typed_entrypoints", "features", "external_requirements", "authority_exclusions", "separately_released_products", "feedback", "signing", "files"],
   "properties": {
     "schema": {"const": "rusty.hostess.windows_complete_product.v1"},
     "product": {"const": "rusty-hostess-alpha"},
+    "display_name": {"const": "Rusty Hostess Alpha"},
     "channel": {"const": "alpha"},
     "prerelease": {"const": true},
-    "version": {"pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
-    "release_tag": {"pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[1-9][0-9]*$"},
+    "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "release_tag": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[1-9][0-9]*$"},
+    "package_identity": {"const": "rusty-hostess-alpha"},
+    "install_root": {"const": "%LOCALAPPDATA%\\RustyHostessAlpha"},
+    "state_root": {"const": "%LOCALAPPDATA%\\RustyHostessAlpha\\state"},
     "source": {
-      "type": "object",
-      "required": ["repository", "revision", "tree", "license"],
+      "type": "object", "required": ["repository", "revision", "tree", "license"],
       "properties": {
         "repository": {"const": "https://github.com/MesmerPrism/rusty-hostess"},
-        "revision": {"pattern": "^[0-9a-f]{40}$"},
-        "tree": {"pattern": "^[0-9a-f]{40}$"},
+        "revision": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+        "tree": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
         "license": {"const": "AGPL-3.0-or-later"}
-      },
-      "additionalProperties": false
+      }, "additionalProperties": false
     },
-    "features": {"type": "array", "contains": {"const": "meta-cinematic-cast-opaque-adapter"}},
-    "authority_exclusions": {"type": "array", "minItems": 6, "uniqueItems": true},
-    "files": {
-      "type": "array",
-      "minItems": 1,
+    "runtimes": {
+      "type": "object", "required": ["windows", "companion", "python"],
+      "properties": {
+        "windows": {"const": "10-or-later-x64"},
+        "companion": {"const": "self-contained-owner-signed-wpf"},
+        "python": {
+          "type": "object", "required": ["schema", "external", "version", "executable_sha256", "third_party_packages"],
+          "properties": {
+            "schema": {"const": "rusty.hostess.external_python_runtime.v1"},
+            "external": {"const": true},
+            "version": {"const": "3.12.10"},
+            "executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+            "third_party_packages": {"type": "array", "maxItems": 0}
+          }, "additionalProperties": false
+        }
+      }, "additionalProperties": false
+    },
+    "typed_entrypoints": {
+      "type": "array", "minItems": 3, "maxItems": 3,
       "items": {
-        "type": "object",
-        "required": ["path", "sha256", "size_bytes"],
+        "type": "object", "required": ["id", "command", "arbitrary_arguments"],
+        "properties": {
+          "id": {"enum": ["companion", "describe", "casting-describe"]},
+          "command": {"type": "string", "pattern": "^bootstrap/hostess-alpha\\.ps1 (companion|describe|casting-describe)$"},
+          "arbitrary_arguments": {"const": false}
+        }, "additionalProperties": false
+      }
+    },
+    "features": {"type": "array", "minItems": 6, "uniqueItems": true, "contains": {"const": "meta-cinematic-cast-opaque-adapter"}},
+    "external_requirements": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "required": ["id", "bundled", "user_supplied", "authority"],
+        "properties": {
+          "id": {"enum": ["meta-mqdh-casting", "python-runtime"]},
+          "bundled": {"const": false},
+          "user_supplied": {"const": true},
+          "authority": {"enum": ["Meta", "Python Software Foundation"]}
+        }, "additionalProperties": false
+      }
+    },
+    "authority_exclusions": {
+      "type": "array", "minItems": 6, "maxItems": 6, "uniqueItems": true,
+      "items": {"enum": ["meta-software-redistribution", "cast-presentation-effectiveness", "recording", "input-forwarding", "fov-restoration", "device-cleanup"]}
+    },
+    "separately_released_products": {"const": ["rusty-hostess-hotspot-provider"]},
+    "feedback": {
+      "type": "object", "required": ["url", "required", "prohibit"],
+      "properties": {
+        "url": {"const": "https://github.com/MesmerPrism/rusty-hostess/issues/new"},
+        "required": {"const": ["channel", "version", "source_revision", "artifact_sha256", "windows_version", "device_class"]},
+        "prohibit": {"const": ["credentials", "personal-data", "device-serials", "private-logs"]}
+      }, "additionalProperties": false
+    },
+    "signing": {
+      "type": "object", "required": ["authenticode_policy", "signer_thumbprint", "signer_certificate_sha256", "companion_executable_sha256"],
+      "properties": {
+        "authenticode_policy": {"const": "signtool-verify-pa"},
+        "signer_thumbprint": {"type": "string", "pattern": "^[0-9A-F]{40}$"},
+        "signer_certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "companion_executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}
+      }, "additionalProperties": false
+    },
+    "files": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "required": ["path", "sha256", "size_bytes"],
         "properties": {
           "path": {"type": "string", "pattern": "^[^\\\\]+(?:/[^\\\\]+)*$"},
-          "sha256": {"pattern": "^[0-9a-f]{64}$"},
+          "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
           "size_bytes": {"type": "integer", "minimum": 0}
-        },
-        "additionalProperties": false
+        }, "additionalProperties": false
       }
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

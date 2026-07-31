@@ -12,6 +12,11 @@ the exact clean source revision/tree, numeric artifact version, canonical
 `vX.Y.Z-alpha.N` tag, runtime requirements, feedback route, features, and
 authority exclusions. Alpha owns `rusty-hostess-alpha`,
 `%LOCALAPPDATA%\RustyHostessAlpha`, and its state/report descendants.
+The product bundle is not wholly self-contained: Python is external and
+fail-closed at CPython `3.12.10` plus an independently reviewed executable
+SHA-256. The enabled CLI routes use only the standard library; the manifest
+locks the third-party dependency set to empty. The WPF companion and bootstrap
+both enforce this fixed runtime contract and accept no arbitrary runtime path.
 
 The Cinematic Cast adapter is included as Hostess-owned source and remains
 experimental. MQDH, `Casting.exe`, Meta libraries/APKs/icons, recordings, and
@@ -22,11 +27,15 @@ recording, input, extended-FOV, Meta device-session, or device-cleanup effects.
 The distribution does not make the adapter suitable for unattended operation.
 
 The protected `windows-alpha-release` workflow requires owner signing
-credentials at execution, verifies an exact clean tag/revision/tree, creates
-only a GitHub prerelease with `--latest=false`, uploads a three-file closed
-asset set, and reads back exact tag, visibility, sizes, SHA-256 digests, and
-immutable exact-tag URLs. It rejects an existing release, mutable URLs,
-stable/alpha substitution, extra assets, or an alpha latest pointer.
+credentials at execution, verifies Authenticode with `signtool /pa`, and
+matches the signer thumbprint and certificate SHA-256 to independently
+protected pins. It records those values and the signed executable hash.
+After exact clean tag/revision/tree admission it creates a draft, uploads and
+verifies the three-file closed asset set, then publishes only a prerelease with
+`latest=false` and performs final readback. It rejects an existing release,
+mutable URLs, stable/alpha substitution, extra assets, or an alpha latest
+pointer. A failure leaves an explicit immutable incident for manual review;
+the workflow never deletes the release or pretends the same tag can be rerun.
 
 Synthetic validation:
 

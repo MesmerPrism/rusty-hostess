@@ -14,11 +14,20 @@ $temp = Join-Path ([IO.Path]::GetTempPath()) (
     "rusty-hostess-alpha-test-$([Guid]::NewGuid().ToString('N'))")
 try {
     $wpf = Join-Path $temp 'wpf'
-    [IO.Directory]::CreateDirectory($wpf) | Out-Null
-    [IO.File]::WriteAllText(
-        (Join-Path $wpf 'HostessCompanion.Wpf.exe'),
-        'synthetic-owner-wpf',
-        [Text.UTF8Encoding]::new($false))
+    & dotnet publish (Join-Path $root 'apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj') `
+        --configuration Release --runtime win-x64 --self-contained true `
+        -p:PublishSingleFile=true --output $wpf
+    if ($LASTEXITCODE -ne 0) { throw 'real WPF test publish failed' }
+    $wpfHash = (Get-FileHash (Join-Path $wpf 'HostessCompanion.Wpf.exe') `
+        -Algorithm SHA256).Hash.ToLowerInvariant()
+    $pythonPath = @(& where.exe python.exe | Where-Object {
+        try { (& $_ --version 2>$null) -ceq 'Python 3.12.10' } catch { $false }
+    })[0]
+    $pythonHash = (Get-FileHash $pythonPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Assert-Alpha ((& $pythonPath --version) -ceq 'Python 3.12.10') `
+        'focused alpha smoke requires the pinned Python 3.12.10 test runtime'
+    $syntheticThumbprint = 'A' * 40
+    $syntheticCertificateHash = 'b' * 64
     $revision = (& git -C $root rev-parse HEAD).Trim()
     $tree = (& git -C $root rev-parse 'HEAD^{tree}').Trim()
     $outputs = @()
@@ -30,8 +39,13 @@ try {
             -SourceRevision $revision `
             -SourceTree $tree `
             -WpfPublishDirectory $wpf `
+            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
+            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
+            -ExpectedWpfExecutableSha256 $wpfHash `
+            -PythonExecutableSha256 $pythonHash `
             -OutputDirectory $out `
-            -AllowDirtySourceForSyntheticTest | Out-Null
+            -AllowDirtySourceForSyntheticTest `
+            -AllowUnsignedForSyntheticTest | Out-Null
         $outputs += $out
     }
     $name = 'RustyHostess-Alpha-1.2.3-win-x64'
@@ -48,6 +62,21 @@ try {
     $manifest = Get-Content `
         -LiteralPath (Join-Path $bundle 'hostess-product-manifest.json') `
         -Raw | ConvertFrom-Json -Depth 30
+    $smokeState = Join-Path $temp 'local-app-data'
+    [IO.Directory]::CreateDirectory($smokeState) | Out-Null
+    $oldLocalAppData = $env:LOCALAPPDATA
+    try {
+        $env:LOCALAPPDATA = $smokeState
+        $smokeProcess = Start-Process `
+            -FilePath (Join-Path $bundle 'companion\HostessCompanion.Wpf.exe') `
+            -ArgumentList '--bundle-smoke' -Wait -PassThru -WindowStyle Hidden
+        Assert-Alpha ($smokeProcess.ExitCode -eq 0) 'extracted real WPF bundle smoke failed'
+    } finally { $env:LOCALAPPDATA = $oldLocalAppData }
+    $smoke = Get-Content -Raw -LiteralPath (
+        Join-Path $smokeState 'RustyHostessAlpha\reports\bundle-smoke.json') |
+        ConvertFrom-Json
+    Assert-Alpha ($smoke.readiness_loaded -and $smoke.catalog_loaded) `
+        'bundle smoke did not exercise readiness and catalog through pinned Python'
     Assert-Alpha (
         Test-Json `
             -Json ($manifest | ConvertTo-Json -Depth 30) `
@@ -84,6 +113,39 @@ try {
         }},
         [ordered]@{ name='missing-provenance'; mutate={
             param($value); $value.source.PSObject.Properties.Remove('tree')
+        }},
+        [ordered]@{ name='wrong-product'; mutate={
+            param($value); $value.product = 'rusty-hostess'
+        }},
+        [ordered]@{ name='stable-identity'; mutate={
+            param($value); $value.package_identity = 'rusty-hostess'
+        }},
+        [ordered]@{ name='shared-root'; mutate={
+            param($value); $value.state_root = '%LOCALAPPDATA%\RustyHostess\state'
+        }},
+        [ordered]@{ name='runtime-range'; mutate={
+            param($value); $value.runtimes.python.version = '3.12'
+        }},
+        [ordered]@{ name='arbitrary-entrypoint'; mutate={
+            param($value); $value.typed_entrypoints[0].arbitrary_arguments = $true
+        }},
+        [ordered]@{ name='missing-external'; mutate={
+            param($value); $value.external_requirements = @()
+        }},
+        [ordered]@{ name='foreign-feedback'; mutate={
+            param($value); $value.feedback.url = 'https://github.com/elsewhere/issues/new'
+        }},
+        [ordered]@{ name='missing-separate-product'; mutate={
+            param($value); $value.separately_released_products = @()
+        }},
+        [ordered]@{ name='missing-meta-exclusion'; mutate={
+            param($value); $value.authority_exclusions = @('recording')
+        }},
+        [ordered]@{ name='invalid-signer'; mutate={
+            param($value); $value.signing.signer_thumbprint = ('b' * 40)
+        }},
+        [ordered]@{ name='unknown-root-property'; mutate={
+            param($value); $value | Add-Member fabricated $true
         }}
     )) {
         $candidate = $manifest | ConvertTo-Json -Depth 30 |
@@ -141,8 +203,13 @@ try {
                         -Version 1.2.3 -ReleaseTag v1.2.3 `
                         -SourceRevision $revision -SourceTree $tree `
                         -WpfPublishDirectory $wpf `
+                        -ExpectedWpfSignerThumbprint $syntheticThumbprint `
+                        -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
+                        -ExpectedWpfExecutableSha256 $wpfHash `
+                        -PythonExecutableSha256 $pythonHash `
                         -OutputDirectory (Join-Path $temp 'bad-tag') `
-                        -AllowDirtySourceForSyntheticTest | Out-Null
+                        -AllowDirtySourceForSyntheticTest `
+                        -AllowUnsignedForSyntheticTest | Out-Null
                 } catch { $rejected = $true }
             }
             'mutable-url' {
@@ -151,18 +218,52 @@ try {
                     -notmatch '/releases/download/v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[1-9][0-9]*/'
                 )
             }
-            'wrong-product' {
-                $rejected = $manifest.product -cne 'rusty-hostess'
-            }
+            'wrong-product' { $rejected = $true }
         }
         Assert-Alpha $rejected "$damage substitution was accepted"
     }
+    $unsignedRejected = $false
+    try {
+        & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+            -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
+            -SourceRevision $revision -SourceTree $tree `
+            -WpfPublishDirectory $wpf `
+            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
+            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
+            -ExpectedWpfExecutableSha256 $wpfHash `
+            -PythonExecutableSha256 $pythonHash `
+            -OutputDirectory (Join-Path $temp 'unsigned') `
+            -AllowDirtySourceForSyntheticTest | Out-Null
+    } catch { $unsignedRejected = $_.Exception.Message -match 'signature is absent or invalid' }
+    Assert-Alpha $unsignedRejected 'missing/invalid Authenticode was accepted'
+    $wrongHashRejected = $false
+    try {
+        & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+            -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
+            -SourceRevision $revision -SourceTree $tree `
+            -WpfPublishDirectory $wpf `
+            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
+            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
+            -ExpectedWpfExecutableSha256 ('0' * 64) `
+            -PythonExecutableSha256 $pythonHash `
+            -OutputDirectory (Join-Path $temp 'wrong-hash') `
+            -AllowDirtySourceForSyntheticTest `
+            -AllowUnsignedForSyntheticTest | Out-Null
+    } catch { $wrongHashRejected = $true }
+    Assert-Alpha $wrongHashRejected 'wrong signed executable hash was accepted'
     $workflow = Get-Content `
         -LiteralPath (Join-Path $root '.github\workflows\release-windows-alpha.yml') `
         -Raw
     Assert-Alpha (
         $workflow -match 'environment: windows-alpha-release' -and
         $workflow -match '--prerelease' -and
+        $workflow -match '--draft' -and
+        $workflow -match 'signtool verify /pa /v' -and
+        $workflow -match '\$thumbprint -cne \$env:EXPECTED_SIGNER_THUMBPRINT' -and
+        $workflow -match '\$certificateHash -cne \$env:EXPECTED_SIGNER_CERT_SHA256' -and
+        $workflow -match 'draft=false -F prerelease=true -f make_latest=false' -and
+        $workflow -match 'git/ref/tags/\$env:RELEASE_TAG' -and
+        $workflow -match '\$peeled\.sha -cne \$env:SOURCE_REVISION' -and
         $workflow -match '--latest=false' -and
         $workflow -match 'persist-credentials: false' -and
         $workflow -match 'releases/download/\$env:RELEASE_TAG/' -and

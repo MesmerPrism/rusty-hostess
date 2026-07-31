@@ -71,6 +71,8 @@ jobs:
         env:
           WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
           WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.HOSTESS_ALPHA_SIGNER_THUMBPRINT }}
+          EXPECTED_SIGNER_CERT_SHA256: ${{ vars.HOSTESS_ALPHA_SIGNER_CERT_SHA256 }}
         run: |
           if (-not $env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 -or
               -not $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD) {
@@ -90,6 +92,21 @@ jobs:
               /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD `
               (Join-Path $env:RUNNER_TEMP 'hostess-wpf\HostessCompanion.Wpf.exe')
             if ($LASTEXITCODE -ne 0) { throw 'Hostess executable signing failed' }
+            $exe = Join-Path $env:RUNNER_TEMP 'hostess-wpf\HostessCompanion.Wpf.exe'
+            & $signtool verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode /pa verification failed' }
+            $signature = Get-AuthenticodeSignature -LiteralPath $exe
+            $thumbprint = $signature.SignerCertificate.Thumbprint.ToUpperInvariant()
+            $certificateHash = [Convert]::ToHexString(
+              [Security.Cryptography.SHA256]::HashData(
+                $signature.SignerCertificate.RawData)).ToLowerInvariant()
+            if ($env:EXPECTED_SIGNER_THUMBPRINT -cnotmatch '^[0-9A-F]{40}$' -or
+                $env:EXPECTED_SIGNER_CERT_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
+                $thumbprint -cne $env:EXPECTED_SIGNER_THUMBPRINT -or
+                $certificateHash -cne $env:EXPECTED_SIGNER_CERT_SHA256) {
+              throw 'signed executable does not match independently pinned owner signer'
+            }
+            "WPF_EXE_SHA256=$((Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
           }
           finally {
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
@@ -101,6 +118,9 @@ jobs:
           VERSION: ${{ inputs.version }}
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.HOSTESS_ALPHA_SIGNER_THUMBPRINT }}
+          EXPECTED_SIGNER_CERT_SHA256: ${{ vars.HOSTESS_ALPHA_SIGNER_CERT_SHA256 }}
+          PYTHON_EXE_SHA256: ${{ vars.HOSTESS_ALPHA_PYTHON_3_12_10_SHA256 }}
         run: |
           .\packaging\windows-alpha\New-HostessAlphaBundle.ps1 `
             -Version $env:VERSION `
@@ -108,6 +128,10 @@ jobs:
             -SourceRevision $env:SOURCE_REVISION `
             -SourceTree $env:SOURCE_TREE `
             -WpfPublishDirectory (Join-Path $env:RUNNER_TEMP 'hostess-wpf') `
+            -ExpectedWpfSignerThumbprint $env:EXPECTED_SIGNER_THUMBPRINT `
+            -ExpectedWpfSignerCertificateSha256 $env:EXPECTED_SIGNER_CERT_SHA256 `
+            -ExpectedWpfExecutableSha256 $env:WPF_EXE_SHA256 `
+            -PythonExecutableSha256 $env:PYTHON_EXE_SHA256 `
             -OutputDirectory (Join-Path $env:RUNNER_TEMP 'hostess-alpha') |
             Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'bundle-receipt.json')
 
@@ -128,10 +152,11 @@ jobs:
           & gh release create $env:RELEASE_TAG `
             --repo $env:GITHUB_REPOSITORY `
             --verify-tag `
+            --draft `
             --prerelease `
             --latest=false `
             --generate-notes
-          if ($LASTEXITCODE -ne 0) { throw 'alpha prerelease creation failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'alpha draft creation failed' }
 
       - name: Upload and close exact immutable asset set
         shell: pwsh
@@ -160,7 +185,7 @@ jobs:
             "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
             ConvertFrom-Json -Depth 30
           if ($release.tag_name -cne $env:RELEASE_TAG -or
-              $release.draft -ne $false -or
+              $release.draft -ne $true -or
               $release.prerelease -ne $true -or
               (@($release.assets.name | Sort-Object) -join "`n") -cne
                 ($expected -join "`n")) {
@@ -177,6 +202,44 @@ jobs:
                   "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($file.Name)") {
               throw "alpha asset readback failed: $($file.Name)"
             }
+          }
+          & gh api --method PATCH `
+            "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" `
+            -F draft=false -F prerelease=true -f make_latest=false | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw 'alpha draft publication failed; immutable draft requires manual incident review'
+          }
+          $published = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json -Depth 30
+          if ($published.draft -ne $false -or $published.prerelease -ne $true -or
+              (@($published.assets.name | Sort-Object) -join "`n") -cne
+                ($expected -join "`n")) {
+            throw 'published alpha final readback is not exact'
+          }
+          foreach ($file in $files) {
+            $remote = @($published.assets | Where-Object name -CEQ $file.Name)
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
+              Hash.ToLowerInvariant()
+            if ($remote.Count -ne 1 -or $remote[0].size -ne $file.Length -or
+                $remote[0].digest -cne "sha256:$hash") {
+              throw "published alpha asset final readback failed: $($file.Name)"
+            }
+          }
+          $tagRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'alpha tag ref readback failed' }
+          $peeled = $tagRef.object
+          while ($peeled.type -ceq 'tag') {
+            $peeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($peeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) { throw 'annotated alpha tag peel failed' }
+          }
+          if ($peeled.type -cne 'commit' -or
+              $peeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'alpha tag ref does not peel to the reviewed source revision'
           }
           $latestRaw = & gh api --include `
             "repos/$env:GITHUB_REPOSITORY/releases/latest" 2>&1
@@ -195,3 +258,25 @@ jobs:
               throw 'alpha prerelease became latest'
             }
           }
+
+      - name: Record immutable release incident
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $incident = [ordered]@{
+            schema = 'rusty.hostess.alpha_release_incident.v1'
+            tag = $env:RELEASE_TAG
+            disposition = 'manual-review-required'
+            automatic_delete_or_rerun = $false
+          }
+          $path = Join-Path $env:RUNNER_TEMP 'hostess-alpha-release-incident.json'
+          [IO.File]::WriteAllText($path, ($incident | ConvertTo-Json) + "`n")
+          Write-Error 'Alpha release failed; do not rerun or delete a draft automatically. Review the exact tag and release manually.' -ErrorAction Continue
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: hostess-alpha-release-incident
+          path: ${{ runner.temp }}/hostess-alpha-release-incident.json

@@ -642,7 +642,7 @@ public sealed class HostessctlConnectivityService
     {
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python",
+            FileName = HostessctlServicePaths.ResolvePythonExecutable(repoRoot),
             WorkingDirectory = repoRoot.FullName,
             UseShellExecute = false,
             RedirectStandardOutput = true,
