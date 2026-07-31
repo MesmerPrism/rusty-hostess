@@ -1,0 +1,197 @@
+name: Hostess complete-product Windows alpha
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Numeric immutable artifact version X.Y.Z
+        required: true
+        type: string
+      tag:
+        description: Exact canonical vX.Y.Z-alpha.N tag
+        required: true
+        type: string
+      source_revision:
+        description: Exact reviewed 40-character source revision
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  alpha:
+    environment: windows-alpha-release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate exact alpha source
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          if ($env:VERSION -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$' -or
+              $env:RELEASE_TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[1-9][0-9]*$' -or
+              $env:SOURCE_REVISION -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:RELEASE_TAG -cnotmatch "^v$([regex]::Escape($env:VERSION))-alpha\.[1-9][0-9]*$") {
+            throw 'alpha version, tag, or revision is malformed'
+          }
+          & git switch --detach $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'exact alpha tag checkout failed' }
+          $head = (& git rev-parse HEAD).Trim()
+          $tagCommit = (& git rev-parse "$env:RELEASE_TAG^{commit}").Trim()
+          if ($head -cne $env:SOURCE_REVISION -or
+              $tagCommit -cne $env:SOURCE_REVISION -or
+              @(& git status --porcelain=v1 --untracked-files=no).Count -ne 0) {
+            throw 'alpha tag does not bind the exact clean source revision'
+          }
+          "SOURCE_TREE=$((& git rev-parse 'HEAD^{tree}').Trim())" >> $env:GITHUB_ENV
+
+      - name: Publish complete WPF companion
+        shell: pwsh
+        run: |
+          dotnet publish .\apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            --output (Join-Path $env:RUNNER_TEMP 'hostess-wpf')
+          if ($LASTEXITCODE -ne 0) { throw 'WPF companion publish failed' }
+
+      - name: Sign Hostess-owned executable
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          if (-not $env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 -or
+              -not $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD) {
+            throw 'protected Hostess signing credentials are absent'
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'hostess-alpha-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes(
+              $pfx,
+              [Convert]::FromBase64String(
+                $env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64
+              )
+            )
+            $signtool = (Get-Command signtool.exe -ErrorAction Stop).Source
+            & $signtool sign /fd SHA256 /td SHA256 /tr `
+              http://timestamp.digicert.com /f $pfx `
+              /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD `
+              (Join-Path $env:RUNNER_TEMP 'hostess-wpf\HostessCompanion.Wpf.exe')
+            if ($LASTEXITCODE -ne 0) { throw 'Hostess executable signing failed' }
+          }
+          finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build deterministic complete-product alpha
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          .\packaging\windows-alpha\New-HostessAlphaBundle.ps1 `
+            -Version $env:VERSION `
+            -ReleaseTag $env:RELEASE_TAG `
+            -SourceRevision $env:SOURCE_REVISION `
+            -SourceTree $env:SOURCE_TREE `
+            -WpfPublishDirectory (Join-Path $env:RUNNER_TEMP 'hostess-wpf') `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'hostess-alpha') |
+            Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'bundle-receipt.json')
+
+      - name: Create prerelease only after authoritative absence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $endpoint = "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
+          $probe = & gh api --include $endpoint 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            throw 'exact alpha release already exists'
+          }
+          if (($probe -join "`n") -cnotmatch '(?m)^HTTP/\S+\s+404(?:\s|$)') {
+            throw 'alpha release absence was not an authoritative 404'
+          }
+          & gh release create $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --verify-tag `
+            --prerelease `
+            --latest=false `
+            --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'alpha prerelease creation failed' }
+
+      - name: Upload and close exact immutable asset set
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'hostess-alpha'
+          $stem = "RustyHostess-Alpha-$env:VERSION-win-x64"
+          $expected = @(
+            "$stem.zip",
+            "$stem.zip.sha256",
+            "$stem.manifest.json"
+          ) | Sort-Object
+          $files = @(Get-ChildItem -LiteralPath $root -File)
+          if (($files.Name | Sort-Object) -join "`n" -cne
+              $expected -join "`n") {
+            throw 'local alpha asset set is not closed'
+          }
+          & gh release upload $env:RELEASE_TAG @($files.FullName) `
+            --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'alpha asset upload failed' }
+          $release = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json -Depth 30
+          if ($release.tag_name -cne $env:RELEASE_TAG -or
+              $release.draft -ne $false -or
+              $release.prerelease -ne $true -or
+              (@($release.assets.name | Sort-Object) -join "`n") -cne
+                ($expected -join "`n")) {
+            throw 'alpha prerelease readback is not exact'
+          }
+          foreach ($file in $files) {
+            $remote = @($release.assets | Where-Object name -CEQ $file.Name)
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
+              Hash.ToLowerInvariant()
+            if ($remote.Count -ne 1 -or
+                $remote[0].size -ne $file.Length -or
+                $remote[0].digest -cne "sha256:$hash" -or
+                $remote[0].browser_download_url -cne
+                  "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($file.Name)") {
+              throw "alpha asset readback failed: $($file.Name)"
+            }
+          }
+          $latestRaw = & gh api --include `
+            "repos/$env:GITHUB_REPOSITORY/releases/latest" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            if (($latestRaw -join "`n") -cnotmatch
+                '(?m)^HTTP/\S+\s+404(?:\s|$)') {
+              throw 'latest release readback failed'
+            }
+          }
+          else {
+            $latest = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/releases/latest") |
+              ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or
+                $latest.tag_name -ceq $env:RELEASE_TAG) {
+              throw 'alpha prerelease became latest'
+            }
+          }
