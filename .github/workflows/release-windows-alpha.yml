@@ -319,7 +319,7 @@ jobs:
           $path = Join-Path $env:RUNNER_TEMP 'hostess-alpha-release-incident.json'
           [IO.File]::WriteAllText($path, ($incident | ConvertTo-Json) + "`n")
           Write-Error 'Alpha release failed; do not rerun or delete a draft automatically. Review the exact tag and release manually.' -ErrorAction Continue
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
           name: hostess-alpha-release-incident

@@ -324,6 +324,8 @@ try {
         '& gh api --method PATCH',
         [StringComparison]::Ordinal)
     Assert-Alpha (
+        $workflow -match 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' -and
+        $workflow -match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' -and
         $workflow -match 'environment: windows-alpha-release' -and
         $workflow -match '--prerelease' -and
         $workflow -match '--draft' -and

@@ -25,6 +25,18 @@ function Assert-WorkflowContains {
 
 foreach ($requirement in @(
     @{
+        Pattern = 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1'
+        Message = "Release workflow must pin checkout to the reviewed immutable revision."
+    },
+    @{
+        Pattern = 'actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1'
+        Message = "Release workflow must pin setup-dotnet to the reviewed immutable revision."
+    },
+    @{
+        Pattern = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a'
+        Message = "Release workflow must pin upload-artifact to the reviewed immutable revision."
+    },
+    @{
         Pattern = '(?m)^\s+- "windows-hotspot-provider-v\*"\s*$'
         Message = "Release workflow must be restricted to provider-owned version tags."
     },
