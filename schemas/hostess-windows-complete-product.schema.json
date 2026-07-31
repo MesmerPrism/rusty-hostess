@@ -41,7 +41,12 @@
       }, "additionalProperties": false
     },
     "typed_entrypoints": {
-      "type": "array", "minItems": 3, "maxItems": 3,
+      "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
+      "allOf": [
+        {"contains": {"const": {"id": "companion", "command": "bootstrap/hostess-alpha.ps1 companion", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"const": {"id": "describe", "command": "bootstrap/hostess-alpha.ps1 describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"const": {"id": "casting-describe", "command": "bootstrap/hostess-alpha.ps1 casting-describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1}
+      ],
       "items": {
         "type": "object", "required": ["id", "command", "arbitrary_arguments"],
         "properties": {
@@ -53,7 +58,11 @@
     },
     "features": {"type": "array", "minItems": 6, "uniqueItems": true, "contains": {"const": "meta-cinematic-cast-opaque-adapter"}},
     "external_requirements": {
-      "type": "array", "minItems": 2, "maxItems": 2,
+      "type": "array", "minItems": 2, "maxItems": 2, "uniqueItems": true,
+      "allOf": [
+        {"contains": {"const": {"id": "meta-mqdh-casting", "bundled": false, "user_supplied": true, "authority": "Meta"}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"const": {"id": "python-runtime", "bundled": false, "user_supplied": true, "authority": "Python Software Foundation"}}, "minContains": 1, "maxContains": 1}
+      ],
       "items": {
         "type": "object", "required": ["id", "bundled", "user_supplied", "authority"],
         "properties": {

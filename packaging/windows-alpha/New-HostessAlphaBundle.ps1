@@ -114,13 +114,18 @@ $pythonCandidates = @(& where.exe python.exe)
 if ($LASTEXITCODE -ne 0) {
   throw 'Supported Python interpreter is absent.'
 }
-$authorized = @($pythonCandidates | Where-Object {
-  (Test-Path -LiteralPath $_ -PathType Leaf) -and
-  (Get-FileHash -LiteralPath $_ -Algorithm SHA256).Hash.ToLowerInvariant() -ceq
-    $runtime.executable_sha256
-} | Select-Object -Unique)
+$authorized = @(foreach ($candidate in $pythonCandidates) {
+  try {
+    if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256 -ErrorAction Stop).
+        Hash.ToLowerInvariant() -ceq $runtime.executable_sha256) {
+      $candidate
+    }
+  } catch { continue }
+})
+$authorized = @($authorized | Select-Object -Unique)
 if ($authorized.Count -ne 1) { throw 'Exactly one hash-authorized Python interpreter is required.' }
 $python = $authorized[0]
+$hash = (Get-FileHash -LiteralPath $python -Algorithm SHA256).Hash.ToLowerInvariant()
 $observed = (& $python -c "import sys;print('.'.join(map(str,sys.version_info[:3])))").Trim()
 if ($LASTEXITCODE -ne 0 -or $runtime.version -cne '3.12.10' -or
     $observed -cne $runtime.version -or $hash -cne $runtime.executable_sha256) {

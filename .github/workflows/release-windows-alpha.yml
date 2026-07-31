@@ -55,6 +55,29 @@ jobs:
           }
           "SOURCE_TREE=$((& git rev-parse 'HEAD^{tree}').Trim())" >> $env:GITHUB_ENV
 
+      - name: Verify authoritative remote tag before build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $tagRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'authoritative alpha tag ref is absent' }
+          $peeled = $tagRef.object
+          for ($depth = 0; $peeled.type -ceq 'tag' -and $depth -lt 5; $depth++) {
+            $peeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($peeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) { throw 'authoritative alpha tag peel failed' }
+          }
+          if ($peeled.type -cne 'commit' -or
+              $peeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'authoritative alpha tag does not bind the reviewed revision'
+          }
+
       - name: Publish complete WPF companion
         shell: pwsh
         run: |
@@ -203,6 +226,27 @@ jobs:
               throw "alpha asset readback failed: $($file.Name)"
             }
           }
+          $prePromotionRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'alpha tag ref vanished before promotion'
+          }
+          $prePromotionPeeled = $prePromotionRef.object
+          for ($depth = 0;
+               $prePromotionPeeled.type -ceq 'tag' -and $depth -lt 5;
+               $depth++) {
+            $prePromotionPeeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($prePromotionPeeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) {
+              throw 'alpha tag peel failed before promotion'
+            }
+          }
+          if ($prePromotionPeeled.type -cne 'commit' -or
+              $prePromotionPeeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'alpha tag moved before promotion; draft remains non-public'
+          }
           & gh api --method PATCH `
             "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" `
             -F draft=false -F prerelease=true -f make_latest=false | Out-Null
@@ -231,7 +275,7 @@ jobs:
             ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { throw 'alpha tag ref readback failed' }
           $peeled = $tagRef.object
-          while ($peeled.type -ceq 'tag') {
+          for ($depth = 0; $peeled.type -ceq 'tag' -and $depth -lt 5; $depth++) {
             $peeled = (& gh api `
               "repos/$env:GITHUB_REPOSITORY/git/tags/$($peeled.sha)" |
               ConvertFrom-Json).object

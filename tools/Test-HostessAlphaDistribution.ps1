@@ -77,6 +77,48 @@ try {
         ConvertFrom-Json
     Assert-Alpha ($smoke.readiness_loaded -and $smoke.catalog_loaded) `
         'bundle smoke did not exercise readiness and catalog through pinned Python'
+    $bootstrap = Join-Path $bundle 'bootstrap\hostess-alpha.ps1'
+    $describeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass `
+        -File $bootstrap -Action describe 2>&1
+    Assert-Alpha ($LASTEXITCODE -eq 0 -and
+        ($describeOutput -join "`n").Length -gt 0) `
+        "extracted describe bootstrap action failed: $($describeOutput -join ' ')"
+    $oldLocalAppData = $env:LOCALAPPDATA
+    try {
+        $env:LOCALAPPDATA = $smokeState
+        & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File $bootstrap -Action casting-describe | Out-Null
+        Assert-Alpha ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (
+            Join-Path $smokeState `
+                'RustyHostessAlpha\reports\casting-descriptor.json'))) `
+            'extracted casting-describe bootstrap action failed'
+    } finally { $env:LOCALAPPDATA = $oldLocalAppData }
+    $companionBootstrap = Start-Process pwsh -ArgumentList @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass',
+        '-File', "`"$bootstrap`"", '-Action', 'companion'
+    ) -PassThru -WindowStyle Hidden
+    $companionProcess = $null
+    try {
+        for ($attempt = 0; $attempt -lt 50 -and $null -eq $companionProcess; $attempt++) {
+            Start-Sleep -Milliseconds 100
+            $companionProcess = Get-Process -Name 'HostessCompanion.Wpf' `
+                -ErrorAction SilentlyContinue | Where-Object {
+                    try { $_.Path -ceq (Join-Path $bundle 'companion\HostessCompanion.Wpf.exe') }
+                    catch { $false }
+                } | Select-Object -First 1
+        }
+        Assert-Alpha ($null -ne $companionProcess) `
+            'extracted companion bootstrap action did not launch the bundled executable'
+    } finally {
+        if ($null -ne $companionProcess) {
+            Stop-Process -Id $companionProcess.Id -Force -ErrorAction SilentlyContinue
+            $companionProcess.WaitForExit()
+        }
+        if (-not $companionBootstrap.HasExited) {
+            Stop-Process -Id $companionBootstrap.Id -Force -ErrorAction SilentlyContinue
+            $companionBootstrap.WaitForExit()
+        }
+    }
     Assert-Alpha (
         Test-Json `
             -Json ($manifest | ConvertTo-Json -Depth 30) `
@@ -129,8 +171,23 @@ try {
         [ordered]@{ name='arbitrary-entrypoint'; mutate={
             param($value); $value.typed_entrypoints[0].arbitrary_arguments = $true
         }},
+        [ordered]@{ name='duplicate-entrypoint'; mutate={
+            param($value); $value.typed_entrypoints[2] = $value.typed_entrypoints[0]
+        }},
+        [ordered]@{ name='missing-entrypoint'; mutate={
+            param($value); $value.typed_entrypoints = @(
+                $value.typed_entrypoints[0], $value.typed_entrypoints[1])
+        }},
         [ordered]@{ name='missing-external'; mutate={
             param($value); $value.external_requirements = @()
+        }},
+        [ordered]@{ name='duplicate-external'; mutate={
+            param($value); $value.external_requirements[1] =
+                $value.external_requirements[0]
+        }},
+        [ordered]@{ name='missing-python-external'; mutate={
+            param($value); $value.external_requirements = @(
+                $value.external_requirements[0])
         }},
         [ordered]@{ name='foreign-feedback'; mutate={
             param($value); $value.feedback.url = 'https://github.com/elsewhere/issues/new'
@@ -254,6 +311,18 @@ try {
     $workflow = Get-Content `
         -LiteralPath (Join-Path $root '.github\workflows\release-windows-alpha.yml') `
         -Raw
+    $remoteTagBeforeBuild = $workflow.IndexOf(
+        '- name: Verify authoritative remote tag before build',
+        [StringComparison]::Ordinal)
+    $buildStep = $workflow.IndexOf(
+        '- name: Build deterministic complete-product alpha',
+        [StringComparison]::Ordinal)
+    $prePromotionCheck = $workflow.IndexOf(
+        '$prePromotionRef = & gh api',
+        [StringComparison]::Ordinal)
+    $promotion = $workflow.IndexOf(
+        '& gh api --method PATCH',
+        [StringComparison]::Ordinal)
     Assert-Alpha (
         $workflow -match 'environment: windows-alpha-release' -and
         $workflow -match '--prerelease' -and
@@ -263,7 +332,14 @@ try {
         $workflow -match '\$certificateHash -cne \$env:EXPECTED_SIGNER_CERT_SHA256' -and
         $workflow -match 'draft=false -F prerelease=true -f make_latest=false' -and
         $workflow -match 'git/ref/tags/\$env:RELEASE_TAG' -and
+        $workflow -match 'Verify authoritative remote tag before build' -and
+        $workflow -match '\$prePromotionPeeled\.sha -cne \$env:SOURCE_REVISION' -and
+        $workflow -match 'draft remains non-public' -and
         $workflow -match '\$peeled\.sha -cne \$env:SOURCE_REVISION' -and
+        $remoteTagBeforeBuild -ge 0 -and
+        $remoteTagBeforeBuild -lt $buildStep -and
+        $prePromotionCheck -ge 0 -and
+        $prePromotionCheck -lt $promotion -and
         $workflow -match '--latest=false' -and
         $workflow -match 'persist-credentials: false' -and
         $workflow -match 'releases/download/\$env:RELEASE_TAG/' -and
