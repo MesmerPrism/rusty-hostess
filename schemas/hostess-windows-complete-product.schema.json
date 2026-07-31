@@ -2,18 +2,20 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/hostess-windows-complete-product.schema.json",
   "type": "object",
-  "required": ["schema", "product", "display_name", "channel", "prerelease", "version", "release_tag", "package_identity", "install_root", "state_root", "source", "runtimes", "typed_entrypoints", "features", "external_requirements", "authority_exclusions", "separately_released_products", "feedback", "signing", "files"],
+  "required": ["schema", "product", "display_name", "product_channel", "maturity", "distribution_track", "prerelease", "version", "release_tag", "package_identity", "install_root", "state_root", "source", "runtimes", "typed_entrypoints", "features", "external_requirements", "authority_exclusions", "separately_released_products", "feedback", "signing", "files"],
   "properties": {
-    "schema": {"const": "rusty.hostess.windows_complete_product.v1"},
-    "product": {"const": "rusty-hostess-alpha"},
-    "display_name": {"const": "Rusty Hostess Alpha"},
-    "channel": {"const": "alpha"},
+    "schema": {"const": "rusty.hostess.windows_complete_product.v2"},
+    "product": {"const": "rusty-hostess-labs"},
+    "display_name": {"const": "Rusty Hostess Labs"},
+    "product_channel": {"const": "labs"},
+    "maturity": {"enum": ["alpha", "beta", "rc", "released"]},
+    "distribution_track": {"const": "github-prerelease"},
     "prerelease": {"const": true},
     "version": {"type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"},
     "release_tag": {"type": "string", "pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+-alpha\\.[1-9][0-9]*$"},
-    "package_identity": {"const": "rusty-hostess-alpha"},
-    "install_root": {"const": "%LOCALAPPDATA%\\RustyHostessAlpha"},
-    "state_root": {"const": "%LOCALAPPDATA%\\RustyHostessAlpha\\state"},
+    "package_identity": {"const": "rusty-hostess-labs"},
+    "install_root": {"const": "%LOCALAPPDATA%\\RustyHostessLabs"},
+    "state_root": {"const": "%LOCALAPPDATA%\\RustyHostessLabs\\state"},
     "source": {
       "type": "object", "required": ["repository", "revision", "tree", "license"],
       "properties": {
@@ -43,15 +45,15 @@
     "typed_entrypoints": {
       "type": "array", "minItems": 3, "maxItems": 3, "uniqueItems": true,
       "allOf": [
-        {"contains": {"const": {"id": "companion", "command": "bootstrap/hostess-alpha.ps1 companion", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
-        {"contains": {"const": {"id": "describe", "command": "bootstrap/hostess-alpha.ps1 describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
-        {"contains": {"const": {"id": "casting-describe", "command": "bootstrap/hostess-alpha.ps1 casting-describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1}
+        {"contains": {"const": {"id": "companion", "command": "bootstrap/hostess-labs.ps1 companion", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"const": {"id": "describe", "command": "bootstrap/hostess-labs.ps1 describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1},
+        {"contains": {"const": {"id": "casting-describe", "command": "bootstrap/hostess-labs.ps1 casting-describe", "arbitrary_arguments": false}}, "minContains": 1, "maxContains": 1}
       ],
       "items": {
         "type": "object", "required": ["id", "command", "arbitrary_arguments"],
         "properties": {
           "id": {"enum": ["companion", "describe", "casting-describe"]},
-          "command": {"type": "string", "pattern": "^bootstrap/hostess-alpha\\.ps1 (companion|describe|casting-describe)$"},
+          "command": {"type": "string", "pattern": "^bootstrap/hostess-labs\\.ps1 (companion|describe|casting-describe)$"},
           "arbitrary_arguments": {"const": false}
         }, "additionalProperties": false
       }
@@ -82,7 +84,7 @@
       "type": "object", "required": ["url", "required", "prohibit"],
       "properties": {
         "url": {"const": "https://github.com/MesmerPrism/rusty-hostess/issues/new"},
-        "required": {"const": ["channel", "version", "source_revision", "artifact_sha256", "windows_version", "device_class"]},
+        "required": {"const": ["product_channel", "version", "source_revision", "artifact_sha256", "windows_version", "device_class"]},
         "prohibit": {"const": ["credentials", "personal-data", "device-serials", "private-logs"]}
       }, "additionalProperties": false
     },

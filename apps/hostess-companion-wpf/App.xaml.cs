@@ -26,7 +26,7 @@ public partial class App : Application
                     throw new InvalidOperationException("LOCALAPPDATA is unavailable.");
                 }
                 var reportRoot = Path.Combine(
-                    localAppData, "RustyHostessAlpha", "reports");
+                    localAppData, "RustyHostessLabs", "reports");
                 Directory.CreateDirectory(reportRoot);
                 File.WriteAllText(
                     Path.Combine(reportRoot, "bundle-smoke.json"),

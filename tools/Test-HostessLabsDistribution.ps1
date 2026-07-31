@@ -5,13 +5,13 @@
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
-function Assert-Alpha([bool] $Condition, [string] $Message) {
+function Assert-Labs([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }
 }
 
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) (
-    "rusty-hostess-alpha-test-$([Guid]::NewGuid().ToString('N'))")
+    "rusty-hostess-labs-test-$([Guid]::NewGuid().ToString('N'))")
 try {
     $wpf = Join-Path $temp 'wpf'
     & dotnet publish (Join-Path $root 'apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj') `
@@ -24,8 +24,8 @@ try {
         try { (& $_ --version 2>$null) -ceq 'Python 3.12.10' } catch { $false }
     })[0]
     $pythonHash = (Get-FileHash $pythonPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Assert-Alpha ((& $pythonPath --version) -ceq 'Python 3.12.10') `
-        'focused alpha smoke requires the pinned Python 3.12.10 test runtime'
+    Assert-Labs ((& $pythonPath --version) -ceq 'Python 3.12.10') `
+        'focused Labs smoke requires the pinned Python 3.12.10 test runtime'
     $syntheticThumbprint = 'A' * 40
     $syntheticCertificateHash = 'b' * 64
     $revision = (& git -C $root rev-parse HEAD).Trim()
@@ -33,7 +33,7 @@ try {
     $outputs = @()
     foreach ($suffix in @('one','two')) {
         $out = Join-Path $temp $suffix
-        & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+        & (Join-Path $root 'packaging\windows-labs\New-HostessLabsBundle.ps1') `
             -Version 1.2.3 `
             -ReleaseTag v1.2.3-alpha.4 `
             -SourceRevision $revision `
@@ -48,16 +48,16 @@ try {
             -AllowUnsignedForSyntheticTest | Out-Null
         $outputs += $out
     }
-    $name = 'RustyHostess-Alpha-1.2.3-win-x64'
+    $name = 'RustyHostess-Labs-1.2.3-win-x64'
     $zipOne = Join-Path $outputs[0] "$name.zip"
     $zipTwo = Join-Path $outputs[1] "$name.zip"
     $metadataOne = Join-Path $outputs[0] "$name.release-metadata.json"
     $metadataTwo = Join-Path $outputs[1] "$name.release-metadata.json"
-    Assert-Alpha (
+    Assert-Labs (
         (Get-FileHash $zipOne -Algorithm SHA256).Hash -ceq
         (Get-FileHash $zipTwo -Algorithm SHA256).Hash
-    ) 'complete-product alpha ZIP is not deterministic'
-    Assert-Alpha (
+    ) 'complete-product Labs ZIP is not deterministic'
+    Assert-Labs (
         (Get-FileHash $metadataOne -Algorithm SHA256).Hash -ceq
         (Get-FileHash $metadataTwo -Algorithm SHA256).Hash
     ) 'complete-product release metadata is not deterministic'
@@ -71,12 +71,12 @@ try {
         $observedAssets = @(
             Get-ChildItem -LiteralPath $output -File | ForEach-Object Name
         ) | Sort-Object
-        Assert-Alpha (
+        Assert-Labs (
             ($observedAssets -join "`n") -ceq ($expectedAssets -join "`n")
-        ) 'local complete-product alpha asset set is not closed'
+        ) 'local complete-product Labs asset set is not closed'
     }
     & (Join-Path $root (
-        'packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1'
+        'packaging\windows-labs\Test-HostessLabsReleaseMetadata.ps1'
     )) `
         -MetadataPath $metadataOne `
         -ZipPath $zipOne `
@@ -84,33 +84,35 @@ try {
         -ExpectedReleaseTag v1.2.3-alpha.4 `
         -ExpectedSourceRevision $revision `
         -ExpectedSourceTree $tree | Out-Null
-    Assert-Alpha ($LASTEXITCODE -eq 0) `
+    Assert-Labs ($LASTEXITCODE -eq 0) `
         'generated owner release metadata did not validate'
     $releaseMetadata = Get-Content -LiteralPath $metadataOne -Raw |
         ConvertFrom-Json -Depth 20
     $zipHash = (Get-FileHash -LiteralPath $zipOne -Algorithm SHA256).
         Hash.ToLowerInvariant()
     $zipBytes = (Get-Item -LiteralPath $zipOne).Length
-    Assert-Alpha (
+    Assert-Labs (
         $releaseMetadata.schema -ceq
-            'rusty.hostess.windows_alpha_release_metadata.v1' -and
+            'rusty.hostess.windows_labs_release_metadata.v2' -and
         $releaseMetadata.repository -ceq 'MesmerPrism/rusty-hostess' -and
-        $releaseMetadata.product -ceq 'rusty-hostess-alpha' -and
-        $releaseMetadata.channel -ceq 'alpha' -and
+        $releaseMetadata.product -ceq 'rusty-hostess-labs' -and
+        $releaseMetadata.product_channel -ceq 'labs' -and
+        $releaseMetadata.maturity -ceq 'alpha' -and
+        $releaseMetadata.distribution_track -ceq 'github-prerelease' -and
         $releaseMetadata.prerelease -eq $true -and
         $releaseMetadata.version -ceq '1.2.3' -and
         $releaseMetadata.tag -ceq 'v1.2.3-alpha.4' -and
         $releaseMetadata.source.revision -ceq $revision -and
         $releaseMetadata.source.tree -ceq $tree -and
-        $releaseMetadata.installation_identity -ceq 'rusty-hostess-alpha' -and
+        $releaseMetadata.installation_identity -ceq 'rusty-hostess-labs' -and
         $releaseMetadata.primary_artifact.role -ceq 'complete-product' -and
         $releaseMetadata.primary_artifact.name -ceq "$name.zip" -and
         $releaseMetadata.primary_artifact.sha256 -ceq $zipHash -and
         $releaseMetadata.primary_artifact.bytes -eq $zipBytes
-    ) 'owner release metadata does not bind the exact complete-product alpha'
+    ) 'owner release metadata does not bind the exact complete-product Labs'
 
     $metadataValidator = Join-Path $root (
-        'packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1')
+        'packaging\windows-labs\Test-HostessLabsReleaseMetadata.ps1')
     $metadataDamage = @(
         [ordered]@{ name='wrong-schema'; mutate={
             param($value); $value.schema =
@@ -174,13 +176,13 @@ try {
             param($value); $value.source.tree = "$($value.source.tree)0"
         }},
         [ordered]@{ name='wrong-channel'; mutate={
-            param($value); $value.channel = 'stable'
+            param($value); $value.product_channel = 'stable'
         }},
         [ordered]@{ name='missing-channel'; mutate={
-            param($value); $value.PSObject.Properties.Remove('channel')
+            param($value); $value.PSObject.Properties.Remove('product_channel')
         }},
         [ordered]@{ name='expanded-channel'; mutate={
-            param($value); $value.channel = 'alpha-expanded'
+            param($value); $value.product_channel = 'labs-expanded'
         }},
         [ordered]@{ name='wrong-identity'; mutate={
             param($value); $value.installation_identity = 'rusty-hostess'
@@ -191,7 +193,7 @@ try {
         }},
         [ordered]@{ name='expanded-identity'; mutate={
             param($value); $value.installation_identity =
-                'rusty-hostess-alpha-expanded'
+                'rusty-hostess-labs-expanded'
         }},
         [ordered]@{ name='wrong-artifact-role'; mutate={
             param($value); $value.primary_artifact.role = 'bootstrap-only'
@@ -202,7 +204,7 @@ try {
         }},
         [ordered]@{ name='wrong-name'; mutate={
             param($value); $value.primary_artifact.name =
-                'RustyHostess-Alpha-1.2.4-win-x64.zip'
+                'RustyHostess-Labs-1.2.4-win-x64.zip'
         }},
         [ordered]@{ name='missing-name'; mutate={
             param($value); $value.primary_artifact.PSObject.Properties.Remove(
@@ -271,7 +273,7 @@ try {
         catch {
             $rejected = $true
         }
-        Assert-Alpha $rejected `
+        Assert-Labs $rejected `
             "owner release metadata accepted $($damage.name) damage"
     }
 
@@ -289,17 +291,17 @@ try {
         $smokeProcess = Start-Process `
             -FilePath (Join-Path $bundle 'companion\HostessCompanion.Wpf.exe') `
             -ArgumentList '--bundle-smoke' -Wait -PassThru -WindowStyle Hidden
-        Assert-Alpha ($smokeProcess.ExitCode -eq 0) 'extracted real WPF bundle smoke failed'
+        Assert-Labs ($smokeProcess.ExitCode -eq 0) 'extracted real WPF bundle smoke failed'
     } finally { $env:LOCALAPPDATA = $oldLocalAppData }
     $smoke = Get-Content -Raw -LiteralPath (
-        Join-Path $smokeState 'RustyHostessAlpha\reports\bundle-smoke.json') |
+        Join-Path $smokeState 'RustyHostessLabs\reports\bundle-smoke.json') |
         ConvertFrom-Json
-    Assert-Alpha ($smoke.readiness_loaded -and $smoke.catalog_loaded) `
+    Assert-Labs ($smoke.readiness_loaded -and $smoke.catalog_loaded) `
         'bundle smoke did not exercise readiness and catalog through pinned Python'
-    $bootstrap = Join-Path $bundle 'bootstrap\hostess-alpha.ps1'
+    $bootstrap = Join-Path $bundle 'bootstrap\hostess-labs.ps1'
     $describeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass `
         -File $bootstrap -Action describe 2>&1
-    Assert-Alpha ($LASTEXITCODE -eq 0 -and
+    Assert-Labs ($LASTEXITCODE -eq 0 -and
         ($describeOutput -join "`n").Length -gt 0) `
         "extracted describe bootstrap action failed: $($describeOutput -join ' ')"
     $oldLocalAppData = $env:LOCALAPPDATA
@@ -307,9 +309,9 @@ try {
         $env:LOCALAPPDATA = $smokeState
         & pwsh -NoProfile -ExecutionPolicy Bypass `
             -File $bootstrap -Action casting-describe | Out-Null
-        Assert-Alpha ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (
+        Assert-Labs ($LASTEXITCODE -eq 0 -and (Test-Path -LiteralPath (
             Join-Path $smokeState `
-                'RustyHostessAlpha\reports\casting-descriptor.json'))) `
+                'RustyHostessLabs\reports\casting-descriptor.json'))) `
             'extracted casting-describe bootstrap action failed'
     } finally { $env:LOCALAPPDATA = $oldLocalAppData }
     $companionBootstrap = Start-Process pwsh -ArgumentList @(
@@ -326,7 +328,7 @@ try {
                     catch { $false }
                 } | Select-Object -First 1
         }
-        Assert-Alpha ($null -ne $companionProcess) `
+        Assert-Labs ($null -ne $companionProcess) `
             'extracted companion bootstrap action did not launch the bundled executable'
     } finally {
         if ($null -ne $companionProcess) {
@@ -338,7 +340,7 @@ try {
             $companionBootstrap.WaitForExit()
         }
     }
-    Assert-Alpha (
+    Assert-Labs (
         Test-Json `
             -Json ($manifest | ConvertTo-Json -Depth 30) `
             -SchemaFile (
@@ -346,8 +348,10 @@ try {
             )
     ) 'complete-product manifest does not satisfy its published schema'
     $paths = @($manifest.files.path)
-    Assert-Alpha (
-        $manifest.channel -ceq 'alpha' -and
+    Assert-Labs (
+        $manifest.product_channel -ceq 'labs' -and
+        $manifest.maturity -ceq 'alpha' -and
+        $manifest.distribution_track -ceq 'github-prerelease' -and
         $manifest.prerelease -eq $true -and
         $manifest.release_tag -ceq 'v1.2.3-alpha.4' -and
         $manifest.version -ceq '1.2.3' -and
@@ -361,8 +365,8 @@ try {
         $paths -ccontains 'companion/HostessCompanion.Wpf.exe' -and
         @($manifest.separately_released_products) -ccontains
             'rusty-hostess-hotspot-provider'
-    ) 'complete Hostess alpha feature closure is not exact'
-    Assert-Alpha (
+    ) 'complete Hostess Labs feature closure is not exact'
+    Assert-Labs (
         @($manifest.authority_exclusions) -ccontains 'recording' -and
         @($manifest.authority_exclusions) -ccontains 'input-forwarding' -and
         @($manifest.authority_exclusions) -ccontains 'fov-restoration' -and
@@ -370,7 +374,7 @@ try {
     ) 'opaque Meta authority exclusions are incomplete'
     foreach ($invalidManifest in @(
         [ordered]@{ name='stable'; mutate={
-            param($value); $value.channel = 'stable'
+            param($value); $value.product_channel = 'stable'
         }},
         [ordered]@{ name='missing-provenance'; mutate={
             param($value); $value.source.PSObject.Properties.Remove('tree')
@@ -427,7 +431,7 @@ try {
         $candidate = $manifest | ConvertTo-Json -Depth 30 |
             ConvertFrom-Json -Depth 30
         & $invalidManifest.mutate $candidate
-        Assert-Alpha (
+        Assert-Labs (
             -not (Test-Json `
                 -Json ($candidate | ConvertTo-Json -Depth 30) `
                 -SchemaFile (
@@ -442,7 +446,7 @@ try {
         Get-ChildItem -LiteralPath $bundle -File -Recurse |
         ForEach-Object Name
     )
-    Assert-Alpha (
+    Assert-Labs (
         @($payloadNames | Where-Object {
             $_ -imatch '^(?:Casting|Meta Quest Developer Hub|mqdh).*\.exe$' -or
             $_ -imatch '\.(apk|pfx|pem|key)$'
@@ -451,7 +455,7 @@ try {
     foreach ($textFile in Get-ChildItem -LiteralPath $bundle -File -Recurse |
              Where-Object Extension -In @('.json','.md','.py','.ps1','.txt')) {
         $text = Get-Content -LiteralPath $textFile.FullName -Raw
-        Assert-Alpha (
+        Assert-Labs (
             $text -notmatch '(?i)[A-Z]:\\Work\\worktrees\\' -and
             $text -notmatch (
                 '(?i)' + [regex]::Escape(
@@ -463,7 +467,7 @@ try {
     }
     foreach ($file in $manifest.files) {
         $path = Join-Path $bundle $file.path.Replace('/', '\')
-        Assert-Alpha (
+        Assert-Labs (
             (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ceq
                 $file.sha256 -and
             (Get-Item $path).Length -eq $file.size_bytes
@@ -475,7 +479,7 @@ try {
         switch ($damage) {
             'stable-tag' {
                 try {
-                    & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+                    & (Join-Path $root 'packaging\windows-labs\New-HostessLabsBundle.ps1') `
                         -Version 1.2.3 -ReleaseTag v1.2.3 `
                         -SourceRevision $revision -SourceTree $tree `
                         -WpfPublishDirectory $wpf `
@@ -496,11 +500,11 @@ try {
             }
             'wrong-product' { $rejected = $true }
         }
-        Assert-Alpha $rejected "$damage substitution was accepted"
+        Assert-Labs $rejected "$damage substitution was accepted"
     }
     $unsignedRejected = $false
     try {
-        & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+        & (Join-Path $root 'packaging\windows-labs\New-HostessLabsBundle.ps1') `
             -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
             -SourceRevision $revision -SourceTree $tree `
             -WpfPublishDirectory $wpf `
@@ -511,10 +515,10 @@ try {
             -OutputDirectory (Join-Path $temp 'unsigned') `
             -AllowDirtySourceForSyntheticTest | Out-Null
     } catch { $unsignedRejected = $_.Exception.Message -match 'signature is absent or invalid' }
-    Assert-Alpha $unsignedRejected 'missing/invalid Authenticode was accepted'
+    Assert-Labs $unsignedRejected 'missing/invalid Authenticode was accepted'
     $wrongHashRejected = $false
     try {
-        & (Join-Path $root 'packaging\windows-alpha\New-HostessAlphaBundle.ps1') `
+        & (Join-Path $root 'packaging\windows-labs\New-HostessLabsBundle.ps1') `
             -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
             -SourceRevision $revision -SourceTree $tree `
             -WpfPublishDirectory $wpf `
@@ -526,15 +530,15 @@ try {
             -AllowDirtySourceForSyntheticTest `
             -AllowUnsignedForSyntheticTest | Out-Null
     } catch { $wrongHashRejected = $true }
-    Assert-Alpha $wrongHashRejected 'wrong signed executable hash was accepted'
+    Assert-Labs $wrongHashRejected 'wrong signed executable hash was accepted'
     $workflow = Get-Content `
-        -LiteralPath (Join-Path $root '.github\workflows\release-windows-alpha.yml') `
+        -LiteralPath (Join-Path $root '.github\workflows\release-windows-labs.yml') `
         -Raw
     $remoteTagBeforeBuild = $workflow.IndexOf(
         '- name: Verify authoritative remote tag before build',
         [StringComparison]::Ordinal)
     $buildStep = $workflow.IndexOf(
-        '- name: Build deterministic complete-product alpha',
+        '- name: Build deterministic complete-product Labs',
         [StringComparison]::Ordinal)
     $prePromotionCheck = $workflow.IndexOf(
         '$prePromotionRef = & gh api',
@@ -542,10 +546,10 @@ try {
     $promotion = $workflow.IndexOf(
         '& gh api --method PATCH',
         [StringComparison]::Ordinal)
-    Assert-Alpha (
+    Assert-Labs (
         $workflow -match 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' -and
         $workflow -match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' -and
-        $workflow -match 'environment: windows-alpha-release' -and
+        $workflow -match 'environment: windows-labs-release' -and
         $workflow -match '--prerelease' -and
         $workflow -match '--draft' -and
         $workflow -match 'signtool verify /pa /v' -and
@@ -567,10 +571,10 @@ try {
         $workflow -notmatch 'releases/latest/download' -and
         $workflow -match '\$remote\[0\]\.digest -cne "sha256:\$hash"' -and
         $workflow -match '"\$stem\.release-metadata\.json"' -and
-        $workflow -match 'Test-HostessAlphaReleaseMetadata\.ps1'
+        $workflow -match 'Test-HostessLabsReleaseMetadata\.ps1'
     ) 'protected prerelease or closed remote readback contract is incomplete'
     [ordered]@{
-        schema='rusty.hostess.windows_alpha_distribution_test.v1'
+        schema='rusty.hostess.windows_labs_distribution_test.v1'
         result='pass'; deterministic=$true; complete_product=$true
         owner_release_metadata=$true; meta_redistributed=$false
         stable_default_preserved=$true

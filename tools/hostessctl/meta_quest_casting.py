@@ -84,9 +84,19 @@ def _default_state_path() -> Path:
     local_app_data = os.environ.get("LOCALAPPDATA")
     if not local_app_data:
         raise RuntimeError("LOCALAPPDATA is required for private casting state")
+    product_channel = os.environ.get(
+        "RUSTY_HOSTESS_PRODUCT_CHANNEL", "stable"
+    )
+    if product_channel not in {"stable", "labs"}:
+        raise RuntimeError(
+            "RUSTY_HOSTESS_PRODUCT_CHANNEL must be exactly stable or labs"
+        )
+    state_root = (
+        "RustyHostessLabs" if product_channel == "labs" else "Rusty Hostess"
+    )
     return (
         Path(local_app_data)
-        / "Rusty Hostess"
+        / state_root
         / "meta-quest-casting"
         / "state.json"
     )

@@ -62,7 +62,7 @@ $tagVersion = $ExpectedReleaseTag -replace `
 Assert-Condition ($tagVersion -ceq $ExpectedVersion) `
     'expected release tag and version differ'
 
-$name = "RustyHostess-Alpha-$ExpectedVersion-win-x64"
+$name = "RustyHostess-Labs-$ExpectedVersion-win-x64"
 Assert-Condition (
     (Split-Path -Leaf $metadata) -ceq "$name.release-metadata.json"
 ) 'release metadata asset name does not match the expected version'
@@ -80,7 +80,9 @@ try {
         'schema',
         'repository',
         'product',
-        'channel',
+        'product_channel',
+        'maturity',
+        'distribution_track',
         'prerelease',
         'version',
         'tag',
@@ -89,17 +91,19 @@ try {
         'primary_artifact'
     ) '$'
     Get-ExactString $root 'schema' `
-        'rusty.hostess.windows_alpha_release_metadata.v1' '$'
+        'rusty.hostess.windows_labs_release_metadata.v2' '$'
     Get-ExactString $root 'repository' 'MesmerPrism/rusty-hostess' '$'
-    Get-ExactString $root 'product' 'rusty-hostess-alpha' '$'
-    Get-ExactString $root 'channel' 'alpha' '$'
+    Get-ExactString $root 'product' 'rusty-hostess-labs' '$'
+    Get-ExactString $root 'product_channel' 'labs' '$'
+    Get-ExactString $root 'maturity' 'alpha' '$'
+    Get-ExactString $root 'distribution_track' 'github-prerelease' '$'
     $prerelease = $root.GetProperty('prerelease')
     Assert-Condition (
         $prerelease.ValueKind -eq [Text.Json.JsonValueKind]::True
     ) '$.prerelease must be true'
     Get-ExactString $root 'version' $ExpectedVersion '$'
     Get-ExactString $root 'tag' $ExpectedReleaseTag '$'
-    Get-ExactString $root 'installation_identity' 'rusty-hostess-alpha' '$'
+    Get-ExactString $root 'installation_identity' 'rusty-hostess-labs' '$'
 
     $source = $root.GetProperty('source')
     Assert-ExactObject $source @('revision', 'tree') '$.source'
@@ -124,7 +128,7 @@ try {
         '$.primary_artifact.bytes does not match the complete-product ZIP'
 
     [ordered]@{
-        schema = 'rusty.hostess.windows_alpha_release_metadata_validation.v1'
+        schema = 'rusty.hostess.windows_labs_release_metadata_validation.v1'
         result = 'pass'
         metadata_sha256 = (
             Get-FileHash -LiteralPath $metadata -Algorithm SHA256

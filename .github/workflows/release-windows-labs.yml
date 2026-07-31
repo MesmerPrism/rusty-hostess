@@ -1,4 +1,4 @@
-name: Hostess complete-product Windows alpha
+name: Hostess complete-product Windows Labs
 
 on:
   workflow_dispatch:
@@ -20,8 +20,8 @@ permissions:
   contents: read
 
 jobs:
-  alpha:
-    environment: windows-alpha-release
+  labs:
+    environment: windows-labs-release
     runs-on: windows-latest
     permissions:
       contents: write
@@ -31,7 +31,7 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Validate exact alpha source
+      - name: Validate exact Labs candidate source
         shell: pwsh
         env:
           VERSION: ${{ inputs.version }}
@@ -42,7 +42,7 @@ jobs:
               $env:RELEASE_TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[1-9][0-9]*$' -or
               $env:SOURCE_REVISION -cnotmatch '^[0-9a-f]{40}$' -or
               $env:RELEASE_TAG -cnotmatch "^v$([regex]::Escape($env:VERSION))-alpha\.[1-9][0-9]*$") {
-            throw 'alpha version, tag, or revision is malformed'
+            throw 'Labs alpha-maturity version, tag, or revision is malformed'
           }
           & git switch --detach $env:RELEASE_TAG
           if ($LASTEXITCODE -ne 0) { throw 'exact alpha tag checkout failed' }
@@ -101,7 +101,7 @@ jobs:
               -not $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD) {
             throw 'protected Hostess signing credentials are absent'
           }
-          $pfx = Join-Path $env:RUNNER_TEMP 'hostess-alpha-signing.pfx'
+          $pfx = Join-Path $env:RUNNER_TEMP 'hostess-labs-signing.pfx'
           try {
             [IO.File]::WriteAllBytes(
               $pfx,
@@ -135,7 +135,7 @@ jobs:
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
           }
 
-      - name: Build deterministic complete-product alpha
+      - name: Build deterministic complete-product Labs
         shell: pwsh
         env:
           VERSION: ${{ inputs.version }}
@@ -145,7 +145,7 @@ jobs:
           EXPECTED_SIGNER_CERT_SHA256: ${{ vars.HOSTESS_ALPHA_SIGNER_CERT_SHA256 }}
           PYTHON_EXE_SHA256: ${{ vars.HOSTESS_ALPHA_PYTHON_3_12_10_SHA256 }}
         run: |
-          .\packaging\windows-alpha\New-HostessAlphaBundle.ps1 `
+          .\packaging\windows-labs\New-HostessLabsBundle.ps1 `
             -Version $env:VERSION `
             -ReleaseTag $env:RELEASE_TAG `
             -SourceRevision $env:SOURCE_REVISION `
@@ -155,7 +155,7 @@ jobs:
             -ExpectedWpfSignerCertificateSha256 $env:EXPECTED_SIGNER_CERT_SHA256 `
             -ExpectedWpfExecutableSha256 $env:WPF_EXE_SHA256 `
             -PythonExecutableSha256 $env:PYTHON_EXE_SHA256 `
-            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'hostess-alpha') |
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'hostess-labs') |
             Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'bundle-receipt.json')
 
       - name: Create prerelease only after authoritative absence
@@ -167,10 +167,10 @@ jobs:
           $endpoint = "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
           $probe = & gh api --include $endpoint 2>&1
           if ($LASTEXITCODE -eq 0) {
-            throw 'exact alpha release already exists'
+            throw 'exact Labs release already exists'
           }
           if (($probe -join "`n") -cnotmatch '(?m)^HTTP/\S+\s+404(?:\s|$)') {
-            throw 'alpha release absence was not an authoritative 404'
+            throw 'Labs release absence was not an authoritative 404'
           }
           & gh release create $env:RELEASE_TAG `
             --repo $env:GITHUB_REPOSITORY `
@@ -179,7 +179,7 @@ jobs:
             --prerelease `
             --latest=false `
             --generate-notes
-          if ($LASTEXITCODE -ne 0) { throw 'alpha draft creation failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Labs draft creation failed' }
 
       - name: Upload and close exact immutable asset set
         shell: pwsh
@@ -189,8 +189,8 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
         run: |
-          $root = Join-Path $env:RUNNER_TEMP 'hostess-alpha'
-          $stem = "RustyHostess-Alpha-$env:VERSION-win-x64"
+          $root = Join-Path $env:RUNNER_TEMP 'hostess-labs'
+          $stem = "RustyHostess-Labs-$env:VERSION-win-x64"
           $expected = @(
             "$stem.zip",
             "$stem.zip.sha256",
@@ -200,9 +200,9 @@ jobs:
           $files = @(Get-ChildItem -LiteralPath $root -File)
           if (($files.Name | Sort-Object) -join "`n" -cne
               $expected -join "`n") {
-            throw 'local alpha asset set is not closed'
+            throw 'local Labs asset set is not closed'
           }
-          .\packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1 `
+          .\packaging\windows-labs\Test-HostessLabsReleaseMetadata.ps1 `
             -MetadataPath (Join-Path $root "$stem.release-metadata.json") `
             -ZipPath (Join-Path $root "$stem.zip") `
             -ExpectedVersion $env:VERSION `
@@ -211,7 +211,7 @@ jobs:
             -ExpectedSourceTree $env:SOURCE_TREE | Out-Null
           & gh release upload $env:RELEASE_TAG @($files.FullName) `
             --repo $env:GITHUB_REPOSITORY
-          if ($LASTEXITCODE -ne 0) { throw 'alpha asset upload failed' }
+          if ($LASTEXITCODE -ne 0) { throw 'Labs asset upload failed' }
           $release = & gh api `
             "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
             ConvertFrom-Json -Depth 30
@@ -220,7 +220,7 @@ jobs:
               $release.prerelease -ne $true -or
               (@($release.assets.name | Sort-Object) -join "`n") -cne
                 ($expected -join "`n")) {
-            throw 'alpha prerelease readback is not exact'
+            throw 'Labs prerelease readback is not exact'
           }
           foreach ($file in $files) {
             $remote = @($release.assets | Where-Object name -CEQ $file.Name)
@@ -231,7 +231,7 @@ jobs:
                 $remote[0].digest -cne "sha256:$hash" -or
                 $remote[0].browser_download_url -cne
                   "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($file.Name)") {
-              throw "alpha asset readback failed: $($file.Name)"
+              throw "Labs asset readback failed: $($file.Name)"
             }
           }
           $prePromotionRef = & gh api `
@@ -259,7 +259,7 @@ jobs:
             "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" `
             -F draft=false -F prerelease=true -f make_latest=false | Out-Null
           if ($LASTEXITCODE -ne 0) {
-            throw 'alpha draft publication failed; immutable draft requires manual incident review'
+            throw 'Labs draft publication failed; immutable draft requires manual incident review'
           }
           $published = & gh api `
             "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
@@ -267,7 +267,7 @@ jobs:
           if ($published.draft -ne $false -or $published.prerelease -ne $true -or
               (@($published.assets.name | Sort-Object) -join "`n") -cne
                 ($expected -join "`n")) {
-            throw 'published alpha final readback is not exact'
+            throw 'published Labs final readback is not exact'
           }
           foreach ($file in $files) {
             $remote = @($published.assets | Where-Object name -CEQ $file.Name)
@@ -275,7 +275,7 @@ jobs:
               Hash.ToLowerInvariant()
             if ($remote.Count -ne 1 -or $remote[0].size -ne $file.Length -or
                 $remote[0].digest -cne "sha256:$hash") {
-              throw "published alpha asset final readback failed: $($file.Name)"
+              throw "published Labs asset final readback failed: $($file.Name)"
             }
           }
           $tagRef = & gh api `
@@ -307,7 +307,7 @@ jobs:
               ConvertFrom-Json
             if ($LASTEXITCODE -ne 0 -or
                 $latest.tag_name -ceq $env:RELEASE_TAG) {
-              throw 'alpha prerelease became latest'
+              throw 'Labs prerelease became latest'
             }
           }
 
@@ -319,16 +319,16 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $incident = [ordered]@{
-            schema = 'rusty.hostess.alpha_release_incident.v1'
+            schema = 'rusty.hostess.labs_release_incident.v1'
             tag = $env:RELEASE_TAG
             disposition = 'manual-review-required'
             automatic_delete_or_rerun = $false
           }
-          $path = Join-Path $env:RUNNER_TEMP 'hostess-alpha-release-incident.json'
+          $path = Join-Path $env:RUNNER_TEMP 'hostess-labs-release-incident.json'
           [IO.File]::WriteAllText($path, ($incident | ConvertTo-Json) + "`n")
-          Write-Error 'Alpha release failed; do not rerun or delete a draft automatically. Review the exact tag and release manually.' -ErrorAction Continue
+          Write-Error 'Labs release failed; do not rerun or delete a draft automatically. Review the exact tag and release manually.' -ErrorAction Continue
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: failure()
         with:
-          name: hostess-alpha-release-incident
-          path: ${{ runner.temp }}/hostess-alpha-release-incident.json
+          name: hostess-labs-release-incident
+          path: ${{ runner.temp }}/hostess-labs-release-incident.json

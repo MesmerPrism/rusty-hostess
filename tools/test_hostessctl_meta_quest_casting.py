@@ -13,6 +13,7 @@ from tools.hostessctl.cli_parser import build_hostessctl_parser
 from tools.hostessctl.meta_quest_casting import (
     COMPATIBILITY_PROFILES,
     PrivateStateStore,
+    _default_state_path,
     _sha256_json,
     _launch_arguments,
     parse_adb_devices,
@@ -294,6 +295,46 @@ class MetaQuestCastingTests(unittest.TestCase):
             descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
         self.assertEqual(0, result)
         self.assertFalse(descriptor["authorizes_execution"])
+
+    def test_default_private_state_path_is_product_channel_isolated(self) -> None:
+        local_app_data = r"C:\Users\Test\AppData\Local"
+        with mock.patch.dict(
+            os.environ,
+            {"LOCALAPPDATA": local_app_data},
+            clear=True,
+        ):
+            self.assertEqual(
+                Path(local_app_data)
+                / "Rusty Hostess"
+                / "meta-quest-casting"
+                / "state.json",
+                _default_state_path(),
+            )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": local_app_data,
+                "RUSTY_HOSTESS_PRODUCT_CHANNEL": "labs",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                Path(local_app_data)
+                / "RustyHostessLabs"
+                / "meta-quest-casting"
+                / "state.json",
+                _default_state_path(),
+            )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": local_app_data,
+                "RUSTY_HOSTESS_PRODUCT_CHANNEL": "Labs",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "exactly stable or labs"):
+                _default_state_path()
 
     def test_serial_validation_is_exact_and_closed(self) -> None:
         validate_serial(TEST_SERIAL)

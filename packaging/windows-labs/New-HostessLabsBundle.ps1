@@ -80,7 +80,7 @@ if (Test-Path -LiteralPath $output) {
     throw 'output directory already exists'
 }
 [IO.Directory]::CreateDirectory($output) | Out-Null
-$name = "RustyHostess-Alpha-$Version-win-x64"
+$name = "RustyHostess-Labs-$Version-win-x64"
 $stage = Join-Path $output $name
 [IO.Directory]::CreateDirectory($stage) | Out-Null
 
@@ -97,7 +97,7 @@ try {
     foreach ($relative in $tracked | Sort-Object -Unique) {
         if ($relative -match '(^|/)(bin|obj|target)/' -or
             $relative -match '\.(exe|dll|apk|msi|msix|pfx|pem|key)$') {
-            throw "prohibited tracked payload entered Hostess alpha: $relative"
+            throw "prohibited tracked payload entered Hostess Labs: $relative"
         }
         $source = Join-Path $RepositoryRoot $relative
         $destination = Join-Path $stage ('source\' + $relative.Replace('/', '\'))
@@ -108,6 +108,7 @@ try {
     $launcher = @'
 param([Parameter(Mandatory)][ValidateSet('companion','describe','casting-describe')][string] $Action)
 $ErrorActionPreference = 'Stop'
+$env:RUSTY_HOSTESS_PRODUCT_CHANNEL = 'labs'
 $root = Split-Path -Parent $PSScriptRoot
 $runtime = Get-Content -LiteralPath (Join-Path $root 'runtime\python-runtime.json') -Raw | ConvertFrom-Json
 $pythonCandidates = @(& where.exe python.exe)
@@ -135,12 +136,12 @@ switch ($Action) {
   'companion' { & (Join-Path $root 'companion\HostessCompanion.Wpf.exe'); exit $LASTEXITCODE }
   'describe' { & $python (Join-Path $root 'source\tools\hostessctl\hostessctl.py') --help; exit $LASTEXITCODE }
   'casting-describe' {
-    & $python (Join-Path $root 'source\tools\hostessctl\hostessctl.py') meta-quest-casting describe --out (Join-Path $env:LOCALAPPDATA 'RustyHostessAlpha\reports\casting-descriptor.json')
+    & $python (Join-Path $root 'source\tools\hostessctl\hostessctl.py') meta-quest-casting describe --out (Join-Path $env:LOCALAPPDATA 'RustyHostessLabs\reports\casting-descriptor.json')
     exit $LASTEXITCODE
   }
 }
 '@
-    Write-Utf8 (Join-Path $stage 'bootstrap\hostess-alpha.ps1') $launcher
+    Write-Utf8 (Join-Path $stage 'bootstrap\hostess-labs.ps1') $launcher
     $runtime = [ordered]@{
         schema = 'rusty.hostess.external_python_runtime.v1'
         external = $true
@@ -159,16 +160,18 @@ switch ($Action) {
         }
     } | Sort-Object path)
     $manifest = [ordered]@{
-        schema = 'rusty.hostess.windows_complete_product.v1'
-        product = 'rusty-hostess-alpha'
-        display_name = 'Rusty Hostess Alpha'
-        channel = 'alpha'
+        schema = 'rusty.hostess.windows_complete_product.v2'
+        product = 'rusty-hostess-labs'
+        display_name = 'Rusty Hostess Labs'
+        product_channel = 'labs'
+        maturity = 'alpha'
+        distribution_track = 'github-prerelease'
         prerelease = $true
         version = $Version
         release_tag = $ReleaseTag
-        package_identity = 'rusty-hostess-alpha'
-        install_root = '%LOCALAPPDATA%\RustyHostessAlpha'
-        state_root = '%LOCALAPPDATA%\RustyHostessAlpha\state'
+        package_identity = 'rusty-hostess-labs'
+        install_root = '%LOCALAPPDATA%\RustyHostessLabs'
+        state_root = '%LOCALAPPDATA%\RustyHostessLabs\state'
         source = [ordered]@{
             repository = 'https://github.com/MesmerPrism/rusty-hostess'
             revision = $SourceRevision
@@ -181,9 +184,9 @@ switch ($Action) {
             python = $runtime
         }
         typed_entrypoints = @(
-            [ordered]@{ id='companion'; command='bootstrap/hostess-alpha.ps1 companion'; arbitrary_arguments=$false },
-            [ordered]@{ id='describe'; command='bootstrap/hostess-alpha.ps1 describe'; arbitrary_arguments=$false },
-            [ordered]@{ id='casting-describe'; command='bootstrap/hostess-alpha.ps1 casting-describe'; arbitrary_arguments=$false }
+            [ordered]@{ id='companion'; command='bootstrap/hostess-labs.ps1 companion'; arbitrary_arguments=$false },
+            [ordered]@{ id='describe'; command='bootstrap/hostess-labs.ps1 describe'; arbitrary_arguments=$false },
+            [ordered]@{ id='casting-describe'; command='bootstrap/hostess-labs.ps1 casting-describe'; arbitrary_arguments=$false }
         )
         features = @(
             'hostess-companion-wpf',
@@ -218,7 +221,7 @@ switch ($Action) {
         separately_released_products = @('rusty-hostess-hotspot-provider')
         feedback = [ordered]@{
             url = 'https://github.com/MesmerPrism/rusty-hostess/issues/new'
-            required = @('channel','version','source_revision','artifact_sha256','windows_version','device_class')
+            required = @('product_channel','version','source_revision','artifact_sha256','windows_version','device_class')
             prohibit = @('credentials','personal-data','device-serials','private-logs')
         }
         signing = [ordered]@{
@@ -260,10 +263,12 @@ switch ($Action) {
         Join-Path $output "$name.manifest.json")
     $releaseMetadataPath = Join-Path $output "$name.release-metadata.json"
     $releaseMetadata = [ordered]@{
-        schema = 'rusty.hostess.windows_alpha_release_metadata.v1'
+        schema = 'rusty.hostess.windows_labs_release_metadata.v2'
         repository = 'MesmerPrism/rusty-hostess'
-        product = 'rusty-hostess-alpha'
-        channel = 'alpha'
+        product = 'rusty-hostess-labs'
+        product_channel = 'labs'
+        maturity = 'alpha'
+        distribution_track = 'github-prerelease'
         prerelease = $true
         version = $Version
         tag = $ReleaseTag
@@ -271,7 +276,7 @@ switch ($Action) {
             revision = $SourceRevision
             tree = $SourceTree
         }
-        installation_identity = 'rusty-hostess-alpha'
+        installation_identity = 'rusty-hostess-labs'
         primary_artifact = [ordered]@{
             role = 'complete-product'
             name = "$name.zip"
@@ -281,7 +286,7 @@ switch ($Action) {
     }
     Write-Utf8 $releaseMetadataPath (
         ($releaseMetadata | ConvertTo-Json -Depth 10) + "`n")
-    & (Join-Path $PSScriptRoot 'Test-HostessAlphaReleaseMetadata.ps1') `
+    & (Join-Path $PSScriptRoot 'Test-HostessLabsReleaseMetadata.ps1') `
         -MetadataPath $releaseMetadataPath `
         -ZipPath $zipPath `
         -ExpectedVersion $Version `
@@ -289,7 +294,7 @@ switch ($Action) {
         -ExpectedSourceRevision $SourceRevision `
         -ExpectedSourceTree $SourceTree | Out-Null
     [ordered]@{
-        schema='rusty.hostess.windows_alpha_bundle_receipt.v1'
+        schema='rusty.hostess.windows_labs_bundle_receipt.v1'
         result='pass'; version=$Version; tag=$ReleaseTag
         source_revision=$SourceRevision; source_tree=$SourceTree
         zip="$name.zip"; zip_sha256=$zipHash; zip_bytes=$zipBytes
