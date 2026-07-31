@@ -84,9 +84,19 @@ def _default_state_path() -> Path:
     local_app_data = os.environ.get("LOCALAPPDATA")
     if not local_app_data:
         raise RuntimeError("LOCALAPPDATA is required for private casting state")
+    product_channel = os.environ.get(
+        "RUSTY_HOSTESS_PRODUCT_CHANNEL", "stable"
+    )
+    if product_channel not in {"stable", "labs"}:
+        raise RuntimeError(
+            "RUSTY_HOSTESS_PRODUCT_CHANNEL must be exactly stable or labs"
+        )
+    state_root = (
+        "RustyHostessLabs" if product_channel == "labs" else "Rusty Hostess"
+    )
     return (
         Path(local_app_data)
-        / "Rusty Hostess"
+        / state_root
         / "meta-quest-casting"
         / "state.json"
     )
@@ -429,8 +439,15 @@ def validate_meta_quest_casting_receipt_semantics(
             )
 
     cleanup = receipt.get("cleanup")
-    if isinstance(cleanup, dict) and cleanup.get("cleanup_complete") is True:
-        if not (
+    if isinstance(cleanup, dict):
+        if (
+            cleanup.get("host_process_exited") is True
+            and cleanup.get("identity_confirmed") is not True
+        ):
+            raise CheckedSchemaError(
+                "Meta Quest casting receipt: host-process exit requires confirmed ownership"
+            )
+        if cleanup.get("cleanup_complete") is True and not (
             cleanup.get("host_process_exited") is True
             and cleanup.get("device_session_stopped") == "observed_stopped"
             and cleanup.get("fov_restored") == "observed_restored"
@@ -1276,7 +1293,9 @@ def run_meta_quest_casting(
                     "graceful_close_requested": bool(
                         close_result["close_requested"]
                     ),
-                    "host_process_exited": process is None,
+                    "host_process_exited": bool(
+                        close_result["identity_matched"] and process is None
+                    ),
                     "forced_termination": False,
                     "device_session_stopped": "unconfirmed",
                     "fov_restored": "unconfirmed",
@@ -1378,7 +1397,7 @@ def run_meta_quest_casting(
                 receipt["cleanup"] = {
                     "identity_confirmed": False,
                     "graceful_close_requested": False,
-                    "host_process_exited": True,
+                    "host_process_exited": False,
                     "forced_termination": False,
                     "device_session_stopped": "unconfirmed",
                     "fov_restored": "unconfirmed",

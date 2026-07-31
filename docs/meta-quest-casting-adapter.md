@@ -101,6 +101,8 @@ separate:
 
 Process existence, a main-window handle, or process exit never proves casting
 effectiveness, recording finalization, extended FOV, or device cleanup.
+Clearing stale Hostess state proves only that Hostess bookkeeping was removed;
+it does not prove that a host process exited or that a device session stopped.
 Receipts also receive cross-field semantic validation: for example,
 `cleanup_complete=true` cannot coexist with unconfirmed device/FOV cleanup,
 and a finalized recording cannot omit its request or artifact.

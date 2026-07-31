@@ -1,0 +1,334 @@
+name: Hostess complete-product Windows Labs
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Numeric immutable artifact version X.Y.Z
+        required: true
+        type: string
+      tag:
+        description: Exact canonical vX.Y.Z-alpha.N tag
+        required: true
+        type: string
+      source_revision:
+        description: Exact reviewed 40-character source revision
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  labs:
+    environment: windows-labs-release
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate exact Labs candidate source
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          if ($env:VERSION -cnotmatch '^[0-9]+\.[0-9]+\.[0-9]+$' -or
+              $env:RELEASE_TAG -cnotmatch '^v[0-9]+\.[0-9]+\.[0-9]+-alpha\.[1-9][0-9]*$' -or
+              $env:SOURCE_REVISION -cnotmatch '^[0-9a-f]{40}$' -or
+              $env:RELEASE_TAG -cnotmatch "^v$([regex]::Escape($env:VERSION))-alpha\.[1-9][0-9]*$") {
+            throw 'Labs alpha-maturity version, tag, or revision is malformed'
+          }
+          & git switch --detach $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'exact alpha tag checkout failed' }
+          $head = (& git rev-parse HEAD).Trim()
+          $tagCommit = (& git rev-parse "$env:RELEASE_TAG^{commit}").Trim()
+          if ($head -cne $env:SOURCE_REVISION -or
+              $tagCommit -cne $env:SOURCE_REVISION -or
+              @(& git status --porcelain=v1 --untracked-files=no).Count -ne 0) {
+            throw 'alpha tag does not bind the exact clean source revision'
+          }
+          "SOURCE_TREE=$((& git rev-parse 'HEAD^{tree}').Trim())" >> $env:GITHUB_ENV
+
+      - name: Verify authoritative remote tag before build
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $tagRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'authoritative alpha tag ref is absent' }
+          $peeled = $tagRef.object
+          for ($depth = 0; $peeled.type -ceq 'tag' -and $depth -lt 5; $depth++) {
+            $peeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($peeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) { throw 'authoritative alpha tag peel failed' }
+          }
+          if ($peeled.type -cne 'commit' -or
+              $peeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'authoritative alpha tag does not bind the reviewed revision'
+          }
+
+      - name: Publish complete WPF companion
+        shell: pwsh
+        run: |
+          dotnet publish .\apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj `
+            --configuration Release `
+            --runtime win-x64 `
+            --self-contained true `
+            -p:PublishSingleFile=true `
+            --output (Join-Path $env:RUNNER_TEMP 'hostess-wpf')
+          if ($LASTEXITCODE -ne 0) { throw 'WPF companion publish failed' }
+
+      - name: Sign Hostess-owned executable
+        shell: pwsh
+        env:
+          WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 }}
+          WINDOWS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE_PASSWORD }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.HOSTESS_ALPHA_SIGNER_THUMBPRINT }}
+          EXPECTED_SIGNER_CERT_SHA256: ${{ vars.HOSTESS_ALPHA_SIGNER_CERT_SHA256 }}
+        run: |
+          if (-not $env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64 -or
+              -not $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD) {
+            throw 'protected Hostess signing credentials are absent'
+          }
+          $pfx = Join-Path $env:RUNNER_TEMP 'hostess-labs-signing.pfx'
+          try {
+            [IO.File]::WriteAllBytes(
+              $pfx,
+              [Convert]::FromBase64String(
+                $env:WINDOWS_SIGNING_CERTIFICATE_PFX_BASE64
+              )
+            )
+            $signtool = (Get-Command signtool.exe -ErrorAction Stop).Source
+            & $signtool sign /fd SHA256 /td SHA256 /tr `
+              http://timestamp.digicert.com /f $pfx `
+              /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD `
+              (Join-Path $env:RUNNER_TEMP 'hostess-wpf\HostessCompanion.Wpf.exe')
+            if ($LASTEXITCODE -ne 0) { throw 'Hostess executable signing failed' }
+            $exe = Join-Path $env:RUNNER_TEMP 'hostess-wpf\HostessCompanion.Wpf.exe'
+            & $signtool verify /pa /v $exe
+            if ($LASTEXITCODE -ne 0) { throw 'Authenticode /pa verification failed' }
+            $signature = Get-AuthenticodeSignature -LiteralPath $exe
+            $thumbprint = $signature.SignerCertificate.Thumbprint.ToUpperInvariant()
+            $certificateHash = [Convert]::ToHexString(
+              [Security.Cryptography.SHA256]::HashData(
+                $signature.SignerCertificate.RawData)).ToLowerInvariant()
+            if ($env:EXPECTED_SIGNER_THUMBPRINT -cnotmatch '^[0-9A-F]{40}$' -or
+                $env:EXPECTED_SIGNER_CERT_SHA256 -cnotmatch '^[0-9a-f]{64}$' -or
+                $thumbprint -cne $env:EXPECTED_SIGNER_THUMBPRINT -or
+                $certificateHash -cne $env:EXPECTED_SIGNER_CERT_SHA256) {
+              throw 'signed executable does not match independently pinned owner signer'
+            }
+            "WPF_EXE_SHA256=$((Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
+          }
+          finally {
+            Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
+          }
+
+      - name: Build deterministic complete-product Labs
+        shell: pwsh
+        env:
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.HOSTESS_ALPHA_SIGNER_THUMBPRINT }}
+          EXPECTED_SIGNER_CERT_SHA256: ${{ vars.HOSTESS_ALPHA_SIGNER_CERT_SHA256 }}
+          PYTHON_EXE_SHA256: ${{ vars.HOSTESS_ALPHA_PYTHON_3_12_10_SHA256 }}
+        run: |
+          .\packaging\windows-labs\New-HostessLabsBundle.ps1 `
+            -Version $env:VERSION `
+            -ReleaseTag $env:RELEASE_TAG `
+            -SourceRevision $env:SOURCE_REVISION `
+            -SourceTree $env:SOURCE_TREE `
+            -WpfPublishDirectory (Join-Path $env:RUNNER_TEMP 'hostess-wpf') `
+            -ExpectedWpfSignerThumbprint $env:EXPECTED_SIGNER_THUMBPRINT `
+            -ExpectedWpfSignerCertificateSha256 $env:EXPECTED_SIGNER_CERT_SHA256 `
+            -ExpectedWpfExecutableSha256 $env:WPF_EXE_SHA256 `
+            -PythonExecutableSha256 $env:PYTHON_EXE_SHA256 `
+            -OutputDirectory (Join-Path $env:RUNNER_TEMP 'hostess-labs') |
+            Tee-Object -FilePath (Join-Path $env:RUNNER_TEMP 'bundle-receipt.json')
+
+      - name: Create prerelease only after authoritative absence
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $endpoint = "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG"
+          $probe = & gh api --include $endpoint 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            throw 'exact Labs release already exists'
+          }
+          if (($probe -join "`n") -cnotmatch '(?m)^HTTP/\S+\s+404(?:\s|$)') {
+            throw 'Labs release absence was not an authoritative 404'
+          }
+          & gh release create $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --verify-tag `
+            --draft `
+            --prerelease `
+            --latest=false `
+            --generate-notes
+          if ($LASTEXITCODE -ne 0) { throw 'Labs draft creation failed' }
+
+      - name: Upload and close exact immutable asset set
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          RELEASE_TAG: ${{ inputs.tag }}
+          SOURCE_REVISION: ${{ inputs.source_revision }}
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'hostess-labs'
+          $stem = "RustyHostess-Labs-$env:VERSION-win-x64"
+          $expected = @(
+            "$stem.zip",
+            "$stem.zip.sha256",
+            "$stem.manifest.json",
+            "$stem.release-metadata.json"
+          ) | Sort-Object
+          $files = @(Get-ChildItem -LiteralPath $root -File)
+          if (($files.Name | Sort-Object) -join "`n" -cne
+              $expected -join "`n") {
+            throw 'local Labs asset set is not closed'
+          }
+          .\packaging\windows-labs\Test-HostessLabsReleaseMetadata.ps1 `
+            -MetadataPath (Join-Path $root "$stem.release-metadata.json") `
+            -ZipPath (Join-Path $root "$stem.zip") `
+            -ExpectedVersion $env:VERSION `
+            -ExpectedReleaseTag $env:RELEASE_TAG `
+            -ExpectedSourceRevision $env:SOURCE_REVISION `
+            -ExpectedSourceTree $env:SOURCE_TREE | Out-Null
+          & gh release upload $env:RELEASE_TAG @($files.FullName) `
+            --repo $env:GITHUB_REPOSITORY
+          if ($LASTEXITCODE -ne 0) { throw 'Labs asset upload failed' }
+          $release = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json -Depth 30
+          if ($release.tag_name -cne $env:RELEASE_TAG -or
+              $release.draft -ne $true -or
+              $release.prerelease -ne $true -or
+              (@($release.assets.name | Sort-Object) -join "`n") -cne
+                ($expected -join "`n")) {
+            throw 'Labs prerelease readback is not exact'
+          }
+          foreach ($file in $files) {
+            $remote = @($release.assets | Where-Object name -CEQ $file.Name)
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
+              Hash.ToLowerInvariant()
+            if ($remote.Count -ne 1 -or
+                $remote[0].size -ne $file.Length -or
+                $remote[0].digest -cne "sha256:$hash" -or
+                $remote[0].browser_download_url -cne
+                  "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($file.Name)") {
+              throw "Labs asset readback failed: $($file.Name)"
+            }
+          }
+          $prePromotionRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) {
+            throw 'alpha tag ref vanished before promotion'
+          }
+          $prePromotionPeeled = $prePromotionRef.object
+          for ($depth = 0;
+               $prePromotionPeeled.type -ceq 'tag' -and $depth -lt 5;
+               $depth++) {
+            $prePromotionPeeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($prePromotionPeeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) {
+              throw 'alpha tag peel failed before promotion'
+            }
+          }
+          if ($prePromotionPeeled.type -cne 'commit' -or
+              $prePromotionPeeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'alpha tag moved before promotion; draft remains non-public'
+          }
+          & gh api --method PATCH `
+            "repos/$env:GITHUB_REPOSITORY/releases/$($release.id)" `
+            -F draft=false -F prerelease=true -f make_latest=false | Out-Null
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Labs draft publication failed; immutable draft requires manual incident review'
+          }
+          $published = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json -Depth 30
+          if ($published.draft -ne $false -or $published.prerelease -ne $true -or
+              (@($published.assets.name | Sort-Object) -join "`n") -cne
+                ($expected -join "`n")) {
+            throw 'published Labs final readback is not exact'
+          }
+          foreach ($file in $files) {
+            $remote = @($published.assets | Where-Object name -CEQ $file.Name)
+            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
+              Hash.ToLowerInvariant()
+            if ($remote.Count -ne 1 -or $remote[0].size -ne $file.Length -or
+                $remote[0].digest -cne "sha256:$hash") {
+              throw "published Labs asset final readback failed: $($file.Name)"
+            }
+          }
+          $tagRef = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
+            ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'alpha tag ref readback failed' }
+          $peeled = $tagRef.object
+          for ($depth = 0; $peeled.type -ceq 'tag' -and $depth -lt 5; $depth++) {
+            $peeled = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/git/tags/$($peeled.sha)" |
+              ConvertFrom-Json).object
+            if ($LASTEXITCODE -ne 0) { throw 'annotated alpha tag peel failed' }
+          }
+          if ($peeled.type -cne 'commit' -or
+              $peeled.sha -cne $env:SOURCE_REVISION) {
+            throw 'alpha tag ref does not peel to the reviewed source revision'
+          }
+          $latestRaw = & gh api --include `
+            "repos/$env:GITHUB_REPOSITORY/releases/latest" 2>&1
+          if ($LASTEXITCODE -ne 0) {
+            if (($latestRaw -join "`n") -cnotmatch
+                '(?m)^HTTP/\S+\s+404(?:\s|$)') {
+              throw 'latest release readback failed'
+            }
+          }
+          else {
+            $latest = (& gh api `
+              "repos/$env:GITHUB_REPOSITORY/releases/latest") |
+              ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0 -or
+                $latest.tag_name -ceq $env:RELEASE_TAG) {
+              throw 'Labs prerelease became latest'
+            }
+          }
+
+      - name: Record immutable release incident
+        if: failure()
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $incident = [ordered]@{
+            schema = 'rusty.hostess.labs_release_incident.v1'
+            tag = $env:RELEASE_TAG
+            disposition = 'manual-review-required'
+            automatic_delete_or_rerun = $false
+          }
+          $path = Join-Path $env:RUNNER_TEMP 'hostess-labs-release-incident.json'
+          [IO.File]::WriteAllText($path, ($incident | ConvertTo-Json) + "`n")
+          Write-Error 'Labs release failed; do not rerun or delete a draft automatically. Review the exact tag and release manually.' -ErrorAction Continue
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: hostess-labs-release-incident
+          path: ${{ runner.temp }}/hostess-labs-release-incident.json

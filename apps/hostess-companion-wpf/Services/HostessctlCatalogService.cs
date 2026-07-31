@@ -24,7 +24,7 @@ public sealed class HostessctlCatalogService
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python",
+            FileName = HostessctlServicePaths.ResolvePythonExecutable(repoRoot),
             WorkingDirectory = repoRoot.FullName,
             UseShellExecute = false,
             RedirectStandardOutput = true,

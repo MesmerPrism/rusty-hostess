@@ -13,6 +13,11 @@ The repo is intentionally separate from:
 Hostess T consumes package manifests as build or run inputs and emits evidence
 JSON that includes package manifest hashes.
 
+The opt-in complete-product Windows Labs distribution is documented in
+[docs/WINDOWS_LABS_DISTRIBUTION.md](docs/WINDOWS_LABS_DISTRIBUTION.md). It
+includes the current WPF companion and source-owned CLI surface while keeping
+MQDH/Casting external and keeping the standalone hotspot provider separate.
+
 ## Agent Instructions
 
 Use `AGENTS.md` as the first-hop policy surface. Detailed Hostess agent

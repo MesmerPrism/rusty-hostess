@@ -13,6 +13,7 @@ from tools.hostessctl.cli_parser import build_hostessctl_parser
 from tools.hostessctl.meta_quest_casting import (
     COMPATIBILITY_PROFILES,
     PrivateStateStore,
+    _default_state_path,
     _sha256_json,
     _launch_arguments,
     parse_adb_devices,
@@ -295,6 +296,46 @@ class MetaQuestCastingTests(unittest.TestCase):
         self.assertEqual(0, result)
         self.assertFalse(descriptor["authorizes_execution"])
 
+    def test_default_private_state_path_is_product_channel_isolated(self) -> None:
+        local_app_data = r"C:\Users\Test\AppData\Local"
+        with mock.patch.dict(
+            os.environ,
+            {"LOCALAPPDATA": local_app_data},
+            clear=True,
+        ):
+            self.assertEqual(
+                Path(local_app_data)
+                / "Rusty Hostess"
+                / "meta-quest-casting"
+                / "state.json",
+                _default_state_path(),
+            )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": local_app_data,
+                "RUSTY_HOSTESS_PRODUCT_CHANNEL": "labs",
+            },
+            clear=True,
+        ):
+            self.assertEqual(
+                Path(local_app_data)
+                / "RustyHostessLabs"
+                / "meta-quest-casting"
+                / "state.json",
+                _default_state_path(),
+            )
+        with mock.patch.dict(
+            os.environ,
+            {
+                "LOCALAPPDATA": local_app_data,
+                "RUSTY_HOSTESS_PRODUCT_CHANNEL": "Labs",
+            },
+            clear=True,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "exactly stable or labs"):
+                _default_state_path()
+
     def test_serial_validation_is_exact_and_closed(self) -> None:
         validate_serial(TEST_SERIAL)
         for value in ("", "*", "any", "first", " serial", "serial ", "a/b", "a\nb"):
@@ -488,6 +529,45 @@ class MetaQuestCastingTests(unittest.TestCase):
             adapter.launched_arguments,
         )
         self.assertNotIn("--args", adapter.launched_arguments)
+
+    def test_startup_failure_does_not_claim_exit_without_owned_identity(self) -> None:
+        class MissingAfterLaunchAdapter(FakeAdapter):
+            def launch_casting(
+                self,
+                executable: str,
+                arguments: list[str],
+                *,
+                working_directory: str,
+                stdout_path: str,
+                stderr_path: str,
+            ) -> dict[str, object]:
+                identity = super().launch_casting(
+                    executable,
+                    arguments,
+                    working_directory=working_directory,
+                    stdout_path=stdout_path,
+                    stderr_path=stderr_path,
+                )
+                self.processes.clear()
+                return identity
+
+        adapter = MissingAfterLaunchAdapter()
+        with tempfile.TemporaryDirectory() as temporary:
+            receipt_path = Path(temporary) / "start.json"
+            result = run_meta_quest_casting(
+                command_args("start", receipt_path),
+                adapter=adapter,
+                state_store=PrivateStateStore(Path(temporary) / "state.json"),
+                sleep_func=lambda _seconds: None,
+            )
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+        self.assertEqual(3, result)
+        self.assertEqual(
+            "casting_exited_during_startup",
+            receipt["reason_code"],
+        )
+        self.assertFalse(receipt["cleanup"]["identity_confirmed"])
+        self.assertFalse(receipt["cleanup"]["host_process_exited"])
 
     def test_start_rechecks_meta_identity_immediately_before_launch(self) -> None:
         class ChangingAdapter(FakeAdapter):
@@ -684,6 +764,36 @@ class MetaQuestCastingTests(unittest.TestCase):
         self.assertFalse(receipt["cleanup"]["cleanup_complete"])
         self.assertFalse(state_exists)
 
+    def test_stop_clears_stale_state_without_claiming_process_exit(self) -> None:
+        adapter = FakeAdapter()
+        with tempfile.TemporaryDirectory() as temporary:
+            state_path = Path(temporary) / "state.json"
+            store = PrivateStateStore(state_path)
+            store.write(
+                private_state(
+                    Path(temporary),
+                    pid=4242,
+                    creation_time_utc="2026-07-30T20:00:00Z",
+                )
+            )
+            receipt_path = Path(temporary) / "stop.json"
+            result = run_meta_quest_casting(
+                command_args("stop", receipt_path),
+                adapter=adapter,
+                state_store=store,
+            )
+            receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+            state_exists = state_path.exists()
+        self.assertEqual(0, result)
+        self.assertEqual([], adapter.closed_pids)
+        self.assertEqual("inactive", receipt["outcome"])
+        self.assertEqual("stale_state_cleared", receipt["reason_code"])
+        self.assertFalse(receipt["cleanup"]["identity_confirmed"])
+        self.assertFalse(receipt["cleanup"]["graceful_close_requested"])
+        self.assertFalse(receipt["cleanup"]["host_process_exited"])
+        self.assertFalse(receipt["cleanup"]["cleanup_complete"])
+        self.assertFalse(state_exists)
+
     def test_stop_sends_no_window_input_if_identity_changes_at_close(self) -> None:
         adapter = FakeAdapter()
         process = {
@@ -781,6 +891,18 @@ class MetaQuestCastingTests(unittest.TestCase):
             validate_meta_quest_casting_receipt_semantics(
                 contradictory_cleanup
             )
+        unowned_exit = dict(receipt)
+        unowned_exit["cleanup"] = {
+            "identity_confirmed": False,
+            "graceful_close_requested": False,
+            "host_process_exited": True,
+            "forced_termination": False,
+            "device_session_stopped": "unconfirmed",
+            "fov_restored": "unconfirmed",
+            "cleanup_complete": False,
+        }
+        with self.assertRaises(ValueError):
+            validate_meta_quest_casting_receipt_semantics(unowned_exit)
         contradictory_recording = dict(receipt)
         contradictory_recording["recording"] = {
             "requested": False,

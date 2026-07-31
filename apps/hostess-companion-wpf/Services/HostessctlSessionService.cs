@@ -97,7 +97,7 @@ public sealed class HostessctlSessionService
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python",
+            FileName = HostessctlServicePaths.ResolvePythonExecutable(repoRoot),
             WorkingDirectory = repoRoot.FullName,
             UseShellExecute = false,
             RedirectStandardOutput = true,
@@ -220,7 +220,7 @@ public sealed class HostessctlSessionService
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python",
+            FileName = HostessctlServicePaths.ResolvePythonExecutable(repoRoot),
             WorkingDirectory = repoRoot.FullName,
             UseShellExecute = false,
             RedirectStandardOutput = true,

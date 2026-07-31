@@ -16,6 +16,12 @@ bundles, signing material, captured evidence, device logs, platform SDKs,
 binary releases, and external tools under their own provenance and notice
 requirements; see `docs/LICENSING.md`.
 
+Complete-product Windows Labs packaging is owned by
+`packaging/windows-labs` and documented in
+`docs/WINDOWS_LABS_DISTRIBUTION.md`. It packages Hostess-owned WPF and source
+surfaces only; never fold MQDH/Casting or the separately released hotspot
+provider into that product identity.
+
 ## Scope
 
 - Minimal host apps and scripts that consume Manifold package manifests.
