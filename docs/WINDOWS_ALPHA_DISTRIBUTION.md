@@ -26,12 +26,21 @@ bounded window-close requests, and Hostess receipts—not presentation,
 recording, input, extended-FOV, Meta device-session, or device-cleanup effects.
 The distribution does not make the adapter suitable for unattended operation.
 
+Each release also carries the deterministic
+`RustyHostess-Alpha-X.Y.Z-win-x64.release-metadata.json` owner asset. Its
+closed contract binds the canonical tag, numeric version, alpha channel,
+exact source revision/tree, isolated `rusty-hostess-alpha` installation
+identity, and the outer complete-product ZIP name, SHA-256, and byte length.
+It is release provenance for that ZIP only. It does not redistribute Meta
+software or attest MQDH presentation, recording, input, extended-FOV,
+device-session, or cleanup effects.
+
 The protected `windows-alpha-release` workflow requires owner signing
 credentials at execution, verifies Authenticode with `signtool /pa`, and
 matches the signer thumbprint and certificate SHA-256 to independently
 protected pins. It records those values and the signed executable hash.
 After exact clean tag/revision/tree admission it creates a draft, uploads and
-verifies the three-file closed asset set, then publishes only a prerelease with
+verifies the four-file closed asset set, then publishes only a prerelease with
 `latest=false` and performs final readback. It rejects an existing release,
 mutable URLs, stable/alpha substitution, extra assets, or an alpha latest
 pointer. A failure leaves an explicit immutable incident for manual review;

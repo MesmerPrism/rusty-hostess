@@ -51,10 +51,229 @@ try {
     $name = 'RustyHostess-Alpha-1.2.3-win-x64'
     $zipOne = Join-Path $outputs[0] "$name.zip"
     $zipTwo = Join-Path $outputs[1] "$name.zip"
+    $metadataOne = Join-Path $outputs[0] "$name.release-metadata.json"
+    $metadataTwo = Join-Path $outputs[1] "$name.release-metadata.json"
     Assert-Alpha (
         (Get-FileHash $zipOne -Algorithm SHA256).Hash -ceq
         (Get-FileHash $zipTwo -Algorithm SHA256).Hash
     ) 'complete-product alpha ZIP is not deterministic'
+    Assert-Alpha (
+        (Get-FileHash $metadataOne -Algorithm SHA256).Hash -ceq
+        (Get-FileHash $metadataTwo -Algorithm SHA256).Hash
+    ) 'complete-product release metadata is not deterministic'
+    $expectedAssets = @(
+        "$name.manifest.json",
+        "$name.release-metadata.json",
+        "$name.zip",
+        "$name.zip.sha256"
+    ) | Sort-Object
+    foreach ($output in $outputs) {
+        $observedAssets = @(
+            Get-ChildItem -LiteralPath $output -File | ForEach-Object Name
+        ) | Sort-Object
+        Assert-Alpha (
+            ($observedAssets -join "`n") -ceq ($expectedAssets -join "`n")
+        ) 'local complete-product alpha asset set is not closed'
+    }
+    & (Join-Path $root (
+        'packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1'
+    )) `
+        -MetadataPath $metadataOne `
+        -ZipPath $zipOne `
+        -ExpectedVersion 1.2.3 `
+        -ExpectedReleaseTag v1.2.3-alpha.4 `
+        -ExpectedSourceRevision $revision `
+        -ExpectedSourceTree $tree | Out-Null
+    Assert-Alpha ($LASTEXITCODE -eq 0) `
+        'generated owner release metadata did not validate'
+    $releaseMetadata = Get-Content -LiteralPath $metadataOne -Raw |
+        ConvertFrom-Json -Depth 20
+    $zipHash = (Get-FileHash -LiteralPath $zipOne -Algorithm SHA256).
+        Hash.ToLowerInvariant()
+    $zipBytes = (Get-Item -LiteralPath $zipOne).Length
+    Assert-Alpha (
+        $releaseMetadata.schema -ceq
+            'rusty.hostess.windows_alpha_release_metadata.v1' -and
+        $releaseMetadata.repository -ceq 'MesmerPrism/rusty-hostess' -and
+        $releaseMetadata.product -ceq 'rusty-hostess-alpha' -and
+        $releaseMetadata.channel -ceq 'alpha' -and
+        $releaseMetadata.prerelease -eq $true -and
+        $releaseMetadata.version -ceq '1.2.3' -and
+        $releaseMetadata.tag -ceq 'v1.2.3-alpha.4' -and
+        $releaseMetadata.source.revision -ceq $revision -and
+        $releaseMetadata.source.tree -ceq $tree -and
+        $releaseMetadata.installation_identity -ceq 'rusty-hostess-alpha' -and
+        $releaseMetadata.primary_artifact.role -ceq 'complete-product' -and
+        $releaseMetadata.primary_artifact.name -ceq "$name.zip" -and
+        $releaseMetadata.primary_artifact.sha256 -ceq $zipHash -and
+        $releaseMetadata.primary_artifact.bytes -eq $zipBytes
+    ) 'owner release metadata does not bind the exact complete-product alpha'
+
+    $metadataValidator = Join-Path $root (
+        'packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1')
+    $metadataDamage = @(
+        [ordered]@{ name='wrong-schema'; mutate={
+            param($value); $value.schema =
+                'rusty.hostess.windows_release_metadata.v1'
+        }},
+        [ordered]@{ name='missing-schema'; mutate={
+            param($value); $value.PSObject.Properties.Remove('schema')
+        }},
+        [ordered]@{ name='wrong-repository'; mutate={
+            param($value); $value.repository = 'MesmerPrism/rusty-fleet'
+        }},
+        [ordered]@{ name='missing-repository'; mutate={
+            param($value); $value.PSObject.Properties.Remove('repository')
+        }},
+        [ordered]@{ name='wrong-product'; mutate={
+            param($value); $value.product = 'rusty-hostess'
+        }},
+        [ordered]@{ name='missing-product'; mutate={
+            param($value); $value.PSObject.Properties.Remove('product')
+        }},
+        [ordered]@{ name='not-prerelease'; mutate={
+            param($value); $value.prerelease = $false
+        }},
+        [ordered]@{ name='missing-prerelease'; mutate={
+            param($value); $value.PSObject.Properties.Remove('prerelease')
+        }},
+        [ordered]@{ name='wrong-version'; mutate={
+            param($value); $value.version = '1.2.4'
+        }},
+        [ordered]@{ name='missing-version'; mutate={
+            param($value); $value.PSObject.Properties.Remove('version')
+        }},
+        [ordered]@{ name='expanded-version'; mutate={
+            param($value); $value.version = '1.2.3+expanded'
+        }},
+        [ordered]@{ name='wrong-tag'; mutate={
+            param($value); $value.tag = 'v1.2.3-alpha.5'
+        }},
+        [ordered]@{ name='missing-tag'; mutate={
+            param($value); $value.PSObject.Properties.Remove('tag')
+        }},
+        [ordered]@{ name='expanded-tag'; mutate={
+            param($value); $value.tag = 'v1.2.3-alpha.4-expanded'
+        }},
+        [ordered]@{ name='wrong-source'; mutate={
+            param($value); $value.source.revision = ('1' * 40)
+        }},
+        [ordered]@{ name='missing-source'; mutate={
+            param($value); $value.source.PSObject.Properties.Remove('revision')
+        }},
+        [ordered]@{ name='expanded-source'; mutate={
+            param($value); $value.source.revision = "$($value.source.revision)0"
+        }},
+        [ordered]@{ name='wrong-tree'; mutate={
+            param($value); $value.source.tree = ('2' * 40)
+        }},
+        [ordered]@{ name='missing-tree'; mutate={
+            param($value); $value.source.PSObject.Properties.Remove('tree')
+        }},
+        [ordered]@{ name='expanded-tree'; mutate={
+            param($value); $value.source.tree = "$($value.source.tree)0"
+        }},
+        [ordered]@{ name='wrong-channel'; mutate={
+            param($value); $value.channel = 'stable'
+        }},
+        [ordered]@{ name='missing-channel'; mutate={
+            param($value); $value.PSObject.Properties.Remove('channel')
+        }},
+        [ordered]@{ name='expanded-channel'; mutate={
+            param($value); $value.channel = 'alpha-expanded'
+        }},
+        [ordered]@{ name='wrong-identity'; mutate={
+            param($value); $value.installation_identity = 'rusty-hostess'
+        }},
+        [ordered]@{ name='missing-identity'; mutate={
+            param($value); $value.PSObject.Properties.Remove(
+                'installation_identity')
+        }},
+        [ordered]@{ name='expanded-identity'; mutate={
+            param($value); $value.installation_identity =
+                'rusty-hostess-alpha-expanded'
+        }},
+        [ordered]@{ name='wrong-artifact-role'; mutate={
+            param($value); $value.primary_artifact.role = 'bootstrap-only'
+        }},
+        [ordered]@{ name='missing-artifact-role'; mutate={
+            param($value); $value.primary_artifact.PSObject.Properties.Remove(
+                'role')
+        }},
+        [ordered]@{ name='wrong-name'; mutate={
+            param($value); $value.primary_artifact.name =
+                'RustyHostess-Alpha-1.2.4-win-x64.zip'
+        }},
+        [ordered]@{ name='missing-name'; mutate={
+            param($value); $value.primary_artifact.PSObject.Properties.Remove(
+                'name')
+        }},
+        [ordered]@{ name='expanded-name'; mutate={
+            param($value); $value.primary_artifact.name =
+                "$($value.primary_artifact.name).expanded"
+        }},
+        [ordered]@{ name='wrong-hash'; mutate={
+            param($value); $value.primary_artifact.sha256 = ('3' * 64)
+        }},
+        [ordered]@{ name='missing-hash'; mutate={
+            param($value); $value.primary_artifact.PSObject.Properties.Remove(
+                'sha256')
+        }},
+        [ordered]@{ name='expanded-hash'; mutate={
+            param($value); $value.primary_artifact.sha256 =
+                "$($value.primary_artifact.sha256)0"
+        }},
+        [ordered]@{ name='wrong-bytes'; mutate={
+            param($value); $value.primary_artifact.bytes += 1
+        }},
+        [ordered]@{ name='missing-bytes'; mutate={
+            param($value); $value.primary_artifact.PSObject.Properties.Remove(
+                'bytes')
+        }},
+        [ordered]@{ name='expanded-bytes'; mutate={
+            param($value); $value.primary_artifact.bytes =
+                "$($value.primary_artifact.bytes) bytes"
+        }},
+        [ordered]@{ name='expanded-root-object'; mutate={
+            param($value); $value | Add-Member fabricated $true
+        }},
+        [ordered]@{ name='expanded-source-object'; mutate={
+            param($value); $value.source | Add-Member fabricated $true
+        }},
+        [ordered]@{ name='expanded-artifact-object'; mutate={
+            param($value); $value.primary_artifact |
+                Add-Member fabricated $true
+        }}
+    )
+    foreach ($damage in $metadataDamage) {
+        $candidate = $releaseMetadata | ConvertTo-Json -Depth 20 |
+            ConvertFrom-Json -Depth 20
+        & $damage.mutate $candidate
+        $candidateDirectory = Join-Path $temp (
+            "damaged-release-metadata-$($damage.name)")
+        [IO.Directory]::CreateDirectory($candidateDirectory) | Out-Null
+        $candidatePath = Join-Path $candidateDirectory `
+            "$name.release-metadata.json"
+        [IO.File]::WriteAllText(
+            $candidatePath,
+            ($candidate | ConvertTo-Json -Depth 20) + "`n",
+            [Text.UTF8Encoding]::new($false))
+        $rejected = $false
+        try {
+            & $metadataValidator `
+                -MetadataPath $candidatePath `
+                -ZipPath $zipOne `
+                -ExpectedVersion 1.2.3 `
+                -ExpectedReleaseTag v1.2.3-alpha.4 `
+                -ExpectedSourceRevision $revision `
+                -ExpectedSourceTree $tree | Out-Null
+        }
+        catch {
+            $rejected = $true
+        }
+        Assert-Alpha $rejected `
+            "owner release metadata accepted $($damage.name) damage"
+    }
 
     $expanded = Join-Path $temp 'expanded'
     [IO.Compression.ZipFile]::ExtractToDirectory($zipOne, $expanded)
@@ -346,12 +565,15 @@ try {
         $workflow -match 'persist-credentials: false' -and
         $workflow -match 'releases/download/\$env:RELEASE_TAG/' -and
         $workflow -notmatch 'releases/latest/download' -and
-        $workflow -match '\$remote\[0\]\.digest -cne "sha256:\$hash"'
+        $workflow -match '\$remote\[0\]\.digest -cne "sha256:\$hash"' -and
+        $workflow -match '"\$stem\.release-metadata\.json"' -and
+        $workflow -match 'Test-HostessAlphaReleaseMetadata\.ps1'
     ) 'protected prerelease or closed remote readback contract is incomplete'
     [ordered]@{
         schema='rusty.hostess.windows_alpha_distribution_test.v1'
         result='pass'; deterministic=$true; complete_product=$true
-        meta_redistributed=$false; stable_default_preserved=$true
+        owner_release_metadata=$true; meta_redistributed=$false
+        stable_default_preserved=$true
     } | ConvertTo-Json
 }
 finally {

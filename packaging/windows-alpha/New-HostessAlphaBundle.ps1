@@ -254,14 +254,48 @@ switch ($Action) {
         } finally { $zip.Dispose() }
     } finally { $stream.Dispose() }
     $zipHash = Get-Sha256 $zipPath
+    $zipBytes = (Get-Item -LiteralPath $zipPath).Length
     Write-Utf8 (Join-Path $output "$name.zip.sha256") "$zipHash  $name.zip`n"
     Copy-Item -LiteralPath $manifestPath -Destination (
         Join-Path $output "$name.manifest.json")
+    $releaseMetadataPath = Join-Path $output "$name.release-metadata.json"
+    $releaseMetadata = [ordered]@{
+        schema = 'rusty.hostess.windows_alpha_release_metadata.v1'
+        repository = 'MesmerPrism/rusty-hostess'
+        product = 'rusty-hostess-alpha'
+        channel = 'alpha'
+        prerelease = $true
+        version = $Version
+        tag = $ReleaseTag
+        source = [ordered]@{
+            revision = $SourceRevision
+            tree = $SourceTree
+        }
+        installation_identity = 'rusty-hostess-alpha'
+        primary_artifact = [ordered]@{
+            role = 'complete-product'
+            name = "$name.zip"
+            sha256 = $zipHash
+            bytes = $zipBytes
+        }
+    }
+    Write-Utf8 $releaseMetadataPath (
+        ($releaseMetadata | ConvertTo-Json -Depth 10) + "`n")
+    & (Join-Path $PSScriptRoot 'Test-HostessAlphaReleaseMetadata.ps1') `
+        -MetadataPath $releaseMetadataPath `
+        -ZipPath $zipPath `
+        -ExpectedVersion $Version `
+        -ExpectedReleaseTag $ReleaseTag `
+        -ExpectedSourceRevision $SourceRevision `
+        -ExpectedSourceTree $SourceTree | Out-Null
     [ordered]@{
         schema='rusty.hostess.windows_alpha_bundle_receipt.v1'
         result='pass'; version=$Version; tag=$ReleaseTag
         source_revision=$SourceRevision; source_tree=$SourceTree
-        zip="$name.zip"; zip_sha256=$zipHash
+        zip="$name.zip"; zip_sha256=$zipHash; zip_bytes=$zipBytes
+        release_metadata="$name.release-metadata.json"
+        release_metadata_sha256=(Get-Sha256 $releaseMetadataPath)
+        release_metadata_bytes=(Get-Item -LiteralPath $releaseMetadataPath).Length
         file_count=$files.Count + 1
     } | ConvertTo-Json -Depth 10
 }

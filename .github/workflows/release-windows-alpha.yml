@@ -194,13 +194,21 @@ jobs:
           $expected = @(
             "$stem.zip",
             "$stem.zip.sha256",
-            "$stem.manifest.json"
+            "$stem.manifest.json",
+            "$stem.release-metadata.json"
           ) | Sort-Object
           $files = @(Get-ChildItem -LiteralPath $root -File)
           if (($files.Name | Sort-Object) -join "`n" -cne
               $expected -join "`n") {
             throw 'local alpha asset set is not closed'
           }
+          .\packaging\windows-alpha\Test-HostessAlphaReleaseMetadata.ps1 `
+            -MetadataPath (Join-Path $root "$stem.release-metadata.json") `
+            -ZipPath (Join-Path $root "$stem.zip") `
+            -ExpectedVersion $env:VERSION `
+            -ExpectedReleaseTag $env:RELEASE_TAG `
+            -ExpectedSourceRevision $env:SOURCE_REVISION `
+            -ExpectedSourceTree $env:SOURCE_TREE | Out-Null
           & gh release upload $env:RELEASE_TAG @($files.FullName) `
             --repo $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'alpha asset upload failed' }
