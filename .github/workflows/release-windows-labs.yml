@@ -127,10 +127,12 @@ jobs:
             $certificateHash = [Convert]::ToHexString(
               [Security.Cryptography.SHA256]::HashData(
                 $authorizedSigner.RawData)).ToLowerInvariant()
-            $codeSigningEku = @($authorizedSigner.EnhancedKeyUsageList |
-              Where-Object ObjectId -eq '1.3.6.1.5.5.7.3.3').Count -eq 1
-            if ($authorizedSigner.Subject -cne $policy.wpf_signer.subject -or
-                $authorizedSigner.Thumbprint.ToUpperInvariant() -cne
+            $ekuExtensions = @($authorizedSigner.Extensions |
+              Where-Object { $_.Oid.Value -ceq '2.5.29.37' })
+            $codeSigningEku = $ekuExtensions.Count -eq 1 -and
+              @($ekuExtensions[0].EnhancedKeyUsages |
+                Where-Object Value -ceq '1.3.6.1.5.5.7.3.3').Count -eq 1
+            if ($authorizedSigner.Thumbprint.ToUpperInvariant() -cne
                   $policy.wpf_signer.thumbprint -or
                 $certificateHash -cne $policy.wpf_signer.certificate_sha256 -or
                 -not $codeSigningEku) {
