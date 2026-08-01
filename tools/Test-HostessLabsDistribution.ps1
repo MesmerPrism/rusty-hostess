@@ -631,6 +631,7 @@ try {
         $workflow -match '\$global:LASTEXITCODE = 0' -and
         $signToolVerify -ge 0 -and
         $acceptedBoundaryExitReset -gt $signToolVerify -and
+        $workflow -match '\(\(\$files\.Name \| Sort-Object\) -join "`n"\) -cne\s+\(\$expected -join "`n"\)' -and
         $workflow -match '\$thumbprint -cne \$policy\.wpf_signer\.thumbprint' -and
         $workflow -match '\$certificateHash -cne \$policy\.wpf_signer\.certificate_sha256' -and
         $workflow -match 'Fetch exact reviewed CPython runtime and provenance' -and

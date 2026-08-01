@@ -290,8 +290,8 @@ jobs:
             "$stem.release-metadata.json"
           ) | Sort-Object
           $files = @(Get-ChildItem -LiteralPath $root -File)
-          if (($files.Name | Sort-Object) -join "`n" -cne
-              $expected -join "`n") {
+          if ((($files.Name | Sort-Object) -join "`n") -cne
+              ($expected -join "`n")) {
             throw 'local Labs asset set is not closed'
           }
           .\packaging\windows-labs\Test-HostessLabsReleaseMetadata.ps1 `
