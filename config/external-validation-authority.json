@@ -479,6 +479,55 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-zz-provider-cross-boundary-portability-20260801",
+      "required_ancestor": "d3037d2327752c6ac434d4f60314fe03eb06bc46",
+      "changed_paths": [
+        "docs/windows-mobile-hotspot-provider.md",
+        "packaging/windows-hotspot-provider/README.md",
+        "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+        "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/windows-mobile-hotspot-provider.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 10533,
+          "sha256": "55951f489a029e806c9258aa551903183f790d34031fada6d80065f94a5fc0ee"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6445,
+          "sha256": "ff40d2bb09ac79aa9a63e63a6f7752ba6bfc1cff6931cec602a928148925cb99"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 11959,
+          "sha256": "bca1aaf67805596960a4810038b8e713aa6814aacfc24c0d9193f5d80235708b"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 15302,
+          "sha256": "ff51fac5996f549fafe9db5655eff4335dbcb7f2ef5656b9095cdac1c61bfc25"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19214,
+          "sha256": "07a6c03ab7e6a31f381b218b440b271db906cfa4c6771d1a14da3b88fa14b071"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
