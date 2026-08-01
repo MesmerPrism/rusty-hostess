@@ -48,6 +48,36 @@
       "rule_id": "validation-authority-workflow",
       "match": "exact",
       "path": ".github/workflows/external-validation-authority.yml"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-generator",
+      "match": "exact",
+      "path": "tools/New-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-policy",
+      "match": "prefix",
+      "path": "packaging/windows-hotspot-provider/"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-tests",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-validator",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-workflow",
+      "match": "exact",
+      "path": ".github/workflows/windows-hotspot-provider-release.yml"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-workflow-test",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1"
     }
   ],
   "approved_change_sets": [
@@ -336,7 +366,6 @@
         ".github/workflows/windows-hotspot-provider-release.yml",
         "AGENTS.md",
         "README.md",
-        "config/external-validation-authority.json",
         "docs/windows-mobile-hotspot-provider.md",
         "packaging/windows-hotspot-provider/README.md",
         "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
@@ -370,13 +399,6 @@
           "mode": "100644",
           "size_bytes": 62877,
           "sha256": "34453610a84f968135723af39f8fcc9d0bbbc455bf73b67c48d0b8f2fa335f11"
-        },
-        {
-          "path": "config/external-validation-authority.json",
-          "state": "present",
-          "mode": "100644",
-          "size_bytes": 12996,
-          "sha256": "8cb0297d6d424b10bafcabef95d6ab6691ca73aaa619d2105bd0d54aba285c44"
         },
         {
           "path": "docs/windows-mobile-hotspot-provider.md",
