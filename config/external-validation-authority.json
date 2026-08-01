@@ -1,0 +1,206 @@
+{
+  "schema": "rusty.morphospace.workflow.external_validation_authority_policy.v1",
+  "policy_id": "rusty-hostess-validation-authority-v1",
+  "repository": "MesmerPrism/rusty-hostess",
+  "mandatory_protected_paths": [
+    ".github/workflows/external-validation-authority.yml",
+    "config/external-validation-authority.json",
+    "schemas/external-validation-authority-assessment-v1.schema.json",
+    "schemas/external-validation-authority-policy-v1.schema.json"
+  ],
+  "protected_rules": [
+    {
+      "rule_id": "hostess-companion-runtime",
+      "match": "prefix",
+      "path": "apps/hostess-companion-wpf/Services/"
+    },
+    {
+      "rule_id": "labs-distribution-doc",
+      "match": "exact",
+      "path": "docs/WINDOWS_LABS_DISTRIBUTION.md"
+    },
+    {
+      "rule_id": "labs-distribution-test",
+      "match": "exact",
+      "path": "tools/Test-HostessLabsDistribution.ps1"
+    },
+    {
+      "rule_id": "labs-packaging",
+      "match": "prefix",
+      "path": "packaging/windows-labs/"
+    },
+    {
+      "rule_id": "labs-policy-schemas",
+      "match": "prefix",
+      "path": "schemas/hostess-windows-"
+    },
+    {
+      "rule_id": "labs-release-workflow",
+      "match": "exact",
+      "path": ".github/workflows/release-windows-labs.yml"
+    },
+    {
+      "rule_id": "validation-authority-policy",
+      "match": "exact",
+      "path": "config/external-validation-authority.json"
+    },
+    {
+      "rule_id": "validation-authority-schemas",
+      "match": "prefix",
+      "path": "schemas/external-validation-authority-"
+    },
+    {
+      "rule_id": "validation-authority-workflow",
+      "match": "exact",
+      "path": ".github/workflows/external-validation-authority.yml"
+    }
+  ],
+  "approved_change_sets": [
+    {
+      "approval_id": "hostess-bundled-python-labs-20260801",
+      "required_ancestor": "597306cf132ad96d8cfec1e187127571d936f643",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "AGENTS.md",
+        "README.md",
+        "apps/hostess-companion-wpf/Services/HostessctlCatalogService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlCommandService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlConnectivityService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlProjectRunnerService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlReadinessService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlServicePaths.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlSessionService.cs",
+        "docs/LICENSING.md",
+        "docs/WINDOWS_LABS_DISTRIBUTION.md",
+        "packaging/windows-labs/New-HostessLabsBundle.ps1",
+        "packaging/windows-labs/runtime-policy.json",
+        "schemas/hostess-windows-complete-product-v3.schema.json",
+        "schemas/hostess-windows-labs-runtime-policy.schema.json",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19857,
+          "sha256": "d402d8db4b0b824eca9fd76da4250379c29dc4fa256d49c73a4371782127090c"
+        },
+        {
+          "path": "AGENTS.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30426,
+          "sha256": "e93b3ebea7d1f01a57aea86c33d0030c97dfb6a95baaeef6d56b4b3f465a29e0"
+        },
+        {
+          "path": "README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 62701,
+          "sha256": "0928b5d46d47b8ea8ce2a90c7749eaa0e6338f444b068a458d69c953fbf9d9d5"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlCatalogService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2484,
+          "sha256": "47cadba37836c3cad583d05cd6f529e172ce3741665e4a1e71b0bfea6eab15a7"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlCommandService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5531,
+          "sha256": "b097b67f1876c5507dd9647463815fd52c909a7a146e7b892d27082066907c8e"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlConnectivityService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 46913,
+          "sha256": "1a365ac547e91330fe3292a4255c69a674ddfded59fbed6c672fb67bef3ed037"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlProjectRunnerService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3991,
+          "sha256": "f63139d9b0ed4a7fdb5f93dbeb118a6924747f39239b07c1627b3afa5d682dbf"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlReadinessService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3243,
+          "sha256": "4d7fa989088882074d0611b21c0837983b948b30663ba6b342ebf9b6645b91da"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlServicePaths.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 4169,
+          "sha256": "f1edab98df8dc41c2616693197eb15cf1e433b34470733fabb52b2a1454fdd72"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlSessionService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 11908,
+          "sha256": "9a74d020089936e95c0293cda632171b921014b5fce2b0ba10215926c8ca7ef0"
+        },
+        {
+          "path": "docs/LICENSING.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 1091,
+          "sha256": "1b469665a57f5ebbd674eadaf193c1e1d68dafdd11ae9d3d94e1c019a8f09d87"
+        },
+        {
+          "path": "docs/WINDOWS_LABS_DISTRIBUTION.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 4943,
+          "sha256": "1e450c5414cfaf3bda3c2ed8255563187f65f1e106c645487089d6ab750fdfad"
+        },
+        {
+          "path": "packaging/windows-labs/New-HostessLabsBundle.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19165,
+          "sha256": "561d267c8dbe6890e1735e8f2ad0f6a7515d184f8165ce2479850b0157e7870c"
+        },
+        {
+          "path": "packaging/windows-labs/runtime-policy.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 1400,
+          "sha256": "8d39e6c6fd577747a74141af0245511da570e92cdc41c7e2d51682e3361e3625"
+        },
+        {
+          "path": "schemas/hostess-windows-complete-product-v3.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6871,
+          "sha256": "284aa35dc648b7ea2a01dfb2c7f100868ee6e2c9cae707580dda2f8acbdd186c"
+        },
+        {
+          "path": "schemas/hostess-windows-labs-runtime-policy.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2374,
+          "sha256": "ab9eb460f8084ad5345066941bc26402f48dde2e47165380e1fce15040a47d85"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30051,
+          "sha256": "9e91cda0d3734dfe2f6c5abfa91969e82fb98cf3a4982504bd455f18fa47015a"
+        }
+      ],
+      "status": "approved"
+    }
+  ],
+  "status": "active"
+}
