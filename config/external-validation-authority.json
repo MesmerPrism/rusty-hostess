@@ -295,6 +295,39 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-verified-draft-readback-by-id-20260801",
+      "required_ancestor": "62a0da25613a9a610cce0f8af89ccad8155ac236",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "docs/WINDOWS_LABS_DISTRIBUTION.md",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20891,
+          "sha256": "181ceee1fcdf91c17543f40a659fcf9975ca3e24c07b45847b10a9e4dc2fe8ab"
+        },
+        {
+          "path": "docs/WINDOWS_LABS_DISTRIBUTION.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5092,
+          "sha256": "bf70c9651cc8efd62e54444929ad46db8ee61e0e35c81fa5c7371b7ae38a2429"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 32326,
+          "sha256": "e5c06c9ba49598f29ee55bdcde70c7cb916f70b1da798fa1bd165184f30a9e29"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
