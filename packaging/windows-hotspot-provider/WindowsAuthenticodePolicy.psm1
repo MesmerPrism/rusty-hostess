@@ -110,6 +110,106 @@ function Assert-RustyHostessProviderAuthenticodeBoundary {
     "exact-pinned-self-issued-untrusted-root-only"
 }
 
+function Assert-RustyHostessProviderAuthenticodeEvidencePair {
+    param(
+        [Parameter(Mandatory)] $Recorded,
+        [Parameter(Mandatory)] $Observed,
+        [Parameter(Mandatory)] $Policy
+    )
+
+    $requiredFields = @(
+        "state",
+        "authenticode_status",
+        "subject",
+        "issuer",
+        "thumbprint_sha1",
+        "certificate_sha256",
+        "code_signing_eku_present",
+        "self_issued",
+        "timestamp_present",
+        "chain_trusted",
+        "chain_element_count",
+        "chain_status_flags",
+        "public_trust_claim",
+        "trust_boundary"
+    )
+    foreach ($evidence in @($Recorded, $Observed)) {
+        $actualFields = @($evidence.PSObject.Properties.Name)
+        foreach ($requiredField in $requiredFields) {
+            if ($requiredField -cnotin $actualFields) {
+                throw "Authenticode evidence is missing field '$requiredField'."
+            }
+        }
+    }
+
+    $recordedBoundary = Assert-RustyHostessProviderAuthenticodeBoundary `
+        -AuthenticodeStatus ([string] $Recorded.authenticode_status) `
+        -ChainTrusted ([bool] $Recorded.chain_trusted) `
+        -ChainElementCount ([int] $Recorded.chain_element_count) `
+        -ChainStatusFlags @($Recorded.chain_status_flags)
+    $observedBoundary = Assert-RustyHostessProviderAuthenticodeBoundary `
+        -AuthenticodeStatus ([string] $Observed.authenticode_status) `
+        -ChainTrusted ([bool] $Observed.chain_trusted) `
+        -ChainElementCount ([int] $Observed.chain_element_count) `
+        -ChainStatusFlags @($Observed.chain_status_flags)
+    if ($Recorded.trust_boundary -cne $recordedBoundary -or
+        $Observed.trust_boundary -cne $observedBoundary) {
+        throw "Authenticode evidence does not name its independently observed boundary."
+    }
+
+    $recordedThumbprint = ([string] $Recorded.thumbprint_sha1).
+        Replace(" ", "").ToLowerInvariant()
+    $observedThumbprint = ([string] $Observed.thumbprint_sha1).
+        Replace(" ", "").ToLowerInvariant()
+    $policyThumbprint = ([string] $Policy.signer.thumbprint_sha1).
+        Replace(" ", "").ToLowerInvariant()
+    $recordedCertificateSha256 = ([string] $Recorded.certificate_sha256).
+        ToLowerInvariant()
+    $observedCertificateSha256 = ([string] $Observed.certificate_sha256).
+        ToLowerInvariant()
+    $policyCertificateSha256 = ([string] $Policy.signer.certificate_sha256).
+        ToLowerInvariant()
+
+    if ($Recorded.state -cne "accepted_exact_owner_signature" -or
+        $Observed.state -cne $Recorded.state -or
+        $Recorded.subject -cne $Policy.signer.subject -or
+        $Observed.subject -cne $Recorded.subject -or
+        $Recorded.issuer -cne $Policy.signer.issuer -or
+        $Observed.issuer -cne $Recorded.issuer -or
+        $Recorded.subject -cne $Recorded.issuer -or
+        $recordedThumbprint -cne $policyThumbprint -or
+        $observedThumbprint -cne $recordedThumbprint -or
+        $recordedCertificateSha256 -cne $policyCertificateSha256 -or
+        $observedCertificateSha256 -cne $recordedCertificateSha256 -or
+        $Recorded.code_signing_eku_present -ne $true -or
+        $Observed.code_signing_eku_present -ne
+            $Recorded.code_signing_eku_present -or
+        $Recorded.self_issued -ne $true -or
+        $Observed.self_issued -ne $Recorded.self_issued -or
+        $Recorded.timestamp_present -ne $true -or
+        $Observed.timestamp_present -ne $Recorded.timestamp_present -or
+        $Recorded.public_trust_claim -ne $false -or
+        $Observed.public_trust_claim -ne
+            $Recorded.public_trust_claim -or
+        $Policy.signer.code_signing_eku_oid -cne "1.3.6.1.5.5.7.3.3" -or
+        $Policy.signer.self_issued -ne $true -or
+        $Policy.signer.timestamp_required -ne $true -or
+        [bool] $Policy.signer.public_trust_claim) {
+        throw (
+            "Recorded and current-host Authenticode evidence do not share " +
+            "the exact owner-invariant signing identity."
+        )
+    }
+
+    [pscustomobject][ordered]@{
+        state = "accepted_exact_owner_signature"
+        recorded_trust_boundary = $recordedBoundary
+        observed_trust_boundary = $observedBoundary
+        same_chain_boundary = $recordedBoundary -ceq $observedBoundary
+        public_trust_claim = $false
+    }
+}
+
 function Get-RustyHostessProviderAuthenticodeAssessment {
     param(
         [Parameter(Mandatory)][string] $LiteralPath,
@@ -196,5 +296,6 @@ Export-ModuleMember -Function @(
     "Assert-RustyHostessProviderSigningCertificate",
     "Test-RustyHostessCodeSigningEku",
     "Assert-RustyHostessProviderAuthenticodeBoundary",
+    "Assert-RustyHostessProviderAuthenticodeEvidencePair",
     "Get-RustyHostessProviderAuthenticodeAssessment"
 )

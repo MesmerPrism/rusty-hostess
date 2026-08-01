@@ -60,6 +60,184 @@ foreach ($observation in @(
     Assert-RejectedBoundary -Observation $observation
 }
 
+$releasePolicy = Read-RustyHostessProviderReleasePolicy `
+    -PolicyPath (Join-Path $repoRoot `
+        "packaging\windows-hotspot-provider\release-policy.json") `
+    -SchemaPath (Join-Path $repoRoot `
+        "schemas\hostess-windows-hotspot-release-policy.schema.json")
+
+function New-TestEvidence {
+    param(
+        [Parameter(Mandatory)] $Policy,
+        [Parameter(Mandatory)]
+        [ValidateSet("valid", "unknown_error")]
+        [string] $Boundary
+    )
+    $valid = $Boundary -ceq "valid"
+    [pscustomobject][ordered]@{
+        state = "accepted_exact_owner_signature"
+        authenticode_status = $Boundary
+        subject = $Policy.signer.subject
+        issuer = $Policy.signer.issuer
+        thumbprint_sha1 = $Policy.signer.thumbprint_sha1.ToLowerInvariant()
+        certificate_sha256 = $Policy.signer.certificate_sha256
+        code_signing_eku_present = $true
+        self_issued = $true
+        timestamp_present = $true
+        chain_trusted = $valid
+        chain_element_count = 1
+        chain_status_flags = if ($valid) {
+            [Collections.Generic.List[string]]::new()
+        }
+        else {
+            [Collections.Generic.List[string]] @("UntrustedRoot")
+        }
+        public_trust_claim = $false
+        trust_boundary = if ($valid) {
+            "host-chain-valid-no-public-trust-claim"
+        }
+        else {
+            "exact-pinned-self-issued-untrusted-root-only"
+        }
+    }
+}
+
+function Copy-TestEvidence {
+    param([Parameter(Mandatory)] $Evidence)
+    $Evidence | ConvertTo-Json -Depth 5 | ConvertFrom-Json -Depth 5
+}
+
+function Assert-RejectedEvidencePair {
+    param(
+        [Parameter(Mandatory)] $Recorded,
+        [Parameter(Mandatory)] $Observed,
+        [Parameter(Mandatory)] $Policy
+    )
+    $rejected = $false
+    try {
+        Assert-RustyHostessProviderAuthenticodeEvidencePair `
+            -Recorded $Recorded `
+            -Observed $Observed `
+            -Policy $Policy | Out-Null
+    }
+    catch { $rejected = $true }
+    if (-not $rejected) {
+        throw "Authenticode evidence pair admitted invalid or mismatched evidence."
+    }
+}
+
+$validEvidence = New-TestEvidence -Policy $releasePolicy -Boundary valid
+$validEvidence.thumbprint_sha1 = $validEvidence.thumbprint_sha1.ToUpperInvariant()
+$untrustedEvidence = New-TestEvidence `
+    -Policy $releasePolicy `
+    -Boundary unknown_error
+$runnerUntrustedHostValid =
+    Assert-RustyHostessProviderAuthenticodeEvidencePair `
+        -Recorded $untrustedEvidence `
+        -Observed $validEvidence `
+        -Policy $releasePolicy
+if ($runnerUntrustedHostValid.same_chain_boundary -ne $false -or
+    $runnerUntrustedHostValid.recorded_trust_boundary -cne
+        "exact-pinned-self-issued-untrusted-root-only" -or
+    $runnerUntrustedHostValid.observed_trust_boundary -cne
+        "host-chain-valid-no-public-trust-claim") {
+    throw "Runner-untrusted/host-valid evidence pair was not preserved."
+}
+$runnerValidHostUntrusted =
+    Assert-RustyHostessProviderAuthenticodeEvidencePair `
+        -Recorded $validEvidence `
+        -Observed $untrustedEvidence `
+        -Policy $releasePolicy
+if ($runnerValidHostUntrusted.same_chain_boundary -ne $false -or
+    $runnerValidHostUntrusted.recorded_trust_boundary -cne
+        "host-chain-valid-no-public-trust-claim" -or
+    $runnerValidHostUntrusted.observed_trust_boundary -cne
+        "exact-pinned-self-issued-untrusted-root-only") {
+    throw "Runner-valid/host-untrusted evidence pair was not preserved."
+}
+foreach ($sameBoundaryPair in @(
+    [pscustomobject]@{ Recorded = $validEvidence; Observed = $validEvidence },
+    [pscustomobject]@{
+        Recorded = $untrustedEvidence
+        Observed = $untrustedEvidence
+    }
+)) {
+    $sameBoundaryResult =
+        Assert-RustyHostessProviderAuthenticodeEvidencePair `
+            -Recorded $sameBoundaryPair.Recorded `
+            -Observed $sameBoundaryPair.Observed `
+            -Policy $releasePolicy
+    if ($sameBoundaryResult.same_chain_boundary -ne $true) {
+        throw "Same-boundary Authenticode evidence pair was not preserved."
+    }
+}
+
+foreach ($mutation in @(
+    @{ Name = "state"; Value = "unexpected" },
+    @{ Name = "subject"; Value = "CN=Other" },
+    @{ Name = "issuer"; Value = "CN=Other" },
+    @{ Name = "thumbprint_sha1"; Value = ("0" * 40) },
+    @{ Name = "certificate_sha256"; Value = ("0" * 64) },
+    @{ Name = "code_signing_eku_present"; Value = $false },
+    @{ Name = "self_issued"; Value = $false },
+    @{ Name = "timestamp_present"; Value = $false },
+    @{ Name = "public_trust_claim"; Value = $true },
+    @{ Name = "chain_element_count"; Value = 2 }
+)) {
+    $changed = Copy-TestEvidence -Evidence $validEvidence
+    $changed.($mutation.Name) = $mutation.Value
+    Assert-RejectedEvidencePair `
+        -Recorded $untrustedEvidence `
+        -Observed $changed `
+        -Policy $releasePolicy
+    $changedRecorded = Copy-TestEvidence -Evidence $untrustedEvidence
+    $changedRecorded.($mutation.Name) = $mutation.Value
+    Assert-RejectedEvidencePair `
+        -Recorded $changedRecorded `
+        -Observed $validEvidence `
+        -Policy $releasePolicy
+}
+
+$invalidRecordedBoundary = Copy-TestEvidence -Evidence $untrustedEvidence
+$invalidRecordedBoundary.authenticode_status = "valid"
+Assert-RejectedEvidencePair `
+    -Recorded $invalidRecordedBoundary `
+    -Observed $validEvidence `
+    -Policy $releasePolicy
+$invalidObservedBoundary = Copy-TestEvidence -Evidence $validEvidence
+$invalidObservedBoundary.chain_status_flags = @("UntrustedRoot")
+Assert-RejectedEvidencePair `
+    -Recorded $untrustedEvidence `
+    -Observed $invalidObservedBoundary `
+    -Policy $releasePolicy
+$misnamedBoundary = Copy-TestEvidence -Evidence $validEvidence
+$misnamedBoundary.trust_boundary =
+    "exact-pinned-self-issued-untrusted-root-only"
+Assert-RejectedEvidencePair `
+    -Recorded $untrustedEvidence `
+    -Observed $misnamedBoundary `
+    -Policy $releasePolicy
+$misnamedRecordedBoundary = Copy-TestEvidence -Evidence $untrustedEvidence
+$misnamedRecordedBoundary.trust_boundary =
+    "host-chain-valid-no-public-trust-claim"
+Assert-RejectedEvidencePair `
+    -Recorded $misnamedRecordedBoundary `
+    -Observed $validEvidence `
+    -Policy $releasePolicy
+$missingInvariant = Copy-TestEvidence -Evidence $validEvidence
+$missingInvariant.PSObject.Properties.Remove("timestamp_present")
+Assert-RejectedEvidencePair `
+    -Recorded $untrustedEvidence `
+    -Observed $missingInvariant `
+    -Policy $releasePolicy
+$substitutedPolicy = $releasePolicy | ConvertTo-Json -Depth 10 |
+    ConvertFrom-Json -Depth 10
+$substitutedPolicy.signer.certificate_sha256 = "0" * 64
+Assert-RejectedEvidencePair `
+    -Recorded $untrustedEvidence `
+    -Observed $validEvidence `
+    -Policy $substitutedPolicy
+
 function New-TestCertificate {
     param(
         [string] $Subject = "CN=Rusty Hostess Test",

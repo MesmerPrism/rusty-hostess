@@ -440,53 +440,14 @@ if ($RequireSignedRelease) {
         $provenance.signing.timestamp_present -ne $true -or
         $provenance.signing.public_trust_claim -ne $false -or
         $provenance.signing.chain_element_count -ne 1 -or
-        $observedAssessment.state -cne $provenance.signing.state -or
-        $observedAssessment.authenticode_status -cne
-            $provenance.signing.authenticode_status -or
-        $observedAssessment.subject -cne
-            $provenance.signing.subject -or
-        $observedAssessment.issuer -cne $provenance.signing.issuer -or
-        $observedAssessment.thumbprint_sha1.ToLowerInvariant() -cne
-            $provenance.signing.thumbprint_sha1 -or
-        $observedAssessment.certificate_sha256 -cne
-            $provenance.signing.certificate_sha256 -or
-        $observedAssessment.code_signing_eku_present -ne
-            $provenance.signing.code_signing_eku_present -or
-        $observedAssessment.self_issued -ne $provenance.signing.self_issued -or
-        $observedAssessment.timestamp_present -ne
-            $provenance.signing.timestamp_present -or
-        $observedAssessment.chain_trusted -ne
-            $provenance.signing.chain_trusted -or
-        $observedAssessment.chain_element_count -ne
-            $provenance.signing.chain_element_count -or
-        (@($observedAssessment.chain_status_flags) -join "|") -cne
-            (@($provenance.signing.chain_status_flags) -join "|") -or
-        $observedAssessment.public_trust_claim -ne
-            $provenance.signing.public_trust_claim -or
-        $observedAssessment.trust_boundary -cne
-            $provenance.signing.trust_boundary -or
         $provenance.source.availability_state -cne "verified_public" -or
         -not $verifiedAtValid) {
         throw "Metadata is not eligible for signed publication."
     }
-    $recordedTrustedBoundary =
-        $provenance.signing.authenticode_status -ceq "valid" -and
-        $provenance.signing.chain_trusted -eq $true -and
-        $provenance.signing.chain_element_count -eq 1 -and
-        @($provenance.signing.chain_status_flags).Count -eq 0 -and
-        $provenance.signing.trust_boundary -ceq
-            "host-chain-valid-no-public-trust-claim"
-    $recordedUntrustedBoundary =
-        $provenance.signing.authenticode_status -ceq "unknown_error" -and
-        $provenance.signing.chain_trusted -eq $false -and
-        $provenance.signing.chain_element_count -eq 1 -and
-        @($provenance.signing.chain_status_flags).Count -eq 1 -and
-        $provenance.signing.chain_status_flags[0] -ceq "UntrustedRoot" -and
-        $provenance.signing.trust_boundary -ceq
-            "exact-pinned-self-issued-untrusted-root-only"
-    if (-not $recordedTrustedBoundary -and -not $recordedUntrustedBoundary) {
-        throw "Signed provenance does not report one admitted chain boundary."
-    }
+    Assert-RustyHostessProviderAuthenticodeEvidencePair `
+        -Recorded $provenance.signing `
+        -Observed $observedAssessment `
+        -Policy $releasePolicy | Out-Null
 }
 elseif ($provenance.build.kind -eq "signed-release") {
     throw "Signed metadata requires explicit RequireSignedRelease validation."

@@ -49,6 +49,14 @@ timestamp evidence. Neither case claims public Windows trust or Stable
 eligibility. The workflow and tools never install a certificate into Root or
 TrustedPublisher; a Windows reputation/trust warning is therefore expected.
 
+Provenance records the release runner's admitted chain observation. Offline
+validation independently admits the current host's observation against the
+same two branches, then compares only host-invariant signing identity and
+timestamp facts. A runner-recorded `UnknownError`/`UntrustedRoot` boundary may
+therefore validate on a host that already observes the exact certificate as
+`Valid` with a clean chain, and vice versa. Local trust never rewrites owner
+provenance, creates a public trust claim, or enables Stable distribution.
+
 Validate metadata and its artifact offline:
 
 ```powershell
@@ -101,10 +109,11 @@ the SHA-256 digest and size of every asset. It has no asset-update,
 release-edit, tag-creation, tag-move, or clobber path. A failed or existing
 release requires a new version and tag, not replacement.
 
-`windows-hotspot-provider-v0.1.1` is already fixed at its original commit and
-must not be moved, deleted, reused, or published through a replacement
-attempt. The first release using this policy must use a fresh version and tag,
-at least `windows-hotspot-provider-v0.1.2`.
+`windows-hotspot-provider-v0.1.1` and the immutable public v0.1.2 release are
+fixed at their original commits and must not be moved, deleted, reused, or
+replaced. This cross-host validator correction does not alter the v0.1.2
+assets or provenance. Any successor provider release must use a fresh version
+and tag, at least `windows-hotspot-provider-v0.1.3`.
 
 These releases are provider-neutral Labs inputs only. A consumer may project
 `allowed_channels: ["labs"]`, but must keep `stable_eligible: false`. Moving
