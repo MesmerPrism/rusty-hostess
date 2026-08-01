@@ -331,7 +331,7 @@
     },
     {
       "approval_id": "hostess-windows-z-provider-labs-self-issued-boundary-20260801",
-      "required_ancestor": "8c2f546b3b4746f4e03689f3e98062a3cab2d22c",
+      "required_ancestor": "320d5498208e9ccac0140555ab3cddf4b2e94114",
       "changed_paths": [
         ".github/workflows/windows-hotspot-provider-release.yml",
         "AGENTS.md",
@@ -376,7 +376,7 @@
           "state": "present",
           "mode": "100644",
           "size_bytes": 12996,
-          "sha256": "143386a963d4d69253cbb0ac7f83c799600e74d0e84b49b590fd2558c3fff0bc"
+          "sha256": "8cb0297d6d424b10bafcabef95d6ab6691ca73aaa619d2105bd0d54aba285c44"
         },
         {
           "path": "docs/windows-mobile-hotspot-provider.md",
