@@ -298,7 +298,7 @@
     },
     {
       "approval_id": "hostess-windows-verified-draft-readback-by-id-20260801",
-      "required_ancestor": "f9b631a4535be4d658a22de41470efb8e7adec30",
+      "required_ancestor": "62a0da25613a9a610cce0f8af89ccad8155ac236",
       "changed_paths": [
         ".github/workflows/release-windows-labs.yml",
         "docs/WINDOWS_LABS_DISTRIBUTION.md",
