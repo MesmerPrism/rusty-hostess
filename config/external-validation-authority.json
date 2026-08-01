@@ -212,6 +212,39 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-sdk-signtool-20260801",
+      "required_ancestor": "7e581516386c7d6fee861d0a2400ff3dd0724d15",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "packaging/windows-labs/Resolve-WindowsSdkSignTool.ps1",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20098,
+          "sha256": "88576ce68460ecae6cb9d209f882ebc6839b5324c5f7b3cbe134cc01682e50f4"
+        },
+        {
+          "path": "packaging/windows-labs/Resolve-WindowsSdkSignTool.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2436,
+          "sha256": "7d56798ef5821ce4bf55a1166d74b52f298e01b72c327e49595ea62d05da5a39"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31234,
+          "sha256": "aa61af56270558b5b2340592c7c3f7473d0b9fe40f837e99a176c181c9d66e73"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
