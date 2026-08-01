@@ -30,6 +30,7 @@ public sealed class HostessctlCatalogService
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        startInfo.ArgumentList.Add("-I");
         startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
         startInfo.ArgumentList.Add("companion-catalog");
         startInfo.ArgumentList.Add("--out");

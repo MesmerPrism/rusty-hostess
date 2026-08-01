@@ -20,7 +20,10 @@ Complete-product Windows Labs packaging is owned by
 `packaging/windows-labs` and documented in
 `docs/WINDOWS_LABS_DISTRIBUTION.md`. It packages Hostess-owned WPF and source
 surfaces only; never fold MQDH/Casting or the separately released hotspot
-provider into that product identity.
+provider into that product identity. Its versioned `runtime-policy.json` owns
+the public signer and official CPython embeddable-runtime pins; GitHub secrets
+contain only the private PFX and password. Bundled execution must use the exact
+bundle-relative interpreter and never fall back to ambient `PATH` Python.
 
 ## Scope
 

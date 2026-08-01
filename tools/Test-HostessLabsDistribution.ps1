@@ -20,14 +20,19 @@ try {
     if ($LASTEXITCODE -ne 0) { throw 'real WPF test publish failed' }
     $wpfHash = (Get-FileHash (Join-Path $wpf 'HostessCompanion.Wpf.exe') `
         -Algorithm SHA256).Hash.ToLowerInvariant()
-    $pythonPath = @(& where.exe python.exe | Where-Object {
-        try { (& $_ --version 2>$null) -ceq 'Python 3.12.10' } catch { $false }
-    })[0]
-    $pythonHash = (Get-FileHash $pythonPath -Algorithm SHA256).Hash.ToLowerInvariant()
-    Assert-Labs ((& $pythonPath --version) -ceq 'Python 3.12.10') `
-        'focused Labs smoke requires the pinned Python 3.12.10 test runtime'
-    $syntheticThumbprint = 'A' * 40
-    $syntheticCertificateHash = 'b' * 64
+    $policyPath = Join-Path $root 'packaging\windows-labs\runtime-policy.json'
+    $policyText = Get-Content -LiteralPath $policyPath -Raw
+    $policySchema = Join-Path $root `
+        'schemas\hostess-windows-labs-runtime-policy.schema.json'
+    Assert-Labs (Test-Json -Json $policyText -SchemaFile $policySchema) `
+        'Windows Labs runtime policy does not satisfy its owner schema'
+    $policy = $policyText | ConvertFrom-Json -Depth 20
+    $pythonArchive = Join-Path $temp 'python-3.12.10-embed-amd64.zip'
+    $pythonSbom = "$pythonArchive.spdx.json"
+    $pythonSigstore = "$pythonArchive.sigstore"
+    Invoke-WebRequest -Uri $policy.python.archive_url -OutFile $pythonArchive
+    Invoke-WebRequest -Uri $policy.python.sbom_url -OutFile $pythonSbom
+    Invoke-WebRequest -Uri $policy.python.sigstore_url -OutFile $pythonSigstore
     $revision = (& git -C $root rev-parse HEAD).Trim()
     $tree = (& git -C $root rev-parse 'HEAD^{tree}').Trim()
     $outputs = @()
@@ -39,10 +44,10 @@ try {
             -SourceRevision $revision `
             -SourceTree $tree `
             -WpfPublishDirectory $wpf `
-            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
-            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
             -ExpectedWpfExecutableSha256 $wpfHash `
-            -PythonExecutableSha256 $pythonHash `
+            -PythonRuntimeArchivePath $pythonArchive `
+            -PythonRuntimeSbomPath $pythonSbom `
+            -PythonRuntimeSigstorePath $pythonSigstore `
             -OutputDirectory $out `
             -AllowDirtySourceForSyntheticTest `
             -AllowUnsignedForSyntheticTest | Out-Null
@@ -299,11 +304,37 @@ try {
     Assert-Labs ($smoke.readiness_loaded -and $smoke.catalog_loaded) `
         'bundle smoke did not exercise readiness and catalog through pinned Python'
     $bootstrap = Join-Path $bundle 'bootstrap\hostess-labs.ps1'
-    $describeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass `
-        -File $bootstrap -Action describe 2>&1
-    Assert-Labs ($LASTEXITCODE -eq 0 -and
-        ($describeOutput -join "`n").Length -gt 0) `
-        "extracted describe bootstrap action failed: $($describeOutput -join ' ')"
+    $ambientTrap = Join-Path $temp 'ambient-python-trap'
+    [IO.Directory]::CreateDirectory($ambientTrap) | Out-Null
+    Copy-Item -LiteralPath $env:ComSpec -Destination (
+        Join-Path $ambientTrap 'python.exe')
+    $oldPath = $env:PATH
+    try {
+        $env:PATH = "$ambientTrap;$oldPath"
+        $describeOutput = & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File $bootstrap -Action describe 2>&1
+        Assert-Labs ($LASTEXITCODE -eq 0 -and
+            ($describeOutput -join "`n").Length -gt 0) `
+            "bundle used ambient Python or describe failed: $($describeOutput -join ' ')"
+    }
+    finally {
+        $env:PATH = $oldPath
+    }
+    $bundledPython = Join-Path $bundle 'runtime\python\python.exe'
+    $pythonBackup = Join-Path $temp 'python.exe.backup'
+    Copy-Item -LiteralPath $bundledPython -Destination $pythonBackup
+    try {
+        $damagedBytes = [IO.File]::ReadAllBytes($bundledPython)
+        $damagedBytes[0] = $damagedBytes[0] -bxor 1
+        [IO.File]::WriteAllBytes($bundledPython, $damagedBytes)
+        & pwsh -NoProfile -ExecutionPolicy Bypass `
+            -File $bootstrap -Action describe 2>$null | Out-Null
+        Assert-Labs ($LASTEXITCODE -ne 0) `
+            'bootstrap accepted a tampered bundled Python executable'
+    }
+    finally {
+        Copy-Item -LiteralPath $pythonBackup -Destination $bundledPython -Force
+    }
     $oldLocalAppData = $env:LOCALAPPDATA
     try {
         $env:LOCALAPPDATA = $smokeState
@@ -344,7 +375,7 @@ try {
         Test-Json `
             -Json ($manifest | ConvertTo-Json -Depth 30) `
             -SchemaFile (
-                Join-Path $root 'schemas\hostess-windows-complete-product.schema.json'
+                Join-Path $root 'schemas\hostess-windows-complete-product-v3.schema.json'
             )
     ) 'complete-product manifest does not satisfy its published schema'
     $paths = @($manifest.files.path)
@@ -355,6 +386,14 @@ try {
         $manifest.prerelease -eq $true -and
         $manifest.release_tag -ceq 'v1.2.3-alpha.4' -and
         $manifest.version -ceq '1.2.3' -and
+        $manifest.schema -ceq 'rusty.hostess.windows_complete_product.v3' -and
+        $manifest.runtimes.python.schema -ceq
+            'rusty.hostess.bundled_python_runtime.v1' -and
+        $manifest.runtimes.python.bundled -eq $true -and
+        $manifest.runtimes.python.executable_path -ceq
+            'runtime/python/python.exe' -and
+        @($manifest.external_requirements).Count -eq 1 -and
+        $manifest.external_requirements[0].id -ceq 'meta-mqdh-casting' -and
         @($manifest.features) -ccontains 'hostess-companion-wpf' -and
         @($manifest.features) -ccontains 'hostessctl-complete-source' -and
         @($manifest.features) -ccontains 'meta-cinematic-cast-opaque-adapter' -and
@@ -363,6 +402,12 @@ try {
         $paths -ccontains 'source/tools/hostessctl/meta_quest_casting.py' -and
         $paths -ccontains 'source/tools/hostessctl/meta_quest_casting_windows.py' -and
         $paths -ccontains 'companion/HostessCompanion.Wpf.exe' -and
+        $paths -ccontains 'runtime/python/python.exe' -and
+        $paths -ccontains 'runtime/python/LICENSE.txt' -and
+        $paths -ccontains
+            'runtime/provenance/python-3.12.10-embed-amd64.zip.spdx.json' -and
+        $paths -ccontains
+            'runtime/provenance/python-3.12.10-embed-amd64.zip.sigstore' -and
         @($manifest.separately_released_products) -ccontains
             'rusty-hostess-hotspot-provider'
     ) 'complete Hostess Labs feature closure is not exact'
@@ -404,13 +449,11 @@ try {
         [ordered]@{ name='missing-external'; mutate={
             param($value); $value.external_requirements = @()
         }},
-        [ordered]@{ name='duplicate-external'; mutate={
-            param($value); $value.external_requirements[1] =
-                $value.external_requirements[0]
-        }},
-        [ordered]@{ name='missing-python-external'; mutate={
-            param($value); $value.external_requirements = @(
-                $value.external_requirements[0])
+        [ordered]@{ name='ambient-python-external'; mutate={
+            param($value); $value.external_requirements += [pscustomobject]@{
+                id='python-runtime'; bundled=$false; user_supplied=$true
+                authority='Python Software Foundation'
+            }
         }},
         [ordered]@{ name='foreign-feedback'; mutate={
             param($value); $value.feedback.url = 'https://github.com/elsewhere/issues/new'
@@ -436,7 +479,7 @@ try {
                 -Json ($candidate | ConvertTo-Json -Depth 30) `
                 -SchemaFile (
                     Join-Path $root (
-                        'schemas\hostess-windows-complete-product.schema.json'
+                        'schemas\hostess-windows-complete-product-v3.schema.json'
                     )
                 ) `
                 -ErrorAction SilentlyContinue)
@@ -483,10 +526,10 @@ try {
                         -Version 1.2.3 -ReleaseTag v1.2.3 `
                         -SourceRevision $revision -SourceTree $tree `
                         -WpfPublishDirectory $wpf `
-                        -ExpectedWpfSignerThumbprint $syntheticThumbprint `
-                        -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
                         -ExpectedWpfExecutableSha256 $wpfHash `
-                        -PythonExecutableSha256 $pythonHash `
+                        -PythonRuntimeArchivePath $pythonArchive `
+                        -PythonRuntimeSbomPath $pythonSbom `
+                        -PythonRuntimeSigstorePath $pythonSigstore `
                         -OutputDirectory (Join-Path $temp 'bad-tag') `
                         -AllowDirtySourceForSyntheticTest `
                         -AllowUnsignedForSyntheticTest | Out-Null
@@ -508,13 +551,13 @@ try {
             -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
             -SourceRevision $revision -SourceTree $tree `
             -WpfPublishDirectory $wpf `
-            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
-            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
             -ExpectedWpfExecutableSha256 $wpfHash `
-            -PythonExecutableSha256 $pythonHash `
+            -PythonRuntimeArchivePath $pythonArchive `
+            -PythonRuntimeSbomPath $pythonSbom `
+            -PythonRuntimeSigstorePath $pythonSigstore `
             -OutputDirectory (Join-Path $temp 'unsigned') `
             -AllowDirtySourceForSyntheticTest | Out-Null
-    } catch { $unsignedRejected = $_.Exception.Message -match 'signature is absent or invalid' }
+    } catch { $unsignedRejected = $_.Exception.Message -match 'signature or RFC3161 timestamp is absent' }
     Assert-Labs $unsignedRejected 'missing/invalid Authenticode was accepted'
     $wrongHashRejected = $false
     try {
@@ -522,10 +565,10 @@ try {
             -Version 1.2.3 -ReleaseTag v1.2.3-alpha.4 `
             -SourceRevision $revision -SourceTree $tree `
             -WpfPublishDirectory $wpf `
-            -ExpectedWpfSignerThumbprint $syntheticThumbprint `
-            -ExpectedWpfSignerCertificateSha256 $syntheticCertificateHash `
             -ExpectedWpfExecutableSha256 ('0' * 64) `
-            -PythonExecutableSha256 $pythonHash `
+            -PythonRuntimeArchivePath $pythonArchive `
+            -PythonRuntimeSbomPath $pythonSbom `
+            -PythonRuntimeSigstorePath $pythonSigstore `
             -OutputDirectory (Join-Path $temp 'wrong-hash') `
             -AllowDirtySourceForSyntheticTest `
             -AllowUnsignedForSyntheticTest | Out-Null
@@ -553,8 +596,12 @@ try {
         $workflow -match '--prerelease' -and
         $workflow -match '--draft' -and
         $workflow -match 'signtool verify /pa /v' -and
-        $workflow -match '\$thumbprint -cne \$env:EXPECTED_SIGNER_THUMBPRINT' -and
-        $workflow -match '\$certificateHash -cne \$env:EXPECTED_SIGNER_CERT_SHA256' -and
+        $workflow -match '\$thumbprint -cne \$policy\.wpf_signer\.thumbprint' -and
+        $workflow -match '\$certificateHash -cne \$policy\.wpf_signer\.certificate_sha256' -and
+        $workflow -match 'Fetch exact reviewed CPython runtime and provenance' -and
+        $workflow -match 'PYTHON_RUNTIME_ARCHIVE' -and
+        $workflow -notmatch 'HOSTESS_ALPHA_PYTHON_3_12_10_SHA256' -and
+        $workflow -notmatch 'HOSTESS_ALPHA_SIGNER_' -and
         $workflow -match 'draft=false -F prerelease=true -f make_latest=false' -and
         $workflow -match 'git/ref/tags/\$env:RELEASE_TAG' -and
         $workflow -match 'Verify authoritative remote tag before build' -and
