@@ -30,24 +30,19 @@
       "path": "packaging/windows-labs/"
     },
     {
-      "rule_id": "labs-policy-schemas",
-      "match": "prefix",
-      "path": "schemas/hostess-windows-"
-    },
-    {
       "rule_id": "labs-release-workflow",
       "match": "exact",
       "path": ".github/workflows/release-windows-labs.yml"
     },
     {
+      "rule_id": "schema-contracts",
+      "match": "prefix",
+      "path": "schemas/"
+    },
+    {
       "rule_id": "validation-authority-policy",
       "match": "exact",
       "path": "config/external-validation-authority.json"
-    },
-    {
-      "rule_id": "validation-authority-schemas",
-      "match": "prefix",
-      "path": "schemas/external-validation-authority-"
     },
     {
       "rule_id": "validation-authority-workflow",

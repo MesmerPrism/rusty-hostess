@@ -53,7 +53,6 @@ jobs:
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
           EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          EVENT_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
           EVENT_NAME_EXACT: ${{ github.event_name }}
           PR_NUMBER_EXACT: ${{ github.event.pull_request.number }}
           REPOSITORY_EXACT: ${{ github.repository }}
@@ -66,7 +65,6 @@ jobs:
                 '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$' -or
               $env:EVENT_BASE_SHA -notmatch '^[0-9a-f]{40}$' -or
               $env:EVENT_HEAD_SHA -notmatch '^[0-9a-f]{40}$' -or
-              $env:EVENT_MERGE_SHA -notmatch '^[0-9a-f]{40}$' -or
               $env:PR_NUMBER_EXACT -notmatch '^[1-9][0-9]*$') {
             throw 'pull-request identity is incomplete or malformed'
           }
@@ -90,9 +88,8 @@ jobs:
           }
           $fetchedHead = (& git -C .\trusted-base rev-parse $headRef).Trim()
           $fetchedMerge = (& git -C .\trusted-base rev-parse $mergeRef).Trim()
-          if ($fetchedHead -cne $env:EVENT_HEAD_SHA -or
-              $fetchedMerge -cne $env:EVENT_MERGE_SHA) {
-            throw 'fetched pull-request refs do not match event identity'
+          if ($fetchedHead -cne $env:EVENT_HEAD_SHA) {
+            throw 'fetched pull-request head does not match event identity'
           }
           $mergeLine = & git -C .\trusted-base rev-list --parents -n 1 `
             $fetchedMerge
