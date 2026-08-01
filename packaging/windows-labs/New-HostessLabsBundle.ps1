@@ -14,14 +14,12 @@ param(
     [string] $SourceTree,
     [Parameter(Mandatory)][string] $WpfPublishDirectory,
     [Parameter(Mandatory)][string] $OutputDirectory,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9A-F]{40}$')]
-    [string] $ExpectedWpfSignerThumbprint,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')]
-    [string] $ExpectedWpfSignerCertificateSha256,
     [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')]
     [string] $ExpectedWpfExecutableSha256,
-    [Parameter(Mandatory)][ValidatePattern('^[0-9a-f]{64}$')]
-    [string] $PythonExecutableSha256,
+    [Parameter(Mandatory)][string] $PythonRuntimeArchivePath,
+    [Parameter(Mandatory)][string] $PythonRuntimeSbomPath,
+    [Parameter(Mandatory)][string] $PythonRuntimeSigstorePath,
+    [string] $RuntimePolicyPath = (Join-Path $PSScriptRoot 'runtime-policy.json'),
     [string] $RepositoryRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path,
     [switch] $AllowDirtySourceForSyntheticTest,
     [switch] $AllowUnsignedForSyntheticTest
@@ -38,6 +36,17 @@ function Write-Utf8([string] $Path, [string] $Value) {
 function Get-Sha256([string] $Path) {
     (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
 }
+
+$resolvedPolicyPath = (Resolve-Path -LiteralPath $RuntimePolicyPath).Path
+$policySchemaPath = Join-Path $RepositoryRoot `
+    'schemas\hostess-windows-labs-runtime-policy.schema.json'
+$policyText = Get-Content -LiteralPath $resolvedPolicyPath -Raw
+if (-not (Test-Json -Json $policyText -SchemaFile $policySchemaPath)) {
+    throw 'Windows Labs runtime policy does not satisfy its owner schema'
+}
+$policy = $policyText | ConvertFrom-Json -Depth 20
+$ExpectedWpfSignerThumbprint = $policy.wpf_signer.thumbprint
+$ExpectedWpfSignerCertificateSha256 = $policy.wpf_signer.certificate_sha256
 
 $tagVersion = $ReleaseTag -replace '^v([0-9]+\.[0-9]+\.[0-9]+)-alpha\.[1-9][0-9]*$', '$1'
 if ($tagVersion -cne $Version) {
@@ -62,9 +71,9 @@ if ((Get-Sha256 $wpfExe) -cne $ExpectedWpfExecutableSha256) {
 }
 $signature = Get-AuthenticodeSignature -LiteralPath $wpfExe
 if (-not $AllowUnsignedForSyntheticTest) {
-    if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
-        $null -eq $signature.SignerCertificate) {
-        throw 'WPF Authenticode signature is absent or invalid'
+    if ($null -eq $signature.SignerCertificate -or
+        $null -eq $signature.TimeStamperCertificate) {
+        throw 'WPF Authenticode signature or RFC3161 timestamp is absent'
     }
     $observedThumbprint = $signature.SignerCertificate.Thumbprint.ToUpperInvariant()
     $observedCertificateHash = [Convert]::ToHexString(
@@ -74,6 +83,37 @@ if (-not $AllowUnsignedForSyntheticTest) {
         $observedCertificateHash -cne $ExpectedWpfSignerCertificateSha256) {
         throw 'WPF Authenticode signer is not the independently reviewed owner'
     }
+    $selfIssued = $signature.SignerCertificate.Subject -ceq
+        $signature.SignerCertificate.Issuer
+    $chain = [Security.Cryptography.X509Certificates.X509Chain]::new()
+    try {
+        $chain.ChainPolicy.RevocationMode =
+            [Security.Cryptography.X509Certificates.X509RevocationMode]::NoCheck
+        $chainTrusted = $chain.Build($signature.SignerCertificate)
+        $onlyUntrustedRoot = -not $chainTrusted -and
+            $chain.ChainStatus.Count -eq 1 -and
+            $chain.ChainStatus[0].Status -eq
+                [Security.Cryptography.X509Certificates.X509ChainStatusFlags]::UntrustedRoot
+    }
+    finally {
+        $chain.Dispose()
+    }
+    $allowedPinnedSelfIssuedTrust = $policy.wpf_signer.self_issued -and
+        -not $policy.wpf_signer.public_trust_claim -and $selfIssued -and
+        $signature.Status -eq [Management.Automation.SignatureStatus]::UnknownError -and
+        $onlyUntrustedRoot
+    if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid -and
+        -not $allowedPinnedSelfIssuedTrust) {
+        throw "WPF Authenticode validation failed: $($signature.Status) $($signature.StatusMessage)"
+    }
+}
+$pythonArchive = (Resolve-Path -LiteralPath $PythonRuntimeArchivePath).Path
+$pythonSbom = (Resolve-Path -LiteralPath $PythonRuntimeSbomPath).Path
+$pythonSigstore = (Resolve-Path -LiteralPath $PythonRuntimeSigstorePath).Path
+if ((Get-Sha256 $pythonArchive) -cne $policy.python.archive_sha256 -or
+    (Get-Sha256 $pythonSbom) -cne $policy.python.sbom_sha256 -or
+    (Get-Sha256 $pythonSigstore) -cne $policy.python.sigstore_sha256) {
+    throw 'CPython archive or provenance hash does not match the reviewed policy'
 }
 $output = [IO.Path]::GetFullPath($OutputDirectory)
 if (Test-Path -LiteralPath $output) {
@@ -105,27 +145,71 @@ try {
         Copy-Item -LiteralPath $source -Destination $destination
     }
 
+    $runtimeRoot = Join-Path $stage 'runtime'
+    $pythonRoot = Join-Path $runtimeRoot 'python'
+    [IO.Directory]::CreateDirectory($pythonRoot) | Out-Null
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($pythonArchive)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if ([string]::IsNullOrWhiteSpace($entry.FullName) -or
+                $entry.FullName.Contains('\') -or
+                $entry.FullName.Contains('/') -or
+                $entry.FullName -in '.', '..') {
+                throw "CPython embeddable archive has an unsafe or nested entry: $($entry.FullName)"
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+    }
+    [IO.Compression.ZipFile]::ExtractToDirectory($pythonArchive, $pythonRoot)
+    $pythonExe = Join-Path $pythonRoot $policy.python.executable_relative_path
+    $pythonLicense = Join-Path $pythonRoot $policy.python.license_relative_path
+    if (-not (Test-Path -LiteralPath $pythonExe) -or
+        -not (Test-Path -LiteralPath $pythonLicense) -or
+        (Get-Sha256 $pythonExe) -cne $policy.python.executable_sha256) {
+        throw 'CPython embeddable executable, license, or hash is invalid'
+    }
+    $pythonSignature = Get-AuthenticodeSignature -LiteralPath $pythonExe
+    if ($pythonSignature.Status -ne [Management.Automation.SignatureStatus]::Valid -or
+        $null -eq $pythonSignature.SignerCertificate -or
+        $pythonSignature.SignerCertificate.Subject -cne $policy.python.signer_subject -or
+        $pythonSignature.SignerCertificate.Thumbprint.ToUpperInvariant() -cne
+            $policy.python.signer_thumbprint) {
+        throw 'CPython executable does not carry the reviewed PSF Authenticode identity'
+    }
+    $observedPythonVersion = (& $pythonExe --version).Trim()
+    if ($LASTEXITCODE -ne 0 -or
+        $observedPythonVersion -cne "Python $($policy.python.version)") {
+        throw 'CPython executable version does not match the reviewed policy'
+    }
+    $pthPath = Join-Path $pythonRoot 'python312._pth'
+    $pthText = Get-Content -LiteralPath $pthPath -Raw
+    if ($pthText -match '(?m)^\s*import\s+site\s*$') {
+        throw 'CPython embeddable runtime unexpectedly enables ambient site packages'
+    }
+    $provenanceRoot = Join-Path $runtimeRoot 'provenance'
+    [IO.Directory]::CreateDirectory($provenanceRoot) | Out-Null
+    $sbomName = 'python-3.12.10-embed-amd64.zip.spdx.json'
+    $sigstoreName = 'python-3.12.10-embed-amd64.zip.sigstore'
+    Copy-Item -LiteralPath $pythonSbom -Destination (Join-Path $provenanceRoot $sbomName)
+    Copy-Item -LiteralPath $pythonSigstore -Destination (Join-Path $provenanceRoot $sigstoreName)
+    Copy-Item -LiteralPath $resolvedPolicyPath -Destination (
+        Join-Path $runtimeRoot 'runtime-policy.json')
+
     $launcher = @'
 param([Parameter(Mandatory)][ValidateSet('companion','describe','casting-describe')][string] $Action)
 $ErrorActionPreference = 'Stop'
 $env:RUSTY_HOSTESS_PRODUCT_CHANNEL = 'labs'
 $root = Split-Path -Parent $PSScriptRoot
 $runtime = Get-Content -LiteralPath (Join-Path $root 'runtime\python-runtime.json') -Raw | ConvertFrom-Json
-$pythonCandidates = @(& where.exe python.exe)
-if ($LASTEXITCODE -ne 0) {
-  throw 'Supported Python interpreter is absent.'
+$python = [IO.Path]::GetFullPath((Join-Path $root $runtime.executable_path.Replace('/', '\')))
+$runtimeRoot = [IO.Path]::GetFullPath((Join-Path $root 'runtime')) + [IO.Path]::DirectorySeparatorChar
+if (-not $python.StartsWith($runtimeRoot, [StringComparison]::OrdinalIgnoreCase) -or
+    -not (Test-Path -LiteralPath $python -PathType Leaf)) {
+  throw 'Bundled Python runtime path is absent or escapes the product root.'
 }
-$authorized = @(foreach ($candidate in $pythonCandidates) {
-  try {
-    if ((Get-FileHash -LiteralPath $candidate -Algorithm SHA256 -ErrorAction Stop).
-        Hash.ToLowerInvariant() -ceq $runtime.executable_sha256) {
-      $candidate
-    }
-  } catch { continue }
-})
-$authorized = @($authorized | Select-Object -Unique)
-if ($authorized.Count -ne 1) { throw 'Exactly one hash-authorized Python interpreter is required.' }
-$python = $authorized[0]
 $hash = (Get-FileHash -LiteralPath $python -Algorithm SHA256).Hash.ToLowerInvariant()
 $observed = (& $python -c "import sys;print('.'.join(map(str,sys.version_info[:3])))").Trim()
 if ($LASTEXITCODE -ne 0 -or $runtime.version -cne '3.12.10' -or
@@ -134,19 +218,29 @@ if ($LASTEXITCODE -ne 0 -or $runtime.version -cne '3.12.10' -or
 }
 switch ($Action) {
   'companion' { & (Join-Path $root 'companion\HostessCompanion.Wpf.exe'); exit $LASTEXITCODE }
-  'describe' { & $python (Join-Path $root 'source\tools\hostessctl\hostessctl.py') --help; exit $LASTEXITCODE }
+  'describe' { & $python -I (Join-Path $root 'source\tools\hostessctl\hostessctl.py') --help; exit $LASTEXITCODE }
   'casting-describe' {
-    & $python (Join-Path $root 'source\tools\hostessctl\hostessctl.py') meta-quest-casting describe --out (Join-Path $env:LOCALAPPDATA 'RustyHostessLabs\reports\casting-descriptor.json')
+    & $python -I (Join-Path $root 'source\tools\hostessctl\hostessctl.py') meta-quest-casting describe --out (Join-Path $env:LOCALAPPDATA 'RustyHostessLabs\reports\casting-descriptor.json')
     exit $LASTEXITCODE
   }
 }
 '@
     Write-Utf8 (Join-Path $stage 'bootstrap\hostess-labs.ps1') $launcher
     $runtime = [ordered]@{
-        schema = 'rusty.hostess.external_python_runtime.v1'
-        external = $true
-        version = '3.12.10'
-        executable_sha256 = $PythonExecutableSha256
+        schema = 'rusty.hostess.bundled_python_runtime.v1'
+        bundled = $true
+        distribution = $policy.python.distribution
+        version = $policy.python.version
+        archive_sha256 = $policy.python.archive_sha256
+        executable_path = 'runtime/python/python.exe'
+        executable_sha256 = $policy.python.executable_sha256
+        signer_subject = $policy.python.signer_subject
+        signer_thumbprint = $policy.python.signer_thumbprint
+        license_path = 'runtime/python/LICENSE.txt'
+        sbom_path = "runtime/provenance/$sbomName"
+        sigstore_path = "runtime/provenance/$sigstoreName"
+        policy_path = 'runtime/runtime-policy.json'
+        policy_sha256 = Get-Sha256 $resolvedPolicyPath
         third_party_packages = @()
     }
     Write-Utf8 (Join-Path $stage 'runtime\python-runtime.json') (
@@ -160,7 +254,7 @@ switch ($Action) {
         }
     } | Sort-Object path)
     $manifest = [ordered]@{
-        schema = 'rusty.hostess.windows_complete_product.v2'
+        schema = 'rusty.hostess.windows_complete_product.v3'
         product = 'rusty-hostess-labs'
         display_name = 'Rusty Hostess Labs'
         product_channel = 'labs'
@@ -202,12 +296,6 @@ switch ($Action) {
                 bundled = $false
                 user_supplied = $true
                 authority = 'Meta'
-            },
-            [ordered]@{
-                id = 'python-runtime'
-                bundled = $false
-                user_supplied = $true
-                authority = 'Python Software Foundation'
             }
         )
         authority_exclusions = @(
@@ -225,10 +313,12 @@ switch ($Action) {
             prohibit = @('credentials','personal-data','device-serials','private-logs')
         }
         signing = [ordered]@{
-            authenticode_policy = 'signtool-verify-pa'
+            authenticode_policy = 'exact-owner-pin-with-chain-readback'
             signer_thumbprint = $ExpectedWpfSignerThumbprint
             signer_certificate_sha256 = $ExpectedWpfSignerCertificateSha256
             companion_executable_sha256 = $ExpectedWpfExecutableSha256
+            timestamp_required = $true
+            public_trust_claim = $false
         }
         files = $files
     }

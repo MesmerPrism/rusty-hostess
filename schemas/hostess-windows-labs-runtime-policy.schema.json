@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/hostess-windows-labs-runtime-policy.schema.json",
+  "type": "object",
+  "required": ["schema", "wpf_signer", "python"],
+  "properties": {
+    "schema": {"const": "rusty.hostess.windows_labs_runtime_policy.v1"},
+    "wpf_signer": {
+      "type": "object",
+      "required": ["subject", "thumbprint", "certificate_sha256", "self_issued", "public_trust_claim"],
+      "properties": {
+        "subject": {"const": "CN=MesmerPrism"},
+        "thumbprint": {"type": "string", "pattern": "^[0-9A-F]{40}$"},
+        "certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "self_issued": {"type": "boolean"},
+        "public_trust_claim": {"const": false}
+      },
+      "additionalProperties": false
+    },
+    "python": {
+      "type": "object",
+      "required": ["distribution", "version", "archive_url", "archive_sha256", "executable_relative_path", "executable_sha256", "signer_subject", "signer_thumbprint", "license_relative_path", "sbom_url", "sbom_sha256", "sigstore_url", "sigstore_sha256", "third_party_packages"],
+      "properties": {
+        "distribution": {"const": "cpython-windows-embeddable-amd64"},
+        "version": {"const": "3.12.10"},
+        "archive_url": {"const": "https://www.python.org/ftp/python/3.12.10/python-3.12.10-embed-amd64.zip"},
+        "archive_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "executable_relative_path": {"const": "python.exe"},
+        "executable_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "signer_subject": {"type": "string", "minLength": 1},
+        "signer_thumbprint": {"type": "string", "pattern": "^[0-9A-F]{40}$"},
+        "license_relative_path": {"const": "LICENSE.txt"},
+        "sbom_url": {"type": "string", "pattern": "^https://www\\.python\\.org/ftp/python/3\\.12\\.10/.+\\.spdx\\.json$"},
+        "sbom_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "sigstore_url": {"type": "string", "pattern": "^https://www\\.python\\.org/ftp/python/3\\.12\\.10/.+\\.sigstore$"},
+        "sigstore_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "third_party_packages": {"type": "array", "maxItems": 0}
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

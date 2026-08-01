@@ -52,6 +52,7 @@ public sealed class HostessctlProjectRunnerService
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        startInfo.ArgumentList.Add("-I");
         startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
         startInfo.ArgumentList.Add("project-runner");
         startInfo.ArgumentList.Add("inspect");

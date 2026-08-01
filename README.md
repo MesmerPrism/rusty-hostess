@@ -17,6 +17,8 @@ The opt-in complete-product Windows Labs distribution is documented in
 [docs/WINDOWS_LABS_DISTRIBUTION.md](docs/WINDOWS_LABS_DISTRIBUTION.md). It
 includes the current WPF companion and source-owned CLI surface while keeping
 MQDH/Casting external and keeping the standalone hotspot provider separate.
+Labs also bundles the hash-pinned official CPython 3.12.10 embeddable runtime,
+so users do not install or expose a particular ambient Python executable.
 
 ## Agent Instructions
 

@@ -39,6 +39,7 @@ public sealed class HostessctlReadinessService
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        startInfo.ArgumentList.Add("-I");
         startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
         startInfo.ArgumentList.Add("companion-readiness");
         startInfo.ArgumentList.Add("--out");

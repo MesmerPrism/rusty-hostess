@@ -648,6 +648,7 @@ public sealed class HostessctlConnectivityService
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        startInfo.ArgumentList.Add("-I");
         startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
         foreach (var argument in arguments)
         {
