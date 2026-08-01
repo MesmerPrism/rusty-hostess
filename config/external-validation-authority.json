@@ -358,6 +358,135 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-z-provider-labs-self-issued-boundary-20260801",
+      "required_ancestor": "320d5498208e9ccac0140555ab3cddf4b2e94114",
+      "changed_paths": [
+        ".github/workflows/windows-hotspot-provider-release.yml",
+        "AGENTS.md",
+        "README.md",
+        "config/external-validation-authority.json",
+        "docs/windows-mobile-hotspot-provider.md",
+        "packaging/windows-hotspot-provider/README.md",
+        "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+        "packaging/windows-hotspot-provider/release-policy.json",
+        "schemas/hostess-windows-hotspot-release-policy.schema.json",
+        "schemas/hostess-windows-hotspot-release-provenance-v2.schema.json",
+        "tools/New-WindowsHotspotProviderReleaseMetadata.ps1",
+        "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1",
+        "tools/check_all.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/windows-hotspot-provider-release.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 16729,
+          "sha256": "d6513d93a71f221bd15963a0cdc61f4852f7c307e44b875c2b1f5276679d7412"
+        },
+        {
+          "path": "AGENTS.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30862,
+          "sha256": "07cadbdfdb2de3bc09c900c9dc5b309b3679520f793f9568b7a13bb3b215126f"
+        },
+        {
+          "path": "README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 62877,
+          "sha256": "34453610a84f968135723af39f8fcc9d0bbbc455bf73b67c48d0b8f2fa335f11"
+        },
+        {
+          "path": "config/external-validation-authority.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 12996,
+          "sha256": "8cb0297d6d424b10bafcabef95d6ab6691ca73aaa619d2105bd0d54aba285c44"
+        },
+        {
+          "path": "docs/windows-mobile-hotspot-provider.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 10246,
+          "sha256": "021535b2fa3b9730a1610daa101be59e52c4516fe845abca7c1170a55e9449ed"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5828,
+          "sha256": "2c92fa26c0ec6e9924f5ceda6289b15d5c661925870b65c8f104ada6f011a2de"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 7598,
+          "sha256": "4e762848e8e389676f819ddae518e986b8c9c998b0f1806183ed6c434a7a380e"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/release-policy.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 969,
+          "sha256": "d22092b491c02a8aba9ff135dd4df56e3fa07f6cbc5ea440da630ce91bf6e00e"
+        },
+        {
+          "path": "schemas/hostess-windows-hotspot-release-policy.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2791,
+          "sha256": "316a4f75d0b77fcfc7813a352c38edd7536ba016fa3eb6071338981f64fc04a7"
+        },
+        {
+          "path": "schemas/hostess-windows-hotspot-release-provenance-v2.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 9275,
+          "sha256": "7b73ac3e54d8ac195f2fa64b121aeba83afc09d2fd93d1ee8631df0d9d5d2f2e"
+        },
+        {
+          "path": "tools/New-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 21469,
+          "sha256": "41a4cb01a10f9b2184b85535d7b00dcf5b49625e0e9b8590c28e269e3386d80e"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 8538,
+          "sha256": "4357c03dc17e7553fee18e4120344e3f3968ebdb3af055d4bfe04426a90a64f9"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 21461,
+          "sha256": "6e7d97f76a76fedc201d196d6c0a478fece4eaa8fba1b837d9fae8030a86cbfc"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 8958,
+          "sha256": "1f9e5eda6d1375f86d0fbcfc0a0b3dbec9e096635d7996e9a0470367be2430e8"
+        },
+        {
+          "path": "tools/check_all.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 17685,
+          "sha256": "8c1ee964ea5a8cb794e7c4aad472762cc692a281531302c07a3db9636363ac3d"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
