@@ -1,0 +1,117 @@
+name: External validation authority
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  static-admission:
+    name: Static admission
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - name: Checkout exact trusted base
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          lfs: false
+          path: trusted-base
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.base.sha }}
+          submodules: false
+
+      - name: Checkout pinned external verifier
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          lfs: false
+          path: pinned-verifier
+          persist-credentials: false
+          ref: 50a4c5222c9d6c4567bac09405e43049c61b126f
+          repository: MesmerPrism/rusty-morphospace-work-environment
+          submodules: false
+
+      - name: Exercise the pinned verifier's adversarial self-test
+        shell: pwsh
+        run: |
+          & .\pinned-verifier\scripts\Test-ExternalValidationAuthoritySelfTest.ps1
+          if (-not $?) {
+            throw 'pinned external validation authority self-test failed'
+          }
+
+      - name: Assess candidate Git objects without checkout or execution
+        shell: pwsh
+        env:
+          EVENT_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          EVENT_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          EVENT_NAME_EXACT: ${{ github.event_name }}
+          PR_NUMBER_EXACT: ${{ github.event.pull_request.number }}
+          REPOSITORY_EXACT: ${{ github.repository }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:EVENT_NAME_EXACT -cne 'pull_request_target' -or
+              $env:REPOSITORY_EXACT -cne 'MesmerPrism/rusty-hostess' -or
+              $env:EVENT_BASE_REPOSITORY -cne $env:REPOSITORY_EXACT -or
+              $env:EVENT_HEAD_REPOSITORY -notmatch
+                '^[A-Za-z0-9_.-]{1,100}/[A-Za-z0-9_.-]{1,100}$' -or
+              $env:EVENT_BASE_SHA -notmatch '^[0-9a-f]{40}$' -or
+              $env:EVENT_HEAD_SHA -notmatch '^[0-9a-f]{40}$' -or
+              $env:EVENT_MERGE_SHA -notmatch '^[0-9a-f]{40}$' -or
+              $env:PR_NUMBER_EXACT -notmatch '^[1-9][0-9]*$') {
+            throw 'pull-request identity is incomplete or malformed'
+          }
+          $checkedOut = (& git -C .\trusted-base rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $checkedOut -cne $env:EVENT_BASE_SHA) {
+            throw 'trusted-base checkout is not the exact event base'
+          }
+          $status = @(& git -C .\trusted-base status --porcelain=v1)
+          if ($LASTEXITCODE -ne 0 -or $status.Count -ne 0) {
+            throw 'trusted-base checkout is not clean'
+          }
+          $headRef = 'refs/codex-validation/pr-' +
+            $env:PR_NUMBER_EXACT + '-head'
+          $mergeRef = 'refs/codex-validation/pr-' +
+            $env:PR_NUMBER_EXACT + '-merge'
+          & git -C .\trusted-base fetch --no-tags --force origin `
+            ('+refs/pull/' + $env:PR_NUMBER_EXACT + '/head:' + $headRef) `
+            ('+refs/pull/' + $env:PR_NUMBER_EXACT + '/merge:' + $mergeRef)
+          if ($LASTEXITCODE -ne 0) {
+            throw 'candidate pull-request Git objects could not be fetched'
+          }
+          $fetchedHead = (& git -C .\trusted-base rev-parse $headRef).Trim()
+          $fetchedMerge = (& git -C .\trusted-base rev-parse $mergeRef).Trim()
+          if ($fetchedHead -cne $env:EVENT_HEAD_SHA -or
+              $fetchedMerge -cne $env:EVENT_MERGE_SHA) {
+            throw 'fetched pull-request refs do not match event identity'
+          }
+          $mergeLine = & git -C .\trusted-base rev-list --parents -n 1 `
+            $fetchedMerge
+          $mergeParents = @(
+            $mergeLine.Trim().Split(
+              ' ', [StringSplitOptions]::RemoveEmptyEntries)
+          )
+          if ($LASTEXITCODE -ne 0 -or $mergeParents.Count -ne 3 -or
+              $mergeParents[1] -cne $env:EVENT_BASE_SHA -or
+              $mergeParents[2] -cne $env:EVENT_HEAD_SHA) {
+            throw 'GitHub merge candidate is not exactly base plus head'
+          }
+          & .\pinned-verifier\scripts\Test-ExternalValidationAuthority.ps1 `
+            -RepositoryRoot .\trusted-base `
+            -PolicyPath 'config/external-validation-authority.json' `
+            -Repository $env:REPOSITORY_EXACT `
+            -BaseCommit $env:EVENT_BASE_SHA `
+            -CandidateCommit $env:EVENT_HEAD_SHA `
+            -Json
+          if (-not $?) {
+            throw 'base-owned external validation authority rejected candidate'
+          }
