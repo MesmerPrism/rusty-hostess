@@ -304,9 +304,25 @@ jobs:
           & gh release upload $env:RELEASE_TAG @($files.FullName) `
             --repo $env:GITHUB_REPOSITORY
           if ($LASTEXITCODE -ne 0) { throw 'Labs asset upload failed' }
-          $release = & gh api `
-            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
-            ConvertFrom-Json -Depth 30
+          $draftViewJson = & gh release view $env:RELEASE_TAG `
+            --repo $env:GITHUB_REPOSITORY `
+            --json databaseId,tagName,isDraft,isPrerelease
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Labs draft identity readback failed'
+          }
+          $draftView = $draftViewJson | ConvertFrom-Json -Depth 10
+          if ($draftView.tagName -cne $env:RELEASE_TAG -or
+              $draftView.isDraft -ne $true -or
+              $draftView.isPrerelease -ne $true -or
+              $draftView.databaseId -le 0) {
+            throw 'Labs draft identity readback is not exact'
+          }
+          $releaseJson = & gh api `
+            "repos/$env:GITHUB_REPOSITORY/releases/$($draftView.databaseId)"
+          if ($LASTEXITCODE -ne 0) {
+            throw 'Labs draft release-id readback failed'
+          }
+          $release = $releaseJson | ConvertFrom-Json -Depth 30
           if ($release.tag_name -cne $env:RELEASE_TAG -or
               $release.draft -ne $true -or
               $release.prerelease -ne $true -or
