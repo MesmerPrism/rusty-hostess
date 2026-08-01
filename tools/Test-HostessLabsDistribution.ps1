@@ -613,6 +613,12 @@ try {
     $promotion = $workflow.IndexOf(
         '& gh api --method PATCH',
         [StringComparison]::Ordinal)
+    $signToolVerify = $workflow.IndexOf(
+        '& $signtool verify /pa /v',
+        [StringComparison]::Ordinal)
+    $acceptedBoundaryExitReset = $workflow.IndexOf(
+        '$global:LASTEXITCODE = 0',
+        [StringComparison]::Ordinal)
     Assert-Labs (
         $workflow -match 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' -and
         $workflow -match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' -and
@@ -622,6 +628,9 @@ try {
         $workflow -match 'signtool verify /pa /v' -and
         $workflow -match 'Resolve-WindowsSdkSignTool\.ps1' -and
         $workflow -notmatch 'Get-Command signtool\.exe' -and
+        $workflow -match '\$global:LASTEXITCODE = 0' -and
+        $signToolVerify -ge 0 -and
+        $acceptedBoundaryExitReset -gt $signToolVerify -and
         $workflow -match '\$thumbprint -cne \$policy\.wpf_signer\.thumbprint' -and
         $workflow -match '\$certificateHash -cne \$policy\.wpf_signer\.certificate_sha256' -and
         $workflow -match 'Fetch exact reviewed CPython runtime and provenance' -and

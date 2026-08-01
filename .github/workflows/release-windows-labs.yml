@@ -192,6 +192,7 @@ jobs:
             }
             "WPF_CHAIN_TRUSTED=$($chainExit -eq 0)" >> $env:GITHUB_ENV
             "WPF_EXE_SHA256=$((Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant())" >> $env:GITHUB_ENV
+            $global:LASTEXITCODE = 0
           }
           finally {
             Remove-Item -LiteralPath $pfx -Force -ErrorAction SilentlyContinue
