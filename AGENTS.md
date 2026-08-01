@@ -338,6 +338,12 @@ generic code or sanitized sample fixtures.
   release-metadata generation, and release validation must enforce the same
   no-build-metadata provider-version predicate before rebuild or provenance
   work begins.
+- Keep provider release signing owner-issued and Labs-only. The checked-in
+  release policy is the sole public signer-pin authority; provenance must
+  archive and hash-bind it. Accept only the exact `Valid`/clean-chain or
+  `UnknownError`/`UntrustedRoot` one-element boundaries, while retaining an
+  explicit no-public-trust claim and `stable_eligible: false`. Never install
+  the self-issued certificate into Root or TrustedPublisher.
 - Keep repo-local `tools\check_all.ps1` portable: it may skip the external
   discovery validator when no contract root is supplied, but must say that
   cross-repository acceptance remains incomplete. Cross-repository acceptance

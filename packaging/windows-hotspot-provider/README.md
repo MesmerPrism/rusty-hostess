@@ -15,6 +15,7 @@ pwsh -NoProfile -File tools\New-WindowsHotspotProviderReleaseMetadata.ps1 `
 The output contains:
 
 - `rusty-hostess-hotspot-provider.provenance.json`;
+- `rusty-hostess-hotspot-provider.release-policy.json`;
 - the Rusty Hostess `LICENSE`;
 - generated `THIRD-PARTY-NOTICES.txt`.
 
@@ -25,16 +26,28 @@ also embeds its exact source revision. Unsigned output must byte-match a fresh
 clean rebuild before metadata is emitted. An `unsigned-dev` result is
 explicitly `development_only`.
 
+The archived policy is hash-bound by provenance so an offline consumer can
+evaluate the exact historical signer and channel policy.
+
 Publication tooling must accept only `signed-release` metadata with a
 signature revalidated against the artifact and public-source verification.
 The signed-release generator therefore also requires
 `-VerifyPublicSource`; it checks the exact commit and tree through GitHub
-before declaring the source publicly available. It also requires
-`-AllowedSignerThumbprint`, verifies that exact owner certificate, and
+before declaring the source publicly available. It verifies the exact owner
+certificate from the checked-in protected release policy and
 compares the signed PE payload (excluding only the standard Authenticode
 checksum/certificate locations) with the clean unsigned rebuild. Offline
-signed-release validation requires the same thumbprint through
-`-ExpectedSignerThumbprint`.
+signed-release validation revalidates the executable against the archived,
+hash-bound copy of that exact policy.
+
+The current certificate is self-issued. It is accepted only as exact-pinned
+Labs evidence: either Windows and X509 report `Valid` with a one-element chain
+and no status flags, or PowerShell reports `UnknownError` with an untrusted
+one-element chain carrying only `UntrustedRoot`. Both cases require the exact
+subject, issuer, SHA-1 thumbprint, certificate SHA-256, code-signing EKU, and
+timestamp evidence. Neither case claims public Windows trust or Stable
+eligibility. The workflow and tools never install a certificate into Root or
+TrustedPublisher; a Windows reputation/trust warning is therefore expected.
 
 Validate metadata and its artifact offline:
 
@@ -66,17 +79,18 @@ it is disabled. Configure these environment inputs:
 - secret `RUSTY_HOSTESS_RELEASE_POLICY_TOKEN`: a fine-grained token limited to
   Rusty Hostess with repository Administration read permission, used only to
   verify that GitHub release immutability is enabled;
-- environment variable `RUSTY_HOSTESS_AUTHENTICODE_SIGNER_THUMBPRINT`: the
-  independently reviewed SHA-1 or SHA-256 certificate thumbprint.
-
-The workflow validates that the PFX contains exactly that code-signing
-identity, signs the exact self-contained provider, verifies the resulting
+The public pins live only in the versioned
+`packaging/windows-hotspot-provider/release-policy.json`; only the PFX and its
+password are secrets. The workflow validates that the PFX contains exactly
+one private-key code-signing identity matching that policy, signs the exact
+self-contained provider, verifies the resulting
 Authenticode signature, generates owner provenance with public commit/tree
 verification, and revalidates the complete bundle. It then creates one
 immutable GitHub Release containing exactly:
 
 - `rusty-hostess-hotspot-provider.exe`;
 - `rusty-hostess-hotspot-provider.provenance.json`;
+- `rusty-hostess-hotspot-provider.release-policy.json`;
 - `LICENSE`;
 - `THIRD-PARTY-NOTICES.txt`.
 
@@ -87,8 +101,19 @@ the SHA-256 digest and size of every asset. It has no asset-update,
 release-edit, tag-creation, tag-move, or clobber path. A failed or existing
 release requires a new version and tag, not replacement.
 
+`windows-hotspot-provider-v0.1.1` is already fixed at its original commit and
+must not be moved, deleted, reused, or published through a replacement
+attempt. The first release using this policy must use a fresh version and tag,
+at least `windows-hotspot-provider-v0.1.2`.
+
+These releases are provider-neutral Labs inputs only. A consumer may project
+`allowed_channels: ["labs"]`, but must keep `stable_eligible: false`. Moving
+to Stable requires a separately reviewed publicly trusted managed signing
+policy and a new release; it cannot be inferred from a locally trusted chain.
+
 Validate this policy locally without signing or publishing:
 
 ```powershell
 pwsh -NoProfile -File tools\Test-WindowsHotspotProviderReleaseWorkflow.ps1
+pwsh -NoProfile -File tools\Test-WindowsHotspotProviderAuthenticodePolicy.ps1
 ```

@@ -1,0 +1,33 @@
+{
+  "schema": "rusty.hostess.windows_hotspot.release_policy.v1",
+  "product_id": "rusty-hostess-windows-hotspot-provider",
+  "signer": {
+    "subject": "CN=MesmerPrism",
+    "issuer": "CN=MesmerPrism",
+    "thumbprint_sha1": "08A5878AD6E652A94517D2C79144EB2655B0088C",
+    "certificate_sha256": "baead63c37e32085c3af19b4c739a6a308d700529f107d40e14fec2c94fe7ddf",
+    "code_signing_eku_oid": "1.3.6.1.5.5.7.3.3",
+    "self_issued": true,
+    "timestamp_required": true,
+    "public_trust_claim": false
+  },
+  "accepted_validation_boundaries": [
+    {
+      "authenticode_status": "valid",
+      "chain_trusted": true,
+      "chain_element_count": 1,
+      "chain_status_flags": []
+    },
+    {
+      "authenticode_status": "unknown_error",
+      "chain_trusted": false,
+      "chain_element_count": 1,
+      "chain_status_flags": ["UntrustedRoot"]
+    }
+  ],
+  "distribution": {
+    "allowed_channels": ["labs"],
+    "stable_eligible": false
+  },
+  "status": "active"
+}

@@ -188,6 +188,10 @@ try {
         Invoke-Checked "Windows Mobile Hotspot provider artifact gate" "pwsh" @(
             "-NoProfile", "-File", "tools\Test-WindowsHotspotProviderArtifact.ps1"
         )
+        Invoke-Checked "Windows Mobile Hotspot provider Authenticode policy tests" "pwsh" @(
+            "-NoProfile", "-File",
+            "tools\Test-WindowsHotspotProviderAuthenticodePolicy.ps1"
+        )
         Invoke-Checked "Windows Mobile Hotspot provider release-workflow gate" "pwsh" @(
             "-NoProfile",
             "-File",
