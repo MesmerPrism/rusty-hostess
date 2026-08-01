@@ -270,6 +270,31 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-upload-closed-assets-20260801",
+      "required_ancestor": "d09e274bbb9642267027069dd3329be9a3b3e81a",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20139,
+          "sha256": "ef78ae27067ee6fd6ed660ed8ca8a176cdeab3502b1c40989e355fd149ab3ba3"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31740,
+          "sha256": "008451687458b9b4e857244f891fa975ce32aef4d472a9b4c2f523afa3382f3d"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
