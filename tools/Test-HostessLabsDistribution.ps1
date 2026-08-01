@@ -13,6 +13,30 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) (
     "rusty-hostess-labs-test-$([Guid]::NewGuid().ToString('N'))")
 try {
+    $signToolResolver = Join-Path $root `
+        'packaging\windows-labs\Resolve-WindowsSdkSignTool.ps1'
+    $resolvedSignToolOne = & $signToolResolver
+    $resolvedSignToolTwo = & $signToolResolver
+    Assert-Labs (
+        $resolvedSignToolOne -ceq $resolvedSignToolTwo -and
+        (Test-Path -LiteralPath $resolvedSignToolOne -PathType Leaf)
+    ) 'versioned Windows SDK SignTool resolution is not deterministic'
+    $fakeKitsRoot = Join-Path $temp 'fake-windows-kits'
+    $fakeSignToolDirectory = Join-Path $fakeKitsRoot `
+        'bin\99.0.0.0\x64'
+    [IO.Directory]::CreateDirectory($fakeSignToolDirectory) | Out-Null
+    [IO.File]::Copy(
+        (Join-Path $env:SystemRoot 'System32\cmd.exe'),
+        (Join-Path $fakeSignToolDirectory 'signtool.exe'))
+    $fakeSignToolRejected = $false
+    try {
+        & $signToolResolver -WindowsKitsRoot $fakeKitsRoot | Out-Null
+    }
+    catch {
+        $fakeSignToolRejected = $true
+    }
+    Assert-Labs $fakeSignToolRejected `
+        'non-SignTool executable was accepted from a Windows SDK-shaped path'
     $wpf = Join-Path $temp 'wpf'
     & dotnet publish (Join-Path $root 'apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj') `
         --configuration Release --runtime win-x64 --self-contained true `
@@ -596,6 +620,8 @@ try {
         $workflow -match '--prerelease' -and
         $workflow -match '--draft' -and
         $workflow -match 'signtool verify /pa /v' -and
+        $workflow -match 'Resolve-WindowsSdkSignTool\.ps1' -and
+        $workflow -notmatch 'Get-Command signtool\.exe' -and
         $workflow -match '\$thumbprint -cne \$policy\.wpf_signer\.thumbprint' -and
         $workflow -match '\$certificateHash -cne \$policy\.wpf_signer\.certificate_sha256' -and
         $workflow -match 'Fetch exact reviewed CPython runtime and provenance' -and
