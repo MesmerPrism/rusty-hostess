@@ -297,7 +297,7 @@
       "status": "approved"
     },
     {
-      "approval_id": "hostess-windows-draft-readback-by-id-20260801",
+      "approval_id": "hostess-windows-verified-draft-readback-by-id-20260801",
       "required_ancestor": "f9b631a4535be4d658a22de41470efb8e7adec30",
       "changed_paths": [
         ".github/workflows/release-windows-labs.yml",
