@@ -245,6 +245,31 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-self-issued-exit-20260801",
+      "required_ancestor": "6b6c61fe6201cd96d5ed26a0ee2cde5a55c3bfd5",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20135,
+          "sha256": "caa5169eda0c8375eaf23f178d463b6fdac647ec46a666a3a1c502ec6f510c30"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31627,
+          "sha256": "3e9b480cdefed9c8476b4dd55be1eccc4ef64bdfd123c22b74a8e9fc640f9d15"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
