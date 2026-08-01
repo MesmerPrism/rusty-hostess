@@ -195,6 +195,23 @@
         }
       ],
       "status": "approved"
+    },
+    {
+      "approval_id": "hostess-signing-identity-portability-20260801",
+      "required_ancestor": "3bb31f13fb0c489eaf16e31c7b929276849337c2",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19946,
+          "sha256": "36e4c4aeb0359d757e6f6659ee1589bf9613e67270cf6bfceab5d1fd7a051c9d"
+        }
+      ],
+      "status": "approved"
     }
   ],
   "status": "active"
