@@ -610,6 +610,12 @@ try {
     $prePromotionCheck = $workflow.IndexOf(
         '$prePromotionRef = & gh api',
         [StringComparison]::Ordinal)
+    $draftIdentityReadback = $workflow.IndexOf(
+        '$draftViewJson = & gh release view $env:RELEASE_TAG',
+        [StringComparison]::Ordinal)
+    $draftReleaseIdReadback = $workflow.IndexOf(
+        'releases/$($draftView.databaseId)',
+        [StringComparison]::Ordinal)
     $promotion = $workflow.IndexOf(
         '& gh api --method PATCH',
         [StringComparison]::Ordinal)
@@ -639,6 +645,8 @@ try {
         $workflow -notmatch 'HOSTESS_ALPHA_PYTHON_3_12_10_SHA256' -and
         $workflow -notmatch 'HOSTESS_ALPHA_SIGNER_' -and
         $workflow -match 'draft=false -F prerelease=true -f make_latest=false' -and
+        $workflow -match '--json databaseId,tagName,isDraft,isPrerelease' -and
+        $workflow -match '\$draftView\.databaseId -le 0' -and
         $workflow -match 'git/ref/tags/\$env:RELEASE_TAG' -and
         $workflow -match 'Verify authoritative remote tag before build' -and
         $workflow -match '\$prePromotionPeeled\.sha -cne \$env:SOURCE_REVISION' -and
@@ -646,6 +654,9 @@ try {
         $workflow -match '\$peeled\.sha -cne \$env:SOURCE_REVISION' -and
         $remoteTagBeforeBuild -ge 0 -and
         $remoteTagBeforeBuild -lt $buildStep -and
+        $draftIdentityReadback -ge 0 -and
+        $draftReleaseIdReadback -gt $draftIdentityReadback -and
+        $draftReleaseIdReadback -lt $prePromotionCheck -and
         $prePromotionCheck -ge 0 -and
         $prePromotionCheck -lt $promotion -and
         $workflow -match '--latest=false' -and

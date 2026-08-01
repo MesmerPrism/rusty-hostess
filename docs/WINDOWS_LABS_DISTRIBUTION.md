@@ -57,8 +57,11 @@ After exact clean tag/revision/tree admission it creates a draft, uploads and
 verifies the four-file closed asset set, then publishes only a prerelease with
 `latest=false` and performs final readback. It rejects an existing release,
 mutable URLs, stable/Labs substitution, extra assets, or a Labs prerelease as
-the stable latest pointer. A failure leaves an explicit immutable incident for manual review;
-the workflow never deletes the release or pretends the same tag can be rerun.
+the stable latest pointer. Draft verification resolves the draft's numeric
+release ID before reading its closed asset set because GitHub's tag endpoint
+does not expose drafts. A failure leaves an explicit immutable incident for
+manual review; the workflow never deletes the release or pretends the same tag
+can be rerun.
 
 Synthetic validation:
 
