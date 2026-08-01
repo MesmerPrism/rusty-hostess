@@ -138,7 +138,11 @@ jobs:
                 -not $codeSigningEku) {
               throw 'protected Hostess PFX is not the reviewed code-signing identity'
             }
-            $signtool = (Get-Command signtool.exe -ErrorAction Stop).Source
+            $signtool = & `
+              .\packaging\windows-labs\Resolve-WindowsSdkSignTool.ps1
+            if (-not $? -or -not $signtool) {
+              throw 'reviewed Windows SDK SignTool resolution failed'
+            }
             & $signtool sign /fd SHA256 /td SHA256 /tr `
               http://timestamp.digicert.com /f $pfx `
               /p $env:WINDOWS_SIGNING_CERTIFICATE_PASSWORD `
