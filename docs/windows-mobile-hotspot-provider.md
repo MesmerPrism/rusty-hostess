@@ -178,5 +178,9 @@ verification, and a new immutable GitHub Release. The current signer is
 self-issued and exact-pinned for Labs only; no tool installs it into Root or
 TrustedPublisher, no public Windows trust is claimed, and Stable remains
 blocked until managed publicly trusted signing is reviewed. Provenance binds
-the archived policy as one of five immutable assets. The discovery document
+the archived policy as one of five immutable assets. Release-runner and
+current-host chain observations are each validated against the same two exact
+policy branches; they need not choose the same branch when their local trust
+stores differ, but their signer, certificate, EKU, timestamp, self-issued, and
+no-public-trust facts must match. The discovery document
 remains non-authorizing and is not a release asset.
