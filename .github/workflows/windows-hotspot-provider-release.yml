@@ -156,7 +156,14 @@ jobs:
           ).ToLowerInvariant()
           $codeSigningEku = @(
             $certificate.EnhancedKeyUsageList |
-              ForEach-Object { $_.ObjectId.Value }
+              ForEach-Object {
+                $objectId = $_.ObjectId
+                if ($objectId -is [Security.Cryptography.Oid]) {
+                  $objectId.Value
+                } else {
+                  [string] $objectId
+                }
+              }
           )
           if (-not $certificate.HasPrivateKey -or
               $observedThumbprint -cne $expectedThumbprint -or
