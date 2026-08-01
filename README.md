@@ -244,7 +244,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   availability neither authorizes execution nor proves platform support,
   effective hotspot state, Fleet admission, or release eligibility. It is not
   the QCL-011 observer or Wi-Fi Direct LegacySettings helper; see
-  `docs/windows-mobile-hotspot-provider.md`.
+  `docs/windows-mobile-hotspot-provider.md`. Provider releases use an
+  owner-issued, exact-pinned self-issued Authenticode policy for Labs only;
+  they never mutate Windows trust stores and remain ineligible for Stable.
 - `tools/hostessctl/connectivity_probe_common.py`: shared connectivity report
   helpers for the QCL report skeleton, check rows, issue rows,
   JSON/ADB/PowerShell cleanup, Android readback, and small measurement

@@ -35,6 +35,36 @@
       "path": ".github/workflows/release-windows-labs.yml"
     },
     {
+      "rule_id": "windows-hotspot-provider-release-workflow",
+      "match": "exact",
+      "path": ".github/workflows/windows-hotspot-provider-release.yml"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-policy",
+      "match": "prefix",
+      "path": "packaging/windows-hotspot-provider/"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-generator",
+      "match": "exact",
+      "path": "tools/New-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-validator",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-tests",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-workflow-test",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1"
+    },
+    {
       "rule_id": "schema-contracts",
       "match": "prefix",
       "path": "schemas/"

@@ -1,0 +1,156 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/hostess-windows-hotspot-release-provenance-v2.schema.json",
+  "title": "Rusty Hostess Windows hotspot provider release provenance v2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "product_id", "provider_version", "artifact", "source", "build", "dependencies", "bundled_native_libraries", "signing", "release_policy", "companion_documents", "distribution"],
+  "properties": {
+    "schema": {"const": "rusty.hostess.windows_hotspot.release_provenance.v2"},
+    "product_id": {"const": "rusty-hostess-windows-hotspot-provider"},
+    "provider_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9a-z-]+(\\.[0-9a-z-]+)*)?$"},
+    "artifact": {
+      "type": "object", "additionalProperties": false,
+      "required": ["name", "sha256", "size_bytes", "product_version"],
+      "properties": {
+        "name": {"const": "rusty-hostess-hotspot-provider.exe"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1},
+        "product_version": {"type": "string", "minLength": 1}
+      }
+    },
+    "source": {
+      "type": "object", "additionalProperties": false,
+      "required": ["repository", "revision", "tree", "availability_url", "availability_state", "verified_at_utc", "tree_clean"],
+      "properties": {
+        "repository": {"const": "https://github.com/MesmerPrism/rusty-hostess"},
+        "revision": {"$ref": "#/$defs/git_oid"},
+        "tree": {"$ref": "#/$defs/git_oid"},
+        "availability_url": {"type": "string", "format": "uri"},
+        "availability_state": {"enum": ["verified_public", "unverified_development"]},
+        "verified_at_utc": {"type": ["string", "null"]},
+        "tree_clean": {"const": true}
+      }
+    },
+    "build": {
+      "type": "object", "additionalProperties": false,
+      "required": ["kind", "framework", "runtime_identifier", "source_date_epoch", "unsigned_artifact_sha256", "unsigned_artifact_size_bytes", "canonical_payload_sha256", "canonical_payload_size_bytes"],
+      "properties": {
+        "kind": {"enum": ["signed-release", "unsigned-dev"]},
+        "framework": {"const": "net9.0-windows10.0.19041.0"},
+        "runtime_identifier": {"const": "win-x64"},
+        "source_date_epoch": {"type": "integer", "minimum": 1},
+        "unsigned_artifact_sha256": {"$ref": "#/$defs/sha256"},
+        "unsigned_artifact_size_bytes": {"type": "integer", "minimum": 1},
+        "canonical_payload_sha256": {"$ref": "#/$defs/sha256"},
+        "canonical_payload_size_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "dependencies": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "version", "license", "license_url", "project_url"],
+        "properties": {
+          "name": {"type": "string", "minLength": 1},
+          "version": {"type": "string", "minLength": 1},
+          "license": {"type": "string", "minLength": 1},
+          "license_url": {"type": "string", "format": "uri"},
+          "project_url": {"type": "string", "format": "uri"}
+        }
+      }
+    },
+    "bundled_native_libraries": {
+      "type": "array", "minItems": 1,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "sha256", "size_bytes"],
+        "properties": {
+          "name": {"type": "string", "pattern": "^[A-Za-z0-9_.-]+\\.dll$"},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "size_bytes": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "signing": {
+      "type": "object", "additionalProperties": false,
+      "required": ["state", "authenticode_status", "subject", "issuer", "thumbprint_sha1", "certificate_sha256", "code_signing_eku_present", "self_issued", "timestamp_present", "chain_trusted", "chain_element_count", "chain_status_flags", "public_trust_claim", "trust_boundary"],
+      "properties": {
+        "state": {"enum": ["accepted_exact_owner_signature", "unsigned"]},
+        "authenticode_status": {"enum": ["valid", "unknown_error", "not_signed"]},
+        "subject": {"type": ["string", "null"]},
+        "issuer": {"type": ["string", "null"]},
+        "thumbprint_sha1": {"anyOf": [{"$ref": "#/$defs/thumbprint_sha1"}, {"type": "null"}]},
+        "certificate_sha256": {"anyOf": [{"$ref": "#/$defs/sha256"}, {"type": "null"}]},
+        "code_signing_eku_present": {"type": "boolean"},
+        "self_issued": {"type": ["boolean", "null"]},
+        "timestamp_present": {"type": "boolean"},
+        "chain_trusted": {"type": "boolean"},
+        "chain_element_count": {"type": "integer", "minimum": 0},
+        "chain_status_flags": {"type": "array", "items": {"type": "string"}},
+        "public_trust_claim": {"const": false},
+        "trust_boundary": {"enum": ["host-chain-valid-no-public-trust-claim", "exact-pinned-self-issued-untrusted-root-only", "unsigned-development"]}
+      }
+    },
+    "release_policy": {
+      "type": "object", "additionalProperties": false,
+      "required": ["asset_name", "schema", "sha256", "size_bytes"],
+      "properties": {
+        "asset_name": {"const": "rusty-hostess-hotspot-provider.release-policy.json"},
+        "schema": {"const": "rusty.hostess.windows_hotspot.release_policy.v1"},
+        "sha256": {"$ref": "#/$defs/sha256"},
+        "size_bytes": {"type": "integer", "minimum": 1}
+      }
+    },
+    "companion_documents": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "items": {
+        "type": "object", "additionalProperties": false,
+        "required": ["name", "sha256", "size_bytes"],
+        "properties": {
+          "name": {"enum": ["LICENSE", "THIRD-PARTY-NOTICES.txt"]},
+          "sha256": {"$ref": "#/$defs/sha256"},
+          "size_bytes": {"type": "integer", "minimum": 1}
+        }
+      }
+    },
+    "distribution": {
+      "type": "object", "additionalProperties": false,
+      "required": ["eligibility", "binary_authority", "allowed_channels", "stable_eligible"],
+      "properties": {
+        "eligibility": {"enum": ["labs_signed_release", "development_only"]},
+        "binary_authority": {"const": "rusty-hostess-github-releases"},
+        "allowed_channels": {"type": "array", "items": {"const": "labs"}, "uniqueItems": true, "maxItems": 1},
+        "stable_eligible": {"const": false}
+      }
+    }
+  },
+  "oneOf": [
+    {
+      "properties": {
+        "build": {"properties": {"kind": {"const": "signed-release"}}},
+        "source": {"properties": {"availability_state": {"const": "verified_public"}, "verified_at_utc": {"type": "string"}}},
+        "signing": {
+          "oneOf": [
+            {"properties": {"state": {"const": "accepted_exact_owner_signature"}, "authenticode_status": {"const": "valid"}, "subject": {"type": "string"}, "issuer": {"type": "string"}, "thumbprint_sha1": {"$ref": "#/$defs/thumbprint_sha1"}, "certificate_sha256": {"$ref": "#/$defs/sha256"}, "code_signing_eku_present": {"const": true}, "self_issued": {"const": true}, "timestamp_present": {"const": true}, "chain_trusted": {"const": true}, "chain_element_count": {"const": 1}, "chain_status_flags": {"maxItems": 0}, "trust_boundary": {"const": "host-chain-valid-no-public-trust-claim"}}},
+            {"properties": {"state": {"const": "accepted_exact_owner_signature"}, "authenticode_status": {"const": "unknown_error"}, "subject": {"type": "string"}, "issuer": {"type": "string"}, "thumbprint_sha1": {"$ref": "#/$defs/thumbprint_sha1"}, "certificate_sha256": {"$ref": "#/$defs/sha256"}, "code_signing_eku_present": {"const": true}, "self_issued": {"const": true}, "timestamp_present": {"const": true}, "chain_trusted": {"const": false}, "chain_element_count": {"const": 1}, "chain_status_flags": {"const": ["UntrustedRoot"]}, "trust_boundary": {"const": "exact-pinned-self-issued-untrusted-root-only"}}}
+          ]
+        },
+        "distribution": {"properties": {"eligibility": {"const": "labs_signed_release"}, "allowed_channels": {"const": ["labs"]}}}
+      }
+    },
+    {
+      "properties": {
+        "build": {"properties": {"kind": {"const": "unsigned-dev"}}},
+        "source": {"properties": {"availability_state": {"const": "unverified_development"}, "verified_at_utc": {"type": "null"}}},
+        "signing": {"properties": {"state": {"const": "unsigned"}, "authenticode_status": {"const": "not_signed"}, "subject": {"type": "null"}, "issuer": {"type": "null"}, "thumbprint_sha1": {"type": "null"}, "certificate_sha256": {"type": "null"}, "code_signing_eku_present": {"const": false}, "self_issued": {"type": "null"}, "timestamp_present": {"const": false}, "chain_trusted": {"const": false}, "chain_element_count": {"const": 0}, "chain_status_flags": {"maxItems": 0}, "trust_boundary": {"const": "unsigned-development"}}},
+        "distribution": {"properties": {"eligibility": {"const": "development_only"}, "allowed_channels": {"maxItems": 0}}}
+      }
+    }
+  ],
+  "$defs": {
+    "sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+    "thumbprint_sha1": {"type": "string", "pattern": "^[0-9a-f]{40}$"},
+    "git_oid": {"type": "string", "pattern": "^[0-9a-f]{40}$"}
+  }
+}
