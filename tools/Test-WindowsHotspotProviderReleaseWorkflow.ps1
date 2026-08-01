@@ -57,6 +57,14 @@ foreach ($requirement in @(
         Message = "Release workflow must independently supply the authorized signer thumbprint."
     },
     @{
+        Pattern = '\$objectId -is \[Security\.Cryptography\.Oid\]'
+        Message = "Release workflow must accept Oid-valued enhanced-key-usage entries."
+    },
+    @{
+        Pattern = '\[string\] \$objectId'
+        Message = "Release workflow must accept string-valued enhanced-key-usage entries."
+    },
+    @{
         Pattern = 'secrets\.RUSTY_HOSTESS_RELEASE_POLICY_TOKEN'
         Message = "Release workflow must require protected immutable-release policy readback."
     },
@@ -143,6 +151,7 @@ foreach ($requirement in @(
 }
 
 foreach ($forbidden in @(
+    '\$_\.ObjectId\.Value',
     '(?i)\bgh\s+release\s+upload\b',
     '(?i)\bgh\s+release\s+edit\b',
     '(?i)--clobber\b',
