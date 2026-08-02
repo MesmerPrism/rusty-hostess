@@ -82,6 +82,38 @@ class TrustedLocalControlCliTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cli.discover_services(11)
 
+    def test_video_selection_is_closed_to_the_advertised_catalog(self):
+        videos = [
+            {
+                "video_id": "synthetic-grid-1s",
+                "projection_shape": "flat",
+                "stereo_layout": "mono",
+            },
+            {
+                "video_id": "synthetic-360-top-bottom",
+                "projection_shape": "equirect-360",
+                "stereo_layout": "top-bottom",
+            },
+        ]
+        self.assertEqual(
+            cli.select_video_descriptor(videos, "synthetic-grid-1s", None)["video_id"],
+            "synthetic-360-top-bottom",
+        )
+        self.assertEqual(
+            cli.select_video_descriptor(
+                videos, "synthetic-grid-1s", "synthetic-360-top-bottom"
+            )["stereo_layout"],
+            "top-bottom",
+        )
+        with self.assertRaises(RuntimeError):
+            cli.select_video_descriptor(videos, "synthetic-grid-1s", "missing-video")
+        with self.assertRaises(RuntimeError):
+            cli.select_video_descriptor(
+                videos, "synthetic-grid-1s", "synthetic-grid-1s"
+            )
+        with self.assertRaises(ValueError):
+            cli.select_video_descriptor(videos, "synthetic-grid-1s", "../escape")
+
 
 if __name__ == "__main__":
     unittest.main()

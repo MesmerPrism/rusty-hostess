@@ -467,7 +467,28 @@ class MediaSequence:
         raise RuntimeError(f"command_timeout:{command}")
 
 
-def run_media_sequence(serial: str, mode: str) -> dict[str, Any]:
+def select_video_descriptor(
+    videos: list[dict[str, Any]], initial_video_id: str | None, requested_video_id: str | None
+) -> dict[str, Any]:
+    if requested_video_id is not None:
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{1,47}", requested_video_id):
+            raise ValueError("video_id_invalid")
+        selected = next(
+            (video for video in videos if video.get("video_id") == requested_video_id), None
+        )
+        if selected is None:
+            raise RuntimeError("video_id_not_advertised")
+        if requested_video_id == initial_video_id:
+            raise RuntimeError("video_id_already_selected")
+        return selected
+    return next(
+        video for video in videos if video.get("video_id") != initial_video_id
+    )
+
+
+def run_media_sequence(
+    serial: str, mode: str, requested_video_id: str | None = None
+) -> dict[str, Any]:
     provider_method = "enable_paired" if mode == "paired" else "enable_open_lan"
     enabled = invoke_provider(serial, provider_method)
     if enabled.get("confirmed") is not True:
@@ -500,11 +521,10 @@ def run_media_sequence(serial: str, mode: str) -> dict[str, Any]:
             videos = listing.get("videos") or []
             if len(videos) < 2:
                 raise RuntimeError("bundled_video_catalog_incomplete")
-            selected_id = next(
-                video["video_id"]
-                for video in videos
-                if video.get("video_id") != initial_selected_id
+            selected_video = select_video_descriptor(
+                videos, initial_selected_id, requested_video_id
             )
+            selected_id = selected_video["video_id"]
             select_events = sequence.command("select_video", selected_id)
             select_applied = select_events[-1]
             if (select_applied.get("state") or {}).get("selected_video_id") != selected_id:
@@ -525,6 +545,19 @@ def run_media_sequence(serial: str, mode: str) -> dict[str, Any]:
                 "admission_receipt_id": session["body"].get("admission_receipt_id"),
                 "controller_lease_id": session["body"].get("controller_lease_id"),
                 "selected_video_id": final.get("selected_video_id", selected_id),
+                "tested_video": {
+                    key: selected_video.get(key)
+                    for key in (
+                        "video_id",
+                        "title",
+                        "projection_shape",
+                        "stereo_layout",
+                        "width_px",
+                        "height_px",
+                        "source_kind",
+                        "license",
+                    )
+                },
                 "playing": final.get("playing", False),
                 "position_ms": final.get("position_ms"),
                 "authority_revision": sequence.authority_revision,
@@ -563,6 +596,10 @@ def parser() -> argparse.ArgumentParser:
         sub.add_parser(action)
     media = sub.add_parser("test-media")
     media.add_argument("--mode", choices=("paired", "open_lan_insecure"), default="paired")
+    media.add_argument(
+        "--video-id",
+        help="Select one exact video id advertised by the headset catalog",
+    )
     discovery = sub.add_parser("discover")
     discovery.add_argument("--timeout-seconds", type=float, default=3.0)
     return result
@@ -576,7 +613,7 @@ def main(argv: list[str] | None = None) -> int:
         elif not args.serial:
             raise ValueError("serial_is_required_for_adb_actions")
         elif args.action == "test-media":
-            result = run_media_sequence(args.serial, args.mode)
+            result = run_media_sequence(args.serial, args.mode, args.video_id)
         else:
             method = args.action.replace("-", "_")
             result = redact(invoke_provider(args.serial, method), args.show_pairing_code)
