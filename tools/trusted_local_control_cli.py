@@ -30,6 +30,7 @@ REQUEST_ID = re.compile(r"^[a-z0-9][a-z0-9-]{15,63}$")
 RECEIPT_B64 = re.compile(r"receipt_b64=([A-Za-z0-9+/=]+)")
 WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 DISCOVERY_SERVICE = "_rustyquest-control._tcp.local."
+MAX_MEDIA_PROFILES_PER_SESSION = 5
 
 
 def canonical_json(value: dict[str, Any]) -> str:
@@ -487,8 +488,11 @@ def select_video_descriptor(
 
 
 def run_media_sequence(
-    serial: str, mode: str, requested_video_id: str | None = None
+    serial: str, mode: str, requested_video_ids: list[str] | None = None
 ) -> dict[str, Any]:
+    requests: list[str | None] = list(requested_video_ids or [None])
+    if not requests or len(requests) > MAX_MEDIA_PROFILES_PER_SESSION:
+        raise ValueError("video_test_batch_out_of_bounds")
     provider_method = "enable_paired" if mode == "paired" else "enable_open_lan"
     enabled = invoke_provider(serial, provider_method)
     if enabled.get("confirmed") is not True:
@@ -521,43 +525,50 @@ def run_media_sequence(
             videos = listing.get("videos") or []
             if len(videos) < 2:
                 raise RuntimeError("bundled_video_catalog_incomplete")
-            selected_video = select_video_descriptor(
-                videos, initial_selected_id, requested_video_id
-            )
-            selected_id = selected_video["video_id"]
-            select_events = sequence.command("select_video", selected_id)
-            select_applied = select_events[-1]
-            if (select_applied.get("state") or {}).get("selected_video_id") != selected_id:
-                raise RuntimeError("select_video_effect_not_observed")
-            play_events = sequence.command("play")
-            if not (play_events[-1].get("state") or {}).get("playing"):
-                raise RuntimeError("play_effect_not_observed")
-            time.sleep(0.25)
-            pause_events = sequence.command("pause")
-            if (pause_events[-1].get("state") or {}).get("playing"):
-                raise RuntimeError("pause_effect_not_observed")
-            final_events = sequence.command("get_state")
-            final = final_events[-1].get("state", {}).get("player", {})
+            tested_videos: list[dict[str, Any]] = []
+            final: dict[str, Any] = initial_player
+            current_selected_id = initial_selected_id
+            for requested_video_id in requests:
+                selected_video = select_video_descriptor(
+                    videos, current_selected_id, requested_video_id
+                )
+                selected_id = selected_video["video_id"]
+                select_events = sequence.command("select_video", selected_id)
+                select_applied = select_events[-1]
+                if (select_applied.get("state") or {}).get("selected_video_id") != selected_id:
+                    raise RuntimeError("select_video_effect_not_observed")
+                play_events = sequence.command("play")
+                if not (play_events[-1].get("state") or {}).get("playing"):
+                    raise RuntimeError("play_effect_not_observed")
+                time.sleep(0.25)
+                pause_events = sequence.command("pause")
+                final = pause_events[-1].get("state") or {}
+                if final.get("playing"):
+                    raise RuntimeError("pause_effect_not_observed")
+                tested_videos.append(
+                    {
+                        key: selected_video.get(key)
+                        for key in (
+                            "video_id",
+                            "title",
+                            "projection_shape",
+                            "stereo_layout",
+                            "width_px",
+                            "height_px",
+                            "source_kind",
+                            "license",
+                        )
+                    }
+                )
+                current_selected_id = selected_id
             return {
                 "schema": "rusty.hostess.trusted_local_control_device_run.v1",
                 "status": "passed",
                 "access_mode": mode,
                 "admission_receipt_id": session["body"].get("admission_receipt_id"),
                 "controller_lease_id": session["body"].get("controller_lease_id"),
-                "selected_video_id": final.get("selected_video_id", selected_id),
-                "tested_video": {
-                    key: selected_video.get(key)
-                    for key in (
-                        "video_id",
-                        "title",
-                        "projection_shape",
-                        "stereo_layout",
-                        "width_px",
-                        "height_px",
-                        "source_kind",
-                        "license",
-                    )
-                },
+                "selected_video_id": final.get("selected_video_id", current_selected_id),
+                "tested_videos": tested_videos,
                 "playing": final.get("playing", False),
                 "position_ms": final.get("position_ms"),
                 "authority_revision": sequence.authority_revision,
@@ -598,7 +609,8 @@ def parser() -> argparse.ArgumentParser:
     media.add_argument("--mode", choices=("paired", "open_lan_insecure"), default="paired")
     media.add_argument(
         "--video-id",
-        help="Select one exact video id advertised by the headset catalog",
+        action="append",
+        help="Select an exact advertised video id; repeat at most five times",
     )
     discovery = sub.add_parser("discover")
     discovery.add_argument("--timeout-seconds", type=float, default=3.0)

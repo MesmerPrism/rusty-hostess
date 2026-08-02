@@ -114,6 +114,14 @@ class TrustedLocalControlCliTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             cli.select_video_descriptor(videos, "synthetic-grid-1s", "../escape")
 
+    def test_media_batch_limit_is_bounded_before_provider_use(self):
+        with self.assertRaises(ValueError):
+            cli.run_media_sequence(
+                "SERIAL123",
+                "paired",
+                [f"synthetic-profile-{index}" for index in range(6)],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
