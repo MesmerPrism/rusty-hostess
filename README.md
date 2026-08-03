@@ -130,7 +130,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   reserves and preflights local persistence before the remote call, with an
   immediate secret-free compensating revoke on later persistence failure. The
   strict field registry is locked to the byte-exact Rusty Quest owner vector in
-  `fixtures/connection-hub/connection-hub-protocol-v1.json`.
+  `fixtures/connection-hub/connection-hub-protocol-v1.json`. Revoke evidence is
+  collected in-process before credential deletion: authenticated socket open,
+  HTTP revoke applied, socket closed, and stale-bearer reconnect rejected.
+  Command receipts separately project authority acceptance and provider
+  application/status with exact request binding.
 - `tools/connection_hub_fixture.py`: loopback-only port-`0` conformance oracle
   for Hub surface lifecycle, scoped dispatch, replay rejection, transport
   replacement, and explicit revocation. It is not product authority or a

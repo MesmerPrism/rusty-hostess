@@ -68,6 +68,7 @@ MAX_SERVER_FRAME = 65536
 MAX_COMMAND_BODY = 4096
 MAX_SURFACES = 32
 MAX_COMMANDS = 32
+REVOKE_SOCKET_CLOSE_TIMEOUT_SECONDS = 3.0
 
 EVENT_BASE_FIELDS = frozenset(
     {
@@ -204,6 +205,10 @@ class WebSocketClosed(HubError):
         super().__init__(f"websocket_closed:{code}:{reason}")
         self.code = code
         self.reason = reason
+
+
+class AuthenticationRejected(HubError):
+    """The Hub rejected the bearer during the mandatory first-frame exchange."""
 
 
 class CredentialStore:
@@ -1075,7 +1080,11 @@ class HubConnection:
         self.surface_revision: Any = None
         self.surfaces: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
-        self.authentication_receipt = self.socket.read_json()
+        try:
+            self.authentication_receipt = self.socket.read_json()
+        except (WebSocketClosed, OSError) as error:
+            self.close()
+            raise AuthenticationRejected("socket_authentication_rejected") from error
         try:
             validate_protocol_message(
                 self.authentication_receipt, "socket_authentication_receipt"
@@ -1083,6 +1092,9 @@ class HubConnection:
         except BaseException:
             self.close()
             raise
+        if self.authentication_receipt.get("accepted") is False:
+            self.close()
+            raise AuthenticationRejected("socket_authentication_rejected")
         if (
             self.authentication_receipt.get("accepted") is not True
             or self.authentication_receipt.get("status") != "authenticated"
@@ -1127,6 +1139,8 @@ class HubConnection:
                 raise HubError("command_receipt_boolean_invalid")
             if not isinstance(event.get("authority_receipt"), dict):
                 raise HubError("command_authority_receipt_invalid")
+            if not isinstance(event.get("status"), str) or not event["status"]:
+                raise HubError("command_status_invalid")
         self.surface_revision = revision
 
     def _project(self, event: dict[str, Any]) -> None:
@@ -1265,12 +1279,21 @@ def invoke_surface_command(
 ) -> dict[str, Any]:
     document, policy, connection, changed = connect_session(path, credential_store)
     try:
-        _, receipt = connection.send_command(surface_id, command, args)
+        request, receipt = connection.send_command(surface_id, command, args)
         if receipt.get("accepted") is not True:
             raise HubError(f"command_rejected:{receipt.get('status', 'unknown')}")
         return {
             "$schema": "rusty.hostess.connection_hub.command_receipt.v1",
-            "status": "passed",
+            "operation_status": "passed",
+            "status": receipt["status"],
+            "surface_id": receipt["surface_id"],
+            "command": receipt["command"],
+            "request_id": receipt["request_id"],
+            "request_binding_exact": receipt["request_id"] == request["request_id"]
+            and receipt["surface_id"] == request["surface_id"]
+            and receipt["command"] == request["command"],
+            "authority_accepted": receipt["accepted"],
+            "provider_applied": receipt["provider_applied"],
             "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
@@ -1314,34 +1337,83 @@ def watch(
         connection.close()
 
 
+def _require_server_closed_socket(
+    connection: HubConnection,
+    timeout: float = REVOKE_SOCKET_CLOSE_TIMEOUT_SECONDS,
+) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            connection.read_event(max(0.05, deadline - time.monotonic()))
+        except socket.timeout:
+            continue
+        except (WebSocketClosed, OSError):
+            return
+    raise HubError("revoke_active_socket_not_closed")
+
+
+def _require_post_revoke_authentication_rejected(
+    policy: TransportPolicy, stale_session: str
+) -> None:
+    connection: HubConnection | None = None
+    try:
+        connection = HubConnection(policy, stale_session)
+    except AuthenticationRejected:
+        return
+    except BaseException as error:
+        raise HubError("post_revoke_reconnect_rejection_unproven") from error
+    finally:
+        if connection is not None:
+            connection.close()
+    raise HubError("post_revoke_reconnect_accepted")
+
+
 def revoke(
     path: Path, credential_store: CredentialStore | None = None
 ) -> dict[str, Any]:
     store = credential_store or default_credential_store()
     document, policy, session = load_session(path, store)
-    request = {
-        "$schema": REVOKE_REQUEST_SCHEMA,
-        "session": session,
-        "reason": "user_request",
-    }
-    validate_protocol_message(request, "revoke_request")
-    code, payload = http_json(policy, "POST", "/v1/revoke", request)
-    if payload.get("$schema") != REVOKE_RECEIPT_SCHEMA:
-        raise HubError(f"revoke_rejected:{code}")
-    validate_protocol_message(payload, "revoke_receipt")
-    if code != 200:
-        raise HubError(f"revoke_rejected:{code}")
-    _validate_event_base(payload, policy, require_active_epoch=True)
-    if "authority_receipt" in payload and not isinstance(
-        payload["authority_receipt"], dict
-    ):
-        raise HubError("revoke_authority_receipt_invalid")
-    if payload.get("applied") is not True:
-        raise HubError(f"revoke_not_applied:{payload.get('status', 'unknown')}")
-    observed = _validated_server_transport(payload, policy)
-    receipt = {
+    active_connection = HubConnection(policy, session)
+    try:
+        request = {
+            "$schema": REVOKE_REQUEST_SCHEMA,
+            "session": session,
+            "reason": "user_request",
+        }
+        validate_protocol_message(request, "revoke_request")
+        code, payload = http_json(policy, "POST", "/v1/revoke", request)
+        if payload.get("$schema") != REVOKE_RECEIPT_SCHEMA:
+            raise HubError(f"revoke_rejected:{code}")
+        validate_protocol_message(payload, "revoke_receipt")
+        if code != 200:
+            raise HubError(f"revoke_rejected:{code}")
+        _validate_event_base(payload, policy, require_active_epoch=True)
+        if "authority_receipt" in payload and not isinstance(
+            payload["authority_receipt"], dict
+        ):
+            raise HubError("revoke_authority_receipt_invalid")
+        if payload.get("applied") is not True:
+            raise HubError(f"revoke_not_applied:{payload.get('status', 'unknown')}")
+        observed = _validated_server_transport(payload, policy)
+        _require_server_closed_socket(active_connection)
+        _require_post_revoke_authentication_rejected(policy, session)
+    finally:
+        active_connection.close()
+    request["session"] = ""
+    session = ""
+    store.delete(document["credential"])
+    try:
+        path.resolve().unlink()
+    except OSError as error:
+        raise HubError("revoke_applied_but_session_metadata_cleanup_failed") from error
+    return {
         "$schema": "rusty.hostess.connection_hub.revoke_receipt.v1",
         "status": "passed",
+        "authenticated_socket_open_before_revoke": True,
+        "http_revoke_applied": True,
+        "authenticated_socket_closed_within_deadline": True,
+        "stale_bearer_auth_rejected": True,
+        "credentials_deleted_after_negative_proof": True,
         "session_fingerprint_sha256": _document_session_fingerprint(document),
         "session_redacted": True,
         "local_credential_deleted": True,
@@ -1350,12 +1422,6 @@ def revoke(
         "server_transport": observed,
         "server_receipt": payload,
     }
-    store.delete(document["credential"])
-    try:
-        path.resolve().unlink()
-    except OSError as error:
-        raise HubError("revoke_applied_but_session_metadata_cleanup_failed") from error
-    return receipt
 
 
 def simulated_e2e() -> dict[str, Any]:
@@ -1440,6 +1506,7 @@ def simulated_e2e() -> dict[str, Any]:
             "media_surface_appeared": media_event.get("surface", {}).get("surface_id")
             == "media.control",
             "media_command_scoped": media_receipt.get("accepted") is True,
+            "media_provider_applied": media_receipt.get("provider_applied") is True,
             "replay_failed_closed": replay_receipt.get("accepted") is False
             and replay_receipt.get("status") == "request_replay",
             "unknown_surface_failed_closed": unknown_surface.get("accepted") is False
@@ -1456,6 +1523,14 @@ def simulated_e2e() -> dict[str, Any]:
             == {"diagnostics.capture"},
             "post_reconnect_command_accepted": post_reconnect.get("accepted") is True,
             "explicit_revoke_applied": revoke_receipt.get("status") == "passed",
+            "revoke_active_socket_closed": revoke_receipt.get(
+                "authenticated_socket_closed_within_deadline"
+            )
+            is True,
+            "revoke_stale_bearer_rejected": revoke_receipt.get(
+                "stale_bearer_auth_rejected"
+            )
+            is True,
             "local_credentials_deleted": not session_path.exists()
             and revoke_receipt.get("local_credential_deleted") is True,
             "revoke_terminated_socket": revoked_close,
@@ -1592,7 +1667,8 @@ def main(argv: list[str] | None = None) -> int:
         else:
             receipt = simulated_e2e()
         print(json.dumps(receipt, indent=2, sort_keys=True))
-        return 0 if receipt.get("status") == "passed" else 2
+        operation_status = receipt.get("operation_status", receipt.get("status"))
+        return 0 if operation_status == "passed" else 2
     except (HubError, OSError, ValueError, socket.timeout) as error:
         print(
             json.dumps(

@@ -167,6 +167,8 @@ class _FixtureState:
         self.connections: set[_FixtureSocket] = set()
         self.request_ids: set[str] = set()
         self.dispatch_log: list[tuple[str, str, str]] = []
+        self.provider_results: dict[tuple[str, str], tuple[bool, str]] = {}
+        self.silent_auth_rejection = False
         self.high_rate_payload_count = 0
         self.upgrade_paths: list[str] = []
 
@@ -338,6 +340,10 @@ class _FixtureState:
                     self.dispatch_log.append(
                         (descriptor["_fixture_provider_id"], str(surface_id), str(command))
                     )
+            provider_applied, provider_status = self.provider_results.get(
+                (str(surface_id), str(command)),
+                (True, "provider_applied"),
+            )
             return self.event(
                 "command_receipt",
                 connection.epoch,
@@ -345,8 +351,8 @@ class _FixtureState:
                 surface_id=surface_id,
                 command=command,
                 accepted=reason is None,
-                provider_applied=reason is None,
-                status="provider_applied" if reason is None else reason,
+                provider_applied=reason is None and provider_applied,
+                status=provider_status if reason is None else reason,
                 authority_receipt={},
             )
 
@@ -460,6 +466,8 @@ class _Handler(BaseHTTPRequestHandler):
                 self.connection, auth_request
             )
             if connection is None:
+                if self.server.state.silent_auth_rejection:
+                    return
                 self.connection.sendall(_frame(0x1, canonical_json(auth_receipt)))
                 self.connection.sendall(
                     _frame(0x8, struct.pack("!H", 4003) + b"authentication_rejected")
@@ -553,6 +561,16 @@ class ConnectionHubFixture:
 
     def remove_surface(self, surface_id: str) -> None:
         self._state.remove_surface(surface_id)
+
+    def set_provider_result(
+        self, surface_id: str, command: str, *, applied: bool, status: str
+    ) -> None:
+        with self._state.lock:
+            self._state.provider_results[(surface_id, command)] = (applied, status)
+
+    def set_silent_auth_rejection(self, enabled: bool) -> None:
+        with self._state.lock:
+            self._state.silent_auth_rejection = enabled
 
     def __enter__(self) -> "ConnectionHubFixture":
         self._server = _Server(self._state)

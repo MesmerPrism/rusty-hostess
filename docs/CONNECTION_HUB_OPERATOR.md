@@ -44,9 +44,18 @@ deletes any protected reference, and removes the empty reservation. It reports
 `pair_transaction_rollback_unconfirmed` instead of hiding a failed
 compensation. No pairing code or clear bearer is written to a temporary file.
 
-Successful revoke deletes both the protected credential and session metadata.
-Interrupted or rejected revoke preserves them so the operator can retry. The
-metadata file is controller state, not publishable evidence.
+`revoke` first opens one authenticated socket, applies the HTTP revoke, requires
+that exact socket to close within three seconds, and then attempts a new socket
+with the still in-memory stale bearer. Protected credentials and session
+metadata are deleted only after the new authentication is rejected. The receipt
+reports `authenticated_socket_open_before_revoke`, `http_revoke_applied`,
+`authenticated_socket_closed_within_deadline`, `stale_bearer_auth_rejected`,
+and `credentials_deleted_after_negative_proof`; every field must be true for a
+passing operation. Interrupted, rejected, or unproven revoke preserves local
+state so the operator can investigate. A close during the mandatory
+authentication phase counts as rejection only after the WebSocket upgrade and
+first auth frame succeeded; listener connection failure or malformed protocol
+does not. The metadata file is controller state, not publishable evidence.
 
 ## Protocol lock
 
@@ -90,6 +99,14 @@ boolean, integer, or a string no longer than 256 characters. Arrays and nested
 objects reject. Commands are also checked against the selected surface's
 advertised registry before dispatch. The Hub remains responsible for the
 authoritative replay, surface, and command decisions.
+
+The Hostess command receipt preserves the two-stage result. Top-level
+`authority_accepted` is the Hub/Manifold decision; `provider_applied` and
+`status` are copied from the strict provider receipt. `surface_id`, `command`,
+and nonempty `request_id` are echoed with `request_binding_exact=true` only
+after exact causality checks. Authority acceptance with
+`provider_applied=false` is a valid, visible non-application result rather than
+being rewritten as success.
 
 High-rate media, LSL samples, BLE samples, camera/depth data, and other stream
 payloads do not use this socket. The Hub socket carries low-rate discovery,
@@ -159,8 +176,9 @@ The E2E receipt proves:
 6. the media provider disappears without ending the logical session;
 7. reconnect advances the transport epoch while the remaining surface and
    logical session persist;
-8. explicit revoke closes the socket, blocks reconnect, and deletes the local
-   protected credential plus session metadata;
+8. explicit revoke closes a socket that was authenticated before the HTTP
+   request, rejects a fresh stale-bearer authentication, and only then deletes
+   the local protected credential plus session metadata;
 9. no high-rate data-plane payload entered the Hub socket.
 
 The fixture is an executable Hostess oracle, not reusable production authority

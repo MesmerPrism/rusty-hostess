@@ -171,6 +171,32 @@ class ConnectionHubValidationTests(unittest.TestCase):
                 os.close(write_fd)
             os.close(read_fd)
 
+    def test_command_cli_exit_uses_operation_status_not_provider_status(self):
+        receipt = {
+            "$schema": "rusty.hostess.connection_hub.command_receipt.v1",
+            "operation_status": "passed",
+            "status": "provider_declined",
+            "authority_accepted": True,
+            "provider_applied": False,
+        }
+        stdout = io.StringIO()
+        with mock.patch.object(
+            cli, "invoke_surface_command", return_value=receipt
+        ), contextlib.redirect_stdout(stdout):
+            result = cli.main(
+                [
+                    "invoke-surface-command",
+                    "--session-file",
+                    "unused-session.json",
+                    "--surface-id",
+                    "media.control",
+                    "--command",
+                    "play",
+                ]
+            )
+        self.assertEqual(result, 0)
+        self.assertEqual(json.loads(stdout.getvalue())["status"], "provider_declined")
+
     def test_command_args_are_flat_and_bounded(self):
         self.assertEqual(cli.validate_args({"enabled": True, "count": 4}), {"enabled": True, "count": 4})
         with self.assertRaisesRegex(ValueError, "flat_scalars"):
@@ -396,7 +422,13 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         invoked = cli.invoke_surface_command(
             self.session_path, "media.control", "play", {}, self.store
         )
-        self.assertTrue(invoked["server_receipt"]["accepted"])
+        self.assertTrue(invoked["authority_accepted"])
+        self.assertTrue(invoked["provider_applied"])
+        self.assertTrue(invoked["request_binding_exact"])
+        self.assertEqual(invoked["surface_id"], "media.control")
+        self.assertEqual(invoked["command"], "play")
+        self.assertTrue(invoked["request_id"])
+        self.assertEqual(invoked["status"], "provider_applied")
         self.assertEqual(
             self.fixture.dispatch_log,
             [("media.provider", "media.control", "play")],
@@ -405,6 +437,25 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertTrue(listed["transport_epoch_changed"])
         self.assertTrue(watched["transport_epoch_changed"])
         self.assertTrue(invoked["transport_epoch_changed"])
+
+    def test_authority_accepted_provider_not_applied_remains_distinct(self):
+        self.pair()
+        self.fixture.add_surface(media_surface())
+        self.fixture.set_provider_result(
+            "media.control", "play", applied=False, status="provider_declined"
+        )
+        invoked = cli.invoke_surface_command(
+            self.session_path, "media.control", "play", {}, self.store
+        )
+        self.assertEqual(invoked["operation_status"], "passed")
+        self.assertTrue(invoked["authority_accepted"])
+        self.assertFalse(invoked["provider_applied"])
+        self.assertEqual(invoked["status"], "provider_declined")
+        self.assertTrue(invoked["request_binding_exact"])
+        self.assertEqual(
+            self.fixture.dispatch_log,
+            [("media.provider", "media.control", "play")],
+        )
 
     def test_local_unknown_command_is_not_dispatched(self):
         self.pair()
@@ -463,12 +514,49 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertEqual(set(second.surfaces), {"diagnostics.capture"})
         receipt = cli.revoke(self.session_path, self.store)
         self.assertEqual(receipt["status"], "passed")
+        self.assertTrue(receipt["authenticated_socket_open_before_revoke"])
+        self.assertTrue(receipt["http_revoke_applied"])
+        self.assertTrue(receipt["authenticated_socket_closed_within_deadline"])
+        self.assertTrue(receipt["stale_bearer_auth_rejected"])
+        self.assertTrue(receipt["credentials_deleted_after_negative_proof"])
+        self.assertNotIn(session, json.dumps(receipt))
         self.assertFalse(self.session_path.exists())
         with self.assertRaises(cli.WebSocketClosed):
             second.read_event(2)
         second.close()
-        with self.assertRaisesRegex(cli.HubError, "authentication_receipt_invalid"):
+        with self.assertRaisesRegex(cli.HubError, "socket_authentication_rejected"):
             cli.HubConnection(self.policy, session)
+
+    def test_revoke_keeps_credentials_when_socket_close_proof_fails(self):
+        self.pair()
+        with mock.patch.object(
+            cli,
+            "_require_server_closed_socket",
+            side_effect=cli.HubError("injected_close_proof_failure"),
+        ), self.assertRaisesRegex(cli.HubError, "injected_close_proof_failure"):
+            cli.revoke(self.session_path, self.store)
+        self.assertTrue(self.session_path.exists())
+        self.assertNotEqual(self.store._values, {})
+
+    def test_revoke_accepts_live_shaped_auth_phase_close_as_rejection(self):
+        self.pair()
+        self.fixture.set_silent_auth_rejection(True)
+        receipt = cli.revoke(self.session_path, self.store)
+        self.assertTrue(receipt["stale_bearer_auth_rejected"])
+        self.assertTrue(receipt["credentials_deleted_after_negative_proof"])
+        self.assertFalse(self.session_path.exists())
+        self.assertEqual(self.store._values, {})
+
+    def test_revoke_keeps_credentials_when_stale_auth_proof_fails(self):
+        self.pair()
+        with mock.patch.object(
+            cli,
+            "_require_post_revoke_authentication_rejected",
+            side_effect=cli.HubError("injected_stale_auth_proof_failure"),
+        ), self.assertRaisesRegex(cli.HubError, "injected_stale_auth_proof_failure"):
+            cli.revoke(self.session_path, self.store)
+        self.assertTrue(self.session_path.exists())
+        self.assertNotEqual(self.store._values, {})
 
     def test_new_authenticated_transport_replaces_old_socket(self):
         self.pair()
