@@ -64,30 +64,79 @@ class ConnectionHubValidationTests(unittest.TestCase):
             Path(__file__).resolve().parents[1]
             / "fixtures"
             / "connection-hub"
-            / "protocol-vectors.v1.json"
+            / "connection-hub-protocol-v1.json"
         )
-        document = json.loads(vector_path.read_text(encoding="utf-8"))
-        self.assertEqual(document["transport"]["websocket_path"], "/v1/socket")
-        self.assertFalse(document["transport"]["websocket_query_allowed"])
-        vectors = document["vectors"]
-        self.assertEqual(vectors["status"]["$schema"], cli.STATUS_SCHEMA)
-        self.assertEqual(vectors["pair_request"]["$schema"], cli.PAIR_REQUEST_SCHEMA)
+        raw = vector_path.read_bytes()
         self.assertEqual(
-            vectors["socket_authenticate"]["$schema"], cli.AUTHENTICATE_SCHEMA
+            hashlib.sha256(raw).hexdigest(),
+            "fa00d34511b2ee5576eebdd815e58ae032e37b10c209e41289cfd876c78c9c78",
         )
+        document = json.loads(raw)
         self.assertEqual(
-            vectors["socket_authentication_receipt"]["$schema"],
-            cli.AUTHENTICATION_RECEIPT_SCHEMA,
+            document["$schema"], "rusty.quest.connection_hub.protocol_vectors.v1"
         )
-        self.assertEqual(
-            vectors["surface_command"]["$schema"], cli.COMMAND_SCHEMA
+        self.assertEqual(document["owner"], "rusty-quest")
+        self.assertEqual(document["protocol_id"], cli.PROTOCOL_ID)
+        self.assertEqual(document["routes"]["socket"], "/v1/socket")
+        self.assertEqual(document["browser_projection"]["routes"], {
+            "pair": "/v1/pair",
+            "revoke": "/v1/revoke",
+            "socket": "/v1/socket",
+        })
+        for name, owner_contract in document["messages"].items():
+            schema, message_type, required, optional = cli.MESSAGE_CONTRACTS[name]
+            self.assertEqual(schema, owner_contract["schema"], name)
+            self.assertEqual(message_type, owner_contract.get("type"), name)
+            self.assertEqual(required, frozenset(owner_contract["required_fields"]), name)
+            self.assertEqual(optional, frozenset(owner_contract["optional_fields"]), name)
+            cli.validate_protocol_message(owner_contract["example"], name)
+        surface = document["messages"]["surface_available"]["example"]["surface"]
+        cli.validate_surface(surface)
+        cli.validate_args(document["messages"]["surface_command"]["example"]["args"])
+
+    def test_owner_protocol_examples_reject_missing_unknown_wrong_schema_and_type(self):
+        vector_path = (
+            Path(__file__).resolve().parents[1]
+            / "fixtures"
+            / "connection-hub"
+            / "connection-hub-protocol-v1.json"
         )
-        self.assertEqual(
-            vectors["command_receipt"]["$schema"],
-            cli.EVENT_SCHEMAS["command_receipt"],
-        )
-        cli.validate_surface(vectors["surface_available"]["surface"])
-        cli.validate_args(vectors["surface_command"]["args"])
+        messages = json.loads(vector_path.read_text(encoding="utf-8"))["messages"]
+        for name, owner_contract in messages.items():
+            example = owner_contract["example"]
+            missing = json.loads(json.dumps(example))
+            removable = next(
+                field
+                for field in owner_contract["required_fields"]
+                if field not in {"$schema", "type"}
+            )
+            missing.pop(removable)
+            with self.subTest(message=name, damage="missing"), self.assertRaises(
+                cli.HubError
+            ):
+                cli.validate_protocol_message(missing, name)
+
+            unknown = json.loads(json.dumps(example))
+            unknown["unknown_field"] = True
+            with self.subTest(message=name, damage="unknown"), self.assertRaises(
+                cli.HubError
+            ):
+                cli.validate_protocol_message(unknown, name)
+
+            wrong_schema = json.loads(json.dumps(example))
+            wrong_schema["$schema"] = "rusty.quest.connection_hub.wrong.v1"
+            with self.subTest(message=name, damage="wrong_schema"), self.assertRaises(
+                cli.HubError
+            ):
+                cli.validate_protocol_message(wrong_schema, name)
+
+            if "type" in owner_contract:
+                wrong_type = json.loads(json.dumps(example))
+                wrong_type["type"] = "wrong_type"
+                with self.subTest(message=name, damage="wrong_type"), self.assertRaises(
+                    cli.HubError
+                ):
+                    cli.validate_protocol_message(wrong_type, name)
 
     def test_pairing_code_never_has_an_argv_option(self):
         arguments = [
@@ -246,6 +295,94 @@ class ConnectionHubFixtureTests(unittest.TestCase):
             self.fixture.controller_identity_sha256,
         )
         self.assertEqual(document["credential"]["provider"], "test_in_memory")
+
+    def test_existing_session_destination_prevents_remote_pair(self):
+        self.session_path.write_text("reserved by operator\n", encoding="utf-8")
+        with self.assertRaises(FileExistsError):
+            self.pair()
+        self.assertEqual(self.fixture.pair_count, 0)
+        self.assertFalse(self.fixture.session_active)
+        self.assertEqual(
+            self.session_path.read_text(encoding="utf-8"), "reserved by operator\n"
+        )
+
+    def test_credential_preflight_failure_prevents_remote_pair(self):
+        class PreflightFailureStore(cli.MemoryCredentialStore):
+            def store(self, bearer, binding):
+                raise cli.HubError("injected_preflight_store_failure")
+
+        with self.assertRaisesRegex(cli.HubError, "injected_preflight"):
+            cli.pair(
+                self.policy,
+                self.fixture.pairing_code,
+                self.fixture.controller_identity_sha256,
+                self.session_path,
+                PreflightFailureStore(),
+            )
+        self.assertEqual(self.fixture.pair_count, 0)
+        self.assertFalse(self.fixture.session_active)
+        self.assertFalse(self.session_path.exists())
+
+    def test_post_pair_credential_failure_compensates_remote_session(self):
+        class SecondStoreFailure(cli.MemoryCredentialStore):
+            def __init__(self):
+                super().__init__()
+                self.store_count = 0
+
+            def store(self, bearer, binding):
+                self.store_count += 1
+                if self.store_count == 2:
+                    raise cli.HubError("injected_session_store_failure")
+                return super().store(bearer, binding)
+
+        store = SecondStoreFailure()
+        with self.assertRaisesRegex(cli.HubError, "injected_session_store_failure"):
+            cli.pair(
+                self.policy,
+                self.fixture.pairing_code,
+                self.fixture.controller_identity_sha256,
+                self.session_path,
+                store,
+            )
+        self.assertEqual(self.fixture.pair_count, 1)
+        self.assertFalse(self.fixture.session_active)
+        self.assertFalse(self.session_path.exists())
+        self.assertEqual(store._values, {})
+
+    def test_post_pair_metadata_failure_compensates_and_deletes_credential(self):
+        store = cli.MemoryCredentialStore()
+        with mock.patch.object(
+            cli, "_atomic_write_json", side_effect=OSError("injected metadata failure")
+        ), self.assertRaisesRegex(OSError, "injected metadata failure"):
+            cli.pair(
+                self.policy,
+                self.fixture.pairing_code,
+                self.fixture.controller_identity_sha256,
+                self.session_path,
+                store,
+            )
+        self.assertEqual(self.fixture.pair_count, 1)
+        self.assertFalse(self.fixture.session_active)
+        self.assertFalse(self.session_path.exists())
+        self.assertEqual(store._values, {})
+
+    def test_damaged_accepted_pair_receipt_is_rejected_and_compensated(self):
+        original_http_json = cli.http_json
+
+        def damage_pair_receipt(policy, method, path, body=None):
+            code, payload = original_http_json(policy, method, path, body)
+            if path == "/v1/pair" and code == 200:
+                payload = dict(payload)
+                payload["unknown_field"] = "must-reject"
+            return code, payload
+
+        with mock.patch.object(cli, "http_json", side_effect=damage_pair_receipt):
+            with self.assertRaisesRegex(cli.HubError, "pair_receipt_fields_invalid"):
+                self.pair()
+        self.assertEqual(self.fixture.pair_count, 1)
+        self.assertFalse(self.fixture.session_active)
+        self.assertFalse(self.session_path.exists())
+        self.assertEqual(self.store._values, {})
 
     def test_list_watch_and_invoke_use_one_logical_session(self):
         self.pair()

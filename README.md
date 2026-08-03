@@ -126,7 +126,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   revoke, and deterministic offline E2E commands. See
   `docs/CONNECTION_HUB_OPERATOR.md`. Pairing codes never enter argv; socket
   authentication uses the first JSON frame rather than a URL bearer; Windows
-  persistence uses current-user DPAPI and successful revoke removes it.
+  persistence uses current-user DPAPI and successful revoke removes it. Pairing
+  reserves and preflights local persistence before the remote call, with an
+  immediate secret-free compensating revoke on later persistence failure. The
+  strict field registry is locked to the byte-exact Rusty Quest owner vector in
+  `fixtures/connection-hub/connection-hub-protocol-v1.json`.
 - `tools/connection_hub_fixture.py`: loopback-only port-`0` conformance oracle
   for Hub surface lifecycle, scoped dispatch, replay rejection, transport
   replacement, and explicit revocation. It is not product authority or a

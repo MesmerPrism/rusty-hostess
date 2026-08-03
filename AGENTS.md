@@ -290,7 +290,12 @@ generic code or sanitized sample fixtures.
   Pairing secrets must not enter argv, WebSocket bearers must be sent only in
   the mandatory first authentication frame, and persisted bearers must use an
   OS user-bound credential protector with exact origin/protocol/posture
-  binding. Successful revoke removes both credential and metadata.
+  binding. Pairing must reserve and preflight local persistence before remote
+  acceptance; later persistence failure must compensate with the in-memory
+  bearer and leave no clear secret artifact. Successful revoke removes both
+  credential and metadata. Decode and emit only the byte-exact, Quest-owned v1
+  field registry vendored under `fixtures/connection-hub`; internal Manifold
+  authority fields do not extend that public wire contract.
 - Keep `tools\connection_hub_fixture.py` as the deterministic loopback-only
   conformance oracle for that client. It binds only to `127.0.0.1` on port `0`
   and is never production or Quest/network evidence.

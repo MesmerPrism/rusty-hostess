@@ -54,11 +54,20 @@ def media_surface() -> dict[str, Any]:
         "surface_id": "media.control",
         "display_label": "Media control",
         "description": "Low-rate playback control only.",
+        "surface_contract_sha256": "sha256:" + "1" * 64,
         "provider_package": "fixture.media",
         "provider_signer_sha256": "1" * 64,
         "commands": [
-            {"command": "play", "display_label": "Play"},
-            {"command": "pause", "display_label": "Pause"},
+            {
+                "command": "play",
+                "display_label": "Play",
+                "required_controller_capability": "capability.media.play",
+            },
+            {
+                "command": "pause",
+                "display_label": "Pause",
+                "required_controller_capability": "capability.media.pause",
+            },
         ],
         "state": {"playing": False},
         "state_revision": 1,
@@ -72,9 +81,16 @@ def diagnostic_surface() -> dict[str, Any]:
         "surface_id": "diagnostics.capture",
         "display_label": "Diagnostics",
         "description": "Bounded low-rate diagnostic requests.",
+        "surface_contract_sha256": "sha256:" + "2" * 64,
         "provider_package": "fixture.diagnostics",
         "provider_signer_sha256": "2" * 64,
-        "commands": [{"command": "snapshot", "display_label": "Capture snapshot"}],
+        "commands": [
+            {
+                "command": "snapshot",
+                "display_label": "Capture snapshot",
+                "required_controller_capability": "capability.diagnostics.snapshot",
+            }
+        ],
         "state": {"ready": True},
         "state_revision": 1,
         "_fixture_provider_id": "diagnostics.provider",
@@ -139,6 +155,7 @@ class _FixtureState:
     pairing_code = "246810"
     controller_identity_sha256 = "a" * 64
     session = "fixture-session-token-000000000001"
+    listener_instance_id = "00112233445566778899aabbccddeeff"
 
     def __init__(self) -> None:
         self.lock = threading.RLock()
@@ -166,11 +183,8 @@ class _FixtureState:
                 "$schema": STATUS_SCHEMA,
                 "listener_enabled": True,
                 "desired_connection_state": "running",
-                "transport_epoch": self.transport_counter,
-                "surface_revision": self.surface_revision,
-                "active_session_count": 1 if self.session_active else 0,
-                "pairing_required": True,
-                "surfaces": [_public_surface(self.surfaces[key]) for key in sorted(self.surfaces)],
+                "pairing_available": not self.session_active,
+                "status": "controller_paired" if self.session_active else "awaiting_pairing",
                 **self.transport_fields(),
             }
 
@@ -186,16 +200,22 @@ class _FixtureState:
             if accepted:
                 self.session_active = True
                 self.pair_count += 1
+                if self.transport_counter < 1:
+                    self.transport_counter = 1
             receipt = {
                 "$schema": PAIR_RECEIPT_SCHEMA,
+                "type": "pair_receipt",
                 "accepted": accepted,
                 "status": "paired" if accepted else "pairing_rejected",
-                "expires_at_utc": "2099-01-01T00:00:00Z",
                 "transport_epoch": self.transport_counter,
+                "listener_instance_id": self.listener_instance_id,
+                "surface_revision": self.surface_revision,
                 **self.transport_fields(),
             }
             if accepted:
                 receipt["session"] = self.session
+                receipt["expires_at_utc"] = "2099-01-01T00:00:00Z"
+                receipt["authority_receipt"] = {}
             return (200 if accepted else 403), receipt
 
     def authenticate(
@@ -254,7 +274,9 @@ class _FixtureState:
             "$schema": EVENT_SCHEMAS[event_type],
             "type": event_type,
             "transport_epoch": epoch,
+            "listener_instance_id": self.listener_instance_id,
             "surface_revision": self.surface_revision,
+            **self.transport_fields(),
             **fields,
         }
 
@@ -323,8 +345,9 @@ class _FixtureState:
                 surface_id=surface_id,
                 command=command,
                 accepted=reason is None,
-                status="accepted" if reason is None else reason,
-                proves_application_effect=False,
+                provider_applied=reason is None,
+                status="provider_applied" if reason is None else reason,
+                authority_receipt={},
             )
 
     def revoke(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
@@ -340,11 +363,16 @@ class _FixtureState:
             connections = list(self.connections) if applied else []
             receipt = {
                 "$schema": REVOKE_RECEIPT_SCHEMA,
+                "type": "revoke_receipt",
                 "applied": applied,
-                "status": "revoked" if applied else "revoke_rejected",
+                "status": "applied" if applied else "revoke_rejected",
                 "transport_epoch": self.transport_counter,
+                "listener_instance_id": self.listener_instance_id,
+                "surface_revision": self.surface_revision,
                 **self.transport_fields(),
             }
+            if applied:
+                receipt["authority_receipt"] = {}
         if applied:
             threading.Thread(
                 target=self._close_after_reply,
@@ -502,6 +530,11 @@ class ConnectionHubFixture:
     @property
     def pair_count(self) -> int:
         return self._state.pair_count
+
+    @property
+    def session_active(self) -> bool:
+        with self._state.lock:
+            return self._state.session_active
 
     @property
     def dispatch_log(self) -> list[tuple[str, str, str]]:

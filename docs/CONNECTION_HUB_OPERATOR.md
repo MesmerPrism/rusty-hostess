@@ -36,6 +36,14 @@ controller identity, and client/server security posture. The default CLI fails
 closed when that OS store is unavailable. A process-memory store exists only
 as an injected portable test double.
 
+`pair` reserves the local session-metadata destination and proves a protected
+store/load/delete round trip before it sends the one-use code. If the remote
+pair succeeds but protected credential creation or atomic metadata persistence
+then fails, Hostess immediately revokes with the still in-memory bearer,
+deletes any protected reference, and removes the empty reservation. It reports
+`pair_transaction_rollback_unconfirmed` instead of hiding a failed
+compensation. No pairing code or clear bearer is written to a temporary file.
+
 Successful revoke deletes both the protected credential and session metadata.
 Interrupted or rejected revoke preserves them so the operator can retry. The
 metadata file is controller state, not publishable evidence.
@@ -56,13 +64,15 @@ inside the WebSocket frame. The server must answer with
 the initial `surface_snapshot`. Subsequent event types are closed to
 `surface_available`, `surface_removed`, `surface_state`, and
 `command_receipt`. Each event binds the authenticated numeric
-`transport_epoch` and monotonic `surface_revision`. A new authenticated
-transport replaces and closes the older physical socket without re-pairing.
+`transport_epoch`, one listener-instance ID, monotonic `surface_revision`, and
+the advertised transport/confidentiality posture. A new authenticated transport
+replaces and closes the older physical socket without re-pairing.
 
 Surface descriptors are version 1 and contain only a bounded surface ID,
 display label, description, server-derived provider package/signer identity,
-closed command descriptors, flat low-rate state, and state revision. Client
-commands use the exact envelope:
+a fixed surface-contract SHA-256, closed command descriptors with their required
+controller capability, flat low-rate state, and state revision. Client commands
+use the exact envelope:
 
 ```json
 {
@@ -139,8 +149,8 @@ python tools\connection_hub_cli.py simulate-e2e
 
 The E2E receipt proves:
 
-1. safe status, argv-safe secret input, DPAPI/test-store binding, and
-   secret-redacted pairing;
+1. safe status, argv-safe secret input, pre-pair credential-store proof,
+   transactional DPAPI/test-store binding, and secret-redacted pairing;
 2. an empty socket snapshot followed by a media surface appearing;
 3. a media command dispatches only to its selected provider;
 4. replay, unknown surface, and unknown command reject without dispatch;
@@ -164,13 +174,20 @@ and not evidence that a Quest or network transport passed.
 - A transport epoch is a JSON integer. Hostess requires the snapshot epoch to
   equal the preceding authentication receipt and rejects regression within a
   physical socket.
-- A successful `command_receipt` proves authority acceptance and routing, not
-  application effect. The deterministic fixture sets
-  `proves_application_effect=false`.
+- A `command_receipt` separately reports authority `accepted` and provider
+  `provider_applied`; neither is independent application-effect evidence. Its
+  bounded `authority_receipt` remains Manifold-derived rather than a Hostess
+  assertion.
 - Logical-session continuity is demonstrated by using one unchanged opaque
   session across transport epochs without a second pair. The session secret is
   represented in receipts only by its SHA-256 fingerprint.
 - Exact checked-in wire vectors live at
-  `fixtures/connection-hub/protocol-vectors.v1.json`.
+  `fixtures/connection-hub/connection-hub-protocol-v1.json`. Those bytes are
+  vendored unchanged from Rusty Quest commit
+  `3a1abc5072f1d44417f6ad0c4d27ca84935bac18`, tree
+  `df9d1f50ae876b1a0b2415c96da5334534168a6e`, owner path
+  `apps/manifold-broker-android/contracts/connection-hub-protocol-v1.json`,
+  SHA-256
+  `fa00d34511b2ee5576eebdd815e58ae032e37b10c209e41289cfd876c78c9c78`.
 - TLS, discovery, and live Quest evidence remain separate
   implementation/validation slices.

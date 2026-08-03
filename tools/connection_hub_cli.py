@@ -60,12 +60,139 @@ TOKEN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,95}$")
 OPAQUE_SESSION = re.compile(r"^[A-Za-z0-9_-]{16,512}$")
 PAIRING_CODE = re.compile(r"^[0-9]{6}$")
 SIGNER_SHA256 = re.compile(r"^[a-f0-9]{64}$")
+CONTRACT_SHA256 = re.compile(r"^sha256:[a-f0-9]{64}$")
 PACKAGE_NAME = re.compile(r"^[a-z][a-z0-9_]*(?:\.[a-z][a-z0-9_]*)+$")
+LISTENER_INSTANCE_ID = re.compile(r"^[a-f0-9]{32}$")
 MAX_HTTP_BODY = 65536
 MAX_SERVER_FRAME = 65536
 MAX_COMMAND_BODY = 4096
 MAX_SURFACES = 32
 MAX_COMMANDS = 32
+
+EVENT_BASE_FIELDS = frozenset(
+    {
+        "$schema",
+        "type",
+        "transport_epoch",
+        "listener_instance_id",
+        "surface_revision",
+        "transport_classification",
+        "confidentiality",
+        "production_eligible",
+    }
+)
+MESSAGE_CONTRACTS: dict[
+    str, tuple[str, str | None, frozenset[str], frozenset[str]]
+] = {
+    "status": (
+        STATUS_SCHEMA,
+        None,
+        frozenset(
+            {
+                "$schema",
+                "listener_enabled",
+                "desired_connection_state",
+                "pairing_available",
+                "status",
+                "transport_classification",
+                "confidentiality",
+                "production_eligible",
+            }
+        ),
+        frozenset(),
+    ),
+    "pair_request": (
+        PAIR_REQUEST_SCHEMA,
+        None,
+        frozenset({"$schema", "pairing_code", "controller_identity_sha256"}),
+        frozenset(),
+    ),
+    "pair_receipt": (
+        PAIR_RECEIPT_SCHEMA,
+        "pair_receipt",
+        EVENT_BASE_FIELDS | {"accepted", "status"},
+        frozenset({"session", "expires_at_utc", "authority_receipt"}),
+    ),
+    "socket_authenticate": (
+        AUTHENTICATE_SCHEMA,
+        "authenticate",
+        frozenset({"$schema", "type", "session"}),
+        frozenset(),
+    ),
+    "socket_authentication_receipt": (
+        AUTHENTICATION_RECEIPT_SCHEMA,
+        "authentication_receipt",
+        frozenset(
+            {
+                "$schema",
+                "type",
+                "accepted",
+                "status",
+                "transport_epoch",
+                "confidentiality",
+                "production_eligible",
+            }
+        ),
+        frozenset(),
+    ),
+    "surface_snapshot": (
+        EVENT_SCHEMAS["surface_snapshot"],
+        "surface_snapshot",
+        EVENT_BASE_FIELDS | {"surfaces"},
+        frozenset(),
+    ),
+    "surface_available": (
+        EVENT_SCHEMAS["surface_available"],
+        "surface_available",
+        EVENT_BASE_FIELDS | {"surface"},
+        frozenset(),
+    ),
+    "surface_removed": (
+        EVENT_SCHEMAS["surface_removed"],
+        "surface_removed",
+        EVENT_BASE_FIELDS | {"surface_id", "reason"},
+        frozenset(),
+    ),
+    "surface_state": (
+        EVENT_SCHEMAS["surface_state"],
+        "surface_state",
+        EVENT_BASE_FIELDS | {"surface_id", "state_revision", "state"},
+        frozenset(),
+    ),
+    "surface_command": (
+        COMMAND_SCHEMA,
+        "surface.command",
+        frozenset({"$schema", "type", "request_id", "surface_id", "command", "args"}),
+        frozenset(),
+    ),
+    "command_receipt": (
+        EVENT_SCHEMAS["command_receipt"],
+        "command_receipt",
+        EVENT_BASE_FIELDS
+        | {
+            "request_id",
+            "surface_id",
+            "command",
+            "accepted",
+            "provider_applied",
+            "status",
+            "authority_receipt",
+        },
+        frozenset(),
+    ),
+    "revoke_request": (
+        REVOKE_REQUEST_SCHEMA,
+        None,
+        frozenset({"$schema", "session"}),
+        frozenset({"reason"}),
+    ),
+    "revoke_receipt": (
+        REVOKE_RECEIPT_SCHEMA,
+        "revoke_receipt",
+        EVENT_BASE_FIELDS | {"applied", "status"},
+        frozenset({"authority_receipt"}),
+    ),
+}
 
 
 class HubError(RuntimeError):
@@ -245,6 +372,24 @@ def canonical_json(value: dict[str, Any]) -> bytes:
     )
 
 
+def validate_protocol_message(value: Any, message_name: str) -> dict[str, Any]:
+    """Apply the exact Quest-owned v1 required/optional field registry."""
+
+    if message_name not in MESSAGE_CONTRACTS:
+        raise ValueError("protocol_message_name_unknown")
+    if not isinstance(value, dict):
+        raise HubError(f"{message_name}_must_be_object")
+    schema, expected_type, required, optional = MESSAGE_CONTRACTS[message_name]
+    if value.get("$schema") != schema:
+        raise HubError(f"{message_name}_schema_mismatch")
+    if expected_type is not None and value.get("type") != expected_type:
+        raise HubError(f"{message_name}_type_mismatch")
+    fields = set(value)
+    if not required.issubset(fields) or not fields.issubset(required | optional):
+        raise HubError(f"{message_name}_fields_invalid")
+    return value
+
+
 def request_id(prefix: str) -> str:
     value = f"{prefix}-{uuid.uuid4()}"
     if not TOKEN.fullmatch(value):
@@ -344,6 +489,27 @@ def _validated_server_transport(payload: dict[str, Any], policy: TransportPolicy
     }
 
 
+def _validate_event_base(
+    payload: dict[str, Any], policy: TransportPolicy, *, require_active_epoch: bool
+) -> dict[str, Any]:
+    epoch = payload.get("transport_epoch")
+    revision = payload.get("surface_revision")
+    listener = payload.get("listener_instance_id")
+    if (
+        not isinstance(epoch, int)
+        or isinstance(epoch, bool)
+        or epoch < (1 if require_active_epoch else 0)
+    ):
+        raise HubError("transport_epoch_invalid")
+    if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
+        raise HubError("surface_revision_invalid")
+    if not isinstance(listener, str) or not LISTENER_INSTANCE_ID.fullmatch(listener):
+        raise HubError("listener_instance_id_invalid")
+    if payload.get("confidentiality") != policy.confidentiality:
+        raise HubError("server_confidentiality_mismatch")
+    return _validated_server_transport(payload, policy)
+
+
 def _connection(parsed: Any, timeout: float = 5.0) -> http.client.HTTPConnection:
     if parsed.scheme == "https":
         return http.client.HTTPSConnection(
@@ -394,45 +560,17 @@ def http_json(
 
 def status(policy: TransportPolicy) -> dict[str, Any]:
     code, payload = http_json(policy, "GET", "/v1/status")
-    if code != 200 or payload.get("$schema") != STATUS_SCHEMA:
+    if code != 200:
         raise HubError(f"status_rejected:{code}")
-    allowed = {
-        "$schema",
-        "listener_enabled",
-        "desired_connection_state",
-        "transport_epoch",
-        "surface_revision",
-        "active_session_count",
-        "pairing_required",
-        "surfaces",
-        "transport_classification",
-        "confidentiality",
-        "production_eligible",
-    }
-    if set(payload) != allowed:
-        raise HubError("status_fields_invalid")
+    validate_protocol_message(payload, "status")
     if not isinstance(payload.get("listener_enabled"), bool):
         raise HubError("status_listener_state_invalid")
     if payload.get("desired_connection_state") not in {"stopped", "running"}:
         raise HubError("status_desired_connection_state_invalid")
-    if not isinstance(payload.get("pairing_required"), bool):
+    if not isinstance(payload.get("pairing_available"), bool):
         raise HubError("status_pairing_state_invalid")
-    active_count = payload.get("active_session_count")
-    surface_revision = payload.get("surface_revision")
-    if (
-        not isinstance(active_count, int)
-        or isinstance(active_count, bool)
-        or active_count < 0
-        or not isinstance(surface_revision, int)
-        or isinstance(surface_revision, bool)
-        or surface_revision < 0
-    ):
-        raise HubError("status_revision_or_count_invalid")
-    surfaces = payload.get("surfaces")
-    if not isinstance(surfaces, list) or len(surfaces) > MAX_SURFACES:
-        raise HubError("status_surfaces_invalid")
-    for surface in surfaces:
-        validate_surface(surface)
+    if not isinstance(payload.get("status"), str) or not payload["status"]:
+        raise HubError("status_value_invalid")
     observed = _validated_server_transport(payload, policy)
     return {
         "$schema": "rusty.hostess.connection_hub.status_receipt.v1",
@@ -496,6 +634,76 @@ def _atomic_write_json(path: Path, value: dict[str, Any], *, create: bool) -> No
             temporary.unlink()
 
 
+def _reserve_session_file(path: Path) -> Path:
+    """Reserve the metadata destination before creating a remote session."""
+
+    reserved = path.resolve()
+    reserved.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(reserved, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    os.close(descriptor)
+    return reserved
+
+
+def _remove_reserved_session_file(path: Path) -> None:
+    try:
+        path.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as error:
+        raise HubError("reserved_session_metadata_cleanup_failed") from error
+
+
+def _preflight_credential_store(
+    store: CredentialStore, policy: TransportPolicy, controller_identity_sha256: str
+) -> None:
+    """Prove protect/load/delete before the irreversible remote pair call."""
+
+    probe = "credential-preflight-" + uuid.uuid4().hex
+    binding = canonical_json(
+        {
+            "controller_identity_sha256": controller_identity_sha256,
+            "origin": policy.origin,
+            "protocol": PROTOCOL_ID,
+            "purpose": "credential_store_preflight",
+        }
+    )
+    reference: dict[str, Any] | None = None
+    try:
+        reference = store.store(probe, binding)
+        if store.load(reference, binding) != probe:
+            raise HubError("credential_store_preflight_roundtrip_mismatch")
+    finally:
+        if reference is not None:
+            store.delete(reference)
+
+
+def _compensating_revoke(policy: TransportPolicy, session: str) -> dict[str, Any]:
+    """Close a remotely accepted session when local persistence cannot commit."""
+
+    request = {
+        "$schema": REVOKE_REQUEST_SCHEMA,
+        "session": session,
+        "reason": "user_request",
+    }
+    validate_protocol_message(request, "revoke_request")
+    code, payload = http_json(policy, "POST", "/v1/revoke", request)
+    if payload.get("$schema") != REVOKE_RECEIPT_SCHEMA:
+        raise HubError(
+            f"pair_compensating_revoke_rejected:{code}:{payload.get('status', 'unknown')}"
+        )
+    validate_protocol_message(payload, "revoke_receipt")
+    if code != 200:
+        raise HubError(
+            f"pair_compensating_revoke_rejected:{code}:{payload.get('status', 'unknown')}"
+        )
+    _validate_event_base(payload, policy, require_active_epoch=True)
+    if payload.get("applied") is not True:
+        raise HubError(
+            f"pair_compensating_revoke_rejected:{code}:{payload.get('status', 'unknown')}"
+        )
+    return payload
+
+
 def pair(
     policy: TransportPolicy,
     pairing_code: str,
@@ -507,44 +715,79 @@ def pair(
         raise ValueError("pairing_code_must_be_six_digits")
     if not SIGNER_SHA256.fullmatch(controller_identity_sha256):
         raise ValueError("controller_identity_sha256_invalid")
-    request = {
-        "$schema": PAIR_REQUEST_SCHEMA,
-        "pairing_code": pairing_code,
-        "controller_identity_sha256": controller_identity_sha256,
-    }
-    code, payload = http_json(policy, "POST", "/v1/pair", request)
-    if code != 200 or payload.get("$schema") != PAIR_RECEIPT_SCHEMA:
-        raise HubError(f"pair_rejected:{code}:{payload.get('status', 'unknown')}")
-    if set(payload) != {
-        "$schema",
-        "accepted",
-        "status",
-        "session",
-        "expires_at_utc",
-        "transport_epoch",
-        "transport_classification",
-        "confidentiality",
-        "production_eligible",
-    }:
-        raise HubError("pair_receipt_fields_invalid")
-    if payload.get("accepted") is not True:
-        raise HubError(f"pair_not_accepted:{payload.get('status', 'unknown')}")
-    session = payload.get("session")
-    if not isinstance(session, str) or not OPAQUE_SESSION.fullmatch(session):
-        raise HubError("pair_session_invalid")
-    session_digest = session_fingerprint(session)
-    binding = _security_binding(
-        policy, payload, session_digest, controller_identity_sha256
-    )
-    binding_bytes = canonical_json(binding)
     store = credential_store or default_credential_store()
-    credential = store.store(session, binding_bytes)
-    document = _session_document(payload, binding, credential)
+    reserved = _reserve_session_file(session_file)
+    remote_session: str | None = None
+    credential: dict[str, Any] | None = None
+    committed = False
     try:
-        _atomic_write_json(session_file, document, create=True)
-    except BaseException:
-        store.delete(credential)
-        raise
+        _preflight_credential_store(store, policy, controller_identity_sha256)
+        request = {
+            "$schema": PAIR_REQUEST_SCHEMA,
+            "pairing_code": pairing_code,
+            "controller_identity_sha256": controller_identity_sha256,
+        }
+        validate_protocol_message(request, "pair_request")
+        code, payload = http_json(policy, "POST", "/v1/pair", request)
+        candidate_session = payload.get("session")
+        if (
+            payload.get("$schema") == PAIR_RECEIPT_SCHEMA
+            and payload.get("accepted") is True
+            and isinstance(candidate_session, str)
+            and OPAQUE_SESSION.fullmatch(candidate_session)
+        ):
+            remote_session = candidate_session
+        if payload.get("$schema") != PAIR_RECEIPT_SCHEMA:
+            raise HubError(
+                f"pair_rejected:{code}:{payload.get('status', 'unknown')}"
+            )
+        validate_protocol_message(payload, "pair_receipt")
+        if code != 200:
+            raise HubError(
+                f"pair_rejected:{code}:{payload.get('status', 'unknown')}"
+            )
+        if payload.get("accepted") is not True:
+            raise HubError(f"pair_not_accepted:{payload.get('status', 'unknown')}")
+        if remote_session is None:
+            raise HubError("pair_session_invalid")
+        if not isinstance(payload.get("expires_at_utc"), str):
+            raise HubError("pair_expiry_invalid")
+        if "authority_receipt" in payload and not isinstance(
+            payload["authority_receipt"], dict
+        ):
+            raise HubError("pair_authority_receipt_invalid")
+        _validate_event_base(payload, policy, require_active_epoch=True)
+        session_digest = session_fingerprint(remote_session)
+        binding = _security_binding(
+            policy, payload, session_digest, controller_identity_sha256
+        )
+        binding_bytes = canonical_json(binding)
+        credential = store.store(remote_session, binding_bytes)
+        document = _session_document(payload, binding, credential)
+        _atomic_write_json(reserved, document, create=False)
+        committed = True
+    except BaseException as original_error:
+        rollback_error: BaseException | None = None
+        if remote_session is not None:
+            try:
+                _compensating_revoke(policy, remote_session)
+            except BaseException as error:
+                rollback_error = error
+        if credential is not None:
+            try:
+                store.delete(credential)
+            except BaseException as error:
+                rollback_error = rollback_error or error
+        try:
+            _remove_reserved_session_file(reserved)
+        except BaseException as error:
+            rollback_error = rollback_error or error
+        if rollback_error is not None:
+            raise HubError("pair_transaction_rollback_unconfirmed") from rollback_error
+        raise original_error
+    finally:
+        if not committed and reserved.exists():
+            _remove_reserved_session_file(reserved)
     redacted = {key: value for key, value in payload.items() if key != "session"}
     return {
         "$schema": "rusty.hostess.connection_hub.pair_receipt.v1",
@@ -647,6 +890,7 @@ def validate_surface(descriptor: Any) -> dict[str, Any]:
         "surface_id",
         "display_label",
         "description",
+        "surface_contract_sha256",
         "provider_package",
         "provider_signer_sha256",
         "commands",
@@ -665,19 +909,28 @@ def validate_surface(descriptor: Any) -> dict[str, Any]:
         raise HubError("surface_text_out_of_bounds")
     if not SIGNER_SHA256.fullmatch(str(descriptor.get("provider_signer_sha256", ""))):
         raise HubError("surface_provider_signer_invalid")
+    if not CONTRACT_SHA256.fullmatch(str(descriptor.get("surface_contract_sha256", ""))):
+        raise HubError("surface_contract_sha256_invalid")
     commands = descriptor.get("commands")
     if not isinstance(commands, list) or len(commands) > MAX_COMMANDS:
         raise HubError("surface_commands_invalid")
     seen: set[str] = set()
     for item in commands:
-        if not isinstance(item, dict) or set(item) != {"command", "display_label"}:
+        if not isinstance(item, dict) or set(item) != {
+            "command",
+            "display_label",
+            "required_controller_capability",
+        }:
             raise HubError("surface_command_descriptor_invalid")
         command = item["command"]
         label = item["display_label"]
+        capability = item["required_controller_capability"]
         if not isinstance(command, str) or not TOKEN.fullmatch(command) or command in seen:
             raise HubError("surface_command_invalid")
         if not isinstance(label, str) or len(label) > 96:
             raise HubError("surface_command_label_invalid")
+        if not isinstance(capability, str) or not TOKEN.fullmatch(capability):
+            raise HubError("surface_command_capability_invalid")
         seen.add(command)
     validate_args(descriptor.get("state"))
     if not isinstance(descriptor.get("state_revision"), int) or isinstance(
@@ -724,13 +977,13 @@ class WebSocketClient:
             raw.close()
             raise HubError("websocket_accept_mismatch")
         result = cls(raw)
-        result.send_json(
-            {
-                "$schema": AUTHENTICATE_SCHEMA,
-                "type": "authenticate",
-                "session": session,
-            }
-        )
+        authentication = {
+            "$schema": AUTHENTICATE_SCHEMA,
+            "type": "authenticate",
+            "session": session,
+        }
+        validate_protocol_message(authentication, "socket_authenticate")
+        result.send_json(authentication)
         return result
 
     @staticmethod
@@ -815,27 +1068,23 @@ class WebSocketClient:
 
 class HubConnection:
     def __init__(self, policy: TransportPolicy, session: str) -> None:
+        self.policy = policy
         self.socket = WebSocketClient.connect(policy, session)
         self.transport_epoch: Any = None
+        self.listener_instance_id: str | None = None
         self.surface_revision: Any = None
         self.surfaces: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
         self.authentication_receipt = self.socket.read_json()
-        expected_auth_fields = {
-            "$schema",
-            "type",
-            "accepted",
-            "status",
-            "transport_epoch",
-            "confidentiality",
-            "production_eligible",
-        }
+        try:
+            validate_protocol_message(
+                self.authentication_receipt, "socket_authentication_receipt"
+            )
+        except BaseException:
+            self.close()
+            raise
         if (
-            set(self.authentication_receipt) != expected_auth_fields
-            or self.authentication_receipt.get("$schema")
-            != AUTHENTICATION_RECEIPT_SCHEMA
-            or self.authentication_receipt.get("type") != "authentication_receipt"
-            or self.authentication_receipt.get("accepted") is not True
+            self.authentication_receipt.get("accepted") is not True
             or self.authentication_receipt.get("status") != "authenticated"
             or self.authentication_receipt.get("confidentiality") != "none"
             or self.authentication_receipt.get("production_eligible") is not False
@@ -854,45 +1103,30 @@ class HubConnection:
 
     def _validate_event(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")
-        if event_type not in EVENT_SCHEMAS or event.get("$schema") != EVENT_SCHEMAS[event_type]:
+        if event_type not in EVENT_SCHEMAS:
             raise HubError("server_event_schema_mismatch")
-        required_fields = {
-            "surface_snapshot": {"surfaces"},
-            "surface_available": {"surface"},
-            "surface_removed": {"surface_id", "reason"},
-            "surface_state": {"surface_id", "state_revision", "state"},
-            "command_receipt": {
-                "request_id",
-                "surface_id",
-                "command",
-                "accepted",
-                "status",
-            },
-        }[event_type]
-        common = {"$schema", "type", "transport_epoch", "surface_revision"}
-        allowed_fields = common | required_fields
-        if event_type == "command_receipt":
-            allowed_fields.add("proves_application_effect")
-        if not (common | required_fields).issubset(event) or not set(event).issubset(
-            allowed_fields
-        ):
-            raise HubError("server_event_fields_invalid")
-        if "proves_application_effect" in event and not isinstance(
-            event["proves_application_effect"], bool
-        ):
-            raise HubError("command_effect_proof_flag_invalid")
+        validate_protocol_message(event, str(event_type))
+        _validate_event_base(event, self.policy, require_active_epoch=True)
         epoch = event.get("transport_epoch")
-        if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
-            raise HubError("transport_epoch_invalid")
         if self.transport_epoch is None:
             self.transport_epoch = epoch
         elif epoch != self.transport_epoch:
             raise HubError("transport_epoch_changed_within_socket")
+        listener_instance_id = event.get("listener_instance_id")
+        if self.listener_instance_id is None:
+            self.listener_instance_id = listener_instance_id
+        elif listener_instance_id != self.listener_instance_id:
+            raise HubError("listener_instance_id_changed_within_socket")
         revision = event.get("surface_revision")
-        if not isinstance(revision, int) or isinstance(revision, bool) or revision < 0:
-            raise HubError("surface_revision_invalid")
         if self.surface_revision is not None and revision < self.surface_revision:
             raise HubError("surface_revision_regressed")
+        if event_type == "command_receipt":
+            if not isinstance(event.get("accepted"), bool) or not isinstance(
+                event.get("provider_applied"), bool
+            ):
+                raise HubError("command_receipt_boolean_invalid")
+            if not isinstance(event.get("authority_receipt"), dict):
+                raise HubError("command_authority_receipt_invalid")
         self.surface_revision = revision
 
     def _project(self, event: dict[str, Any]) -> None:
@@ -969,6 +1203,7 @@ class HubConnection:
             "command": command,
             "args": args,
         }
+        validate_protocol_message(request, "surface_command")
         self.socket.send_json(request)
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
@@ -1089,19 +1324,18 @@ def revoke(
         "session": session,
         "reason": "user_request",
     }
+    validate_protocol_message(request, "revoke_request")
     code, payload = http_json(policy, "POST", "/v1/revoke", request)
-    if code != 200 or payload.get("$schema") != REVOKE_RECEIPT_SCHEMA:
+    if payload.get("$schema") != REVOKE_RECEIPT_SCHEMA:
         raise HubError(f"revoke_rejected:{code}")
-    if set(payload) != {
-        "$schema",
-        "applied",
-        "status",
-        "transport_epoch",
-        "transport_classification",
-        "confidentiality",
-        "production_eligible",
-    }:
-        raise HubError("revoke_receipt_fields_invalid")
+    validate_protocol_message(payload, "revoke_receipt")
+    if code != 200:
+        raise HubError(f"revoke_rejected:{code}")
+    _validate_event_base(payload, policy, require_active_epoch=True)
+    if "authority_receipt" in payload and not isinstance(
+        payload["authority_receipt"], dict
+    ):
+        raise HubError("revoke_authority_receipt_invalid")
     if payload.get("applied") is not True:
         raise HubError(f"revoke_not_applied:{payload.get('status', 'unknown')}")
     observed = _validated_server_transport(payload, policy)
