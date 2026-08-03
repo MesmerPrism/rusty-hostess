@@ -1119,6 +1119,134 @@
       "classification": "owner_contract_compatibility",
       "role": "contract_reference",
       "reason": "Hostess projects the accepted read-only discovery contract from its own typed registry without taking schema or execution authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.command_receipt.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess binds protected session metadata to this exact Rusty Connection Hub protocol identity; Rusty Quest remains protocol authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.pair_receipt.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.pair_request.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.revoke_receipt.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.revoke_request.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.socket_authenticate.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.socket_authentication_receipt.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.status.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.surface_available.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.surface_command.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.surface_removed.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.surface_snapshot.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.connection_hub.surface_state.v1",
+      "path": "tools/connection_hub_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess consumes this exact Rusty Connection Hub protocol contract for operator or conformance projection; Rusty Quest remains schema and runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.debug_local_control_receipt.v1",
+      "path": "tools/trusted_local_control_cli.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "The existing Hostess debug operator client consumes this exact Quest-owned provider receipt without taking admission, device, schema, or runtime authority."
+    },
+    {
+      "schema_id": "rusty.quest.trusted_local_http.command_registry.v1",
+      "path": "apps/trusted-local-control-conformance/trusted_local_control_conformance/contract.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "The existing Hostess conformance harness checks the exact Quest-owned command registry while remaining an offline consumer rather than schema or command authority."
     }
   ]
 }

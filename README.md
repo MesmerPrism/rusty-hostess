@@ -124,7 +124,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   pairing/session secrets out of receipts, tracks surface lifecycle across
   transport epochs, and exposes status, pair, bounded watch, list, command,
   revoke, and deterministic offline E2E commands. See
-  `docs/CONNECTION_HUB_OPERATOR.md`.
+  `docs/CONNECTION_HUB_OPERATOR.md`. Pairing codes never enter argv; socket
+  authentication uses the first JSON frame rather than a URL bearer; Windows
+  persistence uses current-user DPAPI and successful revoke removes it.
 - `tools/connection_hub_fixture.py`: loopback-only port-`0` conformance oracle
   for Hub surface lifecycle, scoped dispatch, replay rejection, transport
   replacement, and explicit revocation. It is not product authority or a

@@ -287,6 +287,10 @@ generic code or sanitized sample fixtures.
   status, pair, watch, list, invoke, and revoke. It must not own Manifold
   admission/session/replay/command decisions, provider registration, a
   background service, or high-rate media/LSL/BLE payloads.
+  Pairing secrets must not enter argv, WebSocket bearers must be sent only in
+  the mandatory first authentication frame, and persisted bearers must use an
+  OS user-bound credential protector with exact origin/protocol/posture
+  binding. Successful revoke removes both credential and metadata.
 - Keep `tools\connection_hub_fixture.py` as the deterministic loopback-only
   conformance oracle for that client. It binds only to `127.0.0.1` on port `0`
   and is never production or Quest/network evidence.

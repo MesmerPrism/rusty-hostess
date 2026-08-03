@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import argparse
 import base64
+import ctypes
+import getpass
 import hashlib
 import http.client
 import ipaddress
@@ -26,7 +28,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import urlsplit
 
 
 SESSION_SCHEMA = "rusty.hostess.connection_hub_session.v1"
@@ -36,6 +38,11 @@ REVOKE_REQUEST_SCHEMA = "rusty.quest.connection_hub.revoke_request.v1"
 REVOKE_RECEIPT_SCHEMA = "rusty.quest.connection_hub.revoke_receipt.v1"
 STATUS_SCHEMA = "rusty.quest.connection_hub.status.v1"
 COMMAND_SCHEMA = "rusty.quest.connection_hub.surface_command.v1"
+AUTHENTICATE_SCHEMA = "rusty.quest.connection_hub.socket_authenticate.v1"
+AUTHENTICATION_RECEIPT_SCHEMA = (
+    "rusty.quest.connection_hub.socket_authentication_receipt.v1"
+)
+PROTOCOL_ID = "rusty.quest.connection_hub.v1"
 EVENT_SCHEMAS = {
     "surface_snapshot": "rusty.quest.connection_hub.surface_snapshot.v1",
     "surface_available": "rusty.quest.connection_hub.surface_available.v1",
@@ -70,6 +77,166 @@ class WebSocketClosed(HubError):
         super().__init__(f"websocket_closed:{code}:{reason}")
         self.code = code
         self.reason = reason
+
+
+class CredentialStore:
+    """Abstract bearer protection; product callers must use an OS store."""
+
+    provider = "abstract"
+
+    def store(self, bearer: str, binding: bytes) -> dict[str, Any]:
+        raise HubError("secure_credential_store_unavailable")
+
+    def load(self, reference: dict[str, Any], binding: bytes) -> str:
+        raise HubError("secure_credential_store_unavailable")
+
+    def delete(self, reference: dict[str, Any]) -> None:
+        raise HubError("secure_credential_store_unavailable")
+
+
+class WindowsDpapiCredentialStore(CredentialStore):
+    """Current-user DPAPI bearer protection with bound optional entropy."""
+
+    provider = "windows_dpapi_current_user"
+
+    class _DataBlob(ctypes.Structure):
+        _fields_ = [
+            ("cbData", ctypes.c_ulong),
+            ("pbData", ctypes.POINTER(ctypes.c_ubyte)),
+        ]
+
+    def __init__(self) -> None:
+        if os.name != "nt":
+            raise HubError("windows_dpapi_unavailable")
+        self._crypt32 = ctypes.WinDLL("crypt32", use_last_error=True)
+        self._kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self._crypt32.CryptProtectData.argtypes = [
+            ctypes.POINTER(self._DataBlob),
+            ctypes.c_wchar_p,
+            ctypes.POINTER(self._DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.POINTER(self._DataBlob),
+        ]
+        self._crypt32.CryptProtectData.restype = ctypes.c_int
+        self._crypt32.CryptUnprotectData.argtypes = [
+            ctypes.POINTER(self._DataBlob),
+            ctypes.POINTER(ctypes.c_wchar_p),
+            ctypes.POINTER(self._DataBlob),
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.c_ulong,
+            ctypes.POINTER(self._DataBlob),
+        ]
+        self._crypt32.CryptUnprotectData.restype = ctypes.c_int
+        self._kernel32.LocalFree.argtypes = [ctypes.c_void_p]
+        self._kernel32.LocalFree.restype = ctypes.c_void_p
+
+    @classmethod
+    def _blob(cls, value: bytes) -> tuple["WindowsDpapiCredentialStore._DataBlob", Any]:
+        buffer = ctypes.create_string_buffer(value)
+        blob = cls._DataBlob(
+            len(value), ctypes.cast(buffer, ctypes.POINTER(ctypes.c_ubyte))
+        )
+        return blob, buffer
+
+    def store(self, bearer: str, binding: bytes) -> dict[str, Any]:
+        source, source_buffer = self._blob(bearer.encode("ascii"))
+        entropy, entropy_buffer = self._blob(binding)
+        protected = self._DataBlob()
+        if not self._crypt32.CryptProtectData(
+            ctypes.byref(source),
+            "Rusty Connection Hub session",
+            ctypes.byref(entropy),
+            None,
+            None,
+            0x1,
+            ctypes.byref(protected),
+        ):
+            raise HubError(f"dpapi_protect_failed:{ctypes.get_last_error()}")
+        del source_buffer, entropy_buffer
+        try:
+            payload = ctypes.string_at(protected.pbData, protected.cbData)
+        finally:
+            self._kernel32.LocalFree(protected.pbData)
+        return {
+            "provider": self.provider,
+            "protected_blob_b64": base64.b64encode(payload).decode("ascii"),
+        }
+
+    def load(self, reference: dict[str, Any], binding: bytes) -> str:
+        if set(reference) != {"provider", "protected_blob_b64"} or reference.get(
+            "provider"
+        ) != self.provider:
+            raise HubError("credential_reference_invalid")
+        try:
+            payload = base64.b64decode(reference["protected_blob_b64"], validate=True)
+        except (TypeError, ValueError) as error:
+            raise HubError("dpapi_blob_invalid") from error
+        source, source_buffer = self._blob(payload)
+        entropy, entropy_buffer = self._blob(binding)
+        clear = self._DataBlob()
+        description = ctypes.c_wchar_p()
+        if not self._crypt32.CryptUnprotectData(
+            ctypes.byref(source),
+            ctypes.byref(description),
+            ctypes.byref(entropy),
+            None,
+            None,
+            0x1,
+            ctypes.byref(clear),
+        ):
+            raise HubError(f"dpapi_unprotect_failed:{ctypes.get_last_error()}")
+        del source_buffer, entropy_buffer
+        try:
+            bearer = ctypes.string_at(clear.pbData, clear.cbData).decode("ascii")
+        except UnicodeDecodeError as error:
+            raise HubError("dpapi_bearer_not_ascii") from error
+        finally:
+            self._kernel32.LocalFree(clear.pbData)
+            if description:
+                self._kernel32.LocalFree(description)
+        return bearer
+
+    def delete(self, reference: dict[str, Any]) -> None:
+        if reference.get("provider") != self.provider:
+            raise HubError("credential_reference_provider_mismatch")
+
+
+class MemoryCredentialStore(CredentialStore):
+    """Process-local test double; never selected by the CLI."""
+
+    provider = "test_in_memory"
+
+    def __init__(self) -> None:
+        self._values: dict[str, tuple[str, str]] = {}
+
+    def store(self, bearer: str, binding: bytes) -> dict[str, Any]:
+        reference = f"test-credential-{uuid.uuid4()}"
+        self._values[reference] = (bearer, hashlib.sha256(binding).hexdigest())
+        return {"provider": self.provider, "reference_id": reference}
+
+    def load(self, reference: dict[str, Any], binding: bytes) -> str:
+        if set(reference) != {"provider", "reference_id"} or reference.get(
+            "provider"
+        ) != self.provider:
+            raise HubError("credential_reference_invalid")
+        stored = self._values.get(str(reference["reference_id"]))
+        if stored is None or stored[1] != hashlib.sha256(binding).hexdigest():
+            raise HubError("credential_binding_mismatch")
+        return stored[0]
+
+    def delete(self, reference: dict[str, Any]) -> None:
+        key = str(reference.get("reference_id", ""))
+        if self._values.pop(key, None) is None:
+            raise HubError("credential_reference_missing")
+
+
+def default_credential_store() -> CredentialStore:
+    if os.name != "nt":
+        raise HubError("secure_credential_store_unavailable")
+    return WindowsDpapiCredentialStore()
 
 
 def canonical_json(value: dict[str, Any]) -> bytes:
@@ -276,18 +443,33 @@ def status(policy: TransportPolicy) -> dict[str, Any]:
     }
 
 
-def _session_document(
+def _security_binding(
     policy: TransportPolicy,
     payload: dict[str, Any],
-    session: str,
+    session_digest: str,
+    controller_identity_sha256: str,
 ) -> dict[str, Any]:
     return {
-        "$schema": SESSION_SCHEMA,
         "origin": policy.origin,
+        "protocol": PROTOCOL_ID,
         "transport": policy.receipt(),
         "server_transport": _validated_server_transport(payload, policy),
-        "session": session,
-        "session_fingerprint_sha256": session_fingerprint(session),
+        "session_fingerprint_sha256": session_digest,
+        "controller_identity_sha256": controller_identity_sha256,
+    }
+
+
+def _session_document(
+    payload: dict[str, Any],
+    binding: dict[str, Any],
+    credential: dict[str, Any],
+) -> dict[str, Any]:
+    binding_bytes = canonical_json(binding)
+    return {
+        "$schema": SESSION_SCHEMA,
+        "security_binding": binding,
+        "security_binding_sha256": hashlib.sha256(binding_bytes).hexdigest(),
+        "credential": credential,
         "expires_at_utc": payload.get("expires_at_utc"),
         "last_transport_epoch": payload.get("transport_epoch"),
     }
@@ -319,6 +501,7 @@ def pair(
     pairing_code: str,
     controller_identity_sha256: str,
     session_file: Path,
+    credential_store: CredentialStore | None = None,
 ) -> dict[str, Any]:
     if not PAIRING_CODE.fullmatch(pairing_code):
         raise ValueError("pairing_code_must_be_six_digits")
@@ -349,44 +532,95 @@ def pair(
     session = payload.get("session")
     if not isinstance(session, str) or not OPAQUE_SESSION.fullmatch(session):
         raise HubError("pair_session_invalid")
-    document = _session_document(policy, payload, session)
-    document["controller_identity_sha256"] = controller_identity_sha256
-    _atomic_write_json(session_file, document, create=True)
+    session_digest = session_fingerprint(session)
+    binding = _security_binding(
+        policy, payload, session_digest, controller_identity_sha256
+    )
+    binding_bytes = canonical_json(binding)
+    store = credential_store or default_credential_store()
+    credential = store.store(session, binding_bytes)
+    document = _session_document(payload, binding, credential)
+    try:
+        _atomic_write_json(session_file, document, create=True)
+    except BaseException:
+        store.delete(credential)
+        raise
     redacted = {key: value for key, value in payload.items() if key != "session"}
     return {
         "$schema": "rusty.hostess.connection_hub.pair_receipt.v1",
         "status": "passed",
         "session_redacted": True,
-        "session_fingerprint_sha256": document["session_fingerprint_sha256"],
+        "session_fingerprint_sha256": session_digest,
         "session_file": str(session_file.resolve()),
         "transport": policy.receipt(),
         "server_receipt": redacted,
     }
 
 
-def load_session(path: Path) -> tuple[dict[str, Any], TransportPolicy]:
+def load_session(
+    path: Path, credential_store: CredentialStore | None = None
+) -> tuple[dict[str, Any], TransportPolicy, str]:
     try:
         document = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
         raise HubError("session_file_unreadable") from error
     if not isinstance(document, dict) or document.get("$schema") != SESSION_SCHEMA:
         raise HubError("session_file_schema_mismatch")
-    session = document.get("session")
-    if not isinstance(session, str) or not OPAQUE_SESSION.fullmatch(session):
-        raise HubError("session_file_secret_invalid")
-    if document.get("session_fingerprint_sha256") != session_fingerprint(session):
-        raise HubError("session_file_fingerprint_mismatch")
-    transport = document.get("transport")
+    if set(document) - {
+        "$schema",
+        "security_binding",
+        "security_binding_sha256",
+        "credential",
+        "expires_at_utc",
+        "last_transport_epoch",
+        "last_surface_revision",
+    }:
+        raise HubError("session_file_fields_invalid")
+    binding = document.get("security_binding")
+    if not isinstance(binding, dict) or set(binding) != {
+        "origin",
+        "protocol",
+        "transport",
+        "server_transport",
+        "session_fingerprint_sha256",
+        "controller_identity_sha256",
+    }:
+        raise HubError("session_file_security_binding_invalid")
+    binding_bytes = canonical_json(binding)
+    if document.get("security_binding_sha256") != hashlib.sha256(binding_bytes).hexdigest():
+        raise HubError("session_file_security_binding_mismatch")
+    if binding.get("protocol") != PROTOCOL_ID:
+        raise HubError("session_file_protocol_mismatch")
+    if not SIGNER_SHA256.fullmatch(str(binding.get("controller_identity_sha256", ""))):
+        raise HubError("session_file_controller_identity_invalid")
+    if not SIGNER_SHA256.fullmatch(str(binding.get("session_fingerprint_sha256", ""))):
+        raise HubError("session_file_token_digest_invalid")
+    transport = binding.get("transport")
     if not isinstance(transport, dict):
         raise HubError("session_file_transport_missing")
     policy = transport_policy(
-        document.get("origin", ""),
+        binding.get("origin", ""),
         transport.get("classification"),
         bool(transport.get("explicit_insecure_opt_in")),
     )
     if policy.receipt() != transport:
         raise HubError("session_file_transport_mismatch")
-    return document, policy
+    server_transport = binding.get("server_transport")
+    if not isinstance(server_transport, dict):
+        raise HubError("session_file_server_transport_missing")
+    _validated_server_transport(server_transport, policy)
+    credential = document.get("credential")
+    if not isinstance(credential, dict):
+        raise HubError("session_file_credential_missing")
+    store = credential_store or default_credential_store()
+    if credential.get("provider") != store.provider:
+        raise HubError("credential_store_provider_mismatch")
+    session = store.load(credential, binding_bytes)
+    if not OPAQUE_SESSION.fullmatch(session):
+        raise HubError("credential_session_invalid")
+    if binding["session_fingerprint_sha256"] != session_fingerprint(session):
+        raise HubError("session_file_fingerprint_mismatch")
+    return document, policy, session
 
 
 def validate_args(value: Any) -> dict[str, Any]:
@@ -464,9 +698,8 @@ class WebSocketClient:
         if parsed.scheme == "https":
             raw = ssl.create_default_context().wrap_socket(raw, server_hostname=parsed.hostname)
         key = base64.b64encode(os.urandom(16)).decode("ascii")
-        path = "/v1/socket?" + urlencode({"session": session})
         request = (
-            f"GET {path} HTTP/1.1\r\n"
+            "GET /v1/socket HTTP/1.1\r\n"
             f"Host: {parsed.netloc}\r\n"
             f"Origin: {policy.origin}\r\n"
             "Upgrade: websocket\r\n"
@@ -490,7 +723,15 @@ class WebSocketClient:
         if headers.get("sec-websocket-accept") != expected:
             raw.close()
             raise HubError("websocket_accept_mismatch")
-        return cls(raw)
+        result = cls(raw)
+        result.send_json(
+            {
+                "$schema": AUTHENTICATE_SCHEMA,
+                "type": "authenticate",
+                "session": session,
+            }
+        )
+        return result
 
     @staticmethod
     def _read_http_head(sock: socket.socket) -> str:
@@ -579,6 +820,33 @@ class HubConnection:
         self.surface_revision: Any = None
         self.surfaces: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
+        self.authentication_receipt = self.socket.read_json()
+        expected_auth_fields = {
+            "$schema",
+            "type",
+            "accepted",
+            "status",
+            "transport_epoch",
+            "confidentiality",
+            "production_eligible",
+        }
+        if (
+            set(self.authentication_receipt) != expected_auth_fields
+            or self.authentication_receipt.get("$schema")
+            != AUTHENTICATION_RECEIPT_SCHEMA
+            or self.authentication_receipt.get("type") != "authentication_receipt"
+            or self.authentication_receipt.get("accepted") is not True
+            or self.authentication_receipt.get("status") != "authenticated"
+            or self.authentication_receipt.get("confidentiality") != "none"
+            or self.authentication_receipt.get("production_eligible") is not False
+        ):
+            self.close()
+            raise HubError("socket_authentication_receipt_invalid")
+        auth_epoch = self.authentication_receipt.get("transport_epoch")
+        if not isinstance(auth_epoch, int) or isinstance(auth_epoch, bool) or auth_epoch < 1:
+            self.close()
+            raise HubError("socket_authentication_epoch_invalid")
+        self.transport_epoch = auth_epoch
         first = self.read_event()
         if first.get("type") != "surface_snapshot":
             self.close()
@@ -614,7 +882,7 @@ class HubConnection:
         ):
             raise HubError("command_effect_proof_flag_invalid")
         epoch = event.get("transport_epoch")
-        if not isinstance(epoch, (str, int)) or isinstance(epoch, bool) or str(epoch) == "":
+        if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 1:
             raise HubError("transport_epoch_invalid")
         if self.transport_epoch is None:
             self.transport_epoch = epoch
@@ -717,9 +985,15 @@ class HubConnection:
         self.socket.close()
 
 
-def connect_session(path: Path) -> tuple[dict[str, Any], TransportPolicy, HubConnection, bool]:
-    document, policy = load_session(path)
-    connection = HubConnection(policy, document["session"])
+def _document_session_fingerprint(document: dict[str, Any]) -> str:
+    return document["security_binding"]["session_fingerprint_sha256"]
+
+
+def connect_session(
+    path: Path, credential_store: CredentialStore | None = None
+) -> tuple[dict[str, Any], TransportPolicy, HubConnection, bool]:
+    document, policy, session = load_session(path, credential_store)
+    connection = HubConnection(policy, session)
     changed = document.get("last_transport_epoch") not in {None, connection.transport_epoch}
     document["last_transport_epoch"] = connection.transport_epoch
     document["last_surface_revision"] = connection.surface_revision
@@ -727,14 +1001,16 @@ def connect_session(path: Path) -> tuple[dict[str, Any], TransportPolicy, HubCon
     return document, policy, connection, changed
 
 
-def list_surfaces(path: Path) -> dict[str, Any]:
-    document, policy, connection, changed = connect_session(path)
+def list_surfaces(
+    path: Path, credential_store: CredentialStore | None = None
+) -> dict[str, Any]:
+    document, policy, connection, changed = connect_session(path, credential_store)
     try:
         surfaces = [connection.surfaces[key] for key in sorted(connection.surfaces)]
         return {
             "$schema": "rusty.hostess.connection_hub.surface_list_receipt.v1",
             "status": "passed",
-            "session_fingerprint_sha256": document["session_fingerprint_sha256"],
+            "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
@@ -750,8 +1026,9 @@ def invoke_surface_command(
     surface_id: str,
     command: str,
     args: dict[str, Any],
+    credential_store: CredentialStore | None = None,
 ) -> dict[str, Any]:
-    document, policy, connection, changed = connect_session(path)
+    document, policy, connection, changed = connect_session(path, credential_store)
     try:
         _, receipt = connection.send_command(surface_id, command, args)
         if receipt.get("accepted") is not True:
@@ -759,7 +1036,7 @@ def invoke_surface_command(
         return {
             "$schema": "rusty.hostess.connection_hub.command_receipt.v1",
             "status": "passed",
-            "session_fingerprint_sha256": document["session_fingerprint_sha256"],
+            "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
@@ -769,12 +1046,17 @@ def invoke_surface_command(
         connection.close()
 
 
-def watch(path: Path, seconds: float, max_events: int) -> dict[str, Any]:
+def watch(
+    path: Path,
+    seconds: float,
+    max_events: int,
+    credential_store: CredentialStore | None = None,
+) -> dict[str, Any]:
     if seconds < 0.1 or seconds > 300:
         raise ValueError("watch_seconds_out_of_bounds")
     if max_events < 1 or max_events > 512:
         raise ValueError("watch_event_limit_out_of_bounds")
-    document, policy, connection, changed = connect_session(path)
+    document, policy, connection, changed = connect_session(path, credential_store)
     deadline = time.monotonic() + seconds
     try:
         while time.monotonic() < deadline and len(connection.events) < max_events:
@@ -785,7 +1067,7 @@ def watch(path: Path, seconds: float, max_events: int) -> dict[str, Any]:
         return {
             "$schema": "rusty.hostess.connection_hub.watch_receipt.v1",
             "status": "passed",
-            "session_fingerprint_sha256": document["session_fingerprint_sha256"],
+            "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
@@ -797,11 +1079,14 @@ def watch(path: Path, seconds: float, max_events: int) -> dict[str, Any]:
         connection.close()
 
 
-def revoke(path: Path) -> dict[str, Any]:
-    document, policy = load_session(path)
+def revoke(
+    path: Path, credential_store: CredentialStore | None = None
+) -> dict[str, Any]:
+    store = credential_store or default_credential_store()
+    document, policy, session = load_session(path, store)
     request = {
         "$schema": REVOKE_REQUEST_SCHEMA,
-        "session": document["session"],
+        "session": session,
         "reason": "user_request",
     }
     code, payload = http_json(policy, "POST", "/v1/revoke", request)
@@ -820,15 +1105,23 @@ def revoke(path: Path) -> dict[str, Any]:
     if payload.get("applied") is not True:
         raise HubError(f"revoke_not_applied:{payload.get('status', 'unknown')}")
     observed = _validated_server_transport(payload, policy)
-    return {
+    receipt = {
         "$schema": "rusty.hostess.connection_hub.revoke_receipt.v1",
         "status": "passed",
-        "session_fingerprint_sha256": document["session_fingerprint_sha256"],
+        "session_fingerprint_sha256": _document_session_fingerprint(document),
         "session_redacted": True,
+        "local_credential_deleted": True,
+        "session_metadata_deleted": True,
         "transport": policy.receipt(),
         "server_transport": observed,
         "server_receipt": payload,
     }
+    store.delete(document["credential"])
+    try:
+        path.resolve().unlink()
+    except OSError as error:
+        raise HubError("revoke_applied_but_session_metadata_cleanup_failed") from error
+    return receipt
 
 
 def simulated_e2e() -> dict[str, Any]:
@@ -842,6 +1135,7 @@ def simulated_e2e() -> dict[str, Any]:
         from connection_hub_fixture import ConnectionHubFixture, diagnostic_surface, media_surface
 
     with ConnectionHubFixture() as fixture, tempfile.TemporaryDirectory() as directory:
+        credential_store = MemoryCredentialStore()
         policy = transport_policy(fixture.origin, "loopback_fixture")
         status_receipt = status(policy)
         session_path = Path(directory) / "session.json"
@@ -850,9 +1144,10 @@ def simulated_e2e() -> dict[str, Any]:
             fixture.pairing_code,
             fixture.controller_identity_sha256,
             session_path,
+            credential_store,
         )
-        document, _ = load_session(session_path)
-        connection = HubConnection(policy, document["session"])
+        document, _, session = load_session(session_path, credential_store)
+        connection = HubConnection(policy, session)
         try:
             first_epoch = connection.transport_epoch
             fixture.add_surface(media_surface())
@@ -883,13 +1178,13 @@ def simulated_e2e() -> dict[str, Any]:
             removed_event = connection.await_type("surface_removed")
         finally:
             connection.close()
-        reconnected = HubConnection(policy, document["session"])
+        reconnected = HubConnection(policy, session)
         try:
             second_epoch = reconnected.transport_epoch
             _, post_reconnect = reconnected.send_command(
                 "diagnostics.capture", "snapshot", {"detail": "bounded"}
             )
-            revoke_receipt = revoke(session_path)
+            revoke_receipt = revoke(session_path, credential_store)
             revoked_close = False
             try:
                 reconnected.read_event(2)
@@ -899,13 +1194,15 @@ def simulated_e2e() -> dict[str, Any]:
             reconnected.close()
         reconnect_rejected = False
         try:
-            HubConnection(policy, document["session"])
+            HubConnection(policy, session)
         except HubError:
             reconnect_rejected = True
         checks = {
             "status_safe_and_labelled": status_receipt["hub"].get("listener_enabled") is True,
             "pair_secret_redacted": pair_receipt.get("session_redacted") is True
             and "session" not in pair_receipt.get("server_receipt", {}),
+            "bearer_absent_from_websocket_url": bool(fixture.upgrade_paths)
+            and set(fixture.upgrade_paths) == {"/v1/socket"},
             "media_surface_appeared": media_event.get("surface", {}).get("surface_id")
             == "media.control",
             "media_command_scoped": media_receipt.get("accepted") is True,
@@ -925,6 +1222,8 @@ def simulated_e2e() -> dict[str, Any]:
             == {"diagnostics.capture"},
             "post_reconnect_command_accepted": post_reconnect.get("accepted") is True,
             "explicit_revoke_applied": revoke_receipt.get("status") == "passed",
+            "local_credentials_deleted": not session_path.exists()
+            and revoke_receipt.get("local_credential_deleted") is True,
             "revoke_terminated_socket": revoked_close,
             "post_revoke_reconnect_rejected": reconnect_rejected,
             "high_rate_data_plane_absent": fixture.high_rate_payload_count == 0,
@@ -940,9 +1239,9 @@ def simulated_e2e() -> dict[str, Any]:
             "$schema": "rusty.hostess.connection_hub.simulated_e2e_receipt.v1",
             "status": "passed" if passed else "failed",
             "transport": policy.receipt(),
-            "session_fingerprint_sha256": document["session_fingerprint_sha256"],
-            "session_secret_retained": False,
-            "pairing_code_retained": False,
+            "session_fingerprint_sha256": _document_session_fingerprint(document),
+            "session_bearer_in_receipt": False,
+            "pairing_code_in_receipt": False,
             "first_transport_epoch": first_epoch,
             "second_transport_epoch": second_epoch,
             "surface_lifecycle": [
@@ -972,6 +1271,22 @@ def _add_endpoint_options(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _read_pairing_code(args: argparse.Namespace) -> str:
+    if args.pairing_code_stdin:
+        value = sys.stdin.readline(8)
+    elif args.pairing_code_fd is not None:
+        if args.pairing_code_fd < 0 or args.pairing_code_fd in {1, 2}:
+            raise ValueError("pairing_code_fd_invalid")
+        with os.fdopen(os.dup(args.pairing_code_fd), "r", encoding="utf-8") as stream:
+            value = stream.readline(8)
+    else:
+        try:
+            value = getpass.getpass("Pairing code: ")
+        except EOFError as error:
+            raise HubError("hidden_pairing_code_input_unavailable") from error
+    return value.rstrip("\r\n")
+
+
 def parser() -> argparse.ArgumentParser:
     result = argparse.ArgumentParser(description=__doc__)
     sub = result.add_subparsers(dest="action", required=True)
@@ -979,7 +1294,17 @@ def parser() -> argparse.ArgumentParser:
     _add_endpoint_options(status_parser)
     pair_parser = sub.add_parser("pair")
     _add_endpoint_options(pair_parser)
-    pair_parser.add_argument("--pairing-code", required=True)
+    pairing_input = pair_parser.add_mutually_exclusive_group()
+    pairing_input.add_argument(
+        "--pairing-code-stdin",
+        action="store_true",
+        help="Read the one-use code from stdin without placing it in argv",
+    )
+    pairing_input.add_argument(
+        "--pairing-code-fd",
+        type=int,
+        help="Read the one-use code from an inherited file descriptor",
+    )
     pair_parser.add_argument("--controller-identity-sha256", required=True)
     pair_parser.add_argument("--session-file", required=True, type=Path)
     for name in ("list-surfaces", "revoke"):
@@ -1012,7 +1337,7 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 receipt = pair(
                     policy,
-                    args.pairing_code,
+                    _read_pairing_code(args),
                     args.controller_identity_sha256,
                     args.session_file,
                 )
@@ -1041,7 +1366,7 @@ def main(argv: list[str] | None = None) -> int:
                     "$schema": "rusty.hostess.connection_hub.cli_error.v1",
                     "status": "failed",
                     "reason": str(error),
-                    "secrets_retained": False,
+                    "secrets_in_receipt": False,
                 },
                 indent=2,
                 sort_keys=True,

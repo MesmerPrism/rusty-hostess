@@ -16,10 +16,12 @@ import threading
 from dataclasses import dataclass, field
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import urlsplit
 
 try:
     from tools.connection_hub_cli import (
+        AUTHENTICATE_SCHEMA,
+        AUTHENTICATION_RECEIPT_SCHEMA,
         COMMAND_SCHEMA,
         EVENT_SCHEMAS,
         PAIR_RECEIPT_SCHEMA,
@@ -32,6 +34,8 @@ try:
     )
 except ModuleNotFoundError:
     from connection_hub_cli import (
+        AUTHENTICATE_SCHEMA,
+        AUTHENTICATION_RECEIPT_SCHEMA,
         COMMAND_SCHEMA,
         EVENT_SCHEMAS,
         PAIR_RECEIPT_SCHEMA,
@@ -115,7 +119,7 @@ def _read_client_frame(sock: socket.socket) -> tuple[int, bytes]:
 @dataclass(eq=False)
 class _FixtureSocket:
     sock: socket.socket
-    epoch: str
+    epoch: int
     write_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def send(self, value: dict[str, Any]) -> None:
@@ -147,6 +151,7 @@ class _FixtureState:
         self.request_ids: set[str] = set()
         self.dispatch_log: list[tuple[str, str, str]] = []
         self.high_rate_payload_count = 0
+        self.upgrade_paths: list[str] = []
 
     def transport_fields(self) -> dict[str, Any]:
         return {
@@ -161,7 +166,7 @@ class _FixtureState:
                 "$schema": STATUS_SCHEMA,
                 "listener_enabled": True,
                 "desired_connection_state": "running",
-                "transport_epoch": f"transport-{self.transport_counter}",
+                "transport_epoch": self.transport_counter,
                 "surface_revision": self.surface_revision,
                 "active_session_count": 1 if self.session_active else 0,
                 "pairing_required": True,
@@ -186,33 +191,65 @@ class _FixtureState:
                 "accepted": accepted,
                 "status": "paired" if accepted else "pairing_rejected",
                 "expires_at_utc": "2099-01-01T00:00:00Z",
-                "transport_epoch": f"transport-{self.transport_counter}",
+                "transport_epoch": self.transport_counter,
                 **self.transport_fields(),
             }
             if accepted:
                 receipt["session"] = self.session
             return (200 if accepted else 403), receipt
 
-    def register(self, sock: socket.socket) -> _FixtureSocket:
+    def authenticate(
+        self, sock: socket.socket, request: dict[str, Any]
+    ) -> tuple[_FixtureSocket | None, dict[str, Any], list[_FixtureSocket]]:
+        expected = {
+            "$schema": AUTHENTICATE_SCHEMA,
+            "type": "authenticate",
+            "session": self.session,
+        }
         with self.lock:
-            if not self.session_active:
-                raise ValueError("session_not_active")
+            accepted = self.session_active and request == expected
+            if not accepted:
+                return (
+                    None,
+                    {
+                        "$schema": AUTHENTICATION_RECEIPT_SCHEMA,
+                        "type": "authentication_receipt",
+                        "accepted": False,
+                        "status": "authentication_rejected",
+                        "transport_epoch": self.transport_counter,
+                        "confidentiality": "none",
+                        "production_eligible": False,
+                    },
+                    [],
+                )
+            replaced = list(self.connections)
             self.transport_counter += 1
-            connection = _FixtureSocket(sock, f"transport-{self.transport_counter}")
+            connection = _FixtureSocket(sock, self.transport_counter)
             self.connections.add(connection)
-            snapshot = self.event(
+            receipt = {
+                "$schema": AUTHENTICATION_RECEIPT_SCHEMA,
+                "type": "authentication_receipt",
+                "accepted": True,
+                "status": "authenticated",
+                "transport_epoch": connection.epoch,
+                "confidentiality": "none",
+                "production_eligible": False,
+            }
+        return connection, receipt, replaced
+
+    def snapshot(self, connection: _FixtureSocket) -> dict[str, Any]:
+        with self.lock:
+            return self.event(
                 "surface_snapshot",
                 connection.epoch,
                 surfaces=[_public_surface(self.surfaces[key]) for key in sorted(self.surfaces)],
             )
-        connection.send(snapshot)
-        return connection
 
     def unregister(self, connection: _FixtureSocket) -> None:
         with self.lock:
             self.connections.discard(connection)
 
-    def event(self, event_type: str, epoch: str, **fields: Any) -> dict[str, Any]:
+    def event(self, event_type: str, epoch: int, **fields: Any) -> dict[str, Any]:
         return {
             "$schema": EVENT_SCHEMAS[event_type],
             "type": event_type,
@@ -305,7 +342,7 @@ class _FixtureState:
                 "$schema": REVOKE_RECEIPT_SCHEMA,
                 "applied": applied,
                 "status": "revoked" if applied else "revoke_rejected",
-                "transport_epoch": f"transport-{self.transport_counter}",
+                "transport_epoch": self.transport_counter,
                 **self.transport_fields(),
             }
         if applied:
@@ -364,18 +401,14 @@ class _Handler(BaseHTTPRequestHandler):
         if parsed.path == "/v1/status" and not parsed.query:
             self._json(200, self.server.state.status())
             return
-        if parsed.path != "/v1/socket":
+        if parsed.path != "/v1/socket" or parsed.query:
             self._json(404, {"status": "not_found"})
             return
-        values = parse_qs(parsed.query, strict_parsing=True)
-        session = values.get("session", [])
-        if (
-            session != [self.server.state.session]
-            or not self.server.state.session_active
-            or self.headers.get("Upgrade", "").lower() != "websocket"
-        ):
-            self._json(403, {"status": "session_rejected"})
+        if self.headers.get("Upgrade", "").lower() != "websocket":
+            self._json(400, {"status": "upgrade_required"})
             return
+        with self.server.state.lock:
+            self.server.state.upgrade_paths.append(self.path)
         key = self.headers.get("Sec-WebSocket-Key")
         if not key:
             self._json(400, {"status": "websocket_key_missing"})
@@ -389,8 +422,25 @@ class _Handler(BaseHTTPRequestHandler):
         self.send_header("Sec-WebSocket-Accept", accept)
         self.end_headers()
         self.wfile.flush()
-        connection = self.server.state.register(self.connection)
+        connection: _FixtureSocket | None = None
         try:
+            opcode, payload = _read_client_frame(self.connection)
+            auth_request = json.loads(payload.decode("utf-8")) if opcode == 0x1 else {}
+            if not isinstance(auth_request, dict):
+                auth_request = {}
+            connection, auth_receipt, replaced = self.server.state.authenticate(
+                self.connection, auth_request
+            )
+            if connection is None:
+                self.connection.sendall(_frame(0x1, canonical_json(auth_receipt)))
+                self.connection.sendall(
+                    _frame(0x8, struct.pack("!H", 4003) + b"authentication_rejected")
+                )
+                return
+            connection.send(auth_receipt)
+            connection.send(self.server.state.snapshot(connection))
+            for previous in replaced:
+                previous.close(4002, "transport_replaced")
             while self.server.state.session_active:
                 opcode, payload = _read_client_frame(self.connection)
                 if opcode == 0x8:
@@ -408,7 +458,8 @@ class _Handler(BaseHTTPRequestHandler):
         except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             pass
         finally:
-            self.server.state.unregister(connection)
+            if connection is not None:
+                self.server.state.unregister(connection)
             self.close_connection = True
 
     def do_POST(self) -> None:
@@ -459,6 +510,10 @@ class ConnectionHubFixture:
     @property
     def high_rate_payload_count(self) -> int:
         return self._state.high_rate_payload_count
+
+    @property
+    def upgrade_paths(self) -> list[str]:
+        return list(self._state.upgrade_paths)
 
     def add_surface(self, descriptor: dict[str, Any]) -> None:
         self._state.add_surface(descriptor)

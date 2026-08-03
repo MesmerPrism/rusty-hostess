@@ -1,0 +1,141 @@
+{
+  "$schema": "rusty.hostess.connection_hub.protocol_vectors.v1",
+  "schema_version": 1,
+  "transport": {
+    "http_status_path": "/v1/status",
+    "http_pair_path": "/v1/pair",
+    "websocket_path": "/v1/socket",
+    "websocket_query_allowed": false,
+    "authentication_is_first_client_frame": true,
+    "high_rate_payloads_allowed": false
+  },
+  "vectors": {
+    "status": {
+      "$schema": "rusty.quest.connection_hub.status.v1",
+      "listener_enabled": true,
+      "desired_connection_state": "running",
+      "transport_epoch": 0,
+      "surface_revision": 0,
+      "active_session_count": 0,
+      "pairing_required": true,
+      "surfaces": [],
+      "transport_classification": "loopback_fixture",
+      "confidentiality": "none",
+      "production_eligible": false
+    },
+    "pair_request": {
+      "$schema": "rusty.quest.connection_hub.pair_request.v1",
+      "pairing_code": "246810",
+      "controller_identity_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "pair_receipt": {
+      "$schema": "rusty.quest.connection_hub.pair_receipt.v1",
+      "accepted": true,
+      "status": "paired",
+      "session": "synthetic-session-token-000000000001",
+      "expires_at_utc": "2099-01-01T00:00:00Z",
+      "transport_epoch": 0,
+      "transport_classification": "loopback_fixture",
+      "confidentiality": "none",
+      "production_eligible": false
+    },
+    "socket_authenticate": {
+      "$schema": "rusty.quest.connection_hub.socket_authenticate.v1",
+      "type": "authenticate",
+      "session": "synthetic-session-token-000000000001"
+    },
+    "socket_authentication_receipt": {
+      "$schema": "rusty.quest.connection_hub.socket_authentication_receipt.v1",
+      "type": "authentication_receipt",
+      "accepted": true,
+      "status": "authenticated",
+      "transport_epoch": 1,
+      "confidentiality": "none",
+      "production_eligible": false
+    },
+    "surface_snapshot": {
+      "$schema": "rusty.quest.connection_hub.surface_snapshot.v1",
+      "type": "surface_snapshot",
+      "transport_epoch": 1,
+      "surface_revision": 0,
+      "surfaces": []
+    },
+    "surface_available": {
+      "$schema": "rusty.quest.connection_hub.surface_available.v1",
+      "type": "surface_available",
+      "transport_epoch": 1,
+      "surface_revision": 1,
+      "surface": {
+        "schema_version": 1,
+        "surface_id": "media.control",
+        "display_label": "Media control",
+        "description": "Low-rate playback control only.",
+        "provider_package": "fixture.media",
+        "provider_signer_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+        "commands": [
+          {
+            "command": "play",
+            "display_label": "Play"
+          }
+        ],
+        "state": {
+          "playing": false
+        },
+        "state_revision": 1
+      }
+    },
+    "surface_state": {
+      "$schema": "rusty.quest.connection_hub.surface_state.v1",
+      "type": "surface_state",
+      "transport_epoch": 1,
+      "surface_revision": 1,
+      "surface_id": "media.control",
+      "state": {
+        "playing": true
+      },
+      "state_revision": 2
+    },
+    "surface_command": {
+      "$schema": "rusty.quest.connection_hub.surface_command.v1",
+      "type": "surface.command",
+      "request_id": "vector-command-000000000001",
+      "surface_id": "media.control",
+      "command": "play",
+      "args": {}
+    },
+    "command_receipt": {
+      "$schema": "rusty.quest.connection_hub.command_receipt.v1",
+      "type": "command_receipt",
+      "transport_epoch": 1,
+      "surface_revision": 1,
+      "request_id": "vector-command-000000000001",
+      "surface_id": "media.control",
+      "command": "play",
+      "accepted": true,
+      "status": "accepted",
+      "proves_application_effect": false
+    },
+    "surface_removed": {
+      "$schema": "rusty.quest.connection_hub.surface_removed.v1",
+      "type": "surface_removed",
+      "transport_epoch": 1,
+      "surface_revision": 2,
+      "surface_id": "media.control",
+      "reason": "provider_unregistered"
+    },
+    "revoke_request": {
+      "$schema": "rusty.quest.connection_hub.revoke_request.v1",
+      "session": "synthetic-session-token-000000000001",
+      "reason": "user_request"
+    },
+    "revoke_receipt": {
+      "$schema": "rusty.quest.connection_hub.revoke_receipt.v1",
+      "applied": true,
+      "status": "revoked",
+      "transport_epoch": 1,
+      "transport_classification": "loopback_fixture",
+      "confidentiality": "none",
+      "production_eligible": false
+    }
+  }
+}

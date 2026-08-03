@@ -27,12 +27,18 @@ a controller but does not encrypt traffic. Never transmit passwords, private
 evidence, device-management credentials, or high-rate payloads over that
 route.
 
-Pairing/session secrets are never printed in Hostess receipts. `pair` writes
-the opaque session to an explicit local session file opened with exclusive
-create and restrictive file mode, then prints only its SHA-256 fingerprint.
-The file is controller state, not publishable evidence. Delete it after the
-session is revoked. On Windows, production credential persistence requires a
-future OS credential-vault adapter; this file route is an operator/test bridge.
+Pairing/session secrets are never printed in Hostess receipts. The pairing code
+has no command-line-value option: `pair` reads it through a hidden prompt,
+stdin, or an inherited file descriptor. The session bearer is protected with
+Windows DPAPI `CurrentUser`; the JSON metadata contains only the protected
+blob, its SHA-256 token fingerprint, and an exact binding to origin, protocol,
+controller identity, and client/server security posture. The default CLI fails
+closed when that OS store is unavailable. A process-memory store exists only
+as an injected portable test double.
+
+Successful revoke deletes both the protected credential and session metadata.
+Interrupted or rejected revoke preserves them so the operator can retry. The
+metadata file is controller state, not publishable evidence.
 
 ## Protocol lock
 
@@ -42,11 +48,16 @@ HTTP routes:
 - `POST /v1/pair`
 - `POST /v1/revoke`
 
-The socket is `WS /v1/socket?session=<opaque>`. The first event on every
-physical socket must be `surface_snapshot`. Subsequent server event types are
-closed to `surface_available`, `surface_removed`, `surface_state`, and
-`command_receipt`. Each event binds one `transport_epoch` and monotonic
-`surface_revision`.
+The socket is exactly `WS /v1/socket`, with no bearer in its URL or HTTP
+headers. The mandatory first client frame is
+`rusty.quest.connection_hub.socket_authenticate.v1`; it carries the bearer only
+inside the WebSocket frame. The server must answer with
+`rusty.quest.connection_hub.socket_authentication_receipt.v1` before sending
+the initial `surface_snapshot`. Subsequent event types are closed to
+`surface_available`, `surface_removed`, `surface_state`, and
+`command_receipt`. Each event binds the authenticated numeric
+`transport_epoch` and monotonic `surface_revision`. A new authenticated
+transport replaces and closes the older physical socket without re-pairing.
 
 Surface descriptors are version 1 and contain only a bounded surface ID,
 display label, description, server-derived provider package/signer identity,
@@ -90,10 +101,11 @@ python $Cli status --origin $Origin `
   --transport-classification trusted_lan_experimental `
   --allow-insecure-trusted-lan
 
-python $Cli pair --origin $Origin `
+$PairCode = Read-Host 'One-use pairing code'
+$PairCode | python $Cli pair --origin $Origin `
   --transport-classification trusted_lan_experimental `
   --allow-insecure-trusted-lan `
-  --pairing-code 123456 `
+  --pairing-code-stdin `
   --controller-identity-sha256 <64-lowercase-hex> `
   --session-file $SessionFile
 
@@ -103,6 +115,11 @@ python $Cli invoke-surface-command --session-file $SessionFile `
   --surface-id media.control --command play --args-json '{}'
 python $Cli revoke --session-file $SessionFile
 ```
+
+Omit `--pairing-code-stdin` for the CLI's hidden interactive prompt. Automation
+that already owns an inherited secret descriptor may use
+`--pairing-code-fd <number>`. There is deliberately no `--pairing-code VALUE`
+form because command arguments are observable by other host processes.
 
 `connect-watch` is bounded to 300 seconds because Hostess is not a long-lived
 background-service owner. Re-running `list-surfaces`, `connect-watch`, or
@@ -122,7 +139,8 @@ python tools\connection_hub_cli.py simulate-e2e
 
 The E2E receipt proves:
 
-1. safe status and secret-redacted pairing;
+1. safe status, argv-safe secret input, DPAPI/test-store binding, and
+   secret-redacted pairing;
 2. an empty socket snapshot followed by a media surface appearing;
 3. a media command dispatches only to its selected provider;
 4. replay, unknown surface, and unknown command reject without dispatch;
@@ -131,7 +149,8 @@ The E2E receipt proves:
 6. the media provider disappears without ending the logical session;
 7. reconnect advances the transport epoch while the remaining surface and
    logical session persist;
-8. explicit revoke closes the socket and blocks reconnect;
+8. explicit revoke closes the socket, blocks reconnect, and deletes the local
+   protected credential plus session metadata;
 9. no high-rate data-plane payload entered the Hub socket.
 
 The fixture is an executable Hostess oracle, not reusable production authority
@@ -142,13 +161,16 @@ and not evidence that a Quest or network transport passed.
 - Pairing includes the public `controller_identity_sha256` alongside the
   one-use code. The server derives provider package/signer identity; clients do
   not supply it.
-- A transport epoch is opaque. Hostess compares equality only and never parses
-  ordering from it.
+- A transport epoch is a JSON integer. Hostess requires the snapshot epoch to
+  equal the preceding authentication receipt and rejects regression within a
+  physical socket.
 - A successful `command_receipt` proves authority acceptance and routing, not
   application effect. The deterministic fixture sets
   `proves_application_effect=false`.
 - Logical-session continuity is demonstrated by using one unchanged opaque
   session across transport epochs without a second pair. The session secret is
   represented in receipts only by its SHA-256 fingerprint.
-- TLS, durable credential-vault storage, discovery, and live Quest evidence
-  remain separate implementation/validation slices.
+- Exact checked-in wire vectors live at
+  `fixtures/connection-hub/protocol-vectors.v1.json`.
+- TLS, discovery, and live Quest evidence remain separate
+  implementation/validation slices.
