@@ -293,9 +293,12 @@ generic code or sanitized sample fixtures.
   binding. Pairing must reserve and preflight local persistence before remote
   acceptance; later persistence failure must compensate with the in-memory
   bearer and leave no clear secret artifact. Successful revoke removes both
-  credential and metadata. Decode and emit only the byte-exact, Quest-owned v1
-  field registry vendored under `fixtures/connection-hub`; internal Manifold
-  authority fields do not extend that public wire contract. Revoke must prove
+  credential and metadata. Decode and emit only the byte-exact Quest-owned v1
+  legacy and additive v2 field registries vendored under
+  `fixtures/connection-hub`; v2 owns monotonic request sequences, reconnect
+  resynchronization, bounded keepalives, and exact canonical request bytes.
+  V1 remains explicit non-rollover-safe compatibility and internal Manifold
+  authority fields do not extend either public wire contract. Revoke must prove
   one pre-existing authenticated socket closes and a fresh stale-bearer
   authentication rejects before deleting credentials. Command evidence must
   keep authority acceptance distinct from provider application and bind the

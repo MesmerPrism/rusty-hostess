@@ -129,8 +129,11 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   persistence uses current-user DPAPI and successful revoke removes it. Pairing
   reserves and preflights local persistence before the remote call, with an
   immediate secret-free compensating revoke on later persistence failure. The
-  strict field registry is locked to the byte-exact Rusty Quest owner vector in
-  `fixtures/connection-hub/connection-hub-protocol-v1.json`. Revoke evidence is
+  strict field registry is locked to the byte-exact Rusty Quest owner vectors
+  in `fixtures/connection-hub`. New sessions select additive v2, resynchronize
+  the authority-derived next sequence on every reconnect, and use bounded
+  active-watch keepalives; `pair --legacy-v1` preserves explicit
+  non-rollover-safe compatibility. Revoke evidence is
   collected in-process before credential deletion: authenticated socket open,
   HTTP revoke applied, socket closed, and stale-bearer reconnect rejected.
   Command receipts separately project authority acceptance and provider

@@ -42,13 +42,31 @@ AUTHENTICATE_SCHEMA = "rusty.quest.connection_hub.socket_authenticate.v1"
 AUTHENTICATION_RECEIPT_SCHEMA = (
     "rusty.quest.connection_hub.socket_authentication_receipt.v1"
 )
-PROTOCOL_ID = "rusty.quest.connection_hub.v1"
+COMMAND_SCHEMA_V2 = "rusty.quest.connection_hub.surface_command.v2"
+AUTHENTICATE_SCHEMA_V2 = "rusty.quest.connection_hub.socket_authenticate.v2"
+AUTHENTICATION_RECEIPT_SCHEMA_V2 = (
+    "rusty.quest.connection_hub.socket_authentication_receipt.v2"
+)
+KEEPALIVE_SCHEMA_V2 = "rusty.quest.connection_hub.keepalive.v2"
+KEEPALIVE_RECEIPT_SCHEMA_V2 = "rusty.quest.connection_hub.keepalive_receipt.v2"
+COMMAND_RECEIPT_SCHEMA_V2 = "rusty.quest.connection_hub.command_receipt.v2"
+PROTOCOL_ERROR_SCHEMA_V2 = "rusty.quest.connection_hub.protocol_error.v2"
+PROTOCOL_ID_V1 = "rusty.quest.connection_hub.v1"
+PROTOCOL_ID_V2 = "rusty.quest.connection_hub.v2"
+PROTOCOL_ID = PROTOCOL_ID_V2
+SUPPORTED_PROTOCOLS = frozenset({PROTOCOL_ID_V1, PROTOCOL_ID_V2})
+CANONICAL_JSON_ID = "rusty.quest.connection_hub.canonical_json_ascii.v1"
 EVENT_SCHEMAS = {
     "surface_snapshot": "rusty.quest.connection_hub.surface_snapshot.v1",
     "surface_available": "rusty.quest.connection_hub.surface_available.v1",
     "surface_removed": "rusty.quest.connection_hub.surface_removed.v1",
     "surface_state": "rusty.quest.connection_hub.surface_state.v1",
     "command_receipt": "rusty.quest.connection_hub.command_receipt.v1",
+}
+V2_EVENT_SCHEMAS = {
+    "command_receipt": COMMAND_RECEIPT_SCHEMA_V2,
+    "keepalive_receipt": KEEPALIVE_RECEIPT_SCHEMA_V2,
+    "protocol_error": PROTOCOL_ERROR_SCHEMA_V2,
 }
 TRANSPORT_CLASSES = (
     "loopback_fixture",
@@ -136,6 +154,30 @@ MESSAGE_CONTRACTS: dict[
         ),
         frozenset(),
     ),
+    "socket_authenticate_v2": (
+        AUTHENTICATE_SCHEMA_V2,
+        "authenticate",
+        frozenset({"$schema", "type", "session"}),
+        frozenset(),
+    ),
+    "socket_authentication_receipt_v2": (
+        AUTHENTICATION_RECEIPT_SCHEMA_V2,
+        "authentication_receipt",
+        frozenset(
+            {
+                "$schema",
+                "type",
+                "accepted",
+                "status",
+                "transport_epoch",
+                "next_external_request_sequence",
+                "expires_at_utc",
+                "confidentiality",
+                "production_eligible",
+            }
+        ),
+        frozenset(),
+    ),
     "surface_snapshot": (
         EVENT_SCHEMAS["surface_snapshot"],
         "surface_snapshot",
@@ -166,6 +208,22 @@ MESSAGE_CONTRACTS: dict[
         frozenset({"$schema", "type", "request_id", "surface_id", "command", "args"}),
         frozenset(),
     ),
+    "surface_command_v2": (
+        COMMAND_SCHEMA_V2,
+        "surface.command",
+        frozenset(
+            {
+                "$schema",
+                "type",
+                "request_sequence",
+                "request_id",
+                "surface_id",
+                "command",
+                "args",
+            }
+        ),
+        frozenset(),
+    ),
     "command_receipt": (
         EVENT_SCHEMAS["command_receipt"],
         "command_receipt",
@@ -179,6 +237,48 @@ MESSAGE_CONTRACTS: dict[
             "status",
             "authority_receipt",
         },
+        frozenset(),
+    ),
+    "command_receipt_v2": (
+        COMMAND_RECEIPT_SCHEMA_V2,
+        "command_receipt",
+        EVENT_BASE_FIELDS
+        | {
+            "request_sequence",
+            "next_external_request_sequence",
+            "request_id",
+            "surface_id",
+            "command",
+            "accepted",
+            "provider_applied",
+            "status",
+            "authority_receipt",
+        },
+        frozenset(),
+    ),
+    "keepalive_v2": (
+        KEEPALIVE_SCHEMA_V2,
+        "keepalive",
+        frozenset({"$schema", "type", "request_sequence"}),
+        frozenset(),
+    ),
+    "keepalive_receipt_v2": (
+        KEEPALIVE_RECEIPT_SCHEMA_V2,
+        "keepalive_receipt",
+        EVENT_BASE_FIELDS
+        | {
+            "request_sequence",
+            "next_external_request_sequence",
+            "accepted",
+            "status",
+            "authority_receipt",
+        },
+        frozenset(),
+    ),
+    "protocol_error_v2": (
+        PROTOCOL_ERROR_SCHEMA_V2,
+        "protocol_error",
+        EVENT_BASE_FIELDS | {"next_external_request_sequence", "status"},
         frozenset(),
     ),
     "revoke_request": (
@@ -378,7 +478,7 @@ def canonical_json(value: dict[str, Any]) -> bytes:
 
 
 def validate_protocol_message(value: Any, message_name: str) -> dict[str, Any]:
-    """Apply the exact Quest-owned v1 required/optional field registry."""
+    """Apply an exact vendored Quest v1/v2 required/optional field registry."""
 
     if message_name not in MESSAGE_CONTRACTS:
         raise ValueError("protocol_message_name_unknown")
@@ -591,10 +691,13 @@ def _security_binding(
     payload: dict[str, Any],
     session_digest: str,
     controller_identity_sha256: str,
+    socket_protocol: str,
 ) -> dict[str, Any]:
+    if socket_protocol not in SUPPORTED_PROTOCOLS:
+        raise ValueError("socket_protocol_not_supported")
     return {
         "origin": policy.origin,
-        "protocol": PROTOCOL_ID,
+        "protocol": socket_protocol,
         "transport": policy.receipt(),
         "server_transport": _validated_server_transport(payload, policy),
         "session_fingerprint_sha256": session_digest,
@@ -659,7 +762,10 @@ def _remove_reserved_session_file(path: Path) -> None:
 
 
 def _preflight_credential_store(
-    store: CredentialStore, policy: TransportPolicy, controller_identity_sha256: str
+    store: CredentialStore,
+    policy: TransportPolicy,
+    controller_identity_sha256: str,
+    socket_protocol: str,
 ) -> None:
     """Prove protect/load/delete before the irreversible remote pair call."""
 
@@ -668,7 +774,7 @@ def _preflight_credential_store(
         {
             "controller_identity_sha256": controller_identity_sha256,
             "origin": policy.origin,
-            "protocol": PROTOCOL_ID,
+            "protocol": socket_protocol,
             "purpose": "credential_store_preflight",
         }
     )
@@ -715,18 +821,23 @@ def pair(
     controller_identity_sha256: str,
     session_file: Path,
     credential_store: CredentialStore | None = None,
+    socket_protocol: str = PROTOCOL_ID_V2,
 ) -> dict[str, Any]:
     if not PAIRING_CODE.fullmatch(pairing_code):
         raise ValueError("pairing_code_must_be_six_digits")
     if not SIGNER_SHA256.fullmatch(controller_identity_sha256):
         raise ValueError("controller_identity_sha256_invalid")
+    if socket_protocol not in SUPPORTED_PROTOCOLS:
+        raise ValueError("socket_protocol_not_supported")
     store = credential_store or default_credential_store()
     reserved = _reserve_session_file(session_file)
     remote_session: str | None = None
     credential: dict[str, Any] | None = None
     committed = False
     try:
-        _preflight_credential_store(store, policy, controller_identity_sha256)
+        _preflight_credential_store(
+            store, policy, controller_identity_sha256, socket_protocol
+        )
         request = {
             "$schema": PAIR_REQUEST_SCHEMA,
             "pairing_code": pairing_code,
@@ -764,7 +875,11 @@ def pair(
         _validate_event_base(payload, policy, require_active_epoch=True)
         session_digest = session_fingerprint(remote_session)
         binding = _security_binding(
-            policy, payload, session_digest, controller_identity_sha256
+            policy,
+            payload,
+            session_digest,
+            controller_identity_sha256,
+            socket_protocol,
         )
         binding_bytes = canonical_json(binding)
         credential = store.store(remote_session, binding_bytes)
@@ -795,12 +910,14 @@ def pair(
             _remove_reserved_session_file(reserved)
     redacted = {key: value for key, value in payload.items() if key != "session"}
     return {
-        "$schema": "rusty.hostess.connection_hub.pair_receipt.v1",
+        "$schema": "rusty.hostess.connection_hub.pair_receipt.v2",
         "status": "passed",
         "session_redacted": True,
         "session_fingerprint_sha256": session_digest,
         "session_file": str(session_file.resolve()),
         "transport": policy.receipt(),
+        "socket_protocol": socket_protocol,
+        "rollover_safe": socket_protocol == PROTOCOL_ID_V2,
         "server_receipt": redacted,
     }
 
@@ -837,7 +954,7 @@ def load_session(
     binding_bytes = canonical_json(binding)
     if document.get("security_binding_sha256") != hashlib.sha256(binding_bytes).hexdigest():
         raise HubError("session_file_security_binding_mismatch")
-    if binding.get("protocol") != PROTOCOL_ID:
+    if binding.get("protocol") not in SUPPORTED_PROTOCOLS:
         raise HubError("session_file_protocol_mismatch")
     if not SIGNER_SHA256.fullmatch(str(binding.get("controller_identity_sha256", ""))):
         raise HubError("session_file_controller_identity_invalid")
@@ -950,7 +1067,11 @@ class WebSocketClient:
     sock: socket.socket
 
     @classmethod
-    def connect(cls, policy: TransportPolicy, session: str) -> "WebSocketClient":
+    def connect(
+        cls, policy: TransportPolicy, session: str, protocol_id: str
+    ) -> "WebSocketClient":
+        if protocol_id not in SUPPORTED_PROTOCOLS:
+            raise ValueError("socket_protocol_not_supported")
         parsed = urlsplit(policy.origin)
         raw = socket.create_connection((parsed.hostname, parsed.port), timeout=5)
         if parsed.scheme == "https":
@@ -983,11 +1104,20 @@ class WebSocketClient:
             raise HubError("websocket_accept_mismatch")
         result = cls(raw)
         authentication = {
-            "$schema": AUTHENTICATE_SCHEMA,
+            "$schema": (
+                AUTHENTICATE_SCHEMA_V2
+                if protocol_id == PROTOCOL_ID_V2
+                else AUTHENTICATE_SCHEMA
+            ),
             "type": "authenticate",
             "session": session,
         }
-        validate_protocol_message(authentication, "socket_authenticate")
+        validate_protocol_message(
+            authentication,
+            "socket_authenticate_v2"
+            if protocol_id == PROTOCOL_ID_V2
+            else "socket_authenticate",
+        )
         result.send_json(authentication)
         return result
 
@@ -1014,8 +1144,15 @@ class WebSocketClient:
 
     def send_json(self, value: dict[str, Any]) -> None:
         payload = canonical_json(value)
+        self.send_text_bytes(payload)
+
+    def send_text_bytes(self, payload: bytes) -> None:
         if len(payload) > MAX_COMMAND_BODY:
             raise ValueError("websocket_command_too_large")
+        try:
+            payload.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise ValueError("websocket_text_payload_not_utf8") from error
         self._send_frame(0x1, payload)
 
     def _send_frame(self, opcode: int, payload: bytes) -> None:
@@ -1072,10 +1209,21 @@ class WebSocketClient:
 
 
 class HubConnection:
-    def __init__(self, policy: TransportPolicy, session: str) -> None:
+    def __init__(
+        self,
+        policy: TransportPolicy,
+        session: str,
+        protocol_id: str = PROTOCOL_ID_V2,
+    ) -> None:
+        if protocol_id not in SUPPORTED_PROTOCOLS:
+            raise ValueError("socket_protocol_not_supported")
         self.policy = policy
-        self.socket = WebSocketClient.connect(policy, session)
+        self.session = session
+        self.protocol_id = protocol_id
+        self.socket = WebSocketClient.connect(policy, session, protocol_id)
         self.transport_epoch: Any = None
+        self.next_external_request_sequence: int | None = None
+        self.expires_at_utc: str | None = None
         self.listener_instance_id: str | None = None
         self.surface_revision: Any = None
         self.surfaces: dict[str, dict[str, Any]] = {}
@@ -1087,17 +1235,17 @@ class HubConnection:
             raise AuthenticationRejected("socket_authentication_rejected") from error
         try:
             validate_protocol_message(
-                self.authentication_receipt, "socket_authentication_receipt"
+                self.authentication_receipt,
+                "socket_authentication_receipt_v2"
+                if protocol_id == PROTOCOL_ID_V2
+                else "socket_authentication_receipt",
             )
         except BaseException:
             self.close()
             raise
-        if self.authentication_receipt.get("accepted") is False:
-            self.close()
-            raise AuthenticationRejected("socket_authentication_rejected")
+        accepted = self.authentication_receipt.get("accepted")
         if (
-            self.authentication_receipt.get("accepted") is not True
-            or self.authentication_receipt.get("status") != "authenticated"
+            not isinstance(accepted, bool)
             or self.authentication_receipt.get("confidentiality") != "none"
             or self.authentication_receipt.get("production_eligible") is not False
         ):
@@ -1108,6 +1256,32 @@ class HubConnection:
             self.close()
             raise HubError("socket_authentication_epoch_invalid")
         self.transport_epoch = auth_epoch
+        if protocol_id == PROTOCOL_ID_V2:
+            next_sequence = self.authentication_receipt.get(
+                "next_external_request_sequence"
+            )
+            expires_at_utc = self.authentication_receipt.get("expires_at_utc")
+            if (
+                not isinstance(next_sequence, int)
+                or isinstance(next_sequence, bool)
+                or next_sequence < 1
+            ):
+                self.close()
+                raise HubError("socket_authentication_next_sequence_invalid")
+            if not isinstance(expires_at_utc, str) or not expires_at_utc:
+                self.close()
+                raise HubError("socket_authentication_expiry_invalid")
+            self.next_external_request_sequence = next_sequence
+            self.expires_at_utc = expires_at_utc
+        if accepted is False:
+            if self.authentication_receipt.get("status") != "authentication_rejected":
+                self.close()
+                raise HubError("socket_authentication_rejection_status_invalid")
+            self.close()
+            raise AuthenticationRejected("socket_authentication_rejected")
+        if self.authentication_receipt.get("status") != "authenticated":
+            self.close()
+            raise HubError("socket_authentication_receipt_invalid")
         first = self.read_event()
         if first.get("type") != "surface_snapshot":
             self.close()
@@ -1115,9 +1289,15 @@ class HubConnection:
 
     def _validate_event(self, event: dict[str, Any]) -> None:
         event_type = event.get("type")
-        if event_type not in EVENT_SCHEMAS:
+        if self.protocol_id == PROTOCOL_ID_V2 and event_type in V2_EVENT_SCHEMAS:
+            contract_name = f"{event_type}_v2"
+        elif event_type in EVENT_SCHEMAS:
+            contract_name = str(event_type)
+        elif event_type in V2_EVENT_SCHEMAS:
+            raise HubError("v2_event_on_legacy_socket")
+        else:
             raise HubError("server_event_schema_mismatch")
-        validate_protocol_message(event, str(event_type))
+        validate_protocol_message(event, contract_name)
         _validate_event_base(event, self.policy, require_active_epoch=True)
         epoch = event.get("transport_epoch")
         if self.transport_epoch is None:
@@ -1132,15 +1312,39 @@ class HubConnection:
         revision = event.get("surface_revision")
         if self.surface_revision is not None and revision < self.surface_revision:
             raise HubError("surface_revision_regressed")
-        if event_type == "command_receipt":
+        if event_type in {"command_receipt", "keepalive_receipt"}:
             if not isinstance(event.get("accepted"), bool) or not isinstance(
-                event.get("provider_applied"), bool
+                event.get("provider_applied", False), bool
             ):
-                raise HubError("command_receipt_boolean_invalid")
+                raise HubError("sequenced_receipt_boolean_invalid")
             if not isinstance(event.get("authority_receipt"), dict):
-                raise HubError("command_authority_receipt_invalid")
+                raise HubError("sequenced_authority_receipt_invalid")
             if not isinstance(event.get("status"), str) or not event["status"]:
-                raise HubError("command_status_invalid")
+                raise HubError("sequenced_status_invalid")
+            if self.protocol_id == PROTOCOL_ID_V2:
+                for field in (
+                    "request_sequence",
+                    "next_external_request_sequence",
+                ):
+                    value = event.get(field)
+                    if (
+                        not isinstance(value, int)
+                        or isinstance(value, bool)
+                        or value < 1
+                    ):
+                        raise HubError(f"sequenced_receipt_{field}_invalid")
+        if event_type == "protocol_error" and (
+            not isinstance(event.get("status"), str) or not event["status"]
+        ):
+            raise HubError("protocol_error_status_invalid")
+        if event_type == "protocol_error":
+            next_sequence = event.get("next_external_request_sequence")
+            if (
+                not isinstance(next_sequence, int)
+                or isinstance(next_sequence, bool)
+                or next_sequence < 1
+            ):
+                raise HubError("protocol_error_next_sequence_invalid")
         self.surface_revision = revision
 
     def _project(self, event: dict[str, Any]) -> None:
@@ -1187,6 +1391,69 @@ class HubConnection:
                 return event
         raise HubError(f"event_timeout:{event_type}")
 
+    def _require_v2_next_sequence(self) -> int:
+        sequence = self.next_external_request_sequence
+        if (
+            self.protocol_id != PROTOCOL_ID_V2
+            or not isinstance(sequence, int)
+            or isinstance(sequence, bool)
+            or sequence < 1
+        ):
+            raise HubError("sequenced_v2_socket_required")
+        return sequence
+
+    def _accept_sequenced_receipt(
+        self,
+        receipt: dict[str, Any],
+        requested_sequence: int,
+        expected_before: int,
+    ) -> None:
+        receipt_sequence = receipt.get("request_sequence")
+        next_sequence = receipt.get("next_external_request_sequence")
+        if receipt_sequence != requested_sequence:
+            raise HubError("sequenced_receipt_request_sequence_mismatch")
+        if (
+            not isinstance(next_sequence, int)
+            or isinstance(next_sequence, bool)
+            or next_sequence < 1
+        ):
+            raise HubError("sequenced_receipt_next_sequence_invalid")
+        if receipt.get("accepted") is True and requested_sequence != expected_before:
+            raise HubError("sequenced_receipt_accepted_wrong_sequence")
+        expected_next = expected_before + 1 if receipt.get("accepted") is True else expected_before
+        if next_sequence != expected_next:
+            raise HubError("sequenced_receipt_next_sequence_mismatch")
+        self.next_external_request_sequence = next_sequence
+
+    def send_keepalive(
+        self, *, explicit_request_sequence: int | None = None
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        expected_before = self._require_v2_next_sequence()
+        sequence = (
+            expected_before
+            if explicit_request_sequence is None
+            else explicit_request_sequence
+        )
+        if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
+            raise ValueError("request_sequence_must_be_positive")
+        request = {
+            "$schema": KEEPALIVE_SCHEMA_V2,
+            "type": "keepalive",
+            "request_sequence": sequence,
+        }
+        validate_protocol_message(request, "keepalive_v2")
+        payload = canonical_json(request)
+        self.socket.send_text_bytes(payload)
+        deadline = time.monotonic() + 6
+        while time.monotonic() < deadline:
+            event = self.read_event(max(0.05, deadline - time.monotonic()))
+            if event.get("type") == "protocol_error":
+                raise HubError(f"protocol_error:{event.get('status', 'unknown')}")
+            if event.get("type") == "keepalive_receipt":
+                self._accept_sequenced_receipt(event, sequence, expected_before)
+                return request, event
+        raise HubError("keepalive_receipt_timeout")
+
     def send_command(
         self,
         surface_id: str,
@@ -1194,6 +1461,7 @@ class HubConnection:
         args: dict[str, Any],
         *,
         explicit_request_id: str | None = None,
+        explicit_request_sequence: int | None = None,
         preflight: bool = True,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         if not TOKEN.fullmatch(surface_id) or not TOKEN.fullmatch(command):
@@ -1209,24 +1477,57 @@ class HubConnection:
         use_request_id = explicit_request_id or request_id("hostess-command")
         if not TOKEN.fullmatch(use_request_id):
             raise ValueError("request_id_invalid")
-        request = {
-            "$schema": COMMAND_SCHEMA,
-            "type": "surface.command",
-            "request_id": use_request_id,
-            "surface_id": surface_id,
-            "command": command,
-            "args": args,
-        }
-        validate_protocol_message(request, "surface_command")
-        self.socket.send_json(request)
+        if self.protocol_id == PROTOCOL_ID_V2:
+            expected_before = self._require_v2_next_sequence()
+            sequence = (
+                expected_before
+                if explicit_request_sequence is None
+                else explicit_request_sequence
+            )
+            if not isinstance(sequence, int) or isinstance(sequence, bool) or sequence < 1:
+                raise ValueError("request_sequence_must_be_positive")
+            request = {
+                "$schema": COMMAND_SCHEMA_V2,
+                "type": "surface.command",
+                "request_sequence": sequence,
+                "request_id": use_request_id,
+                "surface_id": surface_id,
+                "command": command,
+                "args": args,
+            }
+            contract_name = "surface_command_v2"
+        else:
+            sequence = None
+            expected_before = None
+            if explicit_request_sequence is not None:
+                raise ValueError("request_sequence_not_supported_by_legacy_v1")
+            request = {
+                "$schema": COMMAND_SCHEMA,
+                "type": "surface.command",
+                "request_id": use_request_id,
+                "surface_id": surface_id,
+                "command": command,
+                "args": args,
+            }
+            contract_name = "surface_command"
+        validate_protocol_message(request, contract_name)
+        payload = canonical_json(request)
+        self.socket.send_text_bytes(payload)
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
             event = self.read_event(max(0.05, deadline - time.monotonic()))
+            if event.get("type") == "protocol_error":
+                raise HubError(f"protocol_error:{event.get('status', 'unknown')}")
             if event.get("type") == "command_receipt" and event.get("request_id") == use_request_id:
                 if event.get("surface_id") != surface_id or event.get("command") != command:
                     raise HubError("command_receipt_causality_mismatch")
                 if not isinstance(event.get("accepted"), bool):
                     raise HubError("command_receipt_acceptance_invalid")
+                if sequence is not None:
+                    assert expected_before is not None
+                    self._accept_sequenced_receipt(
+                        event, sequence, expected_before
+                    )
                 return request, event
         raise HubError("command_receipt_timeout")
 
@@ -1242,10 +1543,13 @@ def connect_session(
     path: Path, credential_store: CredentialStore | None = None
 ) -> tuple[dict[str, Any], TransportPolicy, HubConnection, bool]:
     document, policy, session = load_session(path, credential_store)
-    connection = HubConnection(policy, session)
+    protocol_id = str(document["security_binding"]["protocol"])
+    connection = HubConnection(policy, session, protocol_id)
     changed = document.get("last_transport_epoch") not in {None, connection.transport_epoch}
     document["last_transport_epoch"] = connection.transport_epoch
     document["last_surface_revision"] = connection.surface_revision
+    if connection.expires_at_utc is not None:
+        document["expires_at_utc"] = connection.expires_at_utc
     _atomic_write_json(path, document, create=False)
     return document, policy, connection, changed
 
@@ -1257,12 +1561,16 @@ def list_surfaces(
     try:
         surfaces = [connection.surfaces[key] for key in sorted(connection.surfaces)]
         return {
-            "$schema": "rusty.hostess.connection_hub.surface_list_receipt.v1",
+            "$schema": "rusty.hostess.connection_hub.surface_list_receipt.v2",
             "status": "passed",
             "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
+            "socket_protocol": connection.protocol_id,
+            "rollover_safe": connection.protocol_id == PROTOCOL_ID_V2,
+            "next_external_request_sequence": connection.next_external_request_sequence,
+            "expires_at_utc": connection.expires_at_utc,
             "surface_revision": connection.surface_revision,
             "surfaces": surfaces,
         }
@@ -1283,7 +1591,7 @@ def invoke_surface_command(
         if receipt.get("accepted") is not True:
             raise HubError(f"command_rejected:{receipt.get('status', 'unknown')}")
         return {
-            "$schema": "rusty.hostess.connection_hub.command_receipt.v1",
+            "$schema": "rusty.hostess.connection_hub.command_receipt.v2",
             "operation_status": "passed",
             "status": receipt["status"],
             "surface_id": receipt["surface_id"],
@@ -1291,13 +1599,21 @@ def invoke_surface_command(
             "request_id": receipt["request_id"],
             "request_binding_exact": receipt["request_id"] == request["request_id"]
             and receipt["surface_id"] == request["surface_id"]
-            and receipt["command"] == request["command"],
+            and receipt["command"] == request["command"]
+            and (
+                connection.protocol_id == PROTOCOL_ID_V1
+                or receipt["request_sequence"] == request["request_sequence"]
+            ),
             "authority_accepted": receipt["accepted"],
             "provider_applied": receipt["provider_applied"],
             "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
+            "socket_protocol": connection.protocol_id,
+            "rollover_safe": connection.protocol_id == PROTOCOL_ID_V2,
+            "request_sequence": request.get("request_sequence"),
+            "next_external_request_sequence": connection.next_external_request_sequence,
             "server_receipt": receipt,
         }
     finally:
@@ -1309,26 +1625,59 @@ def watch(
     seconds: float,
     max_events: int,
     credential_store: CredentialStore | None = None,
+    keepalive_interval_seconds: float = 15.0,
 ) -> dict[str, Any]:
     if seconds < 0.1 or seconds > 300:
         raise ValueError("watch_seconds_out_of_bounds")
     if max_events < 1 or max_events > 512:
         raise ValueError("watch_event_limit_out_of_bounds")
+    if keepalive_interval_seconds < 0.1 or keepalive_interval_seconds > 60:
+        raise ValueError("watch_keepalive_interval_out_of_bounds")
     document, policy, connection, changed = connect_session(path, credential_store)
     deadline = time.monotonic() + seconds
+    next_keepalive = (
+        time.monotonic() + keepalive_interval_seconds
+        if connection.protocol_id == PROTOCOL_ID_V2
+        else deadline
+    )
+    keepalive_count = 0
     try:
         while time.monotonic() < deadline and len(connection.events) < max_events:
+            if (
+                connection.protocol_id == PROTOCOL_ID_V2
+                and time.monotonic() >= next_keepalive
+            ):
+                _, keepalive_receipt = connection.send_keepalive()
+                if keepalive_receipt.get("accepted") is not True:
+                    raise HubError(
+                        f"keepalive_rejected:{keepalive_receipt.get('status', 'unknown')}"
+                    )
+                keepalive_count += 1
+                next_keepalive = time.monotonic() + keepalive_interval_seconds
+                continue
             try:
-                connection.read_event(min(0.25, max(0.05, deadline - time.monotonic())))
+                wait_until = min(deadline, next_keepalive)
+                connection.read_event(
+                    min(0.25, max(0.05, wait_until - time.monotonic()))
+                )
             except socket.timeout:
                 continue
         return {
-            "$schema": "rusty.hostess.connection_hub.watch_receipt.v1",
+            "$schema": "rusty.hostess.connection_hub.watch_receipt.v2",
             "status": "passed",
             "session_fingerprint_sha256": _document_session_fingerprint(document),
             "transport": policy.receipt(),
             "transport_epoch": connection.transport_epoch,
             "transport_epoch_changed": changed,
+            "socket_protocol": connection.protocol_id,
+            "rollover_safe": connection.protocol_id == PROTOCOL_ID_V2,
+            "keepalive_interval_seconds": (
+                keepalive_interval_seconds
+                if connection.protocol_id == PROTOCOL_ID_V2
+                else None
+            ),
+            "keepalive_count": keepalive_count,
+            "next_external_request_sequence": connection.next_external_request_sequence,
             "surface_revision": connection.surface_revision,
             "event_count": len(connection.events),
             "events": connection.events,
@@ -1353,11 +1702,11 @@ def _require_server_closed_socket(
 
 
 def _require_post_revoke_authentication_rejected(
-    policy: TransportPolicy, stale_session: str
+    policy: TransportPolicy, stale_session: str, protocol_id: str
 ) -> None:
     connection: HubConnection | None = None
     try:
-        connection = HubConnection(policy, stale_session)
+        connection = HubConnection(policy, stale_session, protocol_id)
     except AuthenticationRejected:
         return
     except BaseException as error:
@@ -1373,7 +1722,8 @@ def revoke(
 ) -> dict[str, Any]:
     store = credential_store or default_credential_store()
     document, policy, session = load_session(path, store)
-    active_connection = HubConnection(policy, session)
+    protocol_id = str(document["security_binding"]["protocol"])
+    active_connection = HubConnection(policy, session, protocol_id)
     try:
         request = {
             "$schema": REVOKE_REQUEST_SCHEMA,
@@ -1396,7 +1746,7 @@ def revoke(
             raise HubError(f"revoke_not_applied:{payload.get('status', 'unknown')}")
         observed = _validated_server_transport(payload, policy)
         _require_server_closed_socket(active_connection)
-        _require_post_revoke_authentication_rejected(policy, session)
+        _require_post_revoke_authentication_rejected(policy, session, protocol_id)
     finally:
         active_connection.close()
     request["session"] = ""
@@ -1407,7 +1757,7 @@ def revoke(
     except OSError as error:
         raise HubError("revoke_applied_but_session_metadata_cleanup_failed") from error
     return {
-        "$schema": "rusty.hostess.connection_hub.revoke_receipt.v1",
+        "$schema": "rusty.hostess.connection_hub.revoke_receipt.v2",
         "status": "passed",
         "authenticated_socket_open_before_revoke": True,
         "http_revoke_applied": True,
@@ -1420,6 +1770,8 @@ def revoke(
         "session_metadata_deleted": True,
         "transport": policy.receipt(),
         "server_transport": observed,
+        "socket_protocol": protocol_id,
+        "rollover_safe": protocol_id == PROTOCOL_ID_V2,
         "server_receipt": payload,
     }
 
@@ -1474,13 +1826,25 @@ def simulated_e2e() -> dict[str, Any]:
             _, diagnostic_receipt = connection.send_command(
                 "diagnostics.capture", "snapshot", {"detail": "bounded"}
             )
+            _, keepalive_receipt = connection.send_keepalive()
+            next_before_restart = connection.next_external_request_sequence
             fixture.remove_surface("media.control")
             removed_event = connection.await_type("surface_removed")
         finally:
             connection.close()
+        fixture.restart_authority()
         reconnected = HubConnection(policy, session)
         try:
             second_epoch = reconnected.transport_epoch
+            reconnect_resynced_sequence = reconnected.next_external_request_sequence
+            captured_command = fixture.accepted_external_request_bytes[0]
+            fixture.rollover_authority()
+            dispatches_before_rollover_replay = len(fixture.dispatch_log)
+            reconnected.socket.send_text_bytes(captured_command)
+            rollover_replay_receipt = reconnected.read_event()
+            rollover_replay_not_redispatched = (
+                len(fixture.dispatch_log) == dispatches_before_rollover_replay
+            )
             _, post_reconnect = reconnected.send_command(
                 "diagnostics.capture", "snapshot", {"detail": "bounded"}
             )
@@ -1516,9 +1880,22 @@ def simulated_e2e() -> dict[str, Any]:
             "second_surface_appeared": diagnostic_event.get("surface", {}).get("surface_id")
             == "diagnostics.capture",
             "second_provider_command_scoped": diagnostic_receipt.get("accepted") is True,
+            "keepalive_slid_session": keepalive_receipt.get("accepted") is True
+            and keepalive_receipt.get("next_external_request_sequence")
+            == next_before_restart,
             "media_surface_removed": removed_event.get("surface_id") == "media.control",
             "logical_session_preserved": fixture.pair_count == 1,
             "transport_epoch_advanced": first_epoch != second_epoch,
+            "reconnect_resynced_next_sequence": reconnect_resynced_sequence
+            == next_before_restart,
+            "restart_preserved_sequence_fence": next_before_restart == 4,
+            "rollover_replay_failed_closed": rollover_replay_receipt.get("accepted")
+            is False
+            and rollover_replay_receipt.get("status")
+            == "request_sequence_mismatch"
+            and rollover_replay_receipt.get("next_external_request_sequence")
+            == next_before_restart,
+            "rollover_replay_not_redispatched": rollover_replay_not_redispatched,
             "reconnect_snapshot_preserved_surfaces": set(reconnected.surfaces)
             == {"diagnostics.capture"},
             "post_reconnect_command_accepted": post_reconnect.get("accepted") is True,
@@ -1545,7 +1922,7 @@ def simulated_e2e() -> dict[str, Any]:
         }
         passed = all(checks.values())
         return {
-            "$schema": "rusty.hostess.connection_hub.simulated_e2e_receipt.v1",
+            "$schema": "rusty.hostess.connection_hub.simulated_e2e_receipt.v2",
             "status": "passed" if passed else "failed",
             "transport": policy.receipt(),
             "session_fingerprint_sha256": _document_session_fingerprint(document),
@@ -1553,6 +1930,8 @@ def simulated_e2e() -> dict[str, Any]:
             "pairing_code_in_receipt": False,
             "first_transport_epoch": first_epoch,
             "second_transport_epoch": second_epoch,
+            "next_external_request_sequence_after_reconnect": reconnect_resynced_sequence,
+            "authority_epoch_after_rollover": fixture.authority_epoch,
             "surface_lifecycle": [
                 "snapshot-empty",
                 "media-available",
@@ -1616,6 +1995,11 @@ def parser() -> argparse.ArgumentParser:
     )
     pair_parser.add_argument("--controller-identity-sha256", required=True)
     pair_parser.add_argument("--session-file", required=True, type=Path)
+    pair_parser.add_argument(
+        "--legacy-v1",
+        action="store_true",
+        help="Bind the session to legacy socket v1; this is not rollover-safe and receives no sliding keepalives",
+    )
     for name in ("list-surfaces", "revoke"):
         command = sub.add_parser(name)
         command.add_argument("--session-file", required=True, type=Path)
@@ -1623,6 +2007,7 @@ def parser() -> argparse.ArgumentParser:
     watch_parser.add_argument("--session-file", required=True, type=Path)
     watch_parser.add_argument("--seconds", type=float, default=5.0)
     watch_parser.add_argument("--max-events", type=int, default=128)
+    watch_parser.add_argument("--keepalive-interval-seconds", type=float, default=15.0)
     invoke_parser = sub.add_parser("invoke-surface-command")
     invoke_parser.add_argument("--session-file", required=True, type=Path)
     invoke_parser.add_argument("--surface-id", required=True)
@@ -1649,11 +2034,19 @@ def main(argv: list[str] | None = None) -> int:
                     _read_pairing_code(args),
                     args.controller_identity_sha256,
                     args.session_file,
+                    socket_protocol=(
+                        PROTOCOL_ID_V1 if args.legacy_v1 else PROTOCOL_ID_V2
+                    ),
                 )
         elif args.action == "list-surfaces":
             receipt = list_surfaces(args.session_file)
         elif args.action == "connect-watch":
-            receipt = watch(args.session_file, args.seconds, args.max_events)
+            receipt = watch(
+                args.session_file,
+                args.seconds,
+                args.max_events,
+                keepalive_interval_seconds=args.keepalive_interval_seconds,
+            )
         elif args.action == "invoke-surface-command":
             try:
                 command_args = json.loads(args.args_json)

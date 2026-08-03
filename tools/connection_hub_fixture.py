@@ -22,13 +22,22 @@ try:
     from tools.connection_hub_cli import (
         AUTHENTICATE_SCHEMA,
         AUTHENTICATION_RECEIPT_SCHEMA,
+        AUTHENTICATE_SCHEMA_V2,
+        AUTHENTICATION_RECEIPT_SCHEMA_V2,
         COMMAND_SCHEMA,
+        COMMAND_SCHEMA_V2,
+        COMMAND_RECEIPT_SCHEMA_V2,
         EVENT_SCHEMAS,
+        KEEPALIVE_RECEIPT_SCHEMA_V2,
+        KEEPALIVE_SCHEMA_V2,
         PAIR_RECEIPT_SCHEMA,
         PAIR_REQUEST_SCHEMA,
         REVOKE_RECEIPT_SCHEMA,
         REVOKE_REQUEST_SCHEMA,
         STATUS_SCHEMA,
+        PROTOCOL_ERROR_SCHEMA_V2,
+        PROTOCOL_ID_V1,
+        PROTOCOL_ID_V2,
         canonical_json,
         validate_args,
     )
@@ -36,13 +45,22 @@ except ModuleNotFoundError:
     from connection_hub_cli import (
         AUTHENTICATE_SCHEMA,
         AUTHENTICATION_RECEIPT_SCHEMA,
+        AUTHENTICATE_SCHEMA_V2,
+        AUTHENTICATION_RECEIPT_SCHEMA_V2,
         COMMAND_SCHEMA,
+        COMMAND_SCHEMA_V2,
+        COMMAND_RECEIPT_SCHEMA_V2,
         EVENT_SCHEMAS,
+        KEEPALIVE_RECEIPT_SCHEMA_V2,
+        KEEPALIVE_SCHEMA_V2,
         PAIR_RECEIPT_SCHEMA,
         PAIR_REQUEST_SCHEMA,
         REVOKE_RECEIPT_SCHEMA,
         REVOKE_REQUEST_SCHEMA,
         STATUS_SCHEMA,
+        PROTOCOL_ERROR_SCHEMA_V2,
+        PROTOCOL_ID_V1,
+        PROTOCOL_ID_V2,
         canonical_json,
         validate_args,
     )
@@ -136,6 +154,7 @@ def _read_client_frame(sock: socket.socket) -> tuple[int, bytes]:
 class _FixtureSocket:
     sock: socket.socket
     epoch: int
+    protocol_id: str
     write_lock: threading.Lock = field(default_factory=threading.Lock)
 
     def send(self, value: dict[str, Any]) -> None:
@@ -166,6 +185,14 @@ class _FixtureState:
         self.surfaces: dict[str, dict[str, Any]] = {}
         self.connections: set[_FixtureSocket] = set()
         self.request_ids: set[str] = set()
+        self.next_external_request_sequence = 1
+        self.latest_external_request_sha256: str | None = None
+        self.authority_epoch = 1
+        self.restart_count = 0
+        self.rollover_count = 0
+        self.accepted_external_request_bytes: list[bytes] = []
+        self.keepalive_count = 0
+        self.drop_next_sequenced_receipt = False
         self.dispatch_log: list[tuple[str, str, str]] = []
         self.provider_results: dict[tuple[str, str], tuple[bool, str]] = {}
         self.silent_auth_rejection = False
@@ -221,24 +248,52 @@ class _FixtureState:
             return (200 if accepted else 403), receipt
 
     def authenticate(
-        self, sock: socket.socket, request: dict[str, Any]
+        self, sock: socket.socket, request: dict[str, Any], raw_request: bytes
     ) -> tuple[_FixtureSocket | None, dict[str, Any], list[_FixtureSocket]]:
+        protocol_id = (
+            PROTOCOL_ID_V2
+            if request.get("$schema") == AUTHENTICATE_SCHEMA_V2
+            else PROTOCOL_ID_V1
+        )
         expected = {
-            "$schema": AUTHENTICATE_SCHEMA,
+            "$schema": (
+                AUTHENTICATE_SCHEMA_V2
+                if protocol_id == PROTOCOL_ID_V2
+                else AUTHENTICATE_SCHEMA
+            ),
             "type": "authenticate",
             "session": self.session,
         }
         with self.lock:
-            accepted = self.session_active and request == expected
+            accepted = (
+                self.session_active
+                and request == expected
+                and (
+                    protocol_id == PROTOCOL_ID_V1
+                    or raw_request == canonical_json(request)
+                )
+            )
             if not accepted:
                 return (
                     None,
                     {
-                        "$schema": AUTHENTICATION_RECEIPT_SCHEMA,
+                        "$schema": (
+                            AUTHENTICATION_RECEIPT_SCHEMA_V2
+                            if protocol_id == PROTOCOL_ID_V2
+                            else AUTHENTICATION_RECEIPT_SCHEMA
+                        ),
                         "type": "authentication_receipt",
                         "accepted": False,
                         "status": "authentication_rejected",
                         "transport_epoch": self.transport_counter,
+                        **(
+                            {
+                                "next_external_request_sequence": self.next_external_request_sequence,
+                                "expires_at_utc": "2099-01-01T00:00:00Z",
+                            }
+                            if protocol_id == PROTOCOL_ID_V2
+                            else {}
+                        ),
                         "confidentiality": "none",
                         "production_eligible": False,
                     },
@@ -246,14 +301,26 @@ class _FixtureState:
                 )
             replaced = list(self.connections)
             self.transport_counter += 1
-            connection = _FixtureSocket(sock, self.transport_counter)
+            connection = _FixtureSocket(sock, self.transport_counter, protocol_id)
             self.connections.add(connection)
             receipt = {
-                "$schema": AUTHENTICATION_RECEIPT_SCHEMA,
+                "$schema": (
+                    AUTHENTICATION_RECEIPT_SCHEMA_V2
+                    if protocol_id == PROTOCOL_ID_V2
+                    else AUTHENTICATION_RECEIPT_SCHEMA
+                ),
                 "type": "authentication_receipt",
                 "accepted": True,
                 "status": "authenticated",
                 "transport_epoch": connection.epoch,
+                **(
+                    {
+                        "next_external_request_sequence": self.next_external_request_sequence,
+                        "expires_at_utc": "2099-01-01T00:00:00Z",
+                    }
+                    if protocol_id == PROTOCOL_ID_V2
+                    else {}
+                ),
                 "confidentiality": "none",
                 "production_eligible": False,
             }
@@ -271,9 +338,25 @@ class _FixtureState:
         with self.lock:
             self.connections.discard(connection)
 
-    def event(self, event_type: str, epoch: int, **fields: Any) -> dict[str, Any]:
+    def event(
+        self,
+        event_type: str,
+        epoch: int,
+        *,
+        protocol_id: str = PROTOCOL_ID_V1,
+        **fields: Any,
+    ) -> dict[str, Any]:
+        schema = EVENT_SCHEMAS.get(event_type)
+        if protocol_id == PROTOCOL_ID_V2:
+            schema = {
+                "command_receipt": COMMAND_RECEIPT_SCHEMA_V2,
+                "keepalive_receipt": KEEPALIVE_RECEIPT_SCHEMA_V2,
+                "protocol_error": PROTOCOL_ERROR_SCHEMA_V2,
+            }.get(event_type, schema)
+        if schema is None:
+            raise ValueError("fixture_event_schema_missing")
         return {
-            "$schema": EVENT_SCHEMAS[event_type],
+            "$schema": schema,
             "type": event_type,
             "transport_epoch": epoch,
             "listener_instance_id": self.listener_instance_id,
@@ -304,24 +387,62 @@ class _FixtureState:
             self.surface_revision += 1
         self.broadcast("surface_removed", surface_id=surface_id, reason="provider_unregistered")
 
-    def command(self, connection: _FixtureSocket, request: dict[str, Any]) -> dict[str, Any]:
-        exact_keys = {"$schema", "type", "request_id", "surface_id", "command", "args"}
+    def protocol_error(
+        self, connection: _FixtureSocket, status: str
+    ) -> dict[str, Any]:
+        return self.event(
+            "protocol_error",
+            connection.epoch,
+            protocol_id=PROTOCOL_ID_V2,
+            next_external_request_sequence=self.next_external_request_sequence,
+            status=status,
+        )
+
+    def command(
+        self,
+        connection: _FixtureSocket,
+        request: dict[str, Any],
+        raw_request: bytes,
+    ) -> tuple[dict[str, Any], bool]:
+        v2 = connection.protocol_id == PROTOCOL_ID_V2
+        exact_keys = {
+            "$schema",
+            "type",
+            "request_id",
+            "surface_id",
+            "command",
+            "args",
+            *({"request_sequence"} if v2 else set()),
+        }
         request_id = request.get("request_id")
         surface_id = request.get("surface_id")
         command = request.get("command")
+        request_sequence = request.get("request_sequence") if v2 else None
         reason: str | None = None
         with self.lock:
             if (
                 set(request) != exact_keys
-                or request.get("$schema") != COMMAND_SCHEMA
+                or request.get("$schema")
+                != (COMMAND_SCHEMA_V2 if v2 else COMMAND_SCHEMA)
                 or request.get("type") != "surface.command"
                 or not isinstance(request_id, str)
             ):
+                if v2:
+                    return self.protocol_error(connection, "request_invalid"), True
                 reason = "request_invalid"
+            elif v2 and raw_request != canonical_json(request):
+                return self.protocol_error(connection, "request_noncanonical"), True
+            elif v2 and (
+                not isinstance(request_sequence, int)
+                or isinstance(request_sequence, bool)
+                or request_sequence < 1
+            ):
+                return self.protocol_error(connection, "request_sequence_invalid"), True
+            elif v2 and request_sequence != self.next_external_request_sequence:
+                reason = "request_sequence_mismatch"
             elif request_id in self.request_ids:
                 reason = "request_replay"
             else:
-                self.request_ids.add(request_id)
                 try:
                     validate_args(request.get("args"))
                 except (ValueError, TypeError):
@@ -337,6 +458,13 @@ class _FixtureState:
                 if reason is None and command not in registered:
                     reason = "unknown_command"
                 if reason is None:
+                    self.request_ids.add(request_id)
+                    if v2:
+                        self.latest_external_request_sha256 = hashlib.sha256(
+                            raw_request
+                        ).hexdigest()
+                        self.accepted_external_request_bytes.append(raw_request)
+                        self.next_external_request_sequence += 1
                     self.dispatch_log.append(
                         (descriptor["_fixture_provider_id"], str(surface_id), str(command))
                     )
@@ -347,14 +475,89 @@ class _FixtureState:
             return self.event(
                 "command_receipt",
                 connection.epoch,
+                protocol_id=connection.protocol_id,
+                **(
+                    {
+                        "request_sequence": request_sequence,
+                        "next_external_request_sequence": self.next_external_request_sequence,
+                    }
+                    if v2
+                    else {}
+                ),
                 request_id=request_id,
                 surface_id=surface_id,
                 command=command,
                 accepted=reason is None,
                 provider_applied=reason is None and provider_applied,
                 status=provider_status if reason is None else reason,
-                authority_receipt={},
-            )
+                authority_receipt={"authority_epoch": self.authority_epoch},
+            ), False
+
+    def keepalive(
+        self,
+        connection: _FixtureSocket,
+        request: dict[str, Any],
+        raw_request: bytes,
+    ) -> tuple[dict[str, Any], bool]:
+        if connection.protocol_id != PROTOCOL_ID_V2:
+            return self.protocol_error(connection, "keepalive_requires_v2"), True
+        if (
+            set(request) != {"$schema", "type", "request_sequence"}
+            or request.get("$schema") != KEEPALIVE_SCHEMA_V2
+            or request.get("type") != "keepalive"
+        ):
+            return self.protocol_error(connection, "request_invalid"), True
+        if raw_request != canonical_json(request):
+            return self.protocol_error(connection, "request_noncanonical"), True
+        request_sequence = request.get("request_sequence")
+        if (
+            not isinstance(request_sequence, int)
+            or isinstance(request_sequence, bool)
+            or request_sequence < 1
+        ):
+            return self.protocol_error(connection, "request_sequence_invalid"), True
+        with self.lock:
+            accepted = request_sequence == self.next_external_request_sequence
+            if accepted:
+                self.latest_external_request_sha256 = hashlib.sha256(
+                    raw_request
+                ).hexdigest()
+                self.accepted_external_request_bytes.append(raw_request)
+                self.next_external_request_sequence += 1
+                self.keepalive_count += 1
+            return self.event(
+                "keepalive_receipt",
+                connection.epoch,
+                protocol_id=PROTOCOL_ID_V2,
+                request_sequence=request_sequence,
+                next_external_request_sequence=self.next_external_request_sequence,
+                accepted=accepted,
+                status="accepted" if accepted else "request_sequence_mismatch",
+                authority_receipt={"authority_epoch": self.authority_epoch},
+            ), False
+
+    def restart_authority(self) -> None:
+        with self.lock:
+            self.restart_count += 1
+            self.request_ids.clear()
+
+    def rollover_authority(self) -> None:
+        with self.lock:
+            self.rollover_count += 1
+            self.authority_epoch += 1
+            self.request_ids.clear()
+
+    def consume_drop_next_sequenced_receipt(self, receipt: dict[str, Any]) -> bool:
+        with self.lock:
+            if (
+                self.drop_next_sequenced_receipt
+                and receipt.get("accepted") is True
+                and receipt.get("type")
+                in {"command_receipt", "keepalive_receipt"}
+            ):
+                self.drop_next_sequenced_receipt = False
+                return True
+            return False
 
     def revoke(self, request: dict[str, Any]) -> tuple[int, dict[str, Any]]:
         expected = {
@@ -463,7 +666,7 @@ class _Handler(BaseHTTPRequestHandler):
             if not isinstance(auth_request, dict):
                 auth_request = {}
             connection, auth_receipt, replaced = self.server.state.authenticate(
-                self.connection, auth_request
+                self.connection, auth_request, payload
             )
             if connection is None:
                 if self.server.state.silent_auth_rejection:
@@ -487,10 +690,45 @@ class _Handler(BaseHTTPRequestHandler):
                     continue
                 if opcode != 0x1:
                     continue
-                request = json.loads(payload.decode("utf-8"))
+                try:
+                    request = json.loads(payload.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    if connection.protocol_id == PROTOCOL_ID_V2:
+                        connection.send(
+                            self.server.state.protocol_error(
+                                connection, "request_not_json"
+                            )
+                        )
+                    break
                 if not isinstance(request, dict):
-                    raise ValueError("command_must_be_object")
-                connection.send(self.server.state.command(connection, request))
+                    if connection.protocol_id == PROTOCOL_ID_V2:
+                        connection.send(
+                            self.server.state.protocol_error(
+                                connection, "request_must_be_object"
+                            )
+                        )
+                    break
+                if request.get("type") == "surface.command":
+                    receipt, close_after = self.server.state.command(
+                        connection, request, payload
+                    )
+                elif request.get("type") == "keepalive":
+                    receipt, close_after = self.server.state.keepalive(
+                        connection, request, payload
+                    )
+                elif connection.protocol_id == PROTOCOL_ID_V2:
+                    receipt = self.server.state.protocol_error(
+                        connection, "request_type_unknown"
+                    )
+                    close_after = True
+                else:
+                    raise ValueError("command_type_unknown")
+                if self.server.state.consume_drop_next_sequenced_receipt(receipt):
+                    connection.close(4004, "receipt_lost_after_acceptance")
+                    break
+                connection.send(receipt)
+                if close_after:
+                    break
         except (EOFError, OSError, UnicodeDecodeError, json.JSONDecodeError, ValueError):
             pass
         finally:
@@ -555,6 +793,36 @@ class ConnectionHubFixture:
     @property
     def upgrade_paths(self) -> list[str]:
         return list(self._state.upgrade_paths)
+
+    @property
+    def next_external_request_sequence(self) -> int:
+        with self._state.lock:
+            return self._state.next_external_request_sequence
+
+    @property
+    def accepted_external_request_bytes(self) -> list[bytes]:
+        with self._state.lock:
+            return list(self._state.accepted_external_request_bytes)
+
+    @property
+    def keepalive_count(self) -> int:
+        with self._state.lock:
+            return self._state.keepalive_count
+
+    @property
+    def authority_epoch(self) -> int:
+        with self._state.lock:
+            return self._state.authority_epoch
+
+    def restart_authority(self) -> None:
+        self._state.restart_authority()
+
+    def rollover_authority(self) -> None:
+        self._state.rollover_authority()
+
+    def drop_next_sequenced_receipt_after_acceptance(self) -> None:
+        with self._state.lock:
+            self._state.drop_next_sequenced_receipt = True
 
     def add_surface(self, descriptor: dict[str, Any]) -> None:
         self._state.add_surface(descriptor)

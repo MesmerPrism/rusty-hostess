@@ -76,7 +76,7 @@ class ConnectionHubValidationTests(unittest.TestCase):
             document["$schema"], "rusty.quest.connection_hub.protocol_vectors.v1"
         )
         self.assertEqual(document["owner"], "rusty-quest")
-        self.assertEqual(document["protocol_id"], cli.PROTOCOL_ID)
+        self.assertEqual(document["protocol_id"], cli.PROTOCOL_ID_V1)
         self.assertEqual(document["routes"]["socket"], "/v1/socket")
         self.assertEqual(document["browser_projection"]["routes"], {
             "pair": "/v1/pair",
@@ -93,6 +93,53 @@ class ConnectionHubValidationTests(unittest.TestCase):
         surface = document["messages"]["surface_available"]["example"]["surface"]
         cli.validate_surface(surface)
         cli.validate_args(document["messages"]["surface_command"]["example"]["args"])
+
+    def test_v2_owner_vector_is_byte_exact_and_canonical_frames_match(self):
+        vector_path = (
+            Path(__file__).resolve().parents[1]
+            / "fixtures"
+            / "connection-hub"
+            / "connection-hub-protocol-v2.json"
+        )
+        raw = vector_path.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(raw).hexdigest(),
+            "27032a1966e328fc4227ff598a5a2bbeb15ede87398588180928eee63e7d0b61",
+        )
+        document = json.loads(raw)
+        self.assertEqual(
+            document["$schema"], "rusty.quest.connection_hub.protocol_vectors.v2"
+        )
+        self.assertEqual(document["owner"], "rusty-quest")
+        self.assertEqual(document["protocol_id"], cli.PROTOCOL_ID_V2)
+        self.assertEqual(document["socket_path"], "/v1/socket")
+        self.assertEqual(document["canonicalization"]["id"], cli.CANONICAL_JSON_ID)
+        self.assertEqual(
+            document["legacy_protocol_sha256"],
+            "sha256:fa00d34511b2ee5576eebdd815e58ae032e37b10c209e41289cfd876c78c9c78",
+        )
+        for name, owner_contract in document["messages"].items():
+            contract_name = f"{name}_v2"
+            schema, message_type, required, optional = cli.MESSAGE_CONTRACTS[
+                contract_name
+            ]
+            self.assertEqual(schema, owner_contract["schema"], name)
+            self.assertEqual(message_type, owner_contract.get("type"), name)
+            self.assertEqual(required, frozenset(owner_contract["required_fields"]), name)
+            self.assertEqual(optional, frozenset(owner_contract["optional_fields"]), name)
+            cli.validate_protocol_message(owner_contract["example"], contract_name)
+        for frame_name, contract_name in (
+            ("surface_command", "surface_command_v2"),
+            ("keepalive", "keepalive_v2"),
+        ):
+            frame = document["canonical_frames"][frame_name]
+            payload = frame["utf8"].encode("utf-8")
+            self.assertEqual(
+                "sha256:" + hashlib.sha256(payload).hexdigest(), frame["sha256"]
+            )
+            example = document["messages"][frame_name]["example"]
+            self.assertEqual(payload, cli.canonical_json(example))
+            cli.validate_protocol_message(example, contract_name)
 
     def test_owner_protocol_examples_reject_missing_unknown_wrong_schema_and_type(self):
         vector_path = (
@@ -173,7 +220,7 @@ class ConnectionHubValidationTests(unittest.TestCase):
 
     def test_command_cli_exit_uses_operation_status_not_provider_status(self):
         receipt = {
-            "$schema": "rusty.hostess.connection_hub.command_receipt.v1",
+            "$schema": "rusty.hostess.connection_hub.command_receipt.v2",
             "operation_status": "passed",
             "status": "provider_declined",
             "authority_accepted": True,
@@ -266,13 +313,14 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.fixture.__exit__(None, None, None)
         self.directory.cleanup()
 
-    def pair(self):
+    def pair(self, socket_protocol=cli.PROTOCOL_ID_V2):
         return cli.pair(
             self.policy,
             self.fixture.pairing_code,
             self.fixture.controller_identity_sha256,
             self.session_path,
             self.store,
+            socket_protocol=socket_protocol,
         )
 
     @unittest.skipUnless(os.name == "nt", "CLI credential persistence uses Windows DPAPI")
@@ -331,6 +379,13 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertEqual(
             self.session_path.read_text(encoding="utf-8"), "reserved by operator\n"
         )
+
+    def test_unknown_socket_protocol_rejects_before_remote_pair(self):
+        with self.assertRaisesRegex(ValueError, "socket_protocol_not_supported"):
+            self.pair("rusty.quest.connection_hub.v999")
+        self.assertEqual(self.fixture.pair_count, 0)
+        self.assertFalse(self.fixture.session_active)
+        self.assertFalse(self.session_path.exists())
 
     def test_credential_preflight_failure_prevents_remote_pair(self):
         class PreflightFailureStore(cli.MemoryCredentialStore):
@@ -437,6 +492,201 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertTrue(listed["transport_epoch_changed"])
         self.assertTrue(watched["transport_epoch_changed"])
         self.assertTrue(invoked["transport_epoch_changed"])
+
+    def test_v2_pair_reconnect_resyncs_exact_next_sequence(self):
+        paired = self.pair()
+        self.assertEqual(paired["socket_protocol"], cli.PROTOCOL_ID_V2)
+        self.assertTrue(paired["rollover_safe"])
+        document, _, session = cli.load_session(self.session_path, self.store)
+        self.assertEqual(
+            document["security_binding"]["protocol"], cli.PROTOCOL_ID_V2
+        )
+        first = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            self.assertEqual(first.next_external_request_sequence, 1)
+            _, keepalive = first.send_keepalive()
+            self.assertEqual(keepalive["request_sequence"], 1)
+            self.assertEqual(keepalive["next_external_request_sequence"], 2)
+        finally:
+            first.close()
+        second = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            self.assertEqual(second.next_external_request_sequence, 2)
+            self.assertEqual(
+                second.authentication_receipt["next_external_request_sequence"], 2
+            )
+        finally:
+            second.close()
+
+    def test_v2_wrong_gap_duplicate_and_request_id_replay_do_not_consume(self):
+        self.pair()
+        self.fixture.add_surface(media_surface())
+        _, _, session = cli.load_session(self.session_path, self.store)
+        connection = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            fixed_id = "sequence-request-00000000001"
+            request, accepted = connection.send_command(
+                "media.control", "play", {}, explicit_request_id=fixed_id
+            )
+            self.assertEqual(request["request_sequence"], 1)
+            self.assertEqual(accepted["next_external_request_sequence"], 2)
+            _, duplicate_sequence = connection.send_command(
+                "media.control",
+                "play",
+                {},
+                explicit_request_sequence=1,
+                preflight=False,
+            )
+            _, gap_sequence = connection.send_command(
+                "media.control",
+                "play",
+                {},
+                explicit_request_sequence=4,
+                preflight=False,
+            )
+            _, request_id_replay = connection.send_command(
+                "media.control",
+                "play",
+                {},
+                explicit_request_id=fixed_id,
+                preflight=False,
+            )
+            self.assertEqual(duplicate_sequence["status"], "request_sequence_mismatch")
+            self.assertEqual(gap_sequence["status"], "request_sequence_mismatch")
+            self.assertEqual(request_id_replay["status"], "request_replay")
+            self.assertEqual(connection.next_external_request_sequence, 2)
+            _, keepalive = connection.send_keepalive()
+            self.assertTrue(keepalive["accepted"])
+            self.assertEqual(connection.next_external_request_sequence, 3)
+        finally:
+            connection.close()
+        self.assertEqual(
+            self.fixture.dispatch_log,
+            [("media.provider", "media.control", "play")],
+        )
+
+    def test_v2_lost_receipt_reconnects_and_resyncs_without_counter_deadlock(self):
+        self.pair()
+        self.fixture.add_surface(media_surface())
+        _, _, session = cli.load_session(self.session_path, self.store)
+        connection = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        self.fixture.drop_next_sequenced_receipt_after_acceptance()
+        try:
+            with self.assertRaises(cli.WebSocketClosed):
+                connection.send_command("media.control", "play", {})
+        finally:
+            connection.close()
+        self.assertEqual(self.fixture.next_external_request_sequence, 2)
+        recovered = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            self.assertEqual(recovered.next_external_request_sequence, 2)
+            _, receipt = recovered.send_keepalive()
+            self.assertTrue(receipt["accepted"])
+            self.assertEqual(receipt["next_external_request_sequence"], 3)
+        finally:
+            recovered.close()
+
+    def test_v2_watch_sends_bounded_periodic_keepalives(self):
+        self.pair()
+        receipt = cli.watch(
+            self.session_path,
+            0.36,
+            16,
+            self.store,
+            keepalive_interval_seconds=0.1,
+        )
+        self.assertEqual(receipt["socket_protocol"], cli.PROTOCOL_ID_V2)
+        self.assertTrue(receipt["rollover_safe"])
+        self.assertGreaterEqual(receipt["keepalive_count"], 2)
+        self.assertLessEqual(receipt["keepalive_count"], 4)
+        self.assertEqual(receipt["keepalive_count"], self.fixture.keepalive_count)
+        self.assertEqual(
+            receipt["next_external_request_sequence"],
+            receipt["keepalive_count"] + 1,
+        )
+
+    def test_v2_restart_and_rollover_reject_captured_command_without_redispatch(self):
+        self.pair()
+        self.fixture.add_surface(media_surface())
+        _, _, session = cli.load_session(self.session_path, self.store)
+        first = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            request, receipt = first.send_command("media.control", "play", {})
+            self.assertTrue(receipt["accepted"])
+            captured = self.fixture.accepted_external_request_bytes[-1]
+            self.assertEqual(captured, cli.canonical_json(request))
+        finally:
+            first.close()
+        self.fixture.restart_authority()
+        reconnected = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        try:
+            self.assertEqual(reconnected.next_external_request_sequence, 2)
+            self.fixture.rollover_authority()
+            reconnected.socket.send_text_bytes(captured)
+            replay = reconnected.read_event()
+            self.assertFalse(replay["accepted"])
+            self.assertEqual(replay["status"], "request_sequence_mismatch")
+            self.assertEqual(replay["request_sequence"], 1)
+            self.assertEqual(replay["next_external_request_sequence"], 2)
+            _, fresh = reconnected.send_command("media.control", "pause", {})
+            self.assertTrue(fresh["accepted"])
+            self.assertEqual(fresh["authority_receipt"]["authority_epoch"], 2)
+        finally:
+            reconnected.close()
+        self.assertEqual(len(self.fixture.dispatch_log), 2)
+
+    def test_v2_noncanonical_frame_returns_resync_sequence_and_closes(self):
+        self.pair()
+        self.fixture.add_surface(media_surface())
+        _, _, session = cli.load_session(self.session_path, self.store)
+        connection = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V2)
+        request = {
+            "$schema": cli.COMMAND_SCHEMA_V2,
+            "type": "surface.command",
+            "request_sequence": 1,
+            "request_id": "noncanonical-request-000001",
+            "surface_id": "media.control",
+            "command": "play",
+            "args": {},
+        }
+        noncanonical = json.dumps(request, indent=2).encode("utf-8")
+        self.assertNotEqual(noncanonical, cli.canonical_json(request))
+        try:
+            connection.socket.send_text_bytes(noncanonical)
+            protocol_error = connection.read_event()
+            self.assertEqual(protocol_error["type"], "protocol_error")
+            self.assertEqual(protocol_error["status"], "request_noncanonical")
+            self.assertEqual(protocol_error["next_external_request_sequence"], 1)
+            with self.assertRaises(cli.WebSocketClosed):
+                connection.read_event(2)
+        finally:
+            connection.close()
+        self.assertEqual(self.fixture.dispatch_log, [])
+
+    def test_legacy_v1_is_explicit_and_does_not_claim_rollover_safety(self):
+        paired = self.pair(cli.PROTOCOL_ID_V1)
+        self.assertEqual(paired["socket_protocol"], cli.PROTOCOL_ID_V1)
+        self.assertFalse(paired["rollover_safe"])
+        self.fixture.add_surface(media_surface())
+        _, _, session = cli.load_session(self.session_path, self.store)
+        legacy = cli.HubConnection(self.policy, session, cli.PROTOCOL_ID_V1)
+        try:
+            request_id = "legacy-request-00000000001"
+            request, first = legacy.send_command(
+                "media.control", "play", {}, explicit_request_id=request_id
+            )
+            self.assertEqual(request["$schema"], cli.COMMAND_SCHEMA)
+            self.assertNotIn("request_sequence", request)
+            self.assertIsNone(legacy.next_external_request_sequence)
+            self.assertTrue(first["accepted"])
+            self.fixture.rollover_authority()
+            _, replay_after_rollover = legacy.send_command(
+                "media.control", "play", {}, explicit_request_id=request_id
+            )
+            self.assertTrue(replay_after_rollover["accepted"])
+        finally:
+            legacy.close()
+        self.assertEqual(len(self.fixture.dispatch_log), 2)
 
     def test_authority_accepted_provider_not_applied_remains_distinct(self):
         self.pair()
@@ -602,7 +852,7 @@ class ConnectionHubE2ETests(unittest.TestCase):
         receipt = json.loads(stdout.getvalue())
         self.assertEqual(
             receipt["$schema"],
-            "rusty.hostess.connection_hub.simulated_e2e_receipt.v1",
+            "rusty.hostess.connection_hub.simulated_e2e_receipt.v2",
         )
         self.assertNotIn("fixture-session-token", stdout.getvalue())
         self.assertNotIn("246810", stdout.getvalue())

@@ -66,13 +66,16 @@ HTTP routes:
 - `POST /v1/revoke`
 
 The socket is exactly `WS /v1/socket`, with no bearer in its URL or HTTP
-headers. The mandatory first client frame is
-`rusty.quest.connection_hub.socket_authenticate.v1`; it carries the bearer only
-inside the WebSocket frame. The server must answer with
-`rusty.quest.connection_hub.socket_authentication_receipt.v1` before sending
-the initial `surface_snapshot`. Subsequent event types are closed to
-`surface_available`, `surface_removed`, `surface_state`, and
-`command_receipt`. Each event binds the authenticated numeric
+headers. New sessions use `socket_authenticate.v2`; its receipt returns the
+authority-derived positive `next_external_request_sequence` and current expiry.
+Reconnect consumes no sequence, so every short-lived Hostess operation
+resynchronizes without persisting a client counter or deadlocking after a lost
+receipt. `pair --legacy-v1` retains the byte-exact v1 exchange as explicit
+non-rollover-safe compatibility. Both forms carry the bearer only inside the
+mandatory first WebSocket frame. The initial event remains `surface_snapshot`;
+subsequent surface events are closed to `surface_available`,
+`surface_removed`, and `surface_state`, plus the selected protocol's receipts.
+Each event binds the authenticated numeric
 `transport_epoch`, one listener-instance ID, monotonic `surface_revision`, and
 the advertised transport/confidentiality posture. A new authenticated transport
 replaces and closes the older physical socket without re-pairing.
@@ -80,13 +83,14 @@ replaces and closes the older physical socket without re-pairing.
 Surface descriptors are version 1 and contain only a bounded surface ID,
 display label, description, server-derived provider package/signer identity,
 a fixed surface-contract SHA-256, closed command descriptors with their required
-controller capability, flat low-rate state, and state revision. Client commands
-use the exact envelope:
+controller capability, flat low-rate state, and state revision. V2 client
+commands use the exact envelope:
 
 ```json
 {
-  "$schema": "rusty.quest.connection_hub.surface_command.v1",
+  "$schema": "rusty.quest.connection_hub.surface_command.v2",
   "type": "surface.command",
+  "request_sequence": 1,
   "request_id": "hostess-command-...",
   "surface_id": "media.control",
   "command": "play",
@@ -98,7 +102,12 @@ Arguments are objects with at most 16 ASCII-token keys. Values are only null,
 boolean, integer, or a string no longer than 256 characters. Arrays and nested
 objects reject. Commands are also checked against the selected surface's
 advertised registry before dispatch. The Hub remains responsible for the
-authoritative replay, surface, and command decisions.
+authoritative replay, surface, and command decisions. V2 command and JSON
+keepalive requests are recursively ASCII-key-sorted compact JSON, UTF-8 text,
+without BOM or trailing newline. An accepted receipt echoes the request
+sequence and advances the next sequence by exactly one; rejection echoes the
+attempted sequence and returns the unchanged authority-derived next value.
+Malformed or noncanonical frames fail closed without consuming a sequence.
 
 The Hostess command receipt preserves the two-stage result. Top-level
 `authority_accepted` is the Hub/Manifold decision; `provider_applied` and
@@ -107,6 +116,11 @@ and nonempty `request_id` are echoed with `request_binding_exact=true` only
 after exact causality checks. Authority acceptance with
 `provider_applied=false` is a valid, visible non-application result rather than
 being rewritten as success.
+
+Hostess pair, surface-list, watch, command, revoke, and simulated-E2E receipts
+are version 2 because they now expose `socket_protocol`, `rollover_safe`, and,
+where relevant, the attempted and authority-derived next sequence. The status
+receipt remains version 1 because its shape did not change.
 
 High-rate media, LSL samples, BLE samples, camera/depth data, and other stream
 payloads do not use this socket. The Hub socket carries low-rate discovery,
@@ -149,7 +163,9 @@ that already owns an inherited secret descriptor may use
 form because command arguments are observable by other host processes.
 
 `connect-watch` is bounded to 300 seconds because Hostess is not a long-lived
-background-service owner. Re-running `list-surfaces`, `connect-watch`, or
+background-service owner. On v2 it sends bounded periodic JSON keepalives
+(default 15 seconds, configurable with `--keepalive-interval-seconds`) while
+the watch is active. Re-running `list-surfaces`, `connect-watch`, or
 `invoke-surface-command` may replace the physical transport while preserving
 the server-side logical session. Receipts report whether the observed
 `transport_epoch` changed.
@@ -170,16 +186,19 @@ The E2E receipt proves:
    transactional DPAPI/test-store binding, and secret-redacted pairing;
 2. an empty socket snapshot followed by a media surface appearing;
 3. a media command dispatches only to its selected provider;
-4. replay, unknown surface, and unknown command reject without dispatch;
+4. duplicate/gap sequences, replay, unknown surface, and unknown command reject
+   without consuming the next sequence or dispatching;
 5. a second synthetic diagnostics provider appears and receives only its own
    command;
 6. the media provider disappears without ending the logical session;
-7. reconnect advances the transport epoch while the remaining surface and
-   logical session persist;
+7. reconnect advances the transport epoch, resynchronizes the exact next
+   sequence, and preserves the remaining surface and logical session;
 8. explicit revoke closes a socket that was authenticated before the HTTP
    request, rejects a fresh stale-bearer authentication, and only then deletes
    the local protected credential plus session metadata;
-9. no high-rate data-plane payload entered the Hub socket.
+9. restart and rollover retain the v2 sequence fence, so captured command bytes
+   reject without provider redispatch;
+10. no high-rate data-plane payload entered the Hub socket.
 
 The fixture is an executable Hostess oracle, not reusable production authority
 and not evidence that a Quest or network transport passed.
@@ -199,13 +218,15 @@ and not evidence that a Quest or network transport passed.
 - Logical-session continuity is demonstrated by using one unchanged opaque
   session across transport epochs without a second pair. The session secret is
   represented in receipts only by its SHA-256 fingerprint.
-- Exact checked-in wire vectors live at
-  `fixtures/connection-hub/connection-hub-protocol-v1.json`. Those bytes are
-  vendored unchanged from Rusty Quest commit
+- Exact checked-in wire vectors live under `fixtures/connection-hub`. V1 bytes
+  remain vendored unchanged from Rusty Quest commit
   `3a1abc5072f1d44417f6ad0c4d27ca84935bac18`, tree
   `df9d1f50ae876b1a0b2415c96da5334534168a6e`, owner path
   `apps/manifold-broker-android/contracts/connection-hub-protocol-v1.json`,
   SHA-256
   `fa00d34511b2ee5576eebdd815e58ae032e37b10c209e41289cfd876c78c9c78`.
+- The additive v2 vector is vendored byte-for-byte from the Quest integration
+  lane and binds its canonical command/keepalive frame bytes and SHA-256 values.
+  V1 is compatibility only and makes no persistence-across-rollover claim.
 - TLS, discovery, and live Quest evidence remain separate
   implementation/validation slices.
