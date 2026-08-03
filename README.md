@@ -119,6 +119,16 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   primitives, command envelope helpers, ACK normalization, retry connection,
   and stream-event aliasing used by recording routes. The CLI root re-exports
   these helpers as a compatibility facade for tests and existing callers.
+- `tools/connection_hub_cli.py`: strict external controller and evidence route
+  for the standalone Rusty Connection Hub. It labels transport posture, keeps
+  pairing/session secrets out of receipts, tracks surface lifecycle across
+  transport epochs, and exposes status, pair, bounded watch, list, command,
+  revoke, and deterministic offline E2E commands. See
+  `docs/CONNECTION_HUB_OPERATOR.md`.
+- `tools/connection_hub_fixture.py`: loopback-only port-`0` conformance oracle
+  for Hub surface lifecycle, scoped dispatch, replay rejection, transport
+  replacement, and explicit revocation. It is not product authority or a
+  background service.
 - `tools/hostessctl/bridge_command_android_routes.py`: headset-backed
   bridge-command proof over the Hostess Makepad app-private command inbox. It
   stages low-rate command JSON with serial-scoped ADB, collects the app-written

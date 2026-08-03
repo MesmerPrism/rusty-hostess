@@ -280,6 +280,16 @@ generic code or sanitized sample fixtures.
   message measurements, and the command-authority/high-rate-media guard
   checks; it must not own Manifold command acceptance, protocol-matrix
   promotion, or WPF projection.
+- Keep `tools\connection_hub_cli.py` as the short-lived external Rusty
+  Connection Hub controller and secret-redacted evidence projector. It may own
+  explicit endpoint posture, HTTP/WebSocket client mechanics, bounded surface
+  tracking, closed command-envelope validation, and operator commands for
+  status, pair, watch, list, invoke, and revoke. It must not own Manifold
+  admission/session/replay/command decisions, provider registration, a
+  background service, or high-rate media/LSL/BLE payloads.
+- Keep `tools\connection_hub_fixture.py` as the deterministic loopback-only
+  conformance oracle for that client. It binds only to `127.0.0.1` on port `0`
+  and is never production or Quest/network evidence.
 - Keep `tools\hostessctl\connectivity_lan.py` as the live LAN/device transport
   helper owner for Quest ADB identity, host IPv4 selection, same-subnet checks,
   ICMP checks, Windows Mobile Hotspot state collection, and TCP echo transport
