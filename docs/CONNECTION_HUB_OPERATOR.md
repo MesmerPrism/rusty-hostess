@@ -180,7 +180,11 @@ the server-side logical session. Receipts report whether the observed
 `wait-surface` emits
 `rusty.hostess.connection_hub.wait_surface_receipt.v1`. Its `event_count`
 includes the required initial snapshot and any validated lifecycle or
-keepalive-receipt events. `surface` is the validated public descriptor when the
+keepalive-receipt events. It retries `connect_session` exactly once, after a
+fixed 250 ms delay, only when the first attempt raises
+`AuthenticationRejected`; a second rejection and every other connection error
+remain fail-closed. Successful receipts expose `authentication_retry_count` as
+exactly `0` or `1`. `surface` is the validated public descriptor when the
 requested surface is present and is `null` when absence is proven. Timeout,
 event-limit, authentication, and keepalive failures close the same socket and
 fail the command; the route never reconnects and never sends or replays a

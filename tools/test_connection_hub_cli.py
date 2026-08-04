@@ -566,6 +566,73 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertEqual(receipt["surface"]["surface_id"], "media.control")
         self.assertEqual(receipt["keepalive_count"], 0)
         self.assertGreaterEqual(receipt["event_count"], 1)
+        self.assertEqual(receipt["authentication_retry_count"], 0)
+
+    def test_wait_surface_retries_one_authentication_rejection_then_succeeds(self):
+        self.pair()
+        real_connect_session = cli.connect_session
+        attempts = 0
+
+        def reject_once(*args, **kwargs):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise cli.AuthenticationRejected("injected_first_rejection")
+            return real_connect_session(*args, **kwargs)
+
+        with mock.patch.object(cli, "connect_session", side_effect=reject_once), \
+                mock.patch.object(cli.time, "sleep") as sleep:
+            receipt = cli.wait_surface(
+                self.session_path,
+                "media.control",
+                False,
+                1.0,
+                self.store,
+            )
+
+        self.assertEqual(attempts, 2)
+        sleep.assert_called_once_with(0.25)
+        self.assertEqual(receipt["authentication_retry_count"], 1)
+
+    def test_wait_surface_second_authentication_rejection_fails_closed(self):
+        with mock.patch.object(
+            cli,
+            "connect_session",
+            side_effect=cli.AuthenticationRejected("injected_rejection"),
+        ) as connect, mock.patch.object(cli.time, "sleep") as sleep:
+            with self.assertRaisesRegex(
+                cli.AuthenticationRejected, "injected_rejection"
+            ):
+                cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    False,
+                    1.0,
+                    self.store,
+                )
+
+        self.assertEqual(connect.call_count, 2)
+        sleep.assert_called_once_with(0.25)
+
+    def test_wait_surface_does_not_retry_other_connection_failures(self):
+        with mock.patch.object(
+            cli,
+            "connect_session",
+            side_effect=cli.HubError("injected_non_authentication_failure"),
+        ) as connect, mock.patch.object(cli.time, "sleep") as sleep:
+            with self.assertRaisesRegex(
+                cli.HubError, "injected_non_authentication_failure"
+            ):
+                cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    False,
+                    1.0,
+                    self.store,
+                )
+
+        self.assertEqual(connect.call_count, 1)
+        sleep.assert_not_called()
 
     def test_wait_surface_legacy_v1_uses_no_keepalive(self):
         self.pair(cli.PROTOCOL_ID_V1)

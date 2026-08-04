@@ -1644,7 +1644,13 @@ def wait_surface(
         raise ValueError("wait_surface_keepalive_interval_out_of_bounds")
     if isinstance(max_events, bool) or not isinstance(max_events, int) or max_events < 1 or max_events > 128:
         raise ValueError("wait_surface_event_limit_out_of_bounds")
-    document, policy, connection, changed = connect_session(path, credential_store)
+    authentication_retry_count = 0
+    try:
+        document, policy, connection, changed = connect_session(path, credential_store)
+    except AuthenticationRejected:
+        authentication_retry_count = 1
+        time.sleep(0.25)
+        document, policy, connection, changed = connect_session(path, credential_store)
     started = time.monotonic()
     deadline = time.monotonic() + seconds
     next_keepalive = (
@@ -1702,6 +1708,7 @@ def wait_surface(
             "transport_epoch_changed": changed,
             "socket_protocol": connection.protocol_id,
             "rollover_safe": connection.protocol_id == PROTOCOL_ID_V2,
+            "authentication_retry_count": authentication_retry_count,
             "surface_id": surface_id,
             "expected_present": expected_present,
             "observed_present": surface_id in connection.surfaces,
