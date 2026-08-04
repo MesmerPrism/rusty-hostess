@@ -26,7 +26,7 @@ import sys
 import tempfile
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
@@ -1066,6 +1066,7 @@ def validate_surface(descriptor: Any) -> dict[str, Any]:
 @dataclass
 class WebSocketClient:
     sock: socket.socket
+    _receive_buffer: bytearray = field(default_factory=bytearray, init=False, repr=False)
 
     @classmethod
     def connect(
@@ -1135,13 +1136,16 @@ class WebSocketClient:
         return data[:-4].decode("ascii")
 
     def _read_exact(self, length: int) -> bytes:
-        value = bytearray()
-        while len(value) < length:
-            chunk = self.sock.recv(length - len(value))
+        if length < 0:
+            raise ValueError("websocket_read_length_invalid")
+        while len(self._receive_buffer) < length:
+            chunk = self.sock.recv(length - len(self._receive_buffer))
             if not chunk:
                 raise WebSocketClosed(1006, "eof")
-            value.extend(chunk)
-        return bytes(value)
+            self._receive_buffer.extend(chunk)
+        value = bytes(self._receive_buffer[:length])
+        del self._receive_buffer[:length]
+        return value
 
     def send_json(self, value: dict[str, Any]) -> None:
         payload = canonical_json(value)

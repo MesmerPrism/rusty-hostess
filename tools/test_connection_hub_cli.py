@@ -20,6 +20,39 @@ from tools.connection_hub_fixture import (
 
 
 class ConnectionHubTransportTests(unittest.TestCase):
+    def test_websocket_partial_header_survives_poll_timeout(self):
+        payload = json.dumps(
+            {"type": "surface_state", "surface_revision": 9},
+            separators=(",", ":"),
+        ).encode("utf-8")
+        frame = bytes((0x81, len(payload))) + payload
+
+        class PartialTimeoutSocket:
+            def __init__(self):
+                self.remaining = bytearray(frame)
+                self.calls = 0
+
+            def settimeout(self, timeout):
+                self.timeout = timeout
+
+            def recv(self, length):
+                self.calls += 1
+                if self.calls == 1:
+                    return bytes((self.remaining.pop(0),))
+                if self.calls == 2:
+                    raise TimeoutError("forced partial-header poll timeout")
+                value = bytes(self.remaining[:length])
+                del self.remaining[:length]
+                return value
+
+        client = cli.WebSocketClient(PartialTimeoutSocket())
+        with self.assertRaises(TimeoutError):
+            client.read_json(timeout=0.05)
+        self.assertEqual(
+            client.read_json(timeout=0.05),
+            {"type": "surface_state", "surface_revision": 9},
+        )
+
     def test_endpoint_requires_explicit_transport_classification(self):
         with self.assertRaisesRegex(ValueError, "transport_classification_required"):
             cli.transport_policy("http://127.0.0.1:10000", None)
