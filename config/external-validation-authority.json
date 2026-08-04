@@ -244,6 +244,31 @@
       "status": "approved"
     },
     {
+      "approval_id": "hostess-windows-release-digest-readback-retry-20260804",
+      "required_ancestor": "3dd93343763f3f77d273f3ee341302ab99a87388",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 22670,
+          "sha256": "0e691d49086f04278fdbbe60e0814a5300b26efa03eabadbac745f0fdb865e8b"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 43443,
+          "sha256": "78d98e658c53e0abf26a9e0f6cb92ddad2354dcc9ac60f0df1e118abf4a41f54"
+        }
+      ],
+      "status": "approved"
+    },
+    {
       "approval_id": "hostess-windows-sdk-signtool-20260801",
       "required_ancestor": "7e581516386c7d6fee861d0a2400ff3dd0724d15",
       "changed_paths": [
