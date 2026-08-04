@@ -827,6 +827,11 @@ class ConnectionHubFixtureTests(unittest.TestCase):
             receipt["keepalive_count"] + 1,
         )
 
+    def test_periodic_deadline_does_not_accumulate_receipt_latency(self):
+        self.assertEqual(cli._advance_periodic_deadline(100.0, 5.0, 101.25), 105.0)
+        self.assertEqual(cli._advance_periodic_deadline(100.0, 5.0, 105.0), 110.0)
+        self.assertEqual(cli._advance_periodic_deadline(100.0, 5.0, 111.0), 115.0)
+
     def test_v2_restart_and_rollover_reject_captured_command_without_redispatch(self):
         self.pair()
         self.fixture.add_surface(media_surface())

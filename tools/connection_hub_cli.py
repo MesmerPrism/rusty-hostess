@@ -1606,6 +1606,13 @@ def list_surfaces(
         connection.close()
 
 
+def _advance_periodic_deadline(previous: float, interval: float, now: float) -> float:
+    next_deadline = previous + interval
+    while next_deadline <= now:
+        next_deadline += interval
+    return next_deadline
+
+
 def wait_surface(
     path: Path,
     surface_id: str,
@@ -1668,7 +1675,15 @@ def wait_surface(
                         f"keepalive_rejected:{keepalive_receipt.get('status', 'unknown')}"
                     )
                 keepalive_count += 1
-                next_keepalive = time.monotonic() + keepalive_interval_seconds
+                # Keep a fixed cadence instead of adding every receipt's
+                # round-trip time to all later keepalives. If one receipt
+                # crosses a cadence boundary, skip that missed slot rather
+                # than emitting a catch-up burst.
+                next_keepalive = _advance_periodic_deadline(
+                    next_keepalive,
+                    keepalive_interval_seconds,
+                    time.monotonic(),
+                )
                 continue
             try:
                 wait_until = min(deadline, next_keepalive)
@@ -1785,7 +1800,11 @@ def watch(
                         f"keepalive_rejected:{keepalive_receipt.get('status', 'unknown')}"
                     )
                 keepalive_count += 1
-                next_keepalive = time.monotonic() + keepalive_interval_seconds
+                next_keepalive = _advance_periodic_deadline(
+                    next_keepalive,
+                    keepalive_interval_seconds,
+                    time.monotonic(),
+                )
                 continue
             try:
                 wait_until = min(deadline, next_keepalive)
