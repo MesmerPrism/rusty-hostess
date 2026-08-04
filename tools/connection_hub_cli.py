@@ -16,6 +16,7 @@ import hashlib
 import http.client
 import ipaddress
 import json
+import math
 import os
 import re
 import socket
@@ -1426,8 +1427,27 @@ class HubConnection:
         self.next_external_request_sequence = next_sequence
 
     def send_keepalive(
-        self, *, explicit_request_sequence: int | None = None
+        self,
+        *,
+        explicit_request_sequence: int | None = None,
+        receipt_timeout_seconds: float = 6.0,
+        max_events_to_read: int | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
+        if (
+            isinstance(receipt_timeout_seconds, bool)
+            or not isinstance(receipt_timeout_seconds, (int, float))
+            or not math.isfinite(float(receipt_timeout_seconds))
+            or receipt_timeout_seconds <= 0
+            or receipt_timeout_seconds > 6
+        ):
+            raise ValueError("keepalive_receipt_timeout_out_of_bounds")
+        if max_events_to_read is not None and (
+            isinstance(max_events_to_read, bool)
+            or not isinstance(max_events_to_read, int)
+            or max_events_to_read < 1
+            or max_events_to_read > 512
+        ):
+            raise ValueError("keepalive_event_limit_out_of_bounds")
         expected_before = self._require_v2_next_sequence()
         sequence = (
             expected_before
@@ -1444,9 +1464,13 @@ class HubConnection:
         validate_protocol_message(request, "keepalive_v2")
         payload = canonical_json(request)
         self.socket.send_text_bytes(payload)
-        deadline = time.monotonic() + 6
+        deadline = time.monotonic() + float(receipt_timeout_seconds)
+        events_read = 0
         while time.monotonic() < deadline:
-            event = self.read_event(max(0.05, deadline - time.monotonic()))
+            if max_events_to_read is not None and events_read >= max_events_to_read:
+                raise HubError("keepalive_event_limit_reached")
+            event = self.read_event(max(0.001, deadline - time.monotonic()))
+            events_read += 1
             if event.get("type") == "protocol_error":
                 raise HubError(f"protocol_error:{event.get('status', 'unknown')}")
             if event.get("type") == "keepalive_receipt":
@@ -1573,6 +1597,110 @@ def list_surfaces(
             "expires_at_utc": connection.expires_at_utc,
             "surface_revision": connection.surface_revision,
             "surfaces": surfaces,
+        }
+    finally:
+        connection.close()
+
+
+def wait_surface(
+    path: Path,
+    surface_id: str,
+    expected_present: bool,
+    seconds: float,
+    credential_store: CredentialStore | None = None,
+    keepalive_interval_seconds: float = 5.0,
+    max_events: int = 128,
+) -> dict[str, Any]:
+    if not isinstance(surface_id, str) or not TOKEN.fullmatch(surface_id):
+        raise ValueError("wait_surface_id_invalid")
+    if not isinstance(expected_present, bool):
+        raise ValueError("wait_surface_presence_invalid")
+    if (
+        isinstance(seconds, bool)
+        or not isinstance(seconds, (int, float))
+        or not math.isfinite(float(seconds))
+        or seconds < 0.1
+        or seconds > 60
+    ):
+        raise ValueError("wait_surface_seconds_out_of_bounds")
+    if (
+        isinstance(keepalive_interval_seconds, bool)
+        or not isinstance(keepalive_interval_seconds, (int, float))
+        or not math.isfinite(float(keepalive_interval_seconds))
+        or keepalive_interval_seconds < 0.1
+        or keepalive_interval_seconds > 10
+    ):
+        raise ValueError("wait_surface_keepalive_interval_out_of_bounds")
+    if isinstance(max_events, bool) or not isinstance(max_events, int) or max_events < 1 or max_events > 128:
+        raise ValueError("wait_surface_event_limit_out_of_bounds")
+    document, policy, connection, changed = connect_session(path, credential_store)
+    started = time.monotonic()
+    deadline = time.monotonic() + seconds
+    next_keepalive = (
+        time.monotonic() + keepalive_interval_seconds
+        if connection.protocol_id == PROTOCOL_ID_V2
+        else deadline
+    )
+    keepalive_count = 0
+    try:
+        while (surface_id in connection.surfaces) is not expected_present:
+            if time.monotonic() >= deadline:
+                raise HubError("wait_surface_timeout")
+            if len(connection.events) >= max_events:
+                raise HubError("wait_surface_event_limit_reached")
+            if (
+                connection.protocol_id == PROTOCOL_ID_V2
+                and time.monotonic() >= next_keepalive
+            ):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise HubError("wait_surface_timeout")
+                _, keepalive_receipt = connection.send_keepalive(
+                    receipt_timeout_seconds=min(6.0, remaining),
+                    max_events_to_read=max_events - len(connection.events),
+                )
+                if keepalive_receipt.get("accepted") is not True:
+                    raise HubError(
+                        f"keepalive_rejected:{keepalive_receipt.get('status', 'unknown')}"
+                    )
+                keepalive_count += 1
+                next_keepalive = time.monotonic() + keepalive_interval_seconds
+                continue
+            try:
+                wait_until = min(deadline, next_keepalive)
+                remaining = wait_until - time.monotonic()
+                if remaining <= 0:
+                    continue
+                connection.read_event(min(0.25, remaining))
+            except socket.timeout:
+                continue
+        return {
+            "$schema": "rusty.hostess.connection_hub.wait_surface_receipt.v1",
+            "status": "passed",
+            "session_fingerprint_sha256": _document_session_fingerprint(document),
+            "transport": policy.receipt(),
+            "transport_epoch": connection.transport_epoch,
+            "transport_epoch_changed": changed,
+            "socket_protocol": connection.protocol_id,
+            "rollover_safe": connection.protocol_id == PROTOCOL_ID_V2,
+            "surface_id": surface_id,
+            "expected_present": expected_present,
+            "observed_present": surface_id in connection.surfaces,
+            "condition_satisfied": True,
+            "surface": connection.surfaces.get(surface_id),
+            "elapsed_milliseconds": int((time.monotonic() - started) * 1000),
+            "timeout_seconds": seconds,
+            "max_events": max_events,
+            "keepalive_interval_seconds": (
+                keepalive_interval_seconds
+                if connection.protocol_id == PROTOCOL_ID_V2
+                else None
+            ),
+            "keepalive_count": keepalive_count,
+            "next_external_request_sequence": connection.next_external_request_sequence,
+            "expires_at_utc": connection.expires_at_utc,
+            "surface_revision": connection.surface_revision,
+            "event_count": len(connection.events),
         }
     finally:
         connection.close()
@@ -2008,6 +2136,15 @@ def parser() -> argparse.ArgumentParser:
     watch_parser.add_argument("--seconds", type=float, default=5.0)
     watch_parser.add_argument("--max-events", type=int, default=128)
     watch_parser.add_argument("--keepalive-interval-seconds", type=float, default=15.0)
+    wait_parser = sub.add_parser("wait-surface")
+    wait_parser.add_argument("--session-file", required=True, type=Path)
+    wait_parser.add_argument("--surface-id", required=True)
+    wait_parser.add_argument(
+        "--presence", required=True, choices=("present", "absent")
+    )
+    wait_parser.add_argument("--seconds", type=float, default=20.0)
+    wait_parser.add_argument("--max-events", type=int, default=128)
+    wait_parser.add_argument("--keepalive-interval-seconds", type=float, default=5.0)
     invoke_parser = sub.add_parser("invoke-surface-command")
     invoke_parser.add_argument("--session-file", required=True, type=Path)
     invoke_parser.add_argument("--surface-id", required=True)
@@ -2046,6 +2183,15 @@ def main(argv: list[str] | None = None) -> int:
                 args.seconds,
                 args.max_events,
                 keepalive_interval_seconds=args.keepalive_interval_seconds,
+            )
+        elif args.action == "wait-surface":
+            receipt = wait_surface(
+                args.session_file,
+                args.surface_id,
+                args.presence == "present",
+                args.seconds,
+                keepalive_interval_seconds=args.keepalive_interval_seconds,
+                max_events=args.max_events,
             )
         elif args.action == "invoke-surface-command":
             try:

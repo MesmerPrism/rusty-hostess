@@ -4,6 +4,8 @@ import io
 import json
 import os
 import tempfile
+import threading
+import time
 import unittest
 from argparse import Namespace
 from pathlib import Path
@@ -492,6 +494,193 @@ class ConnectionHubFixtureTests(unittest.TestCase):
         self.assertTrue(listed["transport_epoch_changed"])
         self.assertTrue(watched["transport_epoch_changed"])
         self.assertTrue(invoked["transport_epoch_changed"])
+
+    def test_wait_surface_uses_one_transport_until_surface_appears(self):
+        self.pair()
+        before_upgrades = len(self.fixture.upgrade_paths)
+        before_snapshots = self.fixture.authenticated_snapshot_count
+        outcome = {}
+
+        def wait_for_surface():
+            try:
+                outcome["receipt"] = cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    True,
+                    1.0,
+                    self.store,
+                    keepalive_interval_seconds=0.1,
+                )
+            except BaseException as error:
+                outcome["error"] = error
+
+        worker = threading.Thread(target=wait_for_surface)
+        worker.start()
+        deadline = time.monotonic() + 1.0
+        while self.fixture.authenticated_snapshot_count != before_snapshots + 1:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.fixture.add_surface(media_surface())
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        if "error" in outcome:
+            raise outcome["error"]
+        receipt = outcome["receipt"]
+        self.assertEqual(len(self.fixture.upgrade_paths), before_upgrades + 1)
+        self.assertTrue(receipt["condition_satisfied"])
+        self.assertTrue(receipt["observed_present"])
+        self.assertEqual(receipt["surface_id"], "media.control")
+        self.assertEqual(receipt["surface"]["surface_id"], "media.control")
+        self.assertEqual(receipt["keepalive_count"], 0)
+        self.assertGreaterEqual(receipt["event_count"], 1)
+
+    def test_wait_surface_legacy_v1_uses_no_keepalive(self):
+        self.pair(cli.PROTOCOL_ID_V1)
+        before_keepalives = self.fixture.keepalive_count
+        before_snapshots = self.fixture.authenticated_snapshot_count
+        outcome = {}
+
+        def wait_for_surface():
+            try:
+                outcome["receipt"] = cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    True,
+                    1.0,
+                    self.store,
+                    keepalive_interval_seconds=0.1,
+                )
+            except BaseException as error:
+                outcome["error"] = error
+
+        worker = threading.Thread(target=wait_for_surface)
+        worker.start()
+        deadline = time.monotonic() + 1.0
+        while self.fixture.authenticated_snapshot_count != before_snapshots + 1:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        time.sleep(0.15)
+        self.fixture.add_surface(media_surface())
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        if "error" in outcome:
+            raise outcome["error"]
+        self.assertEqual(outcome["receipt"]["keepalive_count"], 0)
+        self.assertEqual(self.fixture.keepalive_count, before_keepalives)
+
+    def test_wait_surface_event_limit_is_fail_closed(self):
+        self.pair()
+        before_snapshots = self.fixture.authenticated_snapshot_count
+        outcome = {}
+
+        def wait_for_surface():
+            try:
+                cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    True,
+                    1.0,
+                    self.store,
+                    max_events=2,
+                )
+            except BaseException as error:
+                outcome["error"] = error
+
+        worker = threading.Thread(target=wait_for_surface)
+        worker.start()
+        deadline = time.monotonic() + 1.0
+        while self.fixture.authenticated_snapshot_count != before_snapshots + 1:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
+        self.fixture.add_surface(diagnostic_surface())
+        worker.join(2.0)
+        self.assertFalse(worker.is_alive())
+        self.assertIsInstance(outcome.get("error"), cli.HubError)
+        self.assertIn("wait_surface_event_limit_reached", str(outcome["error"]))
+
+    def test_wait_surface_event_limit_applies_inside_keepalive_receipt_wait(self):
+        self.pair()
+        self.fixture.queue_pre_keepalive_snapshots(2)
+        with self.assertRaisesRegex(cli.HubError, "keepalive_event_limit_reached"):
+            cli.wait_surface(
+                self.session_path,
+                "media.control",
+                True,
+                0.5,
+                self.store,
+                keepalive_interval_seconds=0.1,
+                max_events=2,
+            )
+
+    def test_wait_surface_rejects_non_finite_or_invalid_bounds(self):
+        self.pair()
+        for value in (float("nan"), float("inf"), float("-inf"), True, "1"):
+            with self.subTest(seconds=value), self.assertRaisesRegex(
+                ValueError, "wait_surface_seconds_out_of_bounds"
+            ):
+                cli.wait_surface(
+                    self.session_path, "media.control", True, value, self.store
+                )
+        for value in (float("nan"), float("inf"), True, "1"):
+            with self.subTest(interval=value), self.assertRaisesRegex(
+                ValueError, "wait_surface_keepalive_interval_out_of_bounds"
+            ):
+                cli.wait_surface(
+                    self.session_path,
+                    "media.control",
+                    True,
+                    1.0,
+                    self.store,
+                    keepalive_interval_seconds=value,
+                )
+
+    def test_wait_surface_keepalive_rejection_closes_transport(self):
+        self.pair()
+        with mock.patch.object(
+            cli.HubConnection,
+            "send_keepalive",
+            return_value=({}, {"accepted": False, "status": "injected_rejection"}),
+        ), self.assertRaisesRegex(cli.HubError, "keepalive_rejected"):
+            cli.wait_surface(
+                self.session_path,
+                "media.control",
+                True,
+                0.5,
+                self.store,
+                keepalive_interval_seconds=0.1,
+            )
+
+    def test_wait_surface_accepts_absence_from_initial_snapshot(self):
+        self.pair()
+        receipt = cli.wait_surface(
+            self.session_path,
+            "media.control",
+            False,
+            1.0,
+            self.store,
+        )
+        self.assertTrue(receipt["condition_satisfied"])
+        self.assertFalse(receipt["observed_present"])
+        self.assertIsNone(receipt["surface"])
+        self.assertEqual(receipt["event_count"], 1)
+
+    def test_wait_surface_timeout_is_fail_closed(self):
+        self.pair()
+        started = time.monotonic()
+        with self.assertRaisesRegex(cli.HubError, "wait_surface_timeout"):
+            cli.wait_surface(
+                self.session_path,
+                "media.control",
+                True,
+                0.2,
+                self.store,
+                keepalive_interval_seconds=0.1,
+            )
+        self.assertLess(time.monotonic() - started, 0.8)
+        deadline = time.monotonic() + 1.0
+        while self.fixture.active_connection_count:
+            self.assertLess(time.monotonic(), deadline)
+            time.sleep(0.01)
 
     def test_v2_pair_reconnect_resyncs_exact_next_sequence(self):
         paired = self.pair()

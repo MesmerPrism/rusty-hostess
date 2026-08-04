@@ -151,6 +151,8 @@ $PairCode | python $Cli pair --origin $Origin `
   --session-file $SessionFile
 
 python $Cli connect-watch --session-file $SessionFile --seconds 30
+python $Cli wait-surface --session-file $SessionFile `
+  --surface-id media.control --presence present --seconds 20
 python $Cli list-surfaces --session-file $SessionFile
 python $Cli invoke-surface-command --session-file $SessionFile `
   --surface-id media.control --command play --args-json '{}'
@@ -165,10 +167,24 @@ form because command arguments are observable by other host processes.
 `connect-watch` is bounded to 300 seconds because Hostess is not a long-lived
 background-service owner. On v2 it sends bounded periodic JSON keepalives
 (default 15 seconds, configurable with `--keepalive-interval-seconds`) while
-the watch is active. Re-running `list-surfaces`, `connect-watch`, or
+the watch is active. After authentication and the initial snapshot,
+`wait-surface` keeps that one transport open for a bounded observation window
+of up to 60 seconds, consumes lifecycle events,
+and sends v2 keepalives until the requested presence or absence is observed.
+This avoids replacing the authoritative transport on every poll. Re-running
+`list-surfaces`, `connect-watch`, `wait-surface`, or
 `invoke-surface-command` may replace the physical transport while preserving
 the server-side logical session. Receipts report whether the observed
 `transport_epoch` changed.
+
+`wait-surface` emits
+`rusty.hostess.connection_hub.wait_surface_receipt.v1`. Its `event_count`
+includes the required initial snapshot and any validated lifecycle or
+keepalive-receipt events. `surface` is the validated public descriptor when the
+requested surface is present and is `null` when absence is proven. Timeout,
+event-limit, authentication, and keepalive failures close the same socket and
+fail the command; the route never reconnects and never sends or replays a
+surface command.
 
 ## Deterministic offline E2E
 

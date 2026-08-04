@@ -284,7 +284,8 @@ generic code or sanitized sample fixtures.
   Connection Hub controller and secret-redacted evidence projector. It may own
   explicit endpoint posture, HTTP/WebSocket client mechanics, bounded surface
   tracking, closed command-envelope validation, and operator commands for
-  status, pair, watch, list, invoke, and revoke. It must not own Manifold
+  status, pair, watch, single-transport surface wait, list, invoke, and revoke.
+  It must not own Manifold
   admission/session/replay/command decisions, provider registration, a
   background service, or high-rate media/LSL/BLE payloads.
   Pairing secrets must not enter argv, WebSocket bearers must be sent only in

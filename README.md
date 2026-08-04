@@ -122,8 +122,8 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `tools/connection_hub_cli.py`: strict external controller and evidence route
   for the standalone Rusty Connection Hub. It labels transport posture, keeps
   pairing/session secrets out of receipts, tracks surface lifecycle across
-  transport epochs, and exposes status, pair, bounded watch, list, command,
-  revoke, and deterministic offline E2E commands. See
+  transport epochs, and exposes status, pair, bounded watch, single-transport
+  surface wait, list, command, revoke, and deterministic offline E2E commands. See
   `docs/CONNECTION_HUB_OPERATOR.md`. Pairing codes never enter argv; socket
   authentication uses the first JSON frame rather than a URL bearer; Windows
   persistence uses current-user DPAPI and successful revoke removes it. Pairing

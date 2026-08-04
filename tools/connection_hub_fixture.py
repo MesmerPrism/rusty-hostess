@@ -192,6 +192,8 @@ class _FixtureState:
         self.rollover_count = 0
         self.accepted_external_request_bytes: list[bytes] = []
         self.keepalive_count = 0
+        self.authenticated_snapshot_count = 0
+        self.pre_keepalive_snapshot_count = 0
         self.drop_next_sequenced_receipt = False
         self.dispatch_log: list[tuple[str, str, str]] = []
         self.provider_results: dict[tuple[str, str], tuple[bool, str]] = {}
@@ -536,6 +538,12 @@ class _FixtureState:
                 authority_receipt={"authority_epoch": self.authority_epoch},
             ), False
 
+    def take_pre_keepalive_snapshot_count(self) -> int:
+        with self.lock:
+            count = self.pre_keepalive_snapshot_count
+            self.pre_keepalive_snapshot_count = 0
+            return count
+
     def restart_authority(self) -> None:
         with self.lock:
             self.restart_count += 1
@@ -678,6 +686,8 @@ class _Handler(BaseHTTPRequestHandler):
                 return
             connection.send(auth_receipt)
             connection.send(self.server.state.snapshot(connection))
+            with self.server.state.lock:
+                self.server.state.authenticated_snapshot_count += 1
             for previous in replaced:
                 previous.close(4002, "transport_replaced")
             while self.server.state.session_active:
@@ -716,6 +726,10 @@ class _Handler(BaseHTTPRequestHandler):
                     receipt, close_after = self.server.state.keepalive(
                         connection, request, payload
                     )
+                    for _ in range(
+                        self.server.state.take_pre_keepalive_snapshot_count()
+                    ):
+                        connection.send(self.server.state.snapshot(connection))
                 elif connection.protocol_id == PROTOCOL_ID_V2:
                     receipt = self.server.state.protocol_error(
                         connection, "request_type_unknown"
@@ -808,6 +822,22 @@ class ConnectionHubFixture:
     def keepalive_count(self) -> int:
         with self._state.lock:
             return self._state.keepalive_count
+
+    @property
+    def active_connection_count(self) -> int:
+        with self._state.lock:
+            return len(self._state.connections)
+
+    @property
+    def authenticated_snapshot_count(self) -> int:
+        with self._state.lock:
+            return self._state.authenticated_snapshot_count
+
+    def queue_pre_keepalive_snapshots(self, count: int) -> None:
+        if isinstance(count, bool) or not isinstance(count, int) or count < 1 or count > 16:
+            raise ValueError("pre_keepalive_snapshot_count_out_of_bounds")
+        with self._state.lock:
+            self._state.pre_keepalive_snapshot_count += count
 
     @property
     def authority_epoch(self) -> int:
