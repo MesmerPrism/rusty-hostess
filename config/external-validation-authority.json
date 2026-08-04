@@ -1,0 +1,534 @@
+{
+  "schema": "rusty.morphospace.workflow.external_validation_authority_policy.v1",
+  "policy_id": "rusty-hostess-validation-authority-v1",
+  "repository": "MesmerPrism/rusty-hostess",
+  "mandatory_protected_paths": [
+    ".github/workflows/external-validation-authority.yml",
+    "config/external-validation-authority.json",
+    "schemas/external-validation-authority-assessment-v1.schema.json",
+    "schemas/external-validation-authority-policy-v1.schema.json"
+  ],
+  "protected_rules": [
+    {
+      "rule_id": "hostess-companion-runtime",
+      "match": "prefix",
+      "path": "apps/hostess-companion-wpf/Services/"
+    },
+    {
+      "rule_id": "labs-distribution-doc",
+      "match": "exact",
+      "path": "docs/WINDOWS_LABS_DISTRIBUTION.md"
+    },
+    {
+      "rule_id": "labs-distribution-test",
+      "match": "exact",
+      "path": "tools/Test-HostessLabsDistribution.ps1"
+    },
+    {
+      "rule_id": "labs-packaging",
+      "match": "prefix",
+      "path": "packaging/windows-labs/"
+    },
+    {
+      "rule_id": "labs-release-workflow",
+      "match": "exact",
+      "path": ".github/workflows/release-windows-labs.yml"
+    },
+    {
+      "rule_id": "schema-contracts",
+      "match": "prefix",
+      "path": "schemas/"
+    },
+    {
+      "rule_id": "validation-authority-policy",
+      "match": "exact",
+      "path": "config/external-validation-authority.json"
+    },
+    {
+      "rule_id": "validation-authority-workflow",
+      "match": "exact",
+      "path": ".github/workflows/external-validation-authority.yml"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-generator",
+      "match": "exact",
+      "path": "tools/New-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-policy",
+      "match": "prefix",
+      "path": "packaging/windows-hotspot-provider/"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-tests",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-validator",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-workflow",
+      "match": "exact",
+      "path": ".github/workflows/windows-hotspot-provider-release.yml"
+    },
+    {
+      "rule_id": "windows-hotspot-provider-release-workflow-test",
+      "match": "exact",
+      "path": "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1"
+    }
+  ],
+  "approved_change_sets": [
+    {
+      "approval_id": "hostess-bundled-python-labs-20260801",
+      "required_ancestor": "597306cf132ad96d8cfec1e187127571d936f643",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "AGENTS.md",
+        "README.md",
+        "apps/hostess-companion-wpf/Services/HostessctlCatalogService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlCommandService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlConnectivityService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlProjectRunnerService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlReadinessService.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlServicePaths.cs",
+        "apps/hostess-companion-wpf/Services/HostessctlSessionService.cs",
+        "docs/LICENSING.md",
+        "docs/WINDOWS_LABS_DISTRIBUTION.md",
+        "packaging/windows-labs/New-HostessLabsBundle.ps1",
+        "packaging/windows-labs/runtime-policy.json",
+        "schemas/hostess-windows-complete-product-v3.schema.json",
+        "schemas/hostess-windows-labs-runtime-policy.schema.json",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19857,
+          "sha256": "d402d8db4b0b824eca9fd76da4250379c29dc4fa256d49c73a4371782127090c"
+        },
+        {
+          "path": "AGENTS.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30426,
+          "sha256": "e93b3ebea7d1f01a57aea86c33d0030c97dfb6a95baaeef6d56b4b3f465a29e0"
+        },
+        {
+          "path": "README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 62701,
+          "sha256": "0928b5d46d47b8ea8ce2a90c7749eaa0e6338f444b068a458d69c953fbf9d9d5"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlCatalogService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2484,
+          "sha256": "47cadba37836c3cad583d05cd6f529e172ce3741665e4a1e71b0bfea6eab15a7"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlCommandService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5531,
+          "sha256": "b097b67f1876c5507dd9647463815fd52c909a7a146e7b892d27082066907c8e"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlConnectivityService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 46913,
+          "sha256": "1a365ac547e91330fe3292a4255c69a674ddfded59fbed6c672fb67bef3ed037"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlProjectRunnerService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3991,
+          "sha256": "f63139d9b0ed4a7fdb5f93dbeb118a6924747f39239b07c1627b3afa5d682dbf"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlReadinessService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3243,
+          "sha256": "4d7fa989088882074d0611b21c0837983b948b30663ba6b342ebf9b6645b91da"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlServicePaths.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 4169,
+          "sha256": "f1edab98df8dc41c2616693197eb15cf1e433b34470733fabb52b2a1454fdd72"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlSessionService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 11908,
+          "sha256": "9a74d020089936e95c0293cda632171b921014b5fce2b0ba10215926c8ca7ef0"
+        },
+        {
+          "path": "docs/LICENSING.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 1091,
+          "sha256": "1b469665a57f5ebbd674eadaf193c1e1d68dafdd11ae9d3d94e1c019a8f09d87"
+        },
+        {
+          "path": "docs/WINDOWS_LABS_DISTRIBUTION.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 4943,
+          "sha256": "1e450c5414cfaf3bda3c2ed8255563187f65f1e106c645487089d6ab750fdfad"
+        },
+        {
+          "path": "packaging/windows-labs/New-HostessLabsBundle.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19165,
+          "sha256": "561d267c8dbe6890e1735e8f2ad0f6a7515d184f8165ce2479850b0157e7870c"
+        },
+        {
+          "path": "packaging/windows-labs/runtime-policy.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 1400,
+          "sha256": "8d39e6c6fd577747a74141af0245511da570e92cdc41c7e2d51682e3361e3625"
+        },
+        {
+          "path": "schemas/hostess-windows-complete-product-v3.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6871,
+          "sha256": "284aa35dc648b7ea2a01dfb2c7f100868ee6e2c9cae707580dda2f8acbdd186c"
+        },
+        {
+          "path": "schemas/hostess-windows-labs-runtime-policy.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2374,
+          "sha256": "ab9eb460f8084ad5345066941bc26402f48dde2e47165380e1fce15040a47d85"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30051,
+          "sha256": "9e91cda0d3734dfe2f6c5abfa91969e82fb98cf3a4982504bd455f18fa47015a"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-signing-identity-portability-20260801",
+      "required_ancestor": "3bb31f13fb0c489eaf16e31c7b929276849337c2",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19946,
+          "sha256": "36e4c4aeb0359d757e6f6659ee1589bf9613e67270cf6bfceab5d1fd7a051c9d"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-sdk-signtool-20260801",
+      "required_ancestor": "7e581516386c7d6fee861d0a2400ff3dd0724d15",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "packaging/windows-labs/Resolve-WindowsSdkSignTool.ps1",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20098,
+          "sha256": "88576ce68460ecae6cb9d209f882ebc6839b5324c5f7b3cbe134cc01682e50f4"
+        },
+        {
+          "path": "packaging/windows-labs/Resolve-WindowsSdkSignTool.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2436,
+          "sha256": "7d56798ef5821ce4bf55a1166d74b52f298e01b72c327e49595ea62d05da5a39"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31234,
+          "sha256": "aa61af56270558b5b2340592c7c3f7473d0b9fe40f837e99a176c181c9d66e73"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-self-issued-exit-20260801",
+      "required_ancestor": "6b6c61fe6201cd96d5ed26a0ee2cde5a55c3bfd5",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20135,
+          "sha256": "caa5169eda0c8375eaf23f178d463b6fdac647ec46a666a3a1c502ec6f510c30"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31627,
+          "sha256": "3e9b480cdefed9c8476b4dd55be1eccc4ef64bdfd123c22b74a8e9fc640f9d15"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-upload-closed-assets-20260801",
+      "required_ancestor": "d09e274bbb9642267027069dd3329be9a3b3e81a",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20139,
+          "sha256": "ef78ae27067ee6fd6ed660ed8ca8a176cdeab3502b1c40989e355fd149ab3ba3"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 31740,
+          "sha256": "008451687458b9b4e857244f891fa975ce32aef4d472a9b4c2f523afa3382f3d"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-verified-draft-readback-by-id-20260801",
+      "required_ancestor": "62a0da25613a9a610cce0f8af89ccad8155ac236",
+      "changed_paths": [
+        ".github/workflows/release-windows-labs.yml",
+        "docs/WINDOWS_LABS_DISTRIBUTION.md",
+        "tools/Test-HostessLabsDistribution.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/release-windows-labs.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 20891,
+          "sha256": "181ceee1fcdf91c17543f40a659fcf9975ca3e24c07b45847b10a9e4dc2fe8ab"
+        },
+        {
+          "path": "docs/WINDOWS_LABS_DISTRIBUTION.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5092,
+          "sha256": "bf70c9651cc8efd62e54444929ad46db8ee61e0e35c81fa5c7371b7ae38a2429"
+        },
+        {
+          "path": "tools/Test-HostessLabsDistribution.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 32326,
+          "sha256": "e5c06c9ba49598f29ee55bdcde70c7cb916f70b1da798fa1bd165184f30a9e29"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-z-provider-labs-self-issued-boundary-20260801",
+      "required_ancestor": "320d5498208e9ccac0140555ab3cddf4b2e94114",
+      "changed_paths": [
+        ".github/workflows/windows-hotspot-provider-release.yml",
+        "AGENTS.md",
+        "README.md",
+        "docs/windows-mobile-hotspot-provider.md",
+        "packaging/windows-hotspot-provider/README.md",
+        "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+        "packaging/windows-hotspot-provider/release-policy.json",
+        "schemas/hostess-windows-hotspot-release-policy.schema.json",
+        "schemas/hostess-windows-hotspot-release-provenance-v2.schema.json",
+        "tools/New-WindowsHotspotProviderReleaseMetadata.ps1",
+        "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1",
+        "tools/check_all.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": ".github/workflows/windows-hotspot-provider-release.yml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 16729,
+          "sha256": "d6513d93a71f221bd15963a0cdc61f4852f7c307e44b875c2b1f5276679d7412"
+        },
+        {
+          "path": "AGENTS.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 30862,
+          "sha256": "07cadbdfdb2de3bc09c900c9dc5b309b3679520f793f9568b7a13bb3b215126f"
+        },
+        {
+          "path": "README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 62877,
+          "sha256": "34453610a84f968135723af39f8fcc9d0bbbc455bf73b67c48d0b8f2fa335f11"
+        },
+        {
+          "path": "docs/windows-mobile-hotspot-provider.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 10246,
+          "sha256": "021535b2fa3b9730a1610daa101be59e52c4516fe845abca7c1170a55e9449ed"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 5828,
+          "sha256": "2c92fa26c0ec6e9924f5ceda6289b15d5c661925870b65c8f104ada6f011a2de"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 7598,
+          "sha256": "4e762848e8e389676f819ddae518e986b8c9c998b0f1806183ed6c434a7a380e"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/release-policy.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 969,
+          "sha256": "d22092b491c02a8aba9ff135dd4df56e3fa07f6cbc5ea440da630ce91bf6e00e"
+        },
+        {
+          "path": "schemas/hostess-windows-hotspot-release-policy.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2791,
+          "sha256": "316a4f75d0b77fcfc7813a352c38edd7536ba016fa3eb6071338981f64fc04a7"
+        },
+        {
+          "path": "schemas/hostess-windows-hotspot-release-provenance-v2.schema.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 9275,
+          "sha256": "7b73ac3e54d8ac195f2fa64b121aeba83afc09d2fd93d1ee8631df0d9d5d2f2e"
+        },
+        {
+          "path": "tools/New-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 21469,
+          "sha256": "41a4cb01a10f9b2184b85535d7b00dcf5b49625e0e9b8590c28e269e3386d80e"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 8538,
+          "sha256": "4357c03dc17e7553fee18e4120344e3f3968ebdb3af055d4bfe04426a90a64f9"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 21461,
+          "sha256": "6e7d97f76a76fedc201d196d6c0a478fece4eaa8fba1b837d9fae8030a86cbfc"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseWorkflow.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 8958,
+          "sha256": "1f9e5eda6d1375f86d0fbcfc0a0b3dbec9e096635d7996e9a0470367be2430e8"
+        },
+        {
+          "path": "tools/check_all.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 17685,
+          "sha256": "8c1ee964ea5a8cb794e7c4aad472762cc692a281531302c07a3db9636363ac3d"
+        }
+      ],
+      "status": "approved"
+    },
+    {
+      "approval_id": "hostess-windows-zz-provider-cross-boundary-portability-20260801",
+      "required_ancestor": "d3037d2327752c6ac434d4f60314fe03eb06bc46",
+      "changed_paths": [
+        "docs/windows-mobile-hotspot-provider.md",
+        "packaging/windows-hotspot-provider/README.md",
+        "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+        "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+        "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1"
+      ],
+      "artifacts": [
+        {
+          "path": "docs/windows-mobile-hotspot-provider.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 10533,
+          "sha256": "55951f489a029e806c9258aa551903183f790d34031fada6d80065f94a5fc0ee"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6445,
+          "sha256": "ff40d2bb09ac79aa9a63e63a6f7752ba6bfc1cff6931cec602a928148925cb99"
+        },
+        {
+          "path": "packaging/windows-hotspot-provider/WindowsAuthenticodePolicy.psm1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 11959,
+          "sha256": "bca1aaf67805596960a4810038b8e713aa6814aacfc24c0d9193f5d80235708b"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderAuthenticodePolicy.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 15302,
+          "sha256": "ff51fac5996f549fafe9db5655eff4335dbcb7f2ef5656b9095cdac1c61bfc25"
+        },
+        {
+          "path": "tools/Test-WindowsHotspotProviderReleaseMetadata.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 19214,
+          "sha256": "07a6c03ab7e6a31f381b218b440b271db906cfa4c6771d1a14da3b88fa14b071"
+        }
+      ],
+      "status": "approved"
+    }
+  ],
+  "status": "active"
+}

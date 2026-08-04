@@ -13,6 +13,13 @@ The repo is intentionally separate from:
 Hostess T consumes package manifests as build or run inputs and emits evidence
 JSON that includes package manifest hashes.
 
+The opt-in complete-product Windows Labs distribution is documented in
+[docs/WINDOWS_LABS_DISTRIBUTION.md](docs/WINDOWS_LABS_DISTRIBUTION.md). It
+includes the current WPF companion and source-owned CLI surface while keeping
+MQDH/Casting external and keeping the standalone hotspot provider separate.
+Labs also bundles the hash-pinned official CPython 3.12.10 embeddable runtime,
+so users do not install or expose a particular ambient Python executable.
+
 ## Agent Instructions
 
 Use `AGENTS.md` as the first-hop policy surface. Detailed Hostess agent
@@ -63,8 +70,10 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
 - `apps/hostess-projection-replay`: Windows/Linux offline Vulkan validation
   host for projection effects. It consumes an explicit replay capsule plus
   external SPIR-V and image/depth inputs, recreates the declared descriptor and
-  uniform ABI, writes guide/layer PNGs with a hash-bound report, and can loop a
-  Quest-owned packed stereo camera recording in a desktop window. Effect
+  64-byte or additive 128-byte surface-uniform ABI, writes guide/layer PNGs
+  with requested/supported/effective neutral markers in a hash-bound report,
+  and can loop a Quest-owned packed stereo camera recording in a desktop
+  window. Effect
   formulas, product presets, captured camera data, and private shader assets
   stay with the provider and are never copied into Hostess.
 - `tools/hostessctl/hostessctl.py`: compatibility facade for command dispatch,
@@ -75,6 +84,17 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   helpers.
 - `tools/hostessctl/runtime.py`: shared process execution helpers and repo-root
   resolution for command route modules.
+- `tools/hostessctl/meta_quest_casting.py` and
+  `meta_quest_casting_windows.py`: Windows-only experimental lifecycle adapter
+  for the separately installed Meta Quest Developer Hub Cast window. It owns
+  closed compatibility checks, exact-target preflight, Hostess process
+  identity, and bounded cleanup receipts while treating Meta's casting
+  transport, presentation, and recording as opaque. The
+  [sanitized reviewed-run summary](docs/evidence/meta-quest-casting-mqdh-6.4.1-validation-summary.json)
+  records stable live Cinematic 16:9 presentation and graceful owned-host exit
+  on MQDH 6.4.1; recording, Meta device/FOV cleanup, input forwarding, and
+  arbitrary 2D-panel interaction remain unproven or out of scope. See
+  `docs/meta-quest-casting-adapter.md`.
 - `tools/hostessctl/live_capture_routes.py`: desktop live capture, Polar
   selected-module replay, Android live/replay launch, live evidence validation,
   and runtime artifact pulls.
@@ -247,7 +267,9 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   availability neither authorizes execution nor proves platform support,
   effective hotspot state, Fleet admission, or release eligibility. It is not
   the QCL-011 observer or Wi-Fi Direct LegacySettings helper; see
-  `docs/windows-mobile-hotspot-provider.md`.
+  `docs/windows-mobile-hotspot-provider.md`. Provider releases use an
+  owner-issued, exact-pinned self-issued Authenticode policy for Labs only;
+  they never mutate Windows trust stores and remain ineligible for Stable.
 - `tools/hostessctl/connectivity_probe_common.py`: shared connectivity report
   helpers for the QCL report skeleton, check rows, issue rows,
   JSON/ADB/PowerShell cleanup, Android readback, and small measurement
@@ -830,9 +852,9 @@ The checker command remains the stable entrypoint; the
 the force-authority evidence family so new evidence families can be split
 without growing the CLI facade.
 
-The first camera-free Quest ADF proof is recorded at
-`S:\Work\tmp\quest-makepad-adf-evidence-20260611-040006` with APK SHA256
-`AD4C2416096D7FABDE9A751B04DA7ECF94EE6FAA520641BC2E294D0DA0A59BD3`.
+The first camera-free Quest ADF proof is recorded under
+`<ignored-quest-makepad-adf-evidence-root>`; its exact APK SHA-256 remains in
+the ignored local evidence manifest.
 That run used generated/local effective settings selecting
 `makepad.sdf_adf.overlay_mode=adf`, staged recorded mesh replay files as
 app-private data-plane assets, and logged ADF-ready Matter runtime markers

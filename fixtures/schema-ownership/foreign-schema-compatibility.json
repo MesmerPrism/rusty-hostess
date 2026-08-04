@@ -705,6 +705,22 @@
       "reason": "Hostess keeps existing stored Quest profiles as a strictly read-only legacy import; new saves use the Hostess-owned replay control-state schema and distinct suffix."
     },
     {
+      "schema_id": "rusty.quest.projection-surface-tiling.v1",
+      "path": "apps/hostess-projection-replay/src/capsule.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess records requested, supported, and render-effective evidence for the neutral Quest-owned transport while keeping geometry behavior with the provider."
+    },
+    {
+      "schema_id": "rusty.quest.projection-inner-alpha.v1",
+      "path": "apps/hostess-projection-replay/src/capsule.rs",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Hostess records requested, supported, and render-effective evidence for the neutral Quest-owned transport while keeping alpha behavior with the provider."
+    },
+    {
       "schema_id": "rusty.quest.connectivity_topology_probe.v1",
       "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
       "owner": "rusty.quest",

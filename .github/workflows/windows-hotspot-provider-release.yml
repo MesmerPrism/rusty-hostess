@@ -18,12 +18,12 @@ jobs:
     environment: windows-hotspot-provider-release
 
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-dotnet@v5
+      - uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1 # v5.4.0
         with:
           dotnet-version: "9.0.x"
 
@@ -104,6 +104,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw "Windows hotspot provider artifact gate failed."
           }
+          pwsh -NoProfile -File tools\Test-WindowsHotspotProviderAuthenticodePolicy.ps1
+          if ($LASTEXITCODE -ne 0) {
+            throw "Windows hotspot provider Authenticode policy tests failed."
+          }
           pwsh -NoProfile -File tools\Test-WindowsHotspotProviderReleaseWorkflow.ps1
           if ($LASTEXITCODE -ne 0) {
             throw "Windows hotspot provider release-workflow gate failed."
@@ -115,23 +119,22 @@ jobs:
         env:
           AUTHENTICODE_PFX_BASE64: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_BASE64 }}
           AUTHENTICODE_PFX_PASSWORD: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_PASSWORD }}
-          EXPECTED_SIGNER_THUMBPRINT: ${{ vars.RUSTY_HOSTESS_AUTHENTICODE_SIGNER_THUMBPRINT }}
         run: |
           foreach ($required in @(
             $env:AUTHENTICODE_PFX_BASE64,
-            $env:AUTHENTICODE_PFX_PASSWORD,
-            $env:EXPECTED_SIGNER_THUMBPRINT
+            $env:AUTHENTICODE_PFX_PASSWORD
           )) {
             if ([string]::IsNullOrWhiteSpace($required)) {
-              throw "Protected signing inputs and independent signer thumbprint are required."
+              throw "Protected signing PFX and password are required."
             }
           }
-          $expectedThumbprint = (
-            $env:EXPECTED_SIGNER_THUMBPRINT -replace '\s', ''
-          ).ToLowerInvariant()
-          if ($expectedThumbprint -cnotmatch '^(?:[0-9a-f]{40}|[0-9a-f]{64})$') {
-            throw "The independently configured signer thumbprint is malformed."
-          }
+
+          Import-Module `
+            .\packaging\windows-hotspot-provider\WindowsAuthenticodePolicy.psm1 `
+            -Force
+          $policy = Read-RustyHostessProviderReleasePolicy `
+            -PolicyPath .\packaging\windows-hotspot-provider\release-policy.json `
+            -SchemaPath .\schemas\hostess-windows-hotspot-release-policy.schema.json
 
           $pfxPath = Join-Path $env:RUNNER_TEMP 'rusty-hostess-authenticode.pfx'
           [IO.File]::WriteAllBytes(
@@ -151,22 +154,11 @@ jobs:
             throw "The protected PFX must contain exactly one end-entity certificate."
           }
           $certificate = $certificates[0]
-          $observedThumbprint = (
-            $certificate.Thumbprint -replace '\s', ''
-          ).ToLowerInvariant()
-          $codeSigningEku = @(
-            $certificate.EnhancedKeyUsageList |
-              ForEach-Object { $_.ObjectId.Value }
-          )
-          if (-not $certificate.HasPrivateKey -or
-              $observedThumbprint -cne $expectedThumbprint -or
-              '1.3.6.1.5.5.7.3.3' -notin $codeSigningEku) {
-            throw "The protected PFX is not the independently authorized code-signing identity."
-          }
+          Assert-RustyHostessProviderSigningCertificate `
+            -Certificate $certificate `
+            -Policy $policy
 
           "pfx_path=$pfxPath" |
-            Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
-          "signer_thumbprint=$expectedThumbprint" |
             Out-File $env:GITHUB_OUTPUT -Encoding utf8 -Append
 
       - name: Sign provider and issue owner provenance
@@ -176,7 +168,6 @@ jobs:
           PROVIDER_VERSION: ${{ steps.version.outputs.provider_version }}
           SOURCE_REVISION: ${{ steps.version.outputs.source_revision }}
           SOURCE_TREE: ${{ steps.version.outputs.source_tree }}
-          SIGNER_THUMBPRINT: ${{ steps.signing.outputs.signer_thumbprint }}
           PFX_PATH: ${{ steps.signing.outputs.pfx_path }}
           AUTHENTICODE_PFX_PASSWORD: ${{ secrets.RUSTY_HOSTESS_AUTHENTICODE_PFX_PASSWORD }}
         run: |
@@ -194,21 +185,30 @@ jobs:
               -Password $password `
               -NoPromptForPassword
           )[0]
-          $signature = Set-AuthenticodeSignature `
+          Set-AuthenticodeSignature `
             -LiteralPath $artifact `
             -Certificate $certificate `
             -HashAlgorithm SHA256 `
             -TimestampServer 'http://timestamp.digicert.com' `
-            -IncludeChain All
-          if ($signature.Status -ne [Management.Automation.SignatureStatus]::Valid) {
-            throw "Authenticode signing failed with status $($signature.Status)."
-          }
-          $observedSignature = Get-AuthenticodeSignature -LiteralPath $artifact
-          if ($observedSignature.Status -ne
-                [Management.Automation.SignatureStatus]::Valid -or
-              $observedSignature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
-                $env:SIGNER_THUMBPRINT) {
-            throw "Signed provider does not carry the authorized Authenticode identity."
+            -IncludeChain All |
+            Out-Null
+          Import-Module `
+            .\packaging\windows-hotspot-provider\WindowsAuthenticodePolicy.psm1 `
+            -Force
+          $policy = Read-RustyHostessProviderReleasePolicy `
+            -PolicyPath .\packaging\windows-hotspot-provider\release-policy.json `
+            -SchemaPath .\schemas\hostess-windows-hotspot-release-policy.schema.json
+          $assessment = Get-RustyHostessProviderAuthenticodeAssessment `
+            -LiteralPath $artifact `
+            -Policy $policy
+          if ($assessment.authenticode_status -cne 'unknown_error' -or
+              $assessment.chain_trusted -ne $false -or
+              $assessment.chain_element_count -ne 1 -or
+              @($assessment.chain_status_flags).Count -ne 1 -or
+              $assessment.chain_status_flags[0] -cne 'UntrustedRoot' -or
+              $assessment.timestamp_present -ne $true -or
+              $assessment.public_trust_claim -ne $false) {
+            throw 'Hosted provider publication must observe the declared self-issued untrusted-root-only boundary.'
           }
 
           $metadataDirectory =
@@ -219,8 +219,7 @@ jobs:
             -ProviderVersion $env:PROVIDER_VERSION `
             -BuildKind signed-release `
             -OutputDirectory $metadataDirectory `
-            -VerifyPublicSource `
-            -AllowedSignerThumbprint $env:SIGNER_THUMBPRINT
+            -VerifyPublicSource
           if ($LASTEXITCODE -ne 0) {
             throw "Owner release-provenance generation failed."
           }
@@ -228,8 +227,7 @@ jobs:
             -File tools\Test-WindowsHotspotProviderReleaseMetadata.ps1 `
             -MetadataDirectory $metadataDirectory `
             -ArtifactPath $artifact `
-            -RequireSignedRelease `
-            -ExpectedSignerThumbprint $env:SIGNER_THUMBPRINT
+            -RequireSignedRelease
           if ($LASTEXITCODE -ne 0) {
             throw "Signed release-provenance validation failed."
           }
@@ -242,7 +240,15 @@ jobs:
               $provenance.source.tree -cne $env:SOURCE_TREE -or
               $provenance.provider_version -cne $env:PROVIDER_VERSION -or
               $provenance.source.availability_state -cne 'verified_public' -or
-              $provenance.distribution.eligibility -cne 'signed_release') {
+              $provenance.distribution.eligibility -cne 'labs_signed_release' -or
+              @($provenance.distribution.allowed_channels).Count -ne 1 -or
+              $provenance.distribution.allowed_channels[0] -cne 'labs' -or
+              $provenance.distribution.stable_eligible -ne $false -or
+              $provenance.schema -cne
+                'rusty.hostess.windows_hotspot.release_provenance.v2' -or
+              $provenance.signing.public_trust_claim -ne $false -or
+              $provenance.signing.trust_boundary -cne
+                'exact-pinned-self-issued-untrusted-root-only') {
             throw "Owner provenance does not bind the exact public release source."
           }
 
@@ -256,6 +262,7 @@ jobs:
           )
           foreach ($name in @(
             'rusty-hostess-hotspot-provider.provenance.json',
+            'rusty-hostess-hotspot-provider.release-policy.json',
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt'
           )) {
@@ -267,7 +274,8 @@ jobs:
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt',
             'rusty-hostess-hotspot-provider.exe',
-            'rusty-hostess-hotspot-provider.provenance.json'
+            'rusty-hostess-hotspot-provider.provenance.json',
+            'rusty-hostess-hotspot-provider.release-policy.json'
           ) | Sort-Object
           $observedAssets = @(
             Get-ChildItem -LiteralPath $releaseDirectory -File |
@@ -275,10 +283,10 @@ jobs:
               Sort-Object
           )
           if (Compare-Object $expectedAssets $observedAssets) {
-            throw "Release staging does not contain exactly the four owner assets."
+            throw "Release staging does not contain exactly the five owner assets."
           }
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: rusty-hostess-windows-hotspot-provider-${{ steps.version.outputs.provider_version }}
           path: target/windows-hotspot-provider-release
@@ -311,6 +319,7 @@ jobs:
           $assets = @(
             'rusty-hostess-hotspot-provider.exe',
             'rusty-hostess-hotspot-provider.provenance.json',
+            'rusty-hostess-hotspot-provider.release-policy.json',
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt'
           ) | ForEach-Object { Join-Path $releaseDirectory $_ }
@@ -327,6 +336,7 @@ jobs:
             '--notes',
             (
               "Immutable Authenticode-signed Windows x64 provider release. " +
+              "This Labs-only build uses an exact-pinned self-issued signer, makes no public Windows trust claim, and does not install a Root or TrustedPublisher certificate. " +
               "Verify the executable, exact public source commit/tree, " +
               "dependencies, and companion documents through the attached provenance."
             )
@@ -344,7 +354,8 @@ jobs:
             'LICENSE',
             'THIRD-PARTY-NOTICES.txt',
             'rusty-hostess-hotspot-provider.exe',
-            'rusty-hostess-hotspot-provider.provenance.json'
+            'rusty-hostess-hotspot-provider.provenance.json',
+            'rusty-hostess-hotspot-provider.release-policy.json'
           ) | Sort-Object
           $observedAssets = @($release.assets.name | Sort-Object)
           if ($release.tag_name -cne $env:TAG_NAME -or

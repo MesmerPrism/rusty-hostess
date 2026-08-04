@@ -272,8 +272,7 @@ pub fn render_capsule(
     let descriptor_sets = allocate_descriptor_sets(&owner.device, descriptor_pool, &layouts)?;
 
     let rgb_uniform = create_uniform_buffer(&owner, &capsule.projection.rgb_uniform)?;
-    let displacement_uniform =
-        create_uniform_buffer(&owner, &capsule.projection.displacement_uniform)?;
+    let displacement_uniform = create_uniform_buffer(&owner, capsule.projection_surface_uniform())?;
     let zone_uniform = create_uniform_buffer(&owner, &capsule.projection.zone_uniform)?;
     write_descriptor_sets(
         &owner.device,
@@ -339,7 +338,7 @@ pub fn render_capsule(
             )
         })
         .collect::<Result<Vec<_>>>()?;
-    let projection_vertex = if capsule.projection.displacement_enabled {
+    let projection_vertex = if capsule.tessellated_projection_requested() {
         displacement_vertex.ok_or_else(|| anyhow!("displacement vertex shader is missing"))?
     } else {
         fullscreen_module
@@ -549,7 +548,7 @@ impl PreviewRenderer {
         let descriptor_sets = allocate_descriptor_sets(&owner.device, descriptor_pool, &layouts)?;
         let rgb_uniform = create_uniform_buffer(&owner, &capsule.projection.rgb_uniform)?;
         let displacement_uniform =
-            create_uniform_buffer(&owner, &capsule.projection.displacement_uniform)?;
+            create_uniform_buffer(&owner, capsule.projection_surface_uniform())?;
         let zone_uniform = create_uniform_buffer(&owner, &capsule.projection.zone_uniform)?;
         write_descriptor_sets(
             &owner.device,
@@ -713,16 +712,16 @@ impl PreviewRenderer {
         )?;
         write_buffer(
             &self.displacement_uniform,
-            f32_slice_as_bytes(&capsule.projection.displacement_uniform),
+            f32_slice_as_bytes(capsule.projection_surface_uniform()),
         )?;
         write_buffer(
             &self.zone_uniform,
             f32_slice_as_bytes(&capsule.projection.zone_uniform),
         )?;
 
-        let projection_pipeline = if capsule.projection.displacement_enabled {
+        let projection_pipeline = if capsule.tessellated_projection_requested() {
             self.displacement_projection_pipeline
-                .context("preview capsule enabled displacement without a vertex pipeline")?
+                .context("preview capsule requested tessellation without a vertex pipeline")?
         } else {
             self.fullscreen_projection_pipeline
         };
@@ -1656,7 +1655,10 @@ fn create_descriptor_set_layouts(device: &ash::Device) -> Result<Vec<vk::Descrip
         vec![combined_binding(0, vk::ShaderStageFlags::FRAGMENT)],
         vec![
             uniform_binding(0, vk::ShaderStageFlags::FRAGMENT),
-            uniform_binding(1, vk::ShaderStageFlags::VERTEX),
+            uniform_binding(
+                1,
+                vk::ShaderStageFlags::VERTEX | vk::ShaderStageFlags::FRAGMENT,
+            ),
         ],
         vec![combined_binding(0, vk::ShaderStageFlags::FRAGMENT)],
         vec![uniform_binding(0, vk::ShaderStageFlags::FRAGMENT)],
@@ -2115,7 +2117,7 @@ fn record_output_commands(
             );
             owner.device.cmd_draw(
                 command,
-                if capsule.projection.displacement_enabled {
+                if capsule.tessellated_projection_requested() {
                     GRID_VERTEX_COUNT
                 } else {
                     3

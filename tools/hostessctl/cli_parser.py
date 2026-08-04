@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import math
+import uuid
 
 from tools.hostessctl.companion_session_defaults import (
     DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
@@ -33,6 +35,26 @@ DEFAULT_PMB_CONTROLLER_STATE_INHALE_THRESHOLD = PMB_CONTROLLER_STATE_INHALE_THRE
 DEFAULT_PMB_CONTROLLER_STATE_EXHALE_THRESHOLD = PMB_CONTROLLER_STATE_EXHALE_THRESHOLD
 DEFAULT_PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES = PMB_CONTROLLER_STATE_ROTATION_GUARD_DEGREES
 DEFAULT_PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD = PMB_CONTROLLER_STATE_MOVING_AVERAGE_GUARD
+
+
+def bounded_casting_wait_seconds(value: str) -> float:
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0.0 or seconds > 120.0:
+        raise argparse.ArgumentTypeError(
+            "casting wait seconds must be between 0 and 120"
+        )
+    return seconds
+
+
+def canonical_uuid(value: str) -> str:
+    try:
+        parsed = uuid.UUID(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("value must be a canonical UUID") from error
+    canonical = str(parsed)
+    if canonical != value.casefold():
+        raise argparse.ArgumentTypeError("value must be a canonical UUID")
+    return canonical
 
 
 def add_makepad_breath_scale_arguments(parser: argparse.ArgumentParser) -> None:
@@ -85,6 +107,46 @@ def build_hostessctl_parser(
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hostessctl")
     subcommands = parser.add_subparsers(dest="command", required=True)
+
+    meta_quest_casting = subcommands.add_parser("meta-quest-casting")
+    meta_quest_casting_subcommands = meta_quest_casting.add_subparsers(
+        dest="meta_quest_casting_command",
+        required=True,
+    )
+    meta_quest_casting_describe = meta_quest_casting_subcommands.add_parser(
+        "describe"
+    )
+    meta_quest_casting_describe.add_argument("--out", required=True)
+    meta_quest_casting_doctor = meta_quest_casting_subcommands.add_parser("doctor")
+    meta_quest_casting_doctor.add_argument("--serial", required=True)
+    meta_quest_casting_doctor.add_argument("--out", required=True)
+    meta_quest_casting_start = meta_quest_casting_subcommands.add_parser("start")
+    meta_quest_casting_start.add_argument("--serial", required=True)
+    meta_quest_casting_start.add_argument("--transport", choices=["usb"], default="usb")
+    meta_quest_casting_start.add_argument(
+        "--coordination-mode",
+        choices=["agent-board", "user-supervised"],
+        required=True,
+    )
+    meta_quest_casting_start.add_argument(
+        "--quest-lease-id",
+        type=canonical_uuid,
+    )
+    meta_quest_casting_start.add_argument(
+        "--startup-wait-seconds",
+        type=bounded_casting_wait_seconds,
+        default=25.0,
+    )
+    meta_quest_casting_start.add_argument("--out", required=True)
+    meta_quest_casting_status = meta_quest_casting_subcommands.add_parser("status")
+    meta_quest_casting_status.add_argument("--out", required=True)
+    meta_quest_casting_stop = meta_quest_casting_subcommands.add_parser("stop")
+    meta_quest_casting_stop.add_argument(
+        "--shutdown-wait-seconds",
+        type=bounded_casting_wait_seconds,
+        default=10.0,
+    )
+    meta_quest_casting_stop.add_argument("--out", required=True)
 
     install = subcommands.add_parser("install-android")
     install.add_argument("--adb", required=True)

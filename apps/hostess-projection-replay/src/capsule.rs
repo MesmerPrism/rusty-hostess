@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -12,6 +12,13 @@ pub const CAPSULE_SCHEMA: &str = "rusty.hostess.projection_replay_capsule.v1";
 pub const REPORT_SCHEMA: &str = "rusty.hostess.projection_replay_report.v1";
 pub const COMPARISON_SCHEMA: &str = "rusty.hostess.projection_replay_comparison.v1";
 pub const MAX_PNG_SEQUENCE_FRAMES: usize = 120;
+pub const SURFACE_UNIFORM_V1_FLOATS: usize = 16;
+pub const SURFACE_UNIFORM_V2_FLOATS: usize = 32;
+pub const SURFACE_UNIFORM_V1_BYTES: usize = SURFACE_UNIFORM_V1_FLOATS * 4;
+pub const SURFACE_UNIFORM_V2_BYTES: usize = SURFACE_UNIFORM_V2_FLOATS * 4;
+pub const SURFACE_UNIFORM_V2_ABI_VERSION: u32 = 2;
+pub const SURFACE_TILING_CONTRACT_ID: &str = "rusty.quest.projection-surface-tiling.v1";
+pub const INNER_ALPHA_CONTRACT_ID: &str = "rusty.quest.projection-inner-alpha.v1";
 const MAX_CAPSULE_BYTES: u64 = 1024 * 1024;
 const RESERVED_GUIDE_OUTPUT_NAMES: [&str; 5] = [
     "guide-raw-brightness",
@@ -118,6 +125,8 @@ pub struct ProjectionConfiguration {
     pub scissor_right: Vec<f32>,
     pub rgb_uniform: Vec<f32>,
     pub displacement_uniform: Vec<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_feature_uniform: Option<Vec<f32>>,
     pub zone_uniform: Vec<f32>,
     #[serde(default)]
     pub displacement_enabled: bool,
@@ -178,7 +187,32 @@ pub struct ValidationReport {
     pub projection_push_bytes: usize,
     pub rgb_uniform_bytes: usize,
     pub displacement_uniform_bytes: usize,
+    pub projection_surface_uniform_bytes: usize,
+    pub projection_surface_uniform_abi_version: u32,
+    pub projection_surface_uniform_prefix_bytes: usize,
+    pub projection_surface_uniform_suffix_bytes: usize,
+    pub projection_surface_uniform_stages: Vec<&'static str>,
     pub zone_uniform_bytes: usize,
+    pub surface_features: SurfaceFeatureEvidence,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct SurfaceFeatureEvidence {
+    pub accepted_uniform_bytes: [usize; 2],
+    pub actual_uniform_bytes: usize,
+    pub descriptor_set: u32,
+    pub descriptor_binding: u32,
+    pub tiling: FeatureActivationEvidence,
+    pub inner_alpha: FeatureActivationEvidence,
+    pub marker_fields: BTreeMap<String, String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+pub struct FeatureActivationEvidence {
+    pub contract: &'static str,
+    pub requested: bool,
+    pub supported: bool,
+    pub effective: bool,
 }
 
 pub struct LoadedReplayCapsule {
@@ -206,10 +240,10 @@ impl ReplayCapsule {
     }
 
     fn parse_bound_bytes(path: &Path, bytes: &[u8]) -> Result<LoadedReplayCapsule> {
-        let capsule: Self = serde_json::from_slice(&bytes)
+        let capsule: Self = serde_json::from_slice(bytes)
             .with_context(|| format!("invalid replay capsule JSON {}", path.display()))?;
         capsule.validate(path)?;
-        let sha256 = format!("{:x}", Sha256::digest(&bytes));
+        let sha256 = format!("{:x}", Sha256::digest(bytes));
         Ok(LoadedReplayCapsule { capsule, sha256 })
     }
 
@@ -252,8 +286,11 @@ impl ReplayCapsule {
         exact_len(
             "projection.displacement_uniform",
             &self.projection.displacement_uniform,
-            16,
+            SURFACE_UNIFORM_V1_FLOATS,
         )?;
+        if let Some(surface) = &self.projection.surface_feature_uniform {
+            validate_surface_feature_uniform(surface, &self.projection.displacement_uniform)?;
+        }
         exact_len("projection.zone_uniform", &self.projection.zone_uniform, 92)?;
         if self.shaders.guide_fragment_spirv.len() != 6 {
             bail!(
@@ -261,9 +298,10 @@ impl ReplayCapsule {
                 self.shaders.guide_fragment_spirv.len()
             );
         }
-        if self.projection.displacement_enabled && self.shaders.displacement_vertex_spirv.is_none()
+        if self.tessellated_projection_requested()
+            && self.shaders.displacement_vertex_spirv.is_none()
         {
-            bail!("displacement_enabled requires displacement_vertex_spirv");
+            bail!("displacement or surface tiling requires displacement_vertex_spirv");
         }
         validate_outputs(&self.outputs)?;
         for (label, values) in [
@@ -299,6 +337,14 @@ impl ReplayCapsule {
                 bail!("{label} contains a non-finite value");
             }
         }
+        if self
+            .projection
+            .surface_feature_uniform
+            .as_ref()
+            .is_some_and(|values| values.iter().any(|value| !value.is_finite()))
+        {
+            bail!("projection.surface_feature_uniform contains a non-finite value");
+        }
         let base = capsule_path.parent().unwrap_or_else(|| Path::new("."));
         for (role, path) in self.shader_paths() {
             let resolved = resolve_path(base, path);
@@ -316,6 +362,153 @@ impl ReplayCapsule {
         validate_color_input("camera_right", &self.inputs.camera_right, base)?;
         validate_color_input("video", &self.inputs.video, base)?;
         Ok(())
+    }
+
+    pub fn projection_surface_uniform(&self) -> &[f32] {
+        self.projection
+            .surface_feature_uniform
+            .as_deref()
+            .unwrap_or(&self.projection.displacement_uniform)
+    }
+
+    pub fn tessellated_projection_requested(&self) -> bool {
+        self.projection.displacement_enabled
+            || self
+                .projection
+                .surface_feature_uniform
+                .as_ref()
+                .is_some_and(|values| values[16] >= 0.5)
+    }
+
+    pub fn surface_feature_evidence(&self, rendered: bool) -> SurfaceFeatureEvidence {
+        let surface = self.projection.surface_feature_uniform.as_deref();
+        let supported = surface.is_some();
+        let tiling_requested = surface.is_some_and(|values| values[16] >= 0.5);
+        let inner_alpha_requested = surface.is_some_and(|values| values[21] >= 0.5);
+        let mut marker_fields = BTreeMap::new();
+        marker_fields.insert(
+            "projectionSurfaceTilingContract".to_string(),
+            SURFACE_TILING_CONTRACT_ID.to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTilingRequested".to_string(),
+            tiling_requested.to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTilingSupported".to_string(),
+            supported.to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTilingEffective".to_string(),
+            (tiling_requested && supported && rendered).to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTopology".to_string(),
+            surface
+                .map_or("continuous", |values| {
+                    token_name(values[17], &["continuous", "tiled"])
+                })
+                .to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTileGapNormalized".to_string(),
+            surface.map_or(0.0, |values| values[18]).to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceDepthFlexibility".to_string(),
+            surface.map_or(1.0, |values| values[19]).to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceTilingScope".to_string(),
+            surface
+                .map_or("core-and-stretch", |values| {
+                    token_name(values[20], &["core-and-stretch", "core-only"])
+                })
+                .to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaContract".to_string(),
+            INNER_ALPHA_CONTRACT_ID.to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaInput".to_string(),
+            "processed-core".to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaRequested".to_string(),
+            inner_alpha_requested.to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaSupported".to_string(),
+            supported.to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaEffective".to_string(),
+            (inner_alpha_requested && supported && rendered).to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaDriver".to_string(),
+            surface
+                .map_or("luma", |values| {
+                    token_name(values[22], &["red", "green", "blue", "luma", "max"])
+                })
+                .to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaThreshold".to_string(),
+            surface.map_or(0.5, |values| values[24]).to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaSoftness".to_string(),
+            surface.map_or(0.1, |values| values[25]).to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaAmount".to_string(),
+            surface.map_or(0.0, |values| values[26]).to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaInvert".to_string(),
+            surface.is_some_and(|values| values[27] >= 0.5).to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaStretchPolicy".to_string(),
+            surface
+                .map_or("follow-projection", |values| {
+                    token_name(values[23], &["follow-projection", "opaque-independent"])
+                })
+                .to_string(),
+        );
+        marker_fields.insert(
+            "projectionInnerAlphaStretchObeysExactProjectionMask".to_string(),
+            surface.is_some_and(|values| values[28] >= 0.5).to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceFeatureUniformAbiRequested".to_string(),
+            if supported { "2" } else { "1" }.to_string(),
+        );
+        marker_fields.insert(
+            "projectionSurfaceFeatureUniformAbiProvided".to_string(),
+            if supported { "2" } else { "1" }.to_string(),
+        );
+        SurfaceFeatureEvidence {
+            accepted_uniform_bytes: [SURFACE_UNIFORM_V1_BYTES, SURFACE_UNIFORM_V2_BYTES],
+            actual_uniform_bytes: self.projection_surface_uniform().len() * 4,
+            descriptor_set: 3,
+            descriptor_binding: 1,
+            tiling: FeatureActivationEvidence {
+                contract: SURFACE_TILING_CONTRACT_ID,
+                requested: tiling_requested,
+                supported,
+                effective: tiling_requested && supported && rendered,
+            },
+            inner_alpha: FeatureActivationEvidence {
+                contract: INNER_ALPHA_CONTRACT_ID,
+                requested: inner_alpha_requested,
+                supported,
+                effective: inner_alpha_requested && supported && rendered,
+            },
+            marker_fields,
+        }
     }
 
     pub fn shader_paths(&self) -> Vec<(&'static str, &Path)> {
@@ -400,6 +593,119 @@ fn exact_len(label: &str, values: &[f32], expected: usize) -> Result<()> {
         );
     }
     Ok(())
+}
+
+pub fn disabled_surface_feature_uniform(displacement: &[f32], revision: u32) -> Result<Vec<f32>> {
+    exact_len(
+        "projection.displacement_uniform",
+        displacement,
+        SURFACE_UNIFORM_V1_FLOATS,
+    )?;
+    let mut values = displacement.to_vec();
+    values.extend_from_slice(&[
+        0.0,
+        0.0,
+        0.0,
+        1.0,
+        0.0,
+        0.0,
+        3.0,
+        0.0,
+        0.5,
+        0.1,
+        0.0,
+        0.0,
+        0.0,
+        revision as f32,
+        SURFACE_UNIFORM_V2_ABI_VERSION as f32,
+        0.0,
+    ]);
+    Ok(values)
+}
+
+pub fn validate_surface_feature_uniform(surface: &[f32], displacement: &[f32]) -> Result<()> {
+    exact_len(
+        "projection.surface_feature_uniform",
+        surface,
+        SURFACE_UNIFORM_V2_FLOATS,
+    )?;
+    exact_len(
+        "projection.displacement_uniform",
+        displacement,
+        SURFACE_UNIFORM_V1_FLOATS,
+    )?;
+    if surface.iter().any(|value| !value.is_finite()) {
+        bail!("projection.surface_feature_uniform contains a non-finite value");
+    }
+    if surface[..SURFACE_UNIFORM_V1_FLOATS] != displacement[..] {
+        bail!("projection.surface_feature_uniform prefix must exactly match displacement_uniform");
+    }
+    exact_token("projection.surface_feature_uniform[16]", surface[16], 1)?;
+    exact_token("projection.surface_feature_uniform[17]", surface[17], 1)?;
+    finite_range(
+        "projection.surface_feature_uniform[18]",
+        surface[18],
+        0.0,
+        0.45,
+    )?;
+    finite_range(
+        "projection.surface_feature_uniform[19]",
+        surface[19],
+        0.0,
+        1.0,
+    )?;
+    exact_token("projection.surface_feature_uniform[20]", surface[20], 1)?;
+    exact_token("projection.surface_feature_uniform[21]", surface[21], 1)?;
+    exact_token("projection.surface_feature_uniform[22]", surface[22], 4)?;
+    exact_token("projection.surface_feature_uniform[23]", surface[23], 1)?;
+    finite_range(
+        "projection.surface_feature_uniform[24]",
+        surface[24],
+        0.0,
+        1.0,
+    )?;
+    finite_range(
+        "projection.surface_feature_uniform[25]",
+        surface[25],
+        0.001,
+        0.5,
+    )?;
+    finite_range(
+        "projection.surface_feature_uniform[26]",
+        surface[26],
+        0.0,
+        1.0,
+    )?;
+    exact_token("projection.surface_feature_uniform[27]", surface[27], 1)?;
+    exact_token("projection.surface_feature_uniform[28]", surface[28], 1)?;
+    if surface[29].fract() != 0.0 || surface[29] < 0.0 || surface[29] > 16_777_216.0 {
+        bail!("projection.surface_feature_uniform[29] must be an exact nonnegative revision");
+    }
+    if surface[30] != SURFACE_UNIFORM_V2_ABI_VERSION as f32 {
+        bail!("projection.surface_feature_uniform[30] must declare ABI version 2");
+    }
+    if surface[31] != 0.0 {
+        bail!("projection.surface_feature_uniform[31] is reserved and must be zero");
+    }
+    Ok(())
+}
+
+fn exact_token(label: &str, value: f32, maximum: u32) -> Result<()> {
+    if value.fract() != 0.0 || value < 0.0 || value > maximum as f32 {
+        bail!("{label} must be an exact token in 0..={maximum}");
+    }
+    Ok(())
+}
+
+fn finite_range(label: &str, value: f32, minimum: f32, maximum: f32) -> Result<()> {
+    if !value.is_finite() || value < minimum || value > maximum {
+        bail!("{label}={value} is outside {minimum}..={maximum}");
+    }
+    Ok(())
+}
+
+fn token_name<'a>(value: f32, names: &'a [&'a str]) -> &'a str {
+    names.get(value as usize).copied().unwrap_or(names[0])
 }
 
 fn validate_outputs(outputs: &[OutputLayer]) -> Result<()> {
@@ -577,6 +883,7 @@ mod tests {
                 scissor_right: vec![0.0; 4],
                 rgb_uniform: vec![0.0; 24],
                 displacement_uniform: vec![0.0; 16],
+                surface_feature_uniform: None,
                 zone_uniform: vec![0.0; 92],
                 displacement_enabled: false,
             },
@@ -602,6 +909,66 @@ mod tests {
                 Sha256::digest(fs::read(&path).expect("replacement bytes"))
             )
         );
+        let mut evidence_capsule = loaded.capsule;
+        let legacy_evidence = evidence_capsule.surface_feature_evidence(true);
+        assert!(!legacy_evidence.tiling.supported);
+        assert_eq!(legacy_evidence.actual_uniform_bytes, 64);
+        let mut surface =
+            disabled_surface_feature_uniform(&evidence_capsule.projection.displacement_uniform, 2)
+                .expect("surface");
+        surface[16] = 1.0;
+        surface[17] = 1.0;
+        surface[21] = 1.0;
+        surface[23] = 1.0;
+        surface[26] = 0.5;
+        surface[28] = 1.0;
+        evidence_capsule.projection.surface_feature_uniform = Some(surface);
+        let requested = evidence_capsule.surface_feature_evidence(false);
+        assert!(requested.tiling.requested);
+        assert!(requested.tiling.supported);
+        assert!(!requested.tiling.effective);
+        assert!(requested.inner_alpha.requested);
+        let rendered = evidence_capsule.surface_feature_evidence(true);
+        assert!(rendered.tiling.effective);
+        assert!(rendered.inner_alpha.effective);
+        assert_eq!(
+            rendered.marker_fields["projectionInnerAlphaStretchPolicy"],
+            "opaque-independent"
+        );
+        assert_eq!(
+            rendered.marker_fields["projectionInnerAlphaStretchObeysExactProjectionMask"],
+            "true"
+        );
+        assert_eq!(
+            rendered.marker_fields["projectionSurfaceFeatureUniformAbiProvided"],
+            "2"
+        );
         fs::remove_dir_all(dir).expect("cleanup");
+    }
+
+    #[test]
+    fn additive_surface_uniform_preserves_the_prefix_and_exact_disabled_identity() {
+        let displacement = vec![0.0; SURFACE_UNIFORM_V1_FLOATS];
+        let surface = disabled_surface_feature_uniform(&displacement, 7).expect("uniform");
+        validate_surface_feature_uniform(&surface, &displacement).expect("valid v2");
+        assert_eq!(&surface[..16], displacement.as_slice());
+        assert_eq!(&surface[16..20], &[0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(&surface[20..24], &[0.0, 0.0, 3.0, 0.0]);
+        assert_eq!(&surface[24..29], &[0.5, 0.1, 0.0, 0.0, 0.0]);
+        assert_eq!(&surface[29..], &[7.0, 2.0, 0.0]);
+    }
+
+    #[test]
+    fn additive_surface_uniform_rejects_prefix_abi_and_reserved_damage() {
+        let displacement = vec![0.0; SURFACE_UNIFORM_V1_FLOATS];
+        let baseline = disabled_surface_feature_uniform(&displacement, 0).expect("uniform");
+        for (index, value) in [(0, 1.0), (30, 1.0), (31, 1.0)] {
+            let mut damaged = baseline.clone();
+            damaged[index] = value;
+            assert!(
+                validate_surface_feature_uniform(&damaged, &displacement).is_err(),
+                "index {index}"
+            );
+        }
     }
 }

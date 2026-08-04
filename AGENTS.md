@@ -16,6 +16,15 @@ bundles, signing material, captured evidence, device logs, platform SDKs,
 binary releases, and external tools under their own provenance and notice
 requirements; see `docs/LICENSING.md`.
 
+Complete-product Windows Labs packaging is owned by
+`packaging/windows-labs` and documented in
+`docs/WINDOWS_LABS_DISTRIBUTION.md`. It packages Hostess-owned WPF and source
+surfaces only; never fold MQDH/Casting or the separately released hotspot
+provider into that product identity. Its versioned `runtime-policy.json` owns
+the public signer and official CPython embeddable-runtime pins; GitHub secrets
+contain only the private PFX and password. Bundled execution must use the exact
+bundle-relative interpreter and never fall back to ambient `PATH` Python.
+
 ## Scope
 
 - Minimal host apps and scripts that consume Manifold package manifests.
@@ -91,6 +100,8 @@ Run the narrow checks before committing:
 python -m py_compile tools\polar_protocol.py tools\check_live_capture_evidence.py tools\hostessctl\hostessctl.py tools\hostessctl\android_artifacts.py tools\hostessctl\android_files.py tools\hostessctl\bridge_command_android_routes.py tools\hostessctl\bridge_command_live_android_routes.py tools\hostessctl\bridge_command_routes.py tools\hostessctl\bridge_route_evidence.py tools\hostessctl\broker_telemetry_routes.py tools\hostessctl\broker_transport.py tools\hostessctl\cli_parser.py tools\hostessctl\companion_operator_action_rows.py tools\hostessctl\companion_operator_actions.py tools\hostessctl\companion_readiness.py tools\hostessctl\companion_report_projection.py tools\hostessctl\companion_report_transport_coverage.py tools\hostessctl\companion_transport_gate_actions.py tools\hostessctl\companion_transport_gates.py tools\hostessctl\companion_session.py tools\hostessctl\companion_session_defaults.py tools\hostessctl\connectivity_bluetooth.py tools\hostessctl\connectivity_data_protocols.py tools\hostessctl\connectivity_firewall.py tools\hostessctl\connectivity_lan.py tools\hostessctl\connectivity_media.py tools\hostessctl\connectivity_media_product_plan.py tools\hostessctl\connectivity_media_receiver.py tools\hostessctl\connectivity_probe.py tools\hostessctl\connectivity_probe_common.py tools\hostessctl\connectivity_probe_fixtures.py tools\hostessctl\connectivity_probe_live_reports.py tools\hostessctl\connectivity_probe_validation.py tools\hostessctl\connectivity_suite.py tools\hostessctl\connectivity_topology.py tools\hostessctl\connectivity_topology_lifecycle.py tools\hostessctl\connectivity_topology_live.py tools\hostessctl\connectivity_udp.py tools\hostessctl\device_link_report.py tools\hostessctl\live_capture_routes.py tools\hostessctl\makepad_pmb_setup.py tools\hostessctl\manifold_recording.py tools\hostessctl\platform_defaults.py tools\hostessctl\pmb_android_routes.py tools\hostessctl\pmb_broker_bridge.py tools\hostessctl\pmb_desktop_routes.py tools\hostessctl\pmb_evidence.py tools\hostessctl\pmb_host_run_evidence.py tools\hostessctl\pmb_native_receipts.py tools\hostessctl\pmb_support.py tools\hostessctl\recording_evidence.py tools\hostessctl\runtime.py tools\hostessctl\telemetry_render.py tools\hostessctl\telemetry_routes.py tools\telemetry_snapshot.py tools\telemetry_stream.py tools\check_makepad_quest_gpu_evidence.py tools\makepad_quest_gpu_evidence\__init__.py tools\makepad_quest_gpu_evidence\proof_lines.py tools\makepad_quest_gpu_evidence\force_authority.py tools\studio_staging_request.py tools\studio_staging\request_cli.py tools\studio_staging\request_cli_parser.py tools\studio_staging\request_cli_validation.py tools\studio_staging\pmb_release.py tools\studio_staging\pmb_validation_handoff.py tools\studio_staging\pmb_replay_validation.py tools\studio_staging\operator_release.py tools\polar_runtime_bridge.py apps\hostess-t-desktop\capture_polar.py
 python -m unittest tools.polar_protocol tools.test_check_live_capture_evidence tools.test_polar_runtime_bridge tools.test_telemetry_snapshot tools.test_hostessctl_bridge_command_android tools.test_hostessctl_bridge_command_live_android tools.test_hostessctl_bridge_command tools.test_hostessctl_bridge_route_evidence tools.test_hostessctl_companion_readiness tools.test_hostessctl_companion_session tools.test_makepad_morphospace_boundaries
 python -m unittest tools.test_hostessctl_project_runner tools.test_hostessctl_connectivity_suite tools.test_hostessctl_companion_operator_actions
+python -m py_compile tools\hostessctl\meta_quest_casting.py tools\hostessctl\meta_quest_casting_windows.py tools\test_hostessctl_meta_quest_casting.py
+python -m unittest tools.test_hostessctl_meta_quest_casting
 python tools\hostessctl\hostessctl.py project-runner ownership-audit --repo-root . --out target\schema-ownership\audit.json --fail-on-error
 dotnet build apps\hostess-companion-wpf\HostessCompanion.Wpf.csproj
 dotnet run --project tests\HostessCompanion.Wpf.Tests\HostessCompanion.Wpf.Tests.csproj
@@ -204,6 +215,17 @@ generic code or sanitized sample fixtures.
   `quest:<serial>` lease bound to the topology `device.serial`; it must not own
   Windows firewall rule lifecycle, Android camera/display source setup, or QCL
   promotion policy.
+- Keep `tools\hostessctl\meta_quest_casting.py` and
+  `meta_quest_casting_windows.py` as the Hostess-owned opaque-provider adapter
+  for a separately installed MQDH `Casting.exe`. The route may own inert
+  compatibility discovery, exact-target preflight, process identity, bounded
+  window-close requests, and Hostess receipts. It must not become a generic
+  Manifold/Quest media source, expose raw launch arguments, manage the ADB
+  daemon, redistribute Meta software, or infer presentation, recording,
+  extended-FOV, or device-cleanup effectiveness from a process or window.
+  Keep input forwarding and arbitrary 2D-panel interaction outside this
+  provider until a separate exact-version validation proves their own
+  lifecycle, input-effect, and cleanup evidence.
 - Keep `tools\hostessctl\connectivity_media_product_plan.py` as the read-only
   QCL-082 product-media direct-Wi-Fi plan artifact owner. It may bind the
   existing Hostess CLI routes, dependencies, lease policy, and acceptance
@@ -343,6 +365,12 @@ generic code or sanitized sample fixtures.
   release-metadata generation, and release validation must enforce the same
   no-build-metadata provider-version predicate before rebuild or provenance
   work begins.
+- Keep provider release signing owner-issued and Labs-only. The checked-in
+  release policy is the sole public signer-pin authority; provenance must
+  archive and hash-bind it. Accept only the exact `Valid`/clean-chain or
+  `UnknownError`/`UntrustedRoot` one-element boundaries, while retaining an
+  explicit no-public-trust claim and `stable_eligible: false`. Never install
+  the self-issued certificate into Root or TrustedPublisher.
 - Keep repo-local `tools\check_all.ps1` portable: it may skip the external
   discovery validator when no contract root is supplied, but must say that
   cross-repository acceptance remains incomplete. Cross-repository acceptance

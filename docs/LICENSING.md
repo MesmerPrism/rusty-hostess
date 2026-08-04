@@ -13,3 +13,9 @@ Before distributing APKs, binaries, hosted services, or installer bundles,
 generate third-party notices and record the source commit, dependency report,
 release artifact hashes, bundled native libraries, signing identity, and source
 availability path.
+
+The Windows Labs complete product redistributes the official CPython 3.12.10
+x64 embeddable distribution under the Python Software Foundation License. Keep
+its unmodified `LICENSE.txt`, official SPDX document, Sigstore bundle, archive
+hash, executable hash, and python.org origin in every product bundle. Do not
+add pip or ambient third-party Python packages to that runtime.

@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "rusty.hostess.meta_quest_casting.capability_descriptor.v1",
+  "title": "Rusty Hostess Meta Quest Casting capability descriptor",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "schema_version",
+    "provider_id",
+    "owner",
+    "provider_runtime_owner",
+    "host_platform",
+    "hostess_contract_version",
+    "authorizes_execution",
+    "actions",
+    "compatibility_profiles",
+    "exclusions"
+  ],
+  "properties": {
+    "$schema": {
+      "const": "rusty.hostess.meta_quest_casting.capability_descriptor.v1"
+    },
+    "schema_version": {
+      "const": 1
+    },
+    "provider_id": {
+      "const": "rusty-hostess-meta-quest-casting"
+    },
+    "owner": {
+      "const": "Rusty Hostess"
+    },
+    "provider_runtime_owner": {
+      "const": "Meta Platforms"
+    },
+    "host_platform": {
+      "const": "windows"
+    },
+    "hostess_contract_version": {
+      "const": "1.0.0-experimental.1"
+    },
+    "authorizes_execution": {
+      "const": false
+    },
+    "actions": {
+      "type": "array",
+      "minItems": 5,
+      "maxItems": 5,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "mutation",
+          "target_required",
+          "receipt_schema"
+        ],
+        "properties": {
+          "id": {
+            "enum": [
+              "describe",
+              "doctor",
+              "start",
+              "status",
+              "stop"
+            ]
+          },
+          "mutation": {
+            "type": "boolean"
+          },
+          "target_required": {
+            "type": "boolean"
+          },
+          "receipt_schema": {
+            "enum": [
+              "rusty.hostess.meta_quest_casting.capability_descriptor.v1",
+              "rusty.hostess.meta_quest_casting.receipt.v1"
+            ]
+          }
+        }
+      }
+    },
+    "compatibility_profiles": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "mqdh_version",
+          "mqdh_sha256",
+          "mqdh_signer_thumbprint",
+          "casting_sha256",
+          "signer_thumbprint",
+          "adb_sha256",
+          "adb_api_sha256",
+          "adb_usb_api_sha256",
+          "adb_signer_thumbprint",
+          "companion_version_name",
+          "companion_version_code",
+          "feature_profile_id",
+          "feature_profile_sha256"
+        ],
+        "properties": {
+          "mqdh_version": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 32
+          },
+          "mqdh_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          },
+          "mqdh_signer_thumbprint": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{40}$"
+          },
+          "casting_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          },
+          "signer_thumbprint": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{40}$"
+          },
+          "adb_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          },
+          "adb_api_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          },
+          "adb_usb_api_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          },
+          "adb_signer_thumbprint": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{40}$"
+          },
+          "companion_version_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "companion_version_code": {
+            "type": "string",
+            "pattern": "^[0-9]{1,32}$"
+          },
+          "feature_profile_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 96
+          },
+          "feature_profile_sha256": {
+            "type": "string",
+            "pattern": "^[A-F0-9]{64}$"
+          }
+        }
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 96
+      }
+    }
+  }
+}

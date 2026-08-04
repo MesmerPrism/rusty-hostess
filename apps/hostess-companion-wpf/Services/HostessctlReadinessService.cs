@@ -33,12 +33,13 @@ public sealed class HostessctlReadinessService
 
         var startInfo = new ProcessStartInfo
         {
-            FileName = "python",
+            FileName = HostessctlServicePaths.ResolvePythonExecutable(repoRoot),
             WorkingDirectory = repoRoot.FullName,
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
+        startInfo.ArgumentList.Add("-I");
         startInfo.ArgumentList.Add("tools/hostessctl/hostessctl.py");
         startInfo.ArgumentList.Add("companion-readiness");
         startInfo.ArgumentList.Add("--out");

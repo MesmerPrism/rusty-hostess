@@ -162,7 +162,8 @@ release metadata described in
 `packaging/windows-hotspot-provider/README.md`. Unsigned development metadata
 is explicitly local-only; publication requires a valid Authenticode identity
 revalidated against the artifact, verified public availability of the exact
-source commit/tree, and `signed_release` eligibility.
+source commit/tree, and `labs_signed_release` eligibility with
+`allowed_channels: ["labs"]` and `stable_eligible: false`.
 The time-varying discovery document is never included in provenance, hashed
 as a release input, signed, or treated as a publishable artifact.
 Artifact validation, release-metadata generation, and release validation use
@@ -171,7 +172,15 @@ rejects malformed core or prerelease identifiers during parameter binding,
 before artifact inspection, dependency inventory, or clean rebuild work.
 The tag-driven owner workflow documented in
 `packaging/windows-hotspot-provider/README.md` is the only automated public
-binary publication route. It requires protected Authenticode inputs, a
-separately configured signer thumbprint, exact public source verification,
-and a new immutable GitHub Release. The discovery document remains
-non-authorizing and is not included among the four release assets.
+binary publication route. It requires protected Authenticode inputs, the
+exact signer pins in the protected owner policy, exact public source
+verification, and a new immutable GitHub Release. The current signer is
+self-issued and exact-pinned for Labs only; no tool installs it into Root or
+TrustedPublisher, no public Windows trust is claimed, and Stable remains
+blocked until managed publicly trusted signing is reviewed. Provenance binds
+the archived policy as one of five immutable assets. Release-runner and
+current-host chain observations are each validated against the same two exact
+policy branches; they need not choose the same branch when their local trust
+stores differ, but their signer, certificate, EKU, timestamp, self-issued, and
+no-public-trust facts must match. The discovery document
+remains non-authorizing and is not a release asset.

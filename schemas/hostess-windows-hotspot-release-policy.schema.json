@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/MesmerPrism/rusty-hostess/schemas/hostess-windows-hotspot-release-policy.schema.json",
+  "title": "Rusty Hostess Windows hotspot provider release policy",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "product_id", "signer", "accepted_validation_boundaries", "distribution", "status"],
+  "properties": {
+    "schema": {"const": "rusty.hostess.windows_hotspot.release_policy.v1"},
+    "product_id": {"const": "rusty-hostess-windows-hotspot-provider"},
+    "signer": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "subject",
+        "issuer",
+        "thumbprint_sha1",
+        "certificate_sha256",
+        "code_signing_eku_oid",
+        "self_issued",
+        "public_trust_claim",
+        "timestamp_required"
+      ],
+      "properties": {
+        "subject": {"type": "string", "minLength": 1, "maxLength": 512},
+        "issuer": {"type": "string", "minLength": 1, "maxLength": 512},
+        "thumbprint_sha1": {"type": "string", "pattern": "^[0-9A-F]{40}$"},
+        "certificate_sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"},
+        "code_signing_eku_oid": {"const": "1.3.6.1.5.5.7.3.3"},
+        "self_issued": {"const": true},
+        "public_trust_claim": {"const": false},
+        "timestamp_required": {"const": true}
+      }
+    },
+    "accepted_validation_boundaries": {
+      "type": "array",
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authenticode_status", "chain_trusted", "chain_element_count", "chain_status_flags"],
+          "properties": {
+            "authenticode_status": {"const": "valid"},
+            "chain_trusted": {"const": true},
+            "chain_element_count": {"const": 1},
+            "chain_status_flags": {"type": "array", "maxItems": 0}
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["authenticode_status", "chain_trusted", "chain_element_count", "chain_status_flags"],
+          "properties": {
+            "authenticode_status": {"const": "unknown_error"},
+            "chain_trusted": {"const": false},
+            "chain_element_count": {"const": 1},
+            "chain_status_flags": {"const": ["UntrustedRoot"]}
+          }
+        }
+      ],
+      "minItems": 2,
+      "maxItems": 2
+    },
+    "distribution": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowed_channels", "stable_eligible"],
+      "properties": {
+        "allowed_channels": {"const": ["labs"]},
+        "stable_eligible": {"const": false}
+      }
+    },
+    "status": {"const": "active"}
+  }
+}

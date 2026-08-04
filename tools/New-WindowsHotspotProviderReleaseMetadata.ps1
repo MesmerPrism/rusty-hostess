@@ -36,9 +36,7 @@ param(
 
     [string] $SourceAvailabilityUrl,
 
-    [switch] $VerifyPublicSource,
-
-    [string] $AllowedSignerThumbprint
+    [switch] $VerifyPublicSource
 )
 
 $ErrorActionPreference = "Stop"
@@ -147,6 +145,21 @@ function Get-PeCanonicalPayload {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$releasePolicyModule = Join-Path $repoRoot `
+    "packaging\windows-hotspot-provider\WindowsAuthenticodePolicy.psm1"
+$releasePolicySchema = Join-Path $repoRoot `
+    "schemas\hostess-windows-hotspot-release-policy.schema.json"
+$releaseProvenanceSchema = Join-Path $repoRoot `
+    "schemas\hostess-windows-hotspot-release-provenance-v2.schema.json"
+$releasePolicySourcePath = Join-Path $repoRoot `
+    "packaging\windows-hotspot-provider\release-policy.json"
+Import-Module $releasePolicyModule -Force
+$releasePolicy = Read-RustyHostessProviderReleasePolicy `
+    -PolicyPath $releasePolicySourcePath `
+    -SchemaPath $releasePolicySchema
+$releasePolicySha256 = Get-Sha256 -LiteralPath (
+    (Resolve-Path -LiteralPath $releasePolicySourcePath).Path
+)
 $projectPath = Join-Path $repoRoot "tools\windows_hotspot_provider\RustyHostess.WindowsHotspot.Provider.csproj"
 $artifact = Get-Item -LiteralPath (Resolve-Path -LiteralPath $ArtifactPath).Path
 if ($artifact.Name -cne "rusty-hostess-hotspot-provider.exe") {
@@ -204,34 +217,50 @@ if ($VerifyPublicSource) {
     $sourceVerifiedAtUtc = [DateTimeOffset]::UtcNow.ToString("O")
 }
 
-$signature = Get-AuthenticodeSignature -LiteralPath $artifact.FullName
-$signatureVerified =
-    $signature.Status -eq [System.Management.Automation.SignatureStatus]::Valid
-if ($BuildKind -eq "signed-release" -and -not $signatureVerified) {
-    throw "A signed release requires a valid Authenticode signature."
-}
-$normalizedAllowedSigner = if ($AllowedSignerThumbprint) {
-    $AllowedSignerThumbprint.Replace(" ", "").ToLowerInvariant()
-} else {
-    $null
-}
-if ($BuildKind -eq "signed-release" -and (
-    $normalizedAllowedSigner -cnotmatch "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" -or
-    $signature.SignerCertificate.Thumbprint.ToLowerInvariant() -cne
-        $normalizedAllowedSigner
-)) {
-    throw "Signed release signer is not the configured Rusty Hostess owner."
-}
-$signing = [ordered]@{
-    state = if ($signatureVerified) { "verified" } else { "unsigned" }
-    status = [string] $signature.Status
-    subject = if ($signatureVerified) { $signature.SignerCertificate.Subject } else { $null }
-    thumbprint = if ($signatureVerified) {
-        $signature.SignerCertificate.Thumbprint.ToLowerInvariant()
-    } else {
-        $null
+if ($BuildKind -eq "signed-release") {
+    $assessment = Get-RustyHostessProviderAuthenticodeAssessment `
+        -LiteralPath $artifact.FullName `
+        -Policy $releasePolicy
+    $signing = [ordered]@{
+        state = $assessment.state
+        authenticode_status = $assessment.authenticode_status
+        subject = $assessment.subject
+        issuer = $assessment.issuer
+        thumbprint_sha1 = $assessment.thumbprint_sha1.ToLowerInvariant()
+        certificate_sha256 = $assessment.certificate_sha256
+        code_signing_eku_present = $true
+        self_issued = [bool] $assessment.self_issued
+        timestamp_present = [bool] $assessment.timestamp_present
+        chain_trusted = [bool] $assessment.chain_trusted
+        chain_element_count = [int] $assessment.chain_element_count
+        chain_status_flags = @($assessment.chain_status_flags)
+        public_trust_claim = $false
+        trust_boundary = $assessment.trust_boundary
     }
-    authorized_thumbprint = $normalizedAllowedSigner
+}
+else {
+    $signature = Microsoft.PowerShell.Security\Get-AuthenticodeSignature `
+        -LiteralPath $artifact.FullName
+    if ($signature.Status -ne
+        [Management.Automation.SignatureStatus]::NotSigned) {
+        throw "Unsigned development metadata requires an unsigned artifact."
+    }
+    $signing = [ordered]@{
+        state = "unsigned"
+        authenticode_status = "not_signed"
+        subject = $null
+        issuer = $null
+        thumbprint_sha1 = $null
+        certificate_sha256 = $null
+        code_signing_eku_present = $false
+        self_issued = $null
+        timestamp_present = $false
+        chain_trusted = $false
+        chain_element_count = 0
+        chain_status_flags = @()
+        public_trust_claim = $false
+        trust_boundary = "unsigned-development"
+    }
 }
 $expectedProductVersion = "$ProviderVersion+$revision"
 $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
@@ -420,7 +449,10 @@ $outputPath = if ([System.IO.Path]::IsPathRooted($OutputDirectory)) {
 [System.IO.Directory]::CreateDirectory($outputPath) | Out-Null
 $licenseOutput = Join-Path $outputPath "LICENSE"
 $noticesOutput = Join-Path $outputPath "THIRD-PARTY-NOTICES.txt"
+$policyOutputName = "rusty-hostess-hotspot-provider.release-policy.json"
+$policyOutput = Join-Path $outputPath $policyOutputName
 Copy-Item -LiteralPath (Join-Path $repoRoot "LICENSE") -Destination $licenseOutput -Force
+Copy-Item -LiteralPath $releasePolicySourcePath -Destination $policyOutput
 Write-Utf8 -LiteralPath $noticesOutput -Content (($noticeSections -join "`n") + "`n")
 
 $companionDocuments = @(
@@ -435,8 +467,19 @@ $companionDocuments = @(
         size_bytes = (Get-Item -LiteralPath $noticesOutput).Length
     }
 )
+$releasePolicyEvidence = [ordered]@{
+    asset_name = $policyOutputName
+    schema = $releasePolicy.schema
+    sha256 = Get-Sha256 -LiteralPath $policyOutput
+    size_bytes = (Get-Item -LiteralPath $policyOutput).Length
+}
+$allowedChannels = [Collections.Generic.List[string]]::new()
+if ($BuildKind -eq "signed-release") {
+    $allowedChannels.Add("labs")
+}
+
 $provenance = [ordered]@{
-    schema = "rusty.hostess.windows_hotspot.release_provenance.v1"
+    schema = "rusty.hostess.windows_hotspot.release_provenance.v2"
     product_id = "rusty-hostess-windows-hotspot-provider"
     provider_version = $ProviderVersion
     artifact = [ordered]@{
@@ -467,20 +510,27 @@ $provenance = [ordered]@{
     dependencies = @($dependencies)
     bundled_native_libraries = $nativeLibraries
     signing = $signing
+    release_policy = $releasePolicyEvidence
     companion_documents = $companionDocuments
     distribution = [ordered]@{
         eligibility = if ($BuildKind -eq "signed-release") {
-            "signed_release"
+            "labs_signed_release"
         } else {
             "development_only"
         }
         binary_authority = "rusty-hostess-github-releases"
+        allowed_channels = $allowedChannels
+        stable_eligible = $false
     }
 }
 $provenancePath = Join-Path $outputPath "rusty-hostess-hotspot-provider.provenance.json"
+$provenanceText = ($provenance | ConvertTo-Json -Depth 12) + "`n"
+if (-not (Test-Json -Json $provenanceText -SchemaFile $releaseProvenanceSchema)) {
+    throw "Generated provider release provenance failed its owner v2 schema."
+}
 Write-Utf8 `
     -LiteralPath $provenancePath `
-    -Content (($provenance | ConvertTo-Json -Depth 12) + "`n")
+    -Content $provenanceText
 
 [ordered]@{
     schema = "rusty.hostess.windows_hotspot.release_metadata_result.v1"

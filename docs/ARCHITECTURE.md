@@ -54,6 +54,10 @@ acceptance policy. Capsules reference those inputs by path; Hostess records
 their hashes but does not import them into this repository. A future WPF page
 may project the replay report, but it must invoke the same CLI path and cannot
 hide alternate rendering logic in UI handlers.
+Descriptor set 3, binding 1 accepts the retained 64-byte surface prefix or an
+additive 128-byte neutral surface uniform. Hostess validates and replays the
+transport, projects requested/supported/render-effective evidence, and exposes
+generic controls; geometry and alpha formulas remain provider authority.
 `execution_plan.rs` owns fail-closed validation and deterministic normalization
 for the effect-neutral Hostess v2 capsule graph. `v1_compat.rs` is the explicit
 compatibility adapter from the unchanged v1 capsule to `ReplayExecutionPlan`;
@@ -677,6 +681,24 @@ H.264 `RMANVID1` payloads to an `ffplay` child process. That child is a local
 viewer only: Hostess remains the network listener and evidence owner, WPF
 remains the requester/inspector, and QCL-082 promotion continues to depend on
 the structured receiver-result and paired topology/firewall/runtime evidence.
+
+Meta Quest Developer Hub casting is a separate opaque-provider presentation
+route, not another QCL-082 source or receiver. The Windows-only
+`hostessctl meta-quest-casting` adapter verifies one reviewed local Meta build,
+requires an exact Quest target, launches `Casting.exe` with a closed feature
+profile, persists Hostess process ownership, and requests bounded graceful
+cleanup. Meta retains device-service, encoding, transport, Cast-window,
+Cinematic-FOV, and recording authority. Hostess receives no frames or
+`RMANVID1` packets from this route. Its receipts therefore keep process/window
+observations separate from `presentation_ready`, Cinematic selection,
+recording requested/active/finalized state, artifact metadata, device-session
+stop, FOV restoration, and `cleanup_complete`; those effect claims remain
+unconfirmed until their own evidence is observed. The target-free `describe`
+route is metadata-only and explicitly non-authorizing. The completed provider
+slice covers supervised presentation only; input forwarding and arbitrary
+2D-panel interaction remain separate, unvalidated capabilities and cannot be
+inferred from a successful Cast session. See
+`docs/meta-quest-casting-adapter.md`.
 QCL-084 treats ZeroMQ as a generic data-protocol capability: manifests,
 endpoint/open-mode config, bounded receiver queues, message/drop/decode
 counters, and optional runtime feature gates belong to a reusable ZeroMQ
