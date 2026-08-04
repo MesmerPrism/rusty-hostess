@@ -302,6 +302,33 @@ generic code or sanitized sample fixtures.
   message measurements, and the command-authority/high-rate-media guard
   checks; it must not own Manifold command acceptance, protocol-matrix
   promotion, or WPF projection.
+- Keep `tools\connection_hub_cli.py` as the short-lived external Rusty
+  Connection Hub controller and secret-redacted evidence projector. It may own
+  explicit endpoint posture, HTTP/WebSocket client mechanics, bounded surface
+  tracking, closed command-envelope validation, and operator commands for
+  status, pair, watch, single-transport surface wait, list, invoke, and revoke.
+  It must not own Manifold
+  admission/session/replay/command decisions, provider registration, a
+  background service, or high-rate media/LSL/BLE payloads.
+  Pairing secrets must not enter argv, WebSocket bearers must be sent only in
+  the mandatory first authentication frame, and persisted bearers must use an
+  OS user-bound credential protector with exact origin/protocol/posture
+  binding. Pairing must reserve and preflight local persistence before remote
+  acceptance; later persistence failure must compensate with the in-memory
+  bearer and leave no clear secret artifact. Successful revoke removes both
+  credential and metadata. Decode and emit only the byte-exact Quest-owned v1
+  legacy and additive v2 field registries vendored under
+  `fixtures/connection-hub`; v2 owns monotonic request sequences, reconnect
+  resynchronization, bounded keepalives, and exact canonical request bytes.
+  V1 remains explicit non-rollover-safe compatibility and internal Manifold
+  authority fields do not extend either public wire contract. Revoke must prove
+  one pre-existing authenticated socket closes and a fresh stale-bearer
+  authentication rejects before deleting credentials. Command evidence must
+  keep authority acceptance distinct from provider application and bind the
+  echoed request ID, surface, and command exactly.
+- Keep `tools\connection_hub_fixture.py` as the deterministic loopback-only
+  conformance oracle for that client. It binds only to `127.0.0.1` on port `0`
+  and is never production or Quest/network evidence.
 - Keep `tools\hostessctl\connectivity_lan.py` as the live LAN/device transport
   helper owner for Quest ADB identity, host IPv4 selection, same-subnet checks,
   ICMP checks, Windows Mobile Hotspot state collection, and TCP echo transport

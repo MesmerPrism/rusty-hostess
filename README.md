@@ -139,6 +139,29 @@ settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
   primitives, command envelope helpers, ACK normalization, retry connection,
   and stream-event aliasing used by recording routes. The CLI root re-exports
   these helpers as a compatibility facade for tests and existing callers.
+- `tools/connection_hub_cli.py`: strict external controller and evidence route
+  for the standalone Rusty Connection Hub. It labels transport posture, keeps
+  pairing/session secrets out of receipts, tracks surface lifecycle across
+  transport epochs, and exposes status, pair, bounded watch, single-transport
+  surface wait, list, command, revoke, and deterministic offline E2E commands. See
+  `docs/CONNECTION_HUB_OPERATOR.md`. Pairing codes never enter argv; socket
+  authentication uses the first JSON frame rather than a URL bearer; Windows
+  persistence uses current-user DPAPI and successful revoke removes it. Pairing
+  reserves and preflights local persistence before the remote call, with an
+  immediate secret-free compensating revoke on later persistence failure. The
+  strict field registry is locked to the byte-exact Rusty Quest owner vectors
+  in `fixtures/connection-hub`. New sessions select additive v2, resynchronize
+  the authority-derived next sequence on every reconnect, and use bounded
+  active-watch keepalives; `pair --legacy-v1` preserves explicit
+  non-rollover-safe compatibility. Revoke evidence is
+  collected in-process before credential deletion: authenticated socket open,
+  HTTP revoke applied, socket closed, and stale-bearer reconnect rejected.
+  Command receipts separately project authority acceptance and provider
+  application/status with exact request binding.
+- `tools/connection_hub_fixture.py`: loopback-only port-`0` conformance oracle
+  for Hub surface lifecycle, scoped dispatch, replay rejection, transport
+  replacement, and explicit revocation. It is not product authority or a
+  background service.
 - `tools/hostessctl/bridge_command_android_routes.py`: headset-backed
   bridge-command proof over the Hostess Makepad app-private command inbox. It
   stages low-rate command JSON with serial-scoped ADB, collects the app-written
