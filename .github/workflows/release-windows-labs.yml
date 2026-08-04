@@ -281,6 +281,78 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
         run: |
+          function Wait-LabsAssetDigestReadback {
+            param(
+              [Parameter(Mandatory)] [string] $Endpoint,
+              [Parameter(Mandatory)] [object[]] $Files,
+              [Parameter(Mandatory)] [string] $ReleaseTag,
+              [Parameter(Mandatory)] [bool] $ExpectedDraft,
+              [int] $TimeoutSeconds = 120,
+              [scriptblock] $UtcNowProvider = { [DateTimeOffset]::UtcNow },
+              [scriptblock] $SleepProvider = {
+                param([int] $Seconds)
+                Start-Sleep -Seconds $Seconds
+              }
+            )
+            $deadline = ([DateTimeOffset] (& $UtcNowProvider)).AddSeconds(
+              $TimeoutSeconds)
+            $delaySeconds = 2
+            while ($true) {
+              $releaseJson = & gh api $Endpoint
+              if ($LASTEXITCODE -ne 0) {
+                throw 'Labs release asset-digest readback failed'
+              }
+              $release = $releaseJson | ConvertFrom-Json -Depth 30
+              $expectedNames = @(
+                $Files | ForEach-Object { [string]$_.Name } | Sort-Object)
+              $remoteNames = @(
+                @($release.assets) |
+                  ForEach-Object { [string]$_.name } |
+                  Sort-Object)
+              if ($release.tag_name -cne $ReleaseTag -or
+                  $release.draft -ne $ExpectedDraft -or
+                  $release.prerelease -ne $true -or
+                  ($remoteNames -join "`n") -cne
+                    ($expectedNames -join "`n")) {
+                throw 'Labs release identity or asset-set readback is not exact'
+              }
+              $pending = @(
+                foreach ($file in $Files) {
+                  $remote = @($release.assets | Where-Object name -CEQ $file.Name)
+                  if ($remote.Count -ne 1) {
+                    throw "Labs asset identity readback failed: $($file.Name)"
+                  }
+                  $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
+                    Hash.ToLowerInvariant()
+                  if ($remote[0].size -ne $file.Length -or
+                      $remote[0].browser_download_url -cne
+                        "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$ReleaseTag/$($file.Name)") {
+                    throw "Labs asset size or URL readback failed: $($file.Name)"
+                  }
+                  if ([string]::IsNullOrWhiteSpace(
+                        [string]$remote[0].digest)) {
+                    $file.Name
+                  }
+                  elseif ($remote[0].digest -cne "sha256:$hash") {
+                    throw "Labs asset digest readback failed: $($file.Name)"
+                  }
+                }
+              )
+              if ($pending.Count -eq 0) {
+                return $release
+              }
+              $now = [DateTimeOffset] (& $UtcNowProvider)
+              if ($now -ge $deadline) {
+                throw "Labs asset digests did not become available before the bounded deadline: $($pending -join ', ')"
+              }
+              Write-Host "Waiting for GitHub asset digests: $($pending -join ', ')"
+              $remainingSeconds = [Math]::Max(
+                1, [int][Math]::Ceiling(($deadline - $now).TotalSeconds))
+              & $SleepProvider ([Math]::Min($delaySeconds, $remainingSeconds))
+              $delaySeconds = [Math]::Min($delaySeconds * 2, 15)
+            }
+          }
+
           $root = Join-Path $env:RUNNER_TEMP 'hostess-labs'
           $stem = "RustyHostess-Labs-$env:VERSION-win-x64"
           $expected = @(
@@ -317,31 +389,11 @@ jobs:
               $draftView.databaseId -le 0) {
             throw 'Labs draft identity readback is not exact'
           }
-          $releaseJson = & gh api `
-            "repos/$env:GITHUB_REPOSITORY/releases/$($draftView.databaseId)"
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Labs draft release-id readback failed'
-          }
-          $release = $releaseJson | ConvertFrom-Json -Depth 30
-          if ($release.tag_name -cne $env:RELEASE_TAG -or
-              $release.draft -ne $true -or
-              $release.prerelease -ne $true -or
-              (@($release.assets.name | Sort-Object) -join "`n") -cne
-                ($expected -join "`n")) {
-            throw 'Labs prerelease readback is not exact'
-          }
-          foreach ($file in $files) {
-            $remote = @($release.assets | Where-Object name -CEQ $file.Name)
-            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
-              Hash.ToLowerInvariant()
-            if ($remote.Count -ne 1 -or
-                $remote[0].size -ne $file.Length -or
-                $remote[0].digest -cne "sha256:$hash" -or
-                $remote[0].browser_download_url -cne
-                  "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:RELEASE_TAG/$($file.Name)") {
-              throw "Labs asset readback failed: $($file.Name)"
-            }
-          }
+          $release = Wait-LabsAssetDigestReadback `
+            -Endpoint "repos/$env:GITHUB_REPOSITORY/releases/$($draftView.databaseId)" `
+            -Files $files `
+            -ReleaseTag $env:RELEASE_TAG `
+            -ExpectedDraft $true
           $prePromotionRef = & gh api `
             "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
             ConvertFrom-Json
@@ -369,23 +421,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Labs draft publication failed; immutable draft requires manual incident review'
           }
-          $published = & gh api `
-            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
-            ConvertFrom-Json -Depth 30
-          if ($published.draft -ne $false -or $published.prerelease -ne $true -or
-              (@($published.assets.name | Sort-Object) -join "`n") -cne
-                ($expected -join "`n")) {
-            throw 'published Labs final readback is not exact'
-          }
-          foreach ($file in $files) {
-            $remote = @($published.assets | Where-Object name -CEQ $file.Name)
-            $hash = (Get-FileHash $file.FullName -Algorithm SHA256).
-              Hash.ToLowerInvariant()
-            if ($remote.Count -ne 1 -or $remote[0].size -ne $file.Length -or
-                $remote[0].digest -cne "sha256:$hash") {
-              throw "published Labs asset final readback failed: $($file.Name)"
-            }
-          }
+          $published = Wait-LabsAssetDigestReadback `
+            -Endpoint "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" `
+            -Files $files `
+            -ReleaseTag $env:RELEASE_TAG `
+            -ExpectedDraft $false
           $tagRef = & gh api `
             "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:RELEASE_TAG" |
             ConvertFrom-Json

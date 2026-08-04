@@ -9,6 +9,21 @@ function Assert-Labs([bool] $Condition, [string] $Message) {
     if (-not $Condition) { throw $Message }
 }
 
+function Assert-LabsThrows(
+    [scriptblock] $Action,
+    [string] $ExpectedPattern,
+    [string] $Message
+) {
+    $matched = $false
+    try {
+        & $Action | Out-Null
+    }
+    catch {
+        $matched = $_.Exception.Message -match $ExpectedPattern
+    }
+    Assert-Labs $matched $Message
+}
+
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) (
     "rusty-hostess-labs-test-$([Guid]::NewGuid().ToString('N'))")
@@ -601,6 +616,239 @@ try {
     $workflow = Get-Content `
         -LiteralPath (Join-Path $root '.github\workflows\release-windows-labs.yml') `
         -Raw
+    $digestFunctionMatch = [regex]::Match(
+        $workflow,
+        '(?ms)^ {10}function Wait-LabsAssetDigestReadback \{.*?^ {10}\}\r?\n\r?\n(?= {10}\$root = )')
+    Assert-Labs $digestFunctionMatch.Success `
+        'exact Labs asset-digest helper could not be extracted for behavior tests'
+    $digestFunctionSource = $digestFunctionMatch.Value -replace '(?m)^ {10}', ''
+    Invoke-Expression $digestFunctionSource
+    $assetPath = Join-Path $temp 'digest-readback-test.bin'
+    [IO.File]::WriteAllBytes($assetPath, [byte[]](0..31))
+    $assetFile = Get-Item -LiteralPath $assetPath
+    $releaseTag = 'v1.2.3-alpha.4'
+    $expectedDigest = 'sha256:' + (
+        Get-FileHash -LiteralPath $assetPath -Algorithm SHA256
+    ).Hash.ToLowerInvariant()
+    $expectedUrl =
+        "https://github.com/MesmerPrism/rusty-hostess/releases/download/$releaseTag/$($assetFile.Name)"
+    function New-LabsMockReleaseJson(
+        [object[]] $Assets,
+        [bool] $Draft = $true
+    ) {
+        [ordered]@{
+            tag_name = $releaseTag
+            draft = $Draft
+            prerelease = $true
+            assets = $Assets
+        } | ConvertTo-Json -Depth 10 -Compress
+    }
+    function New-LabsMockAsset(
+        [string] $Name = $assetFile.Name,
+        [long] $Size = $assetFile.Length,
+        [AllowNull()] [string] $Digest = $expectedDigest,
+        [string] $Url = $expectedUrl
+    ) {
+        [ordered]@{
+            name = $Name
+            size = $Size
+            digest = $Digest
+            browser_download_url = $Url
+        }
+    }
+    function Set-LabsMockGhResponses([object[]] $Responses) {
+        $script:labsMockGhResponses = [Collections.Queue]::new()
+        foreach ($response in $Responses) {
+            $script:labsMockGhResponses.Enqueue($response)
+        }
+        $script:labsMockGhCallCount = 0
+    }
+    function gh {
+        $script:labsMockGhCallCount++
+        if ($script:labsMockGhResponses.Count -eq 0) {
+            throw 'mock gh response queue is empty'
+        }
+        $response = $script:labsMockGhResponses.Dequeue()
+        $global:LASTEXITCODE = [int]$response.exit_code
+        if ($null -ne $response.output) {
+            [string]$response.output
+        }
+    }
+    function New-LabsMockClock {
+        $clock = [pscustomobject]@{
+            now = [DateTimeOffset]::Parse('2026-08-04T12:00:00Z')
+            sleeps = [Collections.Generic.List[int]]::new()
+        }
+        [pscustomobject]@{
+            state = $clock
+            now_provider = { $clock.now }.GetNewClosure()
+            sleep_provider = {
+                param([int] $Seconds)
+                [void]$clock.sleeps.Add($Seconds)
+                $clock.now = $clock.now.AddSeconds($Seconds)
+            }.GetNewClosure()
+        }
+    }
+    $priorRepository = $env:GITHUB_REPOSITORY
+    $env:GITHUB_REPOSITORY = 'MesmerPrism/rusty-hostess'
+    try {
+        $blankAsset = New-LabsMockAsset -Digest $null
+        $correctAsset = New-LabsMockAsset
+        Set-LabsMockGhResponses @(
+            [pscustomobject]@{
+                exit_code = 0
+                output = New-LabsMockReleaseJson -Assets @($blankAsset)
+            },
+            [pscustomobject]@{
+                exit_code = 0
+                output = New-LabsMockReleaseJson -Assets @($correctAsset)
+            }
+        )
+        $clock = New-LabsMockClock
+        $readback = Wait-LabsAssetDigestReadback `
+            -Endpoint 'repos/MesmerPrism/rusty-hostess/releases/123' `
+            -Files @($assetFile) `
+            -ReleaseTag $releaseTag `
+            -ExpectedDraft $true `
+            -UtcNowProvider $clock.now_provider `
+            -SleepProvider $clock.sleep_provider
+        Assert-Labs (
+            $readback.assets[0].digest -ceq $expectedDigest -and
+            $script:labsMockGhCallCount -eq 2 -and
+            ($clock.state.sleeps -join ',') -ceq '2'
+        ) 'blank then correct GitHub digest did not converge through the exact helper'
+
+        $blankResponses = @(
+            1..3 | ForEach-Object {
+                [pscustomobject]@{
+                    exit_code = 0
+                    output = New-LabsMockReleaseJson -Assets @($blankAsset)
+                }
+            }
+        )
+        Set-LabsMockGhResponses $blankResponses
+        $clock = New-LabsMockClock
+        Assert-LabsThrows {
+            Wait-LabsAssetDigestReadback `
+                -Endpoint 'repos/MesmerPrism/rusty-hostess/releases/123' `
+                -Files @($assetFile) `
+                -ReleaseTag $releaseTag `
+                -ExpectedDraft $true `
+                -TimeoutSeconds 3 `
+                -UtcNowProvider $clock.now_provider `
+                -SleepProvider $clock.sleep_provider
+        } 'bounded deadline' 'permanently blank digest did not fail at the bounded deadline'
+        Assert-Labs (
+            $script:labsMockGhCallCount -eq 3 -and
+            ($clock.state.sleeps -join ',') -ceq '2,1' -and
+            $clock.state.now -eq
+                [DateTimeOffset]::Parse('2026-08-04T12:00:03Z')
+        ) 'bounded digest timeout did not use the mocked deadline and capped sleeps'
+
+        Set-LabsMockGhResponses @(
+            [pscustomobject]@{ exit_code = 1; output = 'API failure' }
+        )
+        $clock = New-LabsMockClock
+        Assert-LabsThrows {
+            Wait-LabsAssetDigestReadback `
+                -Endpoint 'repos/MesmerPrism/rusty-hostess/releases/123' `
+                -Files @($assetFile) `
+                -ReleaseTag $releaseTag `
+                -ExpectedDraft $true `
+                -UtcNowProvider $clock.now_provider `
+                -SleepProvider $clock.sleep_provider
+        } 'asset-digest readback failed' 'GitHub API failure was not rejected immediately'
+        Assert-Labs (
+            $script:labsMockGhCallCount -eq 1 -and
+            $clock.state.sleeps.Count -eq 0
+        ) 'GitHub API failure was retried or slept'
+
+        Set-LabsMockGhResponses @(
+            [pscustomobject]@{ exit_code = 0; output = '{' }
+        )
+        $clock = New-LabsMockClock
+        Assert-LabsThrows {
+            Wait-LabsAssetDigestReadback `
+                -Endpoint 'repos/MesmerPrism/rusty-hostess/releases/123' `
+                -Files @($assetFile) `
+                -ReleaseTag $releaseTag `
+                -ExpectedDraft $true `
+                -UtcNowProvider $clock.now_provider `
+                -SleepProvider $clock.sleep_provider
+        } '.' 'malformed GitHub release JSON was accepted'
+        Assert-Labs (
+            $script:labsMockGhCallCount -eq 1 -and
+            $clock.state.sleeps.Count -eq 0
+        ) 'malformed GitHub release JSON was retried or slept'
+
+        $mismatchCases = @(
+            [pscustomobject]@{ name='missing'; assets=@() },
+            [pscustomobject]@{
+                name='duplicate'; assets=@($correctAsset, $correctAsset)
+            },
+            [pscustomobject]@{
+                name='extra'; assets=@(
+                    $correctAsset,
+                    (New-LabsMockAsset `
+                        -Name 'unexpected.bin' `
+                        -Url "https://github.com/MesmerPrism/rusty-hostess/releases/download/$releaseTag/unexpected.bin")
+                )
+            },
+            [pscustomobject]@{
+                name='wrong-name'
+                assets=@(
+                    New-LabsMockAsset `
+                        -Name 'wrong.bin' `
+                        -Url "https://github.com/MesmerPrism/rusty-hostess/releases/download/$releaseTag/wrong.bin"
+                )
+            },
+            [pscustomobject]@{
+                name='wrong-size'
+                assets=@(New-LabsMockAsset -Size ($assetFile.Length + 1))
+            },
+            [pscustomobject]@{
+                name='wrong-digest'
+                assets=@(New-LabsMockAsset -Digest ('sha256:' + ('0' * 64)))
+            },
+            [pscustomobject]@{
+                name='wrong-url'
+                assets=@(New-LabsMockAsset -Url 'https://example.invalid/asset')
+            }
+        )
+        foreach ($case in $mismatchCases) {
+            Set-LabsMockGhResponses @(
+                [pscustomobject]@{
+                    exit_code = 0
+                    output = New-LabsMockReleaseJson -Assets @($case.assets)
+                }
+            )
+            $clock = New-LabsMockClock
+            Assert-LabsThrows {
+                Wait-LabsAssetDigestReadback `
+                    -Endpoint 'repos/MesmerPrism/rusty-hostess/releases/123' `
+                    -Files @($assetFile) `
+                    -ReleaseTag $releaseTag `
+                    -ExpectedDraft $true `
+                    -UtcNowProvider $clock.now_provider `
+                    -SleepProvider $clock.sleep_provider
+            } 'not exact|readback failed' `
+                "$($case.name) GitHub asset readback was accepted"
+            Assert-Labs (
+                $script:labsMockGhCallCount -eq 1 -and
+                $clock.state.sleeps.Count -eq 0
+            ) "$($case.name) GitHub asset readback was retried or slept"
+        }
+    }
+    finally {
+        if ($null -eq $priorRepository) {
+            Remove-Item Env:\GITHUB_REPOSITORY -ErrorAction SilentlyContinue
+        }
+        else {
+            $env:GITHUB_REPOSITORY = $priorRepository
+        }
+        Remove-Item Function:\gh -Force -ErrorAction SilentlyContinue
+        $global:LASTEXITCODE = 0
+    }
     $remoteTagBeforeBuild = $workflow.IndexOf(
         '- name: Verify authoritative remote tag before build',
         [StringComparison]::Ordinal)
@@ -624,6 +872,15 @@ try {
         [StringComparison]::Ordinal)
     $acceptedBoundaryExitReset = $workflow.IndexOf(
         '$global:LASTEXITCODE = 0',
+        [StringComparison]::Ordinal)
+    $digestWaitFunction = $workflow.IndexOf(
+        'function Wait-LabsAssetDigestReadback',
+        [StringComparison]::Ordinal)
+    $draftDigestWait = $workflow.IndexOf(
+        '$release = Wait-LabsAssetDigestReadback',
+        [StringComparison]::Ordinal)
+    $publishedDigestWait = $workflow.IndexOf(
+        '$published = Wait-LabsAssetDigestReadback',
         [StringComparison]::Ordinal)
     Assert-Labs (
         $workflow -match 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' -and
@@ -657,11 +914,26 @@ try {
         $draftIdentityReadback -ge 0 -and
         $draftReleaseIdReadback -gt $draftIdentityReadback -and
         $draftReleaseIdReadback -lt $prePromotionCheck -and
+        $digestWaitFunction -ge 0 -and
+        $digestWaitFunction -lt $draftDigestWait -and
+        $draftDigestWait -lt $prePromotionCheck -and
+        $publishedDigestWait -gt $promotion -and
+        $workflow -match '\[scriptblock\] \$UtcNowProvider = \{ \[DateTimeOffset\]::UtcNow \}' -and
+        $workflow -match '\[scriptblock\] \$SleepProvider = \{' -and
+        $workflow -match '\[int\] \$TimeoutSeconds = 120' -and
+        $workflow -match '\[string\]::IsNullOrWhiteSpace\(\s*\[string\]\$remote\[0\]\.digest\)' -and
+        $workflow -match 'Start-Sleep -Seconds \$Seconds' -and
+        $workflow -match '& \$SleepProvider \(\[Math\]::Min\(\$delaySeconds, \$remainingSeconds\)\)' -and
+        $workflow -match '\[Math\]::Min\(\$delaySeconds \* 2, 15\)' -and
+        $workflow -match 'did not become available before the bounded deadline' -and
+        $workflow -match 'Labs release identity or asset-set readback is not exact' -and
+        $workflow -match '-ExpectedDraft \$true' -and
+        $workflow -match '-ExpectedDraft \$false' -and
         $prePromotionCheck -ge 0 -and
         $prePromotionCheck -lt $promotion -and
         $workflow -match '--latest=false' -and
         $workflow -match 'persist-credentials: false' -and
-        $workflow -match 'releases/download/\$env:RELEASE_TAG/' -and
+        $workflow -match 'releases/download/\$ReleaseTag/' -and
         $workflow -notmatch 'releases/latest/download' -and
         $workflow -match '\$remote\[0\]\.digest -cne "sha256:\$hash"' -and
         $workflow -match '"\$stem\.release-metadata\.json"' -and
