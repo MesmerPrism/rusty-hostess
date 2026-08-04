@@ -625,6 +625,15 @@ try {
     $acceptedBoundaryExitReset = $workflow.IndexOf(
         '$global:LASTEXITCODE = 0',
         [StringComparison]::Ordinal)
+    $digestWaitFunction = $workflow.IndexOf(
+        'function Wait-LabsAssetDigestReadback',
+        [StringComparison]::Ordinal)
+    $draftDigestWait = $workflow.IndexOf(
+        '$release = Wait-LabsAssetDigestReadback',
+        [StringComparison]::Ordinal)
+    $publishedDigestWait = $workflow.IndexOf(
+        '$published = Wait-LabsAssetDigestReadback',
+        [StringComparison]::Ordinal)
     Assert-Labs (
         $workflow -match 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' -and
         $workflow -match 'actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02' -and
@@ -657,6 +666,16 @@ try {
         $draftIdentityReadback -ge 0 -and
         $draftReleaseIdReadback -gt $draftIdentityReadback -and
         $draftReleaseIdReadback -lt $prePromotionCheck -and
+        $digestWaitFunction -ge 0 -and
+        $digestWaitFunction -lt $draftDigestWait -and
+        $draftDigestWait -lt $prePromotionCheck -and
+        $publishedDigestWait -gt $promotion -and
+        $workflow -match '\[DateTimeOffset\]::UtcNow\.AddSeconds\(\$TimeoutSeconds\)' -and
+        $workflow -match '\[int\] \$TimeoutSeconds = 120' -and
+        $workflow -match '\[string\]::IsNullOrWhiteSpace\(\[string\]\$remote\[0\]\.digest\)' -and
+        $workflow -match 'Start-Sleep -Seconds \$delaySeconds' -and
+        $workflow -match '\[Math\]::Min\(\$delaySeconds \* 2, 15\)' -and
+        $workflow -match 'did not become available before the bounded deadline' -and
         $prePromotionCheck -ge 0 -and
         $prePromotionCheck -lt $promotion -and
         $workflow -match '--latest=false' -and

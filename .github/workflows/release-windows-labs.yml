@@ -281,6 +281,41 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
           SOURCE_REVISION: ${{ inputs.source_revision }}
         run: |
+          function Wait-LabsAssetDigestReadback {
+            param(
+              [Parameter(Mandatory)] [string] $Endpoint,
+              [Parameter(Mandatory)] [object[]] $Files,
+              [int] $TimeoutSeconds = 120
+            )
+            $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
+            $delaySeconds = 2
+            while ($true) {
+              $releaseJson = & gh api $Endpoint
+              if ($LASTEXITCODE -ne 0) {
+                throw 'Labs release asset-digest readback failed'
+              }
+              $release = $releaseJson | ConvertFrom-Json -Depth 30
+              $pending = @(
+                foreach ($file in $Files) {
+                  $remote = @($release.assets | Where-Object name -CEQ $file.Name)
+                  if ($remote.Count -eq 1 -and
+                      [string]::IsNullOrWhiteSpace([string]$remote[0].digest)) {
+                    $file.Name
+                  }
+                }
+              )
+              if ($pending.Count -eq 0) {
+                return $release
+              }
+              if ([DateTimeOffset]::UtcNow -ge $deadline) {
+                throw "Labs asset digests did not become available before the bounded deadline: $($pending -join ', ')"
+              }
+              Write-Host "Waiting for GitHub asset digests: $($pending -join ', ')"
+              Start-Sleep -Seconds $delaySeconds
+              $delaySeconds = [Math]::Min($delaySeconds * 2, 15)
+            }
+          }
+
           $root = Join-Path $env:RUNNER_TEMP 'hostess-labs'
           $stem = "RustyHostess-Labs-$env:VERSION-win-x64"
           $expected = @(
@@ -317,12 +352,9 @@ jobs:
               $draftView.databaseId -le 0) {
             throw 'Labs draft identity readback is not exact'
           }
-          $releaseJson = & gh api `
-            "repos/$env:GITHUB_REPOSITORY/releases/$($draftView.databaseId)"
-          if ($LASTEXITCODE -ne 0) {
-            throw 'Labs draft release-id readback failed'
-          }
-          $release = $releaseJson | ConvertFrom-Json -Depth 30
+          $release = Wait-LabsAssetDigestReadback `
+            -Endpoint "repos/$env:GITHUB_REPOSITORY/releases/$($draftView.databaseId)" `
+            -Files $files
           if ($release.tag_name -cne $env:RELEASE_TAG -or
               $release.draft -ne $true -or
               $release.prerelease -ne $true -or
@@ -369,9 +401,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) {
             throw 'Labs draft publication failed; immutable draft requires manual incident review'
           }
-          $published = & gh api `
-            "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" |
-            ConvertFrom-Json -Depth 30
+          $published = Wait-LabsAssetDigestReadback `
+            -Endpoint "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" `
+            -Files $files
           if ($published.draft -ne $false -or $published.prerelease -ne $true -or
               (@($published.assets.name | Sort-Object) -join "`n") -cne
                 ($expected -join "`n")) {
