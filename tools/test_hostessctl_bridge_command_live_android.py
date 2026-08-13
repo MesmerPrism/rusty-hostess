@@ -304,6 +304,68 @@ class HostessCtlBridgeCommandLiveAndroidTests(unittest.TestCase):
         self.assertEqual(action["server_id"], "test-broker")
         self.assertEqual(fake_broker.sent[0]["type"], "hello")
 
+    def test_broker_websocket_ready_probe_accepts_transport_only_status(self) -> None:
+        fake_broker = FakeBrokerClient(
+            [
+                {
+                    "type": "hello_transport_status",
+                    "schema": "rusty.quest.broker.transport_status.v1",
+                    "transport_ready": True,
+                    "server_id": "rusty.quest.manifold_broker_android",
+                    "endpoint_path": "/manifold/v1/events",
+                    "mutation_authority_required": True,
+                }
+            ]
+        )
+
+        action, issue = wait_for_broker_websocket_ready(
+            "127.0.0.1",
+            28765,
+            "/manifold/v1/events",
+            0.5,
+            0.5,
+            lambda *args, **kwargs: fake_broker,
+            lambda seconds: None,
+        )
+
+        self.assertIsNone(issue)
+        self.assertEqual(action["status"], "pass")
+        self.assertTrue(action["handshake_complete"])
+        self.assertFalse(action["hello_ack"])
+        self.assertTrue(action["transport_ready"])
+        self.assertEqual(action["readiness_mode"], "transport_status")
+        self.assertTrue(action["mutation_authority_required"])
+        self.assertEqual(fake_broker.sent[0]["type"], "hello")
+
+    def test_broker_websocket_ready_probe_rejects_unbounded_transport_status(self) -> None:
+        fake_broker = FakeBrokerClient(
+            [
+                {
+                    "type": "hello_transport_status",
+                    "schema": "rusty.quest.broker.transport_status.v1",
+                    "transport_ready": True,
+                    "server_id": "test-broker",
+                    "endpoint_path": "/wrong/path",
+                    "mutation_authority_required": False,
+                }
+            ]
+        )
+
+        action, issue = wait_for_broker_websocket_ready(
+            "127.0.0.1",
+            28765,
+            "/manifold/v1/events",
+            0.0001,
+            0.5,
+            lambda *args, **kwargs: fake_broker,
+            lambda seconds: None,
+        )
+
+        self.assertIsNotNone(issue)
+        self.assertEqual(action["status"], "fail")
+        self.assertFalse(action["hello_ack"])
+        self.assertIn("readiness response missing", action["last_error"])
+
 
 def live_android_args(
     source_path: Path | str,

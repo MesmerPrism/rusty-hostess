@@ -649,17 +649,43 @@ def wait_for_broker_websocket_ready(
                 and str(reply.get("type") or "") == "hello_ack"
                 and reply.get("accepted") is True
             )
+            transport_ready = (
+                isinstance(reply, dict)
+                and str(reply.get("type") or "") == "hello_transport_status"
+                and str(reply.get("schema") or "")
+                == "rusty.quest.broker.transport_status.v1"
+                and reply.get("transport_ready") is True
+                and str(reply.get("endpoint_path") or "") == path
+                and reply.get("mutation_authority_required") is True
+            )
+            readiness_admitted = hello_ack or transport_ready
+            readiness_mode = (
+                "hello_ack"
+                if hello_ack
+                else "transport_status"
+                if transport_ready
+                else ""
+            )
             attempt_row = {
                 "attempt": attempt,
-                "status": "pass" if hello_ack else "fail",
+                "status": "pass" if readiness_admitted else "fail",
                 "handshake_complete": True,
                 "hello_ack": hello_ack,
+                "transport_ready": transport_ready,
+                "readiness_mode": readiness_mode,
                 "reply_type": str(reply.get("type") or "") if isinstance(reply, dict) else "",
+                "reply_schema": str(reply.get("schema") or "") if isinstance(reply, dict) else "",
                 "authority": str(reply.get("authority") or "") if isinstance(reply, dict) else "",
                 "server_id": str(reply.get("server_id") or "") if isinstance(reply, dict) else "",
+                "endpoint_path": str(reply.get("endpoint_path") or "") if isinstance(reply, dict) else "",
+                "mutation_authority_required": (
+                    reply.get("mutation_authority_required") is True
+                    if isinstance(reply, dict)
+                    else False
+                ),
             }
             attempts.append(attempt_row)
-            if hello_ack:
+            if readiness_admitted:
                 return (
                     {
                         "action": "wait-broker-websocket-ready",
@@ -673,13 +699,19 @@ def wait_for_broker_websocket_ready(
                         "attempt_count": attempt,
                         "attempts": attempts,
                         "handshake_complete": True,
-                        "hello_ack": True,
+                        "hello_ack": hello_ack,
+                        "transport_ready": transport_ready,
+                        "readiness_mode": readiness_mode,
                         "authority": attempt_row["authority"],
                         "server_id": attempt_row["server_id"],
+                        "endpoint_path": attempt_row["endpoint_path"],
+                        "mutation_authority_required": attempt_row[
+                            "mutation_authority_required"
+                        ],
                     },
                     None,
                 )
-            last_error = "broker websocket hello_ack missing"
+            last_error = "supported broker websocket readiness response missing"
         except Exception as exc:
             last_error = format_exception(exc)
             attempts.append(
