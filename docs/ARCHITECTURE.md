@@ -45,6 +45,17 @@ requirements, Hostess effect ownership, receipt schema, and exclusions only.
 It is description rather than support, authorization, activation,
 owner-effective evidence, Fleet policy, or release metadata.
 
+## Windows Local-Only Wi-Fi Direct GO Boundary
+
+`tools/connectivity_probe/b11_wifi_direct_legacy_go` owns a separate bounded
+WinRT autonomous group-owner diagnostic. It provides a local nonce echo and
+typed private-directory STATUS/STOP control while proving that the GO interface
+has no NAT, ICS, forwarding, or default route. Its elevated wrapper owns only
+the exact temporary listener firewall rule. It does not use Mobile Hotspot or
+change the host's infrastructure Wi-Fi association. See
+`docs/WINDOWS_LOCAL_ONLY_WIFI_DIRECT_GO.md` for the request, lifecycle, cleanup,
+and validation boundary.
+
 ## Offline Projection Replay Boundary
 
 The offline projection replay host under `apps/hostess-projection-replay`
