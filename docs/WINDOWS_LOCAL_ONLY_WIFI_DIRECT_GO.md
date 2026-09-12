@@ -2,8 +2,9 @@
 
 `tools/connectivity_probe/b11_wifi_direct_legacy_go` is a bounded Windows
 diagnostic that creates a Wi-Fi Direct autonomous group owner through WinRT
-`WiFiDirectAdvertisementPublisher` and `LegacySettings`. It does not call
-Mobile Hotspot, ICS, NAT, connection sharing, or host Wi-Fi association APIs.
+`WiFiDirectAdvertisementPublisher` and `LegacySettings`. It does not enable
+Mobile Hotspot, ICS, NAT, or connection sharing, or change the host Wi-Fi
+association. Its isolation checks read the relevant sharing and routing state.
 It is a lab topology provider, not a general-purpose access point or background
 service.
 
