@@ -16,7 +16,7 @@ The provider reads one private JSON request from stdin:
   "ssid": "B11-012345abcdef",
   "passphrase": "replace_with_private_value",
   "duration_ms": 600000,
-  "output_root": "C:\\private-existing-run-directory",
+  "output_root": "<absolute-private-existing-run-directory>",
   "ready_name": "go-ready.json",
   "receipt_name": "go-terminal.json",
   "health_port": 47831
@@ -96,7 +96,7 @@ Build and run the host-only regression with:
 
 ```powershell
 dotnet build tools\connectivity_probe\b11_wifi_direct_legacy_go\b11-wifi-direct-legacy-go.csproj -c Release
-dotnet run --no-build --project tools\connectivity_probe\b11_wifi_direct_legacy_go\b11-wifi-direct-legacy-go.csproj -- --self-test
+dotnet run --no-build -c Release --project tools\connectivity_probe\b11_wifi_direct_legacy_go\b11-wifi-direct-legacy-go.csproj -- --self-test
 ```
 
 The self-test uses temporary files and IPv4 loopback. It does not create a
