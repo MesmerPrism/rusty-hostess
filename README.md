@@ -25,7 +25,9 @@ so users do not install or expose a particular ambient Python executable.
 Use `AGENTS.md` as the first-hop policy surface. Detailed Hostess agent
 runbooks live under `docs/agent-instructions/`, including the Quest Makepad APK,
 settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in
-`docs/agent-instructions/quest-makepad-runbook.md`.
+`docs/agent-instructions/quest-makepad-runbook.md`. For a touched file family,
+use the [file organization map](docs/agent-instructions/file-organization.md)
+after the root policy.
 
 ## Current Apps
 
