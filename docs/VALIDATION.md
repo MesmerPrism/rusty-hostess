@@ -1,6 +1,7 @@
 # Validation
 
-Run the repo-local check before committing changes:
+Run focused checks for the touched owner while iterating. Before a coherent
+Hostess handoff, run the repo-local aggregate check:
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File .\tools\check_all.ps1
@@ -12,10 +13,8 @@ The check covers the available local surface:
 - Python unit tests under `tools\test_*.py`;
 - desktop projected-motion-breath replay when the sibling package repo is
   available;
-- `cargo check` for `apps\hostess-t-makepad`;
-- serde-gated Hostess contract tests for current schema defaults and frozen
-  legacy schema compatibility;
-- app-root Makepad shell regression tests in `main_tests`;
+- optional `cargo check`, serde-gated contract tests, and app-root Makepad shell
+  regression tests when `-IncludeMakepadLegacy` is explicitly requested;
 - Rust formatting and temporary cargo checks for Android JNI bridge crates when
   their inputs are present.
 - Companion catalog descriptor smoke when the sibling Rusty GUI descriptor
@@ -23,6 +22,11 @@ The check covers the available local surface:
 - WPF companion build and projection tests when the WPF projects exist.
 - Windows Mobile Hotspot provider unit, self-contained artifact, and
   immutable release-workflow policy gates.
+
+Use `-IncludeMakepadLegacy` only for explicit Makepad compatibility or
+migration. The repo-local gate does not establish cross-repository contract
+acceptance or live-device evidence; run the relevant owner checks separately
+when those surfaces are in scope.
 
 For fast CLI/evidence edits, run the Python path first:
 
