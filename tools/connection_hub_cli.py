@@ -1067,17 +1067,33 @@ def validate_surface(descriptor: Any) -> dict[str, Any]:
 class WebSocketClient:
     sock: socket.socket
     _receive_buffer: bytearray = field(default_factory=bytearray, init=False, repr=False)
+    _transport_deadline: float | None = field(default=None, init=False, repr=False)
 
     @classmethod
     def connect(
-        cls, policy: TransportPolicy, session: str, protocol_id: str
+        cls, policy: TransportPolicy, session: str, protocol_id: str,
+        *, transport_deadline: float | None = None,
     ) -> "WebSocketClient":
         if protocol_id not in SUPPORTED_PROTOCOLS:
             raise ValueError("socket_protocol_not_supported")
         parsed = urlsplit(policy.origin)
-        raw = socket.create_connection((parsed.hostname, parsed.port), timeout=5)
-        if parsed.scheme == "https":
-            raw = ssl.create_default_context().wrap_socket(raw, server_hostname=parsed.hostname)
+        def timeout() -> float:
+            if transport_deadline is None:
+                return 5
+            left = transport_deadline - time.monotonic()
+            if left <= 0:
+                raise HubError("transport_deadline_expired")
+            return min(5, left)
+        raw = socket.create_connection((parsed.hostname, parsed.port), timeout=timeout())
+        try:
+            if parsed.scheme == "https":
+                if transport_deadline is not None:
+                    raw.settimeout(timeout())
+                raw = ssl.create_default_context().wrap_socket(raw, server_hostname=parsed.hostname)
+        except BaseException:
+            if transport_deadline is not None:
+                raw.close()
+            raise
         key = base64.b64encode(os.urandom(16)).decode("ascii")
         request = (
             "GET /v1/socket HTTP/1.1\r\n"
@@ -1088,8 +1104,16 @@ class WebSocketClient:
             "Sec-WebSocket-Version: 13\r\n"
             f"Sec-WebSocket-Key: {key}\r\n\r\n"
         )
-        raw.sendall(request.encode("ascii"))
-        head = cls._read_http_head(raw)
+        try:
+            if transport_deadline is not None:
+                raw.settimeout(timeout())
+            raw.sendall(request.encode("ascii"))
+            head = (cls._read_http_head(raw) if transport_deadline is None else
+                    cls._read_http_head(raw, transport_deadline=transport_deadline))
+        except BaseException:
+            if transport_deadline is not None:
+                raw.close()
+            raise
         lines = head.split("\r\n")
         if lines[0] != "HTTP/1.1 101 Switching Protocols":
             raw.close()
@@ -1105,6 +1129,7 @@ class WebSocketClient:
             raw.close()
             raise HubError("websocket_accept_mismatch")
         result = cls(raw)
+        result._transport_deadline = transport_deadline
         authentication = {
             "$schema": (
                 AUTHENTICATE_SCHEMA_V2
@@ -1120,13 +1145,24 @@ class WebSocketClient:
             if protocol_id == PROTOCOL_ID_V2
             else "socket_authenticate",
         )
-        result.send_json(authentication)
+        try:
+            if transport_deadline is not None:
+                raw.settimeout(timeout())
+            result.send_json(authentication)
+        except BaseException:
+            raw.close()
+            raise
         return result
 
     @staticmethod
-    def _read_http_head(sock: socket.socket) -> str:
+    def _read_http_head(sock: socket.socket, *, transport_deadline: float | None = None) -> str:
         data = bytearray()
         while not data.endswith(b"\r\n\r\n"):
+            if transport_deadline is not None:
+                left = transport_deadline - time.monotonic()
+                if left <= 0:
+                    raise HubError("transport_deadline_expired")
+                sock.settimeout(min(5, left))
             chunk = sock.recv(1)
             if not chunk:
                 raise HubError("websocket_upgrade_eof")
@@ -1139,6 +1175,11 @@ class WebSocketClient:
         if length < 0:
             raise ValueError("websocket_read_length_invalid")
         while len(self._receive_buffer) < length:
+            if self._transport_deadline is not None:
+                left = self._transport_deadline - time.monotonic()
+                if left <= 0:
+                    raise HubError("transport_deadline_expired")
+                self.sock.settimeout(min(6, left))
             chunk = self.sock.recv(length - len(self._receive_buffer))
             if not chunk:
                 raise WebSocketClosed(1006, "eof")
@@ -1161,6 +1202,11 @@ class WebSocketClient:
         self._send_frame(0x1, payload)
 
     def _send_frame(self, opcode: int, payload: bytes) -> None:
+        if opcode == 0x1 and self._transport_deadline is not None:
+            left = self._transport_deadline - time.monotonic()
+            if left <= 0:
+                raise HubError("transport_deadline_expired")
+            self.sock.settimeout(min(6, left))
         if len(payload) > 65535:
             raise ValueError("websocket_client_frame_too_large")
         mask = os.urandom(4)
@@ -1219,13 +1265,17 @@ class HubConnection:
         policy: TransportPolicy,
         session: str,
         protocol_id: str = PROTOCOL_ID_V2,
+        *, transport_deadline: float | None = None,
     ) -> None:
         if protocol_id not in SUPPORTED_PROTOCOLS:
             raise ValueError("socket_protocol_not_supported")
         self.policy = policy
         self.session = session
         self.protocol_id = protocol_id
-        self.socket = WebSocketClient.connect(policy, session, protocol_id)
+        self.socket = (WebSocketClient.connect(policy, session, protocol_id)
+                       if transport_deadline is None else
+                       WebSocketClient.connect(policy, session, protocol_id,
+                                               transport_deadline=transport_deadline))
         self.transport_epoch: Any = None
         self.next_external_request_sequence: int | None = None
         self.expires_at_utc: str | None = None
@@ -1234,10 +1284,18 @@ class HubConnection:
         self.surfaces: dict[str, dict[str, Any]] = {}
         self.events: list[dict[str, Any]] = []
         try:
-            self.authentication_receipt = self.socket.read_json()
+            timeout = 6.0 if transport_deadline is None else min(6.0, transport_deadline-time.monotonic())
+            if timeout <= 0:
+                raise HubError("transport_deadline_expired")
+            self.authentication_receipt = (self.socket.read_json() if transport_deadline is None
+                                           else self.socket.read_json(timeout))
         except (WebSocketClosed, OSError) as error:
             self.close()
             raise AuthenticationRejected("socket_authentication_rejected") from error
+        except HubError:
+            if transport_deadline is not None:
+                self.close()
+            raise
         try:
             validate_protocol_message(
                 self.authentication_receipt,
@@ -1287,7 +1345,16 @@ class HubConnection:
         if self.authentication_receipt.get("status") != "authenticated":
             self.close()
             raise HubError("socket_authentication_receipt_invalid")
-        first = self.read_event()
+        timeout = 6.0 if transport_deadline is None else min(6.0, transport_deadline-time.monotonic())
+        if timeout <= 0:
+            self.close()
+            raise HubError("transport_deadline_expired")
+        try:
+            first = self.read_event() if transport_deadline is None else self.read_event(timeout)
+        except BaseException:
+            if transport_deadline is not None:
+                self.close()
+            raise
         if first.get("type") != "surface_snapshot":
             self.close()
             raise HubError("first_event_must_be_surface_snapshot")
