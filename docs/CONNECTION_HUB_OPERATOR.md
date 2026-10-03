@@ -1,5 +1,9 @@
 # Rusty Connection Hub operator and conformance client
 
+For the explicit bounded foreground browser-to-existing-Hub TLS adapter, see
+[`CONNECTION_HUB_BROWSER_RELAY.md`](CONNECTION_HUB_BROWSER_RELAY.md). It reuses
+this strict controller without creating new session or command authority.
+
 `tools/connection_hub_cli.py` is the external Hostess controller, automation
 client, and deterministic conformance harness for the Rusty Connection Hub.
 It is not a Hub service and it does not own admission, trust, logical sessions,
