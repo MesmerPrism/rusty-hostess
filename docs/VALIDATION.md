@@ -1,5 +1,9 @@
 # Validation
 
+Completion-driven host process checks are documented in
+[PROCESS_OBSERVATION.md](PROCESS_OBSERVATION.md). The focused unittest family is
+included in default discovery; its deliberate 35-second stimulus is opt-in.
+
 Run focused checks for the touched owner while iterating. Before a coherent
 Hostess handoff, run the repo-local aggregate check:
 
