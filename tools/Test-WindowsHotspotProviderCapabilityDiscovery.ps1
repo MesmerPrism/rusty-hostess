@@ -2,7 +2,9 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)]
-    [string] $ContractRoot
+    [string] $ContractRoot,
+    # Standalone discovery also requires Python for shared process observation.
+    [string] $PythonExe = "python"
 )
 
 $ErrorActionPreference = "Stop"
@@ -60,6 +62,9 @@ if (-not $TemporaryRoot.StartsWith(
     throw "Temporary discovery validation root escaped the temp directory."
 }
 [IO.Directory]::CreateDirectory($TemporaryRoot) | Out-Null
+$ObservationRoot = Join-Path $TemporaryBase `
+    "rusty-hostess-hotspot-discovery-observation-$([guid]::NewGuid().ToString('N'))"
+$ValidationSucceeded = $false
 try {
     & dotnet build $Project `
         -c Release `
@@ -75,34 +80,53 @@ try {
         throw "Windows hotspot provider assembly was not produced."
     }
 
-    $StartInfo = [Diagnostics.ProcessStartInfo]::new()
-    $StartInfo.FileName = "dotnet"
-    $StartInfo.UseShellExecute = $false
-    $StartInfo.CreateNoWindow = $true
-    $StartInfo.RedirectStandardInput = $true
-    $StartInfo.RedirectStandardOutput = $true
-    $StartInfo.RedirectStandardError = $true
-    $StartInfo.ArgumentList.Add($ProviderAssembly)
-    $StartInfo.ArgumentList.Add("--describe-json")
-    $Process = [Diagnostics.Process]::new()
-    $Process.StartInfo = $StartInfo
-    if (-not $Process.Start()) {
-        throw "Windows hotspot provider discovery process did not start."
+    Write-Host "Provider discovery progress: $(Join-Path $ObservationRoot 'progress.jsonl')"
+    # Keep observer stdout separate from this route's existing output contract.
+    # The shared CLI owns the child, concurrent drains and empty stdin EOF.
+    $ObserverProjection = & $PythonExe (Join-Path $RepoRoot 'tools\observe_process.py') `
+        --out $ObservationRoot --cwd $RepoRoot -- dotnet $ProviderAssembly --describe-json
+    $ObserverExit = $LASTEXITCODE
+    if ($ObserverExit -ne 0) {
+        throw "Provider discovery observation failed ($ObserverExit); retained $ObservationRoot and $TemporaryRoot."
     }
-    $Process.StandardInput.Close()
-    $StdoutTask = $Process.StandardOutput.ReadToEndAsync()
-    $StderrTask = $Process.StandardError.ReadToEndAsync()
-    if (-not $Process.WaitForExit(5000)) {
-        $Process.Kill($true)
-        throw "Windows hotspot provider discovery did not exit promptly."
+    $Observation = Get-Content -Raw -LiteralPath (Join-Path $ObservationRoot 'receipt.json') |
+        ConvertFrom-Json
+    if ($Observation.schema -cne 'rusty.hostess.process_observation.v1' -or
+        $Observation.child_started -isnot [bool] -or -not $Observation.child_started -or
+        $Observation.exit_known -isnot [bool] -or -not $Observation.exit_known -or
+        $Observation.process_reaped -isnot [bool] -or -not $Observation.process_reaped -or
+        $Observation.observation_complete -isnot [bool] -or -not $Observation.observation_complete -or
+        $Observation.cancel_requested -isnot [bool] -or $Observation.cancel_requested -or
+        $Observation.source_changed -isnot [bool] -or $Observation.source_changed -or
+        @($Observation.argv).Count -ne 3 -or $Observation.argv[0] -cne 'dotnet' -or
+        $Observation.argv[1] -cne $ProviderAssembly -or $Observation.argv[2] -cne '--describe-json' -or
+        -not ($Observation.exit_code -is [long] -or $Observation.exit_code -is [int]) -or
+        $Observation.exit_code -ne 0 -or @($Observation.observer_errors).Count -ne 0) {
+        throw "Provider discovery lacks complete successful child proof; retained $ObservationRoot and $TemporaryRoot."
     }
-    $DescriptorText = $StdoutTask.GetAwaiter().GetResult()
-    $StderrText = $StderrTask.GetAwaiter().GetResult()
-    if ($Process.ExitCode -ne 0) {
-        throw (
-            "Windows hotspot provider discovery exited " +
-            "$($Process.ExitCode).")
+    foreach ($StreamName in @('stdout', 'stderr')) {
+        $Raw = $Observation.streams.$StreamName
+        $RawPath = Join-Path $ObservationRoot "$StreamName.raw"
+        $File = Get-Item -LiteralPath $RawPath
+        if ($Raw.eof -isnot [bool] -or -not $Raw.eof -or
+            $Raw.raw_file_closed -isnot [bool] -or -not $Raw.raw_file_closed -or
+            $Raw.budget_exceeded -isnot [bool] -or $Raw.budget_exceeded -or
+            $null -ne $Raw.error -or $Raw.initialization -cne 'started' -or
+            $File.PSIsContainer -or $null -ne $File.LinkType -or
+            -not ($Raw.descriptor.bytes -is [long] -or $Raw.descriptor.bytes -is [int]) -or
+            -not ($Raw.observed_bytes -is [long] -or $Raw.observed_bytes -is [int]) -or
+            -not ($Raw.retained_bytes -is [long] -or $Raw.retained_bytes -is [int]) -or
+            $Raw.descriptor.bytes -lt 0 -or $Raw.descriptor.bytes -ne $File.Length -or
+            $Raw.observed_bytes -ne $File.Length -or $Raw.retained_bytes -ne $File.Length -or
+            -not [string]::Equals([IO.Path]::GetFullPath($Raw.descriptor.path),
+                [IO.Path]::GetFullPath($RawPath), [StringComparison]::OrdinalIgnoreCase) -or
+            $Raw.descriptor.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+            $Raw.descriptor.sha256 -cne (Get-FileHash -LiteralPath $RawPath -Algorithm SHA256).Hash.ToLowerInvariant()) {
+            throw "Provider discovery $StreamName raw proof is incomplete; retained $ObservationRoot and $TemporaryRoot."
+        }
     }
+    $DescriptorText = Get-Content -Raw -LiteralPath (Join-Path $ObservationRoot 'stdout.raw')
+    $StderrText = Get-Content -Raw -LiteralPath (Join-Path $ObservationRoot 'stderr.raw')
     if (-not [string]::IsNullOrEmpty($StderrText)) {
         throw "Windows hotspot provider discovery wrote stderr."
     }
@@ -134,6 +158,7 @@ try {
         throw "Pinned provider-discovery validator rejected the descriptor."
     }
 
+    $ValidationSucceeded = $true
     [ordered]@{
         schema =
             "rusty.hostess.windows_hotspot.provider_discovery_validation.v1"
@@ -145,7 +170,10 @@ try {
     } | ConvertTo-Json -Compress
 }
 finally {
-    if (Test-Path -LiteralPath $TemporaryRoot) {
+    # Failed/unknown validation retains its build and observation evidence.
+    # Successful validation may remove only its original owned build scratch;
+    # observation raw/progress stays outside that scratch in a sibling directory.
+    if ($ValidationSucceeded -and (Test-Path -LiteralPath $TemporaryRoot)) {
         Remove-Item -LiteralPath $TemporaryRoot -Recurse -Force
     }
 }

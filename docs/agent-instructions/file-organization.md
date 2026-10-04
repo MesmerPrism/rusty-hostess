@@ -306,3 +306,10 @@
   protocols, live LAN/UDP/Bluetooth paths, parser coverage, and firewall rule
   profiles. Add new tests to the family module that owns the behavior instead
   of growing the facade.
+## Host process observation
+
+`tools/hostessctl/process_observation.py` owns completion-driven observation,
+raw evidence and retained-child cancellation. `tools/observe_process.py` is its
+typed CLI; `tools/test_hostessctl_process_observation.py` and the neutral
+`tools/process_observation_fixture.py` own its host regression family. Existing
+`runtime.py` helpers remain compatible. See `docs/PROCESS_OBSERVATION.md`.

@@ -23,7 +23,8 @@ param(
         }
         return $true
     })]
-    [string] $ProviderVersion = "0.1.0"
+    [string] $ProviderVersion = "0.1.0",
+    [string] $PythonExe = "python"
 )
 $ErrorActionPreference = "Stop"
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw "PowerShell 7 or newer is required." }
@@ -65,25 +66,56 @@ $StateBefore = if (Test-Path -LiteralPath $PrivateState -PathType Leaf) {
 } else {
     "absent"
 }
-$DescribeOut = Join-Path $Publish "describe.stdout.json"
-$DescribeErr = Join-Path $Publish "describe.stderr.txt"
-$DescribeIn = Join-Path $Publish "describe.stdin.txt"
-[IO.File]::WriteAllText($DescribeIn, "")
-$DescribeProcess = Start-Process `
-    -FilePath $Exe `
-    -ArgumentList @("--describe-json") `
-    -RedirectStandardInput $DescribeIn `
-    -RedirectStandardOutput $DescribeOut `
-    -RedirectStandardError $DescribeErr `
-    -WindowStyle Hidden `
-    -PassThru
-if (-not $DescribeProcess.WaitForExit(5000)) {
-    $DescribeProcess.Kill($true)
-    throw "Capability discovery did not exit promptly."
+$DescribeEvidence = Join-Path $Publish "describe-observation-$([guid]::NewGuid().ToString('N'))"
+Write-Host "Capability discovery progress: $(Join-Path $DescribeEvidence 'progress.jsonl')"
+# Shared observer supplies concurrent drains, empty stdin EOF, and genuine
+# exit/reap/closed raw evidence. No elapsed cutoff or implicit tree cleanup.
+& $PythonExe (Join-Path $RepoRoot 'tools\observe_process.py') `
+    --out $DescribeEvidence --cwd $RepoRoot.Path -- $Exe --describe-json
+$ObserverExit = $LASTEXITCODE
+if ($ObserverExit -ne 0) {
+    throw "Capability discovery observation failed ($ObserverExit); retained $DescribeEvidence."
 }
-if ($DescribeProcess.ExitCode -ne 0) {
-    throw "Capability discovery exited $($DescribeProcess.ExitCode)."
+$Observation = Get-Content -Raw -LiteralPath (Join-Path $DescribeEvidence 'receipt.json') |
+    ConvertFrom-Json
+if ($Observation.schema -cne 'rusty.hostess.process_observation.v1' -or
+    $Observation.child_started -isnot [bool] -or -not $Observation.child_started -or
+    $Observation.exit_known -isnot [bool] -or -not $Observation.exit_known -or
+    $Observation.process_reaped -isnot [bool] -or -not $Observation.process_reaped -or
+    $Observation.observation_complete -isnot [bool] -or -not $Observation.observation_complete -or
+    $Observation.cancel_requested -isnot [bool] -or $Observation.cancel_requested -or
+    $Observation.source_changed -isnot [bool] -or $Observation.source_changed -or
+    @($Observation.argv).Count -ne 2 -or $Observation.argv[0] -cne $Exe -or
+    $Observation.argv[1] -cne '--describe-json' -or
+    -not ($Observation.exit_code -is [long] -or $Observation.exit_code -is [int]) -or
+    $Observation.exit_code -ne 0 -or
+    @($Observation.observer_errors).Count -ne 0) {
+    throw "Capability discovery lacks a complete successful child observation; retained $DescribeEvidence."
 }
+foreach ($StreamName in @('stdout', 'stderr')) {
+    $Raw = $Observation.streams.$StreamName
+    $ExpectedRaw = Join-Path $DescribeEvidence "$StreamName.raw"
+    $File = Get-Item -LiteralPath $ExpectedRaw
+    if ($Raw.eof -isnot [bool] -or -not $Raw.eof -or
+        $Raw.raw_file_closed -isnot [bool] -or -not $Raw.raw_file_closed -or
+        $Raw.budget_exceeded -isnot [bool] -or $Raw.budget_exceeded -or
+        $null -ne $Raw.error -or $Raw.initialization -cne 'started' -or
+        $File.PSIsContainer -or $null -ne $File.LinkType -or
+        -not ($Raw.descriptor.bytes -is [long] -or $Raw.descriptor.bytes -is [int]) -or
+        $Raw.descriptor.bytes -lt 0 -or
+        $Raw.descriptor.bytes -ne $File.Length -or
+        -not ($Raw.observed_bytes -is [long] -or $Raw.observed_bytes -is [int]) -or
+        -not ($Raw.retained_bytes -is [long] -or $Raw.retained_bytes -is [int]) -or
+        $Raw.observed_bytes -ne $File.Length -or $Raw.retained_bytes -ne $File.Length -or
+        -not [string]::Equals([IO.Path]::GetFullPath($Raw.descriptor.path),
+            [IO.Path]::GetFullPath($ExpectedRaw), [StringComparison]::OrdinalIgnoreCase) -or
+        $Raw.descriptor.sha256 -cnotmatch '^[0-9a-f]{64}$' -or
+        $Raw.descriptor.sha256 -cne (Get-FileHash -LiteralPath $ExpectedRaw -Algorithm SHA256).Hash.ToLowerInvariant()) {
+        throw "Capability discovery $StreamName raw proof is incomplete; retained $DescribeEvidence."
+    }
+}
+$DescribeOut = Join-Path $DescribeEvidence 'stdout.raw'
+$DescribeErr = Join-Path $DescribeEvidence 'stderr.raw'
 if ((Get-Item $DescribeErr).Length -ne 0) {
     throw "Capability discovery wrote stderr."
 }
@@ -108,7 +140,7 @@ $StateAfter = if (Test-Path -LiteralPath $PrivateState -PathType Leaf) {
 if ($StateAfter -cne $StateBefore) {
     throw "Capability discovery read or changed provider state."
 }
-Remove-Item -LiteralPath $DescribeOut, $DescribeErr, $DescribeIn
+# Preserve successful and failed observation evidence for diagnosis.
 $BadDescribeOut = Join-Path $Publish "bad-describe.stdout.txt"
 $BadDescribeErr = Join-Path $Publish "bad-describe.stderr.txt"
 foreach ($BadDescribeArguments in @(

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Reflection;
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using System.Text.Json;
 using HostessCompanion.Wpf.Models;
@@ -356,6 +357,9 @@ static partial class WpfCompanionTests
             "companion-report",
             "wpf-operator-actions-test.json");
         Directory.CreateDirectory(Path.GetDirectoryName(outPath)!);
+        var observationPath = Path.Combine(repoRoot.FullName, "target", "companion-report",
+            "operator-actions-observation-" + Guid.NewGuid().ToString("N"));
+        Console.WriteLine($"Operator action report progress: {Path.Combine(observationPath, "progress.jsonl")}");
         var startInfo = new ProcessStartInfo
         {
             FileName = "python",
@@ -364,17 +368,20 @@ static partial class WpfCompanionTests
             RedirectStandardError = true,
             UseShellExecute = false,
         };
+        var reportCommand = new[]
+        {
+            "python", "tools\\hostessctl\\hostessctl.py", "companion-report", "operator-actions",
+            "--frontend", "wpf", "--out", outPath, "--fail-on-error",
+        };
         foreach (var argument in new[]
         {
-            "tools\\hostessctl\\hostessctl.py",
-            "companion-report",
-            "operator-actions",
-            "--frontend",
-            "wpf",
+            "tools\\observe_process.py",
             "--out",
-            outPath,
-            "--fail-on-error",
-        })
+            observationPath,
+            "--cwd",
+            repoRoot.FullName,
+            "--",
+        }.Concat(reportCommand))
         {
             startInfo.ArgumentList.Add(argument);
         }
@@ -383,15 +390,14 @@ static partial class WpfCompanionTests
             ?? throw new InvalidOperationException("could not start hostessctl operator-actions report");
         var stdoutTask = process.StandardOutput.ReadToEndAsync();
         var stderrTask = process.StandardError.ReadToEndAsync();
-        if (!process.WaitForExit(30_000))
-        {
-            process.Kill(entireProcessTree: true);
-            throw new TimeoutException("hostessctl operator-actions report timed out");
-        }
+        // Await the exact observer process and both outer drains without an
+        // elapsed kill. Its receipt separately proves the actual report child.
+        process.WaitForExit();
         var stdout = stdoutTask.GetAwaiter().GetResult();
         var stderr = stderrTask.GetAwaiter().GetResult();
         Assert(process.ExitCode == 0,
             $"hostessctl operator-actions exited with {process.ExitCode}: {stderr}{stdout}");
+        AssertCompleteOperatorObservation(observationPath, reportCommand);
         Assert(File.Exists(outPath), "operator action CLI report must be written");
     
         using var document = JsonDocument.Parse(File.ReadAllText(outPath));
@@ -435,6 +441,48 @@ static partial class WpfCompanionTests
                 $"operator action host mutation flag mismatch for {action.ActionId}");
             Assert(JsonBool(reportAction, "mutates_device") == action.MutatesDevice,
                 $"operator action device mutation flag mismatch for {action.ActionId}");
+        }
+    }
+
+    private static void AssertCompleteOperatorObservation(string observationPath, string[] expectedCommand)
+    {
+        using var receipt = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(observationPath, "receipt.json")));
+        var observation = receipt.RootElement;
+        Assert(JsonString(observation, "schema") == "rusty.hostess.process_observation.v1",
+            "operator action child must use the Hostess observation schema");
+        Assert(observation.GetProperty("argv").EnumerateArray().Select(arg => arg.GetString())
+            .SequenceEqual(expectedCommand), "operator action child argv must match the requested report");
+        foreach (var name in new[] { "child_started", "exit_known", "process_reaped", "observation_complete" })
+            Assert(observation.GetProperty(name).GetBoolean(), $"operator action observation requires {name}");
+        Assert(!observation.GetProperty("cancel_requested").GetBoolean()
+            && !observation.GetProperty("source_changed").GetBoolean()
+            && observation.GetProperty("exit_code").GetInt32() == 0
+            && observation.GetProperty("observer_errors").GetArrayLength() == 0,
+            "operator action child must exit successfully without observation uncertainty");
+        foreach (var name in new[] { "stdout", "stderr" })
+        {
+            var stream = observation.GetProperty("streams").GetProperty(name);
+            Assert(stream.GetProperty("eof").GetBoolean()
+                && stream.GetProperty("raw_file_closed").GetBoolean()
+                && !stream.GetProperty("budget_exceeded").GetBoolean()
+                && stream.GetProperty("error").ValueKind == JsonValueKind.Null
+                && JsonString(stream, "initialization") == "started",
+                $"operator action {name} requires complete closed raw evidence");
+            var rawPath = Path.GetFullPath(Path.Combine(observationPath, name + ".raw"));
+            var descriptor = stream.GetProperty("descriptor");
+            Assert(string.Equals(Path.GetFullPath(JsonString(descriptor, "path")), rawPath,
+                OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal),
+                $"operator action {name} raw path must join its new evidence directory");
+            Assert((File.GetAttributes(rawPath) & FileAttributes.ReparsePoint) == 0,
+                $"operator action {name} cannot use a redirected raw file");
+            using var raw = File.OpenRead(rawPath);
+            Assert(descriptor.GetProperty("bytes").GetInt64() == raw.Length
+                && stream.GetProperty("observed_bytes").GetInt64() == raw.Length
+                && stream.GetProperty("retained_bytes").GetInt64() == raw.Length,
+                $"operator action {name} byte counts must match complete raw evidence");
+            Assert(JsonString(descriptor, "sha256") == Convert.ToHexString(SHA256.HashData(raw)).ToLowerInvariant(),
+                $"operator action {name} digest must match its closed raw file");
         }
     }
     
