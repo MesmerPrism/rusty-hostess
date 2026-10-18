@@ -3,6 +3,7 @@ import hashlib
 import ctypes
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -52,7 +53,7 @@ class BindingTests(unittest.TestCase):
         process = subprocess.run(argv, check=True, capture_output=True, text=True)
         self.assertEqual(json.loads(process.stdout), remote)
         self.assertEqual(argv[2:], remote)
-        self.assertTrue(all(a.startswith("\\\\?\\") for a in argv[:2]))
+        self.assertTrue(all(os.path.isabs(a) and not a.startswith("\\\\?\\") for a in argv[:2]))
         with self.assertRaises(ValueError):
             self.binding.path(remote[0])
         with self.assertRaises(ValueError):
@@ -74,6 +75,21 @@ class BindingTests(unittest.TestCase):
         self.assertEqual((output/"1").read_text(), "actual child")
         self.assertEqual(self.binding.report()["bytes_hashed"], before["bytes_hashed"])
         self.assertEqual(self.binding.report()["hash_reads"], before["hash_reads"])
+
+    def test_fresh_real_powershell_file_uses_normal_protected_DOS_without_policy_bypass(self):
+        host = shutil.which("pwsh") or shutil.which("powershell")
+        if host is None:
+            self.skipTest("PowerShell host unavailable")
+        script = self.parent/"peer.ps1"
+        script.write_text("param([string]$Remote)\n[Console]::Write($Remote)\n")
+        self.binding.add(host)
+        self.binding.add(script)
+        argv = self.binding.argv([host, "-NoProfile", "-File", str(script), "-Remote", "/sdcard/selected"], inputs=(0, 3))
+        self.binding.assert_current()
+        result = subprocess.run(argv, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "/sdcard/selected")
+        self.assertNotIn("-ExecutionPolicy", argv)
 
     def test_incorrect_pin_and_partial_constructor_release_every_acquired_handle(self):
         other = self.root/"other"
@@ -99,13 +115,36 @@ class BindingTests(unittest.TestCase):
         self.file.write_bytes(b"after same-owner release")
 
     def test_probe_close_failure_retains_exact_handle_for_same_owner_release(self):
-        with patch.object(self.binding.kernel, "CloseHandle", return_value=False):
+        close = self.binding.kernel.CloseHandle
+        calls = []
+        def close_probe(handle):
+            calls.append(handle)
+            return False if len(calls) == 2 else close(handle)
+        with patch.object(self.binding.kernel, "CloseHandle", side_effect=close_probe):
             with self.assertRaises(OSError) as caught:
                 self.binding.assert_current()
         self.assertIs(caught.exception.immutable_input_binding, self.binding)
         self.assertEqual(self.binding.report()["pending_probes"], 1)
         self.binding.close()
         self.assertTrue(self.binding.report()["released"])
+
+    def test_extended_dot_or_space_name_cannot_launch_a_different_normal_file(self):
+        normal = self.parent/"different.ps1"
+        normal.write_bytes(b"normal object must never run")
+        for ending in (".", " "):
+            extended = Path("\\\\?\\"+str(normal)+ending)
+            extended.write_bytes(b"selected different object")
+            try:
+                self.assertNotEqual(extended.read_bytes(), normal.read_bytes())
+                # Preserve extended spelling through qualification, then prove
+                # its ordinary launch name selects exactly the held object.
+                with self.assertRaisesRegex(ValueError, "normal_dos_namespace"):
+                    WindowsInputBinding.from_pins([{"path": str(extended),
+                                                   "sha256": hashlib.sha256(extended.read_bytes()).hexdigest()}])
+                with self.assertRaisesRegex(ValueError, "normal_dos_namespace"):
+                    self.binding._open(extended)
+            finally:
+                extended.unlink()
 
     def test_file_probe_close_failure_keeps_the_actual_stream_reachable(self):
         original_open = self.binding._open

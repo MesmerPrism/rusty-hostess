@@ -69,6 +69,10 @@ class WindowsInputBinding:
 
     @staticmethod
     def key(path):
+        # GetFullPathName normalization must not silently select a different
+        # object before the native ordinary-name proof can reject it.
+        if os.fspath(path).startswith("\\\\?\\"):
+            return os.path.normcase(os.fspath(path))
         return os.path.normcase(os.path.abspath(path))
 
     def _info(self, handle):
@@ -86,7 +90,7 @@ class WindowsInputBinding:
             raise ValueError("stable_local_volume_path_required")
         return buffer.value
 
-    def _launch_path(self, handle):
+    def _launch_path(self, handle, identity, stable):
         # CreateProcess rejects volume-GUID executable names. Obtain the final
         # local DOS name from the SAME held object; its complete namespace is
         # also held below. UNC/network inputs are unsupported in this mode.
@@ -94,7 +98,26 @@ class WindowsInputBinding:
         size = self.kernel.GetFinalPathNameByHandleW(handle, buffer, len(buffer), 0)
         if not 0 < size < len(buffer) or not re.match(r"^\\\\\?\\[A-Za-z]:\\", buffer.value):
             raise ValueError("local_dos_launch_namespace_required")
-        return buffer.value
+        # PowerShell's AuthorizationManager rejects extended \\?\ script
+        # names even when the exact same local script is accepted normally.
+        # Keep the canonical DOS name protected, without bypassing host policy.
+        launch = buffer.value[4:]
+        # Removing the extended prefix changes Win32 normalization (for example
+        # trailing dots/spaces). Prove the ordinary child name selects exactly
+        # the same object AND volume path; never assume spellings are equivalent.
+        probe = self.kernel.CreateFileW(launch, 0x80, 1, None, 3, 0x02000000 | 0x00200000, None)
+        if probe == ctypes.c_void_p(-1).value:
+            raise ctypes.WinError(ctypes.get_last_error())
+        try:
+            if self._info(probe)[0] != identity or self._volume_path(probe) != stable:
+                raise ValueError("normal_dos_namespace_does_not_bind_selected_object")
+        finally:
+            if not self.kernel.CloseHandle(probe):
+                self.probes[probe] = {"handle": probe, "path": launch}
+                error = ctypes.WinError(ctypes.get_last_error())
+                error.immutable_input_binding = self
+                raise error
+        return launch
 
     def _open(self, path, directory=False):
         handle = self.kernel.CreateFileW(str(path), 0x80 if directory else 0x80000000,
@@ -104,7 +127,7 @@ class WindowsInputBinding:
         try:
             identity, size = self._info(handle)
             stable = self._volume_path(handle)
-            launch = self._launch_path(handle)
+            launch = self._launch_path(handle, identity, stable)
             if directory:
                 return {"handle": handle, "identity": identity, "path": str(path), "stable": stable, "launch": launch}
             import msvcrt
