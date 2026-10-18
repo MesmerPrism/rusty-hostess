@@ -3,6 +3,7 @@ import argparse
 from copy import deepcopy
 import json
 import io
+import os
 from pathlib import Path
 import struct
 import subprocess
@@ -95,6 +96,152 @@ class LiveTests(unittest.TestCase):
     def session(self):
         executor = LiveExecutor(self.config_path, self.catalog, self.root/"evidence", observer=self.observer)
         return ShaderIteration(self.catalog, executor), executor
+
+    def select_v2(self, binding="rehash", capture="android-png"):
+        self.config.update(schema="rusty.hostess.sdk_graphics.live_inputs.v2", input_binding=binding,
+                           capture={"format": capture, "width": 8, "height": 8})
+        self.config_path.write_text(json.dumps(self.config))
+
+    def test_png_real_peer_round_trip_preserves_fences_and_encoded_witness(self):
+        self.select_v2()
+        with self.live_factory():
+            owner = LiveRun(self.live_args())
+        self.addCleanup(owner.close)
+        result = owner.run_initial()
+        self.assertTrue(result["candidate_pixel_predicate_observed"])
+        self.assertTrue(result["baseline_pixel_predicate_observed"])
+        captures = [argv for argv in self.calls if "screencap" in argv]
+        self.assertEqual(len(captures), 4)
+        self.assertTrue(all(argv[-1] == "-p" for argv in captures))
+        self.assertFalse(result["gpu_completion"])
+        self.assertEqual(json.loads(self.state_path.read_text())["reloads"], 2)
+        for file in owner.root.glob("*-android-display/stdout.raw"):
+            self.assertEqual(file.read_bytes()[:8], b"\x89PNG\r\n\x1a\n")
+
+    def test_corrupt_png_blocks_new_trigger_without_raw_downgrade_or_replay(self):
+        self.select_v2()
+        session, executor = self.session()
+        session.handle("prepare", batch=self.candidate)
+        session.handle("transfer")
+        self.edit_state(corrupt_png=True)
+        with self.assertRaises(EffectNotDispatched):
+            session.handle("reload")
+        self.assertEqual(json.loads(self.state_path.read_text())["reloads"], 0)
+        captures = [argv for argv in self.calls if "screencap" in argv]
+        self.assertEqual(len(captures), 1)
+        self.assertEqual(captures[0][-1], "-p")
+
+    @unittest.skipUnless(os.name == "nt", "Windows immutable closure")
+    def test_complete_immutable_closure_and_real_peer_with_no_repeated_hash_reads(self):
+        self.select_v2("windows-immutable")
+        with self.live_factory():
+            owner = LiveRun(self.live_args())
+        self.addCleanup(owner.close)
+        binding = owner.executor.inputs.binding
+        selected = {binding.key(path) for path in (self.config_path, self.catalog, sys.executable)}
+        for folder in (self.base, self.candidate):
+            selected |= {binding.key(folder/"MANIFEST.json"), *[binding.key(folder/name) for name in NAMES]}
+        catalog_base = self.catalog.parent/"baseline"
+        selected |= {binding.key(catalog_base/name) for name in NAMES}
+        for field in ("apk", "adb", "qfm", "enabling_receipt", "app_status_reference", "settings_reference"):
+            selected.add(binding.key(self.config[field]["path"]))
+        selected |= {binding.key(pin["path"]) for pin in self.config["settings_provider"].values()}
+        selected |= {binding.key(Path(self.config["quest_provider"]["root"])/name) for name in self.config["quest_provider"]["scripts"]}
+        self.assertEqual(set(binding.files), selected)
+        hashes = binding.hash_reads
+        owner.executor.status()
+        owner.executor.status()
+        self.assertEqual(binding.hash_reads, hashes)
+        # All input paths truly remain non-writable; every actual ADB-like peer
+        # status invocation above still received its original /proc arguments.
+        with self.assertRaises(OSError):
+            (self.candidate/NAMES[0]).write_bytes(b"mutation")
+        result = owner.run_initial()
+        self.assertTrue(result["baseline_pixel_predicate_observed"])
+        self.assertTrue(owner.close()["input_release"]["released"])
+        (self.candidate/NAMES[0]).write_bytes(b"released")
+
+    def test_legacy_bootstrap_never_constructs_unsupported_immutable_binding(self):
+        with patch("tools.hostessctl.sdk_graphics_live_inputs.WindowsInputBinding", side_effect=ValueError("unsupported namespace")):
+            executor = LiveExecutor(self.config_path, self.catalog, self.root/"legacy", observer=self.observer)
+            self.assertEqual(executor.inputs.report()["mode"], "rehash")
+            self.assertTrue(executor.close_inputs()["released"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows immutable closure")
+    def test_failed_immutable_constructor_closes_all_qualified_inputs(self):
+        self.select_v2("windows-immutable")
+        with self.assertRaises(ValueError):
+            LiveExecutor(self.config_path, self.catalog, self.root/"bad", batch_paths=(self.base, self.base))
+        self.config_path.write_text("{}")
+        (self.base/NAMES[0]).write_bytes(b"released")
+
+    @unittest.skipUnless(os.name == "nt", "Windows immutable closure")
+    def test_interrupted_readonly_original_keeps_inputs_until_actual_exit_and_both_eofs(self):
+        self.select_v2("windows-immutable")
+        marker, release = self.peer/"readonly-held", self.peer/"readonly-release"
+        code = ("from pathlib import Path\nimport time\n"
+                f"Path({str(marker)!r}).write_text('held')\n"
+                f"while not Path({str(release)!r}).exists(): time.sleep(.01)\n")
+        def observer(argv, stdout, stderr, **kwargs):
+            def progress(event):
+                if event["phase"] == "pending" and marker.exists():
+                    raise KeyboardInterrupt("retain original read-only child")
+            return observe_process(argv, stdout, stderr, progress=progress, **kwargs)
+        executor = LiveExecutor(self.config_path, self.catalog, self.root/"pending-evidence", observer=observer,
+                                batch_paths=(self.base, self.candidate))
+        self.addCleanup(executor.close_inputs)
+        with self.assertRaises(ObservationInterrupted) as caught:
+            executor._run("readonly-original", [sys.executable, "-c", code])
+        process = caught.exception.owned_process
+        try:
+            self.assertIsNone(process.poll())
+            self.assertFalse(executor.close_inputs()["released"])
+            with self.assertRaises(OSError):
+                self.config_path.write_text("mutation while original active")
+        finally:
+            release.write_text("test-only original release")
+            process.wait(timeout=10)
+        deadline = time.monotonic()+10
+        while not executor.close_inputs()["released"] and time.monotonic() < deadline:
+            time.sleep(.01)
+        self.assertTrue(executor.close_inputs()["released"])
+        self.config_path.write_text("released after genuine EOF")
+
+    @unittest.skipUnless(os.name == "nt", "Windows immutable closure")
+    def test_close_error_retains_original_owner_and_can_release_same_handles(self):
+        self.select_v2("windows-immutable")
+        with self.live_factory():
+            owner = LiveRun(self.live_args())
+        self.addCleanup(owner.close)
+        binding = owner.executor.inputs.binding
+        with patch.object(binding, "close", side_effect=OSError("release failure")):
+            with self.assertRaises(OSError) as caught:
+                owner.close()
+        self.assertIs(caught.exception.sdk_graphics_live_run, owner)
+        self.assertFalse(owner.report()["input_release"]["released"])
+        with self.assertRaises(OSError):
+            self.config_path.write_text("held")
+        self.assertTrue(owner.close()["input_release"]["released"])
+
+    @unittest.skipUnless(os.name == "nt", "Windows immutable closure")
+    def test_png_immutable_unknown_trigger_reconciles_original_without_new_trigger(self):
+        self.select_v2("windows-immutable")
+        executor = LiveExecutor(self.config_path, self.catalog, self.root/"unknown-evidence", observer=self.observer,
+                                batch_paths=(self.base, self.candidate))
+        self.addCleanup(executor.close_inputs)
+        session = ShaderIteration(self.catalog, executor, batch_loader=executor.inputs.batch)
+        session.handle("prepare", batch=self.candidate)
+        session.handle("transfer")
+        self.edit_state(unknown_trigger=True)
+        with self.assertRaisesRegex(ValueError, "transport_failed"):
+            session.handle("reload")
+        original = session.pending["request_id"]
+        self.assertTrue(executor.retirement(original)["retired"])
+        with self.assertRaises(ValueError):
+            session.handle("reload")
+        self.assertEqual(session.handle("observe")["phase"], "observed")
+        self.assertEqual(session.reload_request["request_id"], original)
+        self.assertEqual(json.loads(self.state_path.read_text())["reloads"], 1)
 
     def edit_state(self, **values):
         state = json.loads(self.state_path.read_text())
@@ -195,7 +342,7 @@ class LiveTests(unittest.TestCase):
 
     def live_factory(self):
         return patch("tools.hostessctl.sdk_graphics_live.LiveExecutor",
-                     side_effect=lambda config, catalog, root: LiveExecutor(config, catalog, root, observer=self.observer))
+                     side_effect=lambda config, catalog, root, **kwargs: LiveExecutor(config, catalog, root, observer=self.observer, **kwargs))
 
     def test_retained_owner_late_adoption_reverts_with_reporting_warnings_same_requests(self):
         self.edit_state(delay_adoption=True)

@@ -24,12 +24,25 @@ def sha_file(path, maximum=536870912):
     return sha.hexdigest()
 
 
-def load_config(path):
-    config = read_json(Path(path))
+def load_config(path, *, hash_file=sha_file, document=read_json):
+    config = document(Path(path))
     keys = {"schema", "serial", "canonical_serial", "boot_id", "package", "pid", "uid", "start_ticks",
             "apk", "adb", "qfm", "quest_provider", "enabling_receipt", "catalog_sha256", "pixel_predicates",
             "app_status_reference", "settings_reference", "settings_provider", "operator_authorized_sdk_debug_fallback"}
-    if set(config) != keys or config["schema"] != "rusty.hostess.sdk_graphics.live_inputs.v1":
+    version = config.get("schema")
+    if version == "rusty.hostess.sdk_graphics.live_inputs.v2":
+        keys |= {"input_binding", "capture"}
+        if config.get("input_binding") not in ("rehash", "windows-immutable"):
+            raise ValueError("closed_input_binding_required")
+        capture = config.get("capture")
+        if (type(capture) is not dict or set(capture) != {"format", "width", "height"} or
+                capture["format"] not in ("android-raw", "android-png") or
+                any(type(capture[k]) is not int or not 0 < capture[k] <= 8192 for k in ("width", "height")) or
+                capture["height"]*(capture["width"]*4+1) > 33554432):
+            raise ValueError("closed_bounded_capture_required")
+    elif version != "rusty.hostess.sdk_graphics.live_inputs.v1":
+        raise ValueError("closed_live_inputs_required")
+    if set(config) != keys:
         raise ValueError("closed_live_inputs_required")
     for field in ("serial", "canonical_serial"):
         if not isinstance(config[field], str) or not re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", config[field]):
@@ -49,22 +62,22 @@ def load_config(path):
         validate_predicate(value)
     for key in ("apk", "adb", "qfm", "enabling_receipt", "app_status_reference", "settings_reference"):
         pin = config[key]
-        if set(pin) != {"path", "sha256"} or sha_file(pin["path"]) != pin["sha256"]:
+        if set(pin) != {"path", "sha256"} or hash_file(pin["path"]) != pin["sha256"]:
             raise ValueError("input_pin_changed")
     if set(config["settings_provider"]) != {"script", "pwsh"}:
         raise ValueError("app_owned_status_provider_required")
     for pin in config["settings_provider"].values():
-        if set(pin) != {"path", "sha256"} or sha_file(pin["path"]) != pin["sha256"]:
+        if set(pin) != {"path", "sha256"} or hash_file(pin["path"]) != pin["sha256"]:
             raise ValueError("settings_provider_pin_changed")
-    project_settings(read_json(Path(config["settings_reference"]["path"])))
+    project_settings(document(Path(config["settings_reference"]["path"])))
     provider = config["quest_provider"]
     if set(provider) != {"root", "scripts"} or set(provider["scripts"]) != {
             "Prepare-FreshSdkHotload.py", "Prepare-SdkHotloadCatalog.py", "Qualify-SdkGraphicsApk.py"}:
         raise ValueError("closed_quest_provider_required")
     for name, sha in provider["scripts"].items():
-        if sha_file(Path(provider["root"])/name) != sha:
+        if hash_file(Path(provider["root"])/name) != sha:
             raise ValueError("quest_provider_pin_changed")
-    enabled = read_json(Path(config["enabling_receipt"]["path"]))
+    enabled = document(Path(config["enabling_receipt"]["path"]))
     if (enabled.get("passed") is not True or enabled.get("apk_sha256") != config["apk"]["sha256"] or
             enabled.get("sdk_graphics_hot_reload_selected") is not True):
         raise ValueError("selected_enabling_apk_owner_evidence_required")

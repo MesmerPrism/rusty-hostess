@@ -39,6 +39,10 @@ def read_file(path: Path, maximum: int = 4 * 1024 * 1024) -> bytes:
 
 
 def read_json(path: Path) -> dict:
+    return decode_json(read_file(path))
+
+
+def decode_json(data: bytes) -> dict:
     def unique(pairs):
         result = {}
         for k, v in pairs:
@@ -46,13 +50,13 @@ def read_json(path: Path) -> dict:
                 raise ValueError("duplicate_json_key")
             result[k] = v
         return result
-    value = json.loads(read_file(path).decode("utf-8-sig"), object_pairs_hook=unique)
+    value = json.loads(data.decode("utf-8-sig"), object_pairs_hook=unique)
     if type(value) is not dict:
         raise ValueError("json_object_required")
     return value
 
 
-def file_rows(rows: list, root: Path, name_key: str) -> dict:
+def file_rows(rows: list, root: Path, name_key: str, *, read=read_file) -> dict:
     if type(rows) is not list or len(rows) != len(NAMES):
         raise ValueError("complete_twelve_file_batch_required")
     result = {}
@@ -60,7 +64,7 @@ def file_rows(rows: list, root: Path, name_key: str) -> dict:
         name = row[name_key]
         if name not in NAMES or name in result:
             raise ValueError("unique_fixed_shader_names_required")
-        data = read_file(root / name, 1048576)
+        data = read(root / name, 1048576)
         if (type(row["bytes"]) is not int or row["bytes"] != len(data)
                 or len(data) < 20 or digest(data) != row["sha256"]
                 or not isinstance(row["abiSha256"], str)
@@ -71,8 +75,8 @@ def file_rows(rows: list, root: Path, name_key: str) -> dict:
     return result
 
 
-def load_baseline(catalog_path: Path) -> tuple[dict, dict]:
-    catalog = read_json(catalog_path)
+def load_baseline(catalog_path: Path, *, read=read_file, document=read_json) -> tuple[dict, dict]:
+    catalog = document(catalog_path)
     if (catalog.get("schema") != CATALOG or catalog.get("sdkVersion") != "0.14.0"
             or catalog.get("compileProfile") != PROFILE
             or type(catalog.get("materialUniformBytes")) is not int
@@ -84,23 +88,23 @@ def load_baseline(catalog_path: Path) -> tuple[dict, dict]:
     base = matches[0]
     if base["vertexPaths"] + base["fragmentPaths"] != list(NAMES):
         raise ValueError("baseline_variant_order_changed")
-    return catalog, file_rows(base["files"], catalog_path.parent / "baseline", "path")
+    return catalog, file_rows(base["files"], catalog_path.parent / "baseline", "path", read=read)
 
 
-def load_batch(batch_path: Path, catalog_path: Path) -> dict:
-    catalog, baseline = load_baseline(catalog_path)
-    manifest = read_json(batch_path / "MANIFEST.json")
+def load_batch(batch_path: Path, catalog_path: Path, *, read=read_file, document=read_json) -> dict:
+    catalog, baseline = load_baseline(catalog_path, read=read, document=document)
+    manifest = document(batch_path / "MANIFEST.json")
     pin = manifest.get("baselineCatalog", {})
     if (manifest.get("schema") != BATCH or manifest.get("sdkVersion") != "0.14.0"
             or manifest.get("status") != "host-validated-not-uploaded"
             or manifest.get("mode") not in ("fresh-source", "exact-baseline-revert")
-            or pin.get("sha256") != digest(read_file(catalog_path))
-            or pin.get("bytes") != len(read_file(catalog_path))):
+            or pin.get("sha256") != digest(read(catalog_path))
+            or pin.get("bytes") != len(read(catalog_path))):
         raise ValueError("batch_baseline_binding_invalid")
     for key in ("compileProfile", "tools", "headers"):
         if manifest.get(key) != catalog.get(key):
             raise ValueError("batch_compiler_profile_changed")
-    files = file_rows(manifest["files"], batch_path, "relative")
+    files = file_rows(manifest["files"], batch_path, "relative", read=read)
     for name in NAMES:
         if files[name]["abi"] != baseline[name]["abi"]:
             raise ValueError("batch_abi_changed")
@@ -109,7 +113,7 @@ def load_batch(batch_path: Path, catalog_path: Path) -> dict:
             (manifest["mode"] == "exact-baseline-revert" and changed) or
             (manifest["mode"] == "fresh-source" and not changed)):
         raise ValueError("batch_mode_or_changed_inventory_invalid")
-    return {"digest": digest(read_file(batch_path / "MANIFEST.json")),
+    return {"digest": digest(read(batch_path / "MANIFEST.json")),
             "files": files, "mode": manifest["mode"], "catalog": pin["sha256"]}
 
 

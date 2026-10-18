@@ -10,11 +10,13 @@ import os
 from pathlib import Path
 import re
 import sys
+import time
 
 from tools.hostessctl.process_observation import ObservationFailure, ObservationInterrupted, observe_process
 from tools.hostessctl.sdk_graphics_batch import NAMES, digest, load_baseline, read_json
 from tools.hostessctl.sdk_graphics_live_contract import load_config, parse_status, project_status, project_settings, sha_file
-from tools.hostessctl.sdk_graphics_pixels import check_pixels
+from tools.hostessctl.sdk_graphics_pixels import check_pixels, check_png_pixels
+from tools.hostessctl.sdk_graphics_live_inputs import LiveInputs
 from tools.hostessctl.sdk_graphics_iteration import EffectNotDispatched
 
 
@@ -33,22 +35,28 @@ def _log_sha256(path):
 class LiveExecutor:
     evidence_scope = "sdk-debug-android-display-pixels-no-gpu-completion"
 
-    def __init__(self, config_path, catalog, root, *, observer=observe_process):
+    def __init__(self, config_path, catalog, root, *, observer=observe_process, batch_paths=()):
         self.config_path = Path(config_path)
-        self.config = load_config(config_path)
-        self.config_digest = sha_file(config_path)
         self.catalog = Path(catalog)
-        load_baseline(self.catalog)
-        if sha_file(self.catalog) != self.config["catalog_sha256"]:
-            raise ValueError("catalog_pin_changed")
-        self.reference = project_status(read_json(Path(self.config["app_status_reference"]["path"])), self.config)
-        self.settings = project_settings(read_json(Path(self.config["settings_reference"]["path"])))
+        self.inputs = LiveInputs(config_path, catalog, batch_paths)
+        self.config = deepcopy(self.inputs.config)
+        self.reference, self.settings = self.inputs.reference, self.inputs.settings
         self.root = Path(root)
-        self.root.mkdir(parents=True, exist_ok=False)
+        try:
+            self.root.mkdir(parents=True, exist_ok=False)
+            if self.inputs.binding:
+                self.inputs.binding.declare_output_root(self.root)
+        except BaseException as error:
+            try:
+                self.inputs.close()
+            except OSError:
+                error.sdk_graphics_input_binding = self.inputs.binding
+            raise
         self.remote = "/sdcard/Android/data/"+self.config["package"]+"/files/app_assets"
         self.observer = observer
         self.operations = {}
         self.owned_observations = {}
+        self.unscoped_observations = []
         self.recorded_retirements = set()
         self.counter = 0
         self.qualified = False
@@ -57,18 +65,49 @@ class LiveExecutor:
         self.reporting_errors = []
 
     def _pins(self):
-        if sha_file(self.config_path) != self.config_digest:
-            raise ValueError("live_input_changed")
-        load_config(self.config_path)
-        if sha_file(self.catalog) != self.config["catalog_sha256"]:
-            raise ValueError("catalog_pin_changed")
+        self.inputs.assert_current(self.config)
 
-    def _run(self, tag, argv, *, request=None, binary=False):
+    def close_inputs(self):
+        # An interrupted original child may still use its input namespace.
+        # Keep the same binding reachable, and allow close to reconcile later.
+        if not self.inputs.binding:
+            return {"released": True, "pending_originals": []}
+        for request in self.owned_observations:
+            self.retirement(request)
+        errors = self.unscoped_observations + [error for items in self.owned_observations.values() for error in items]
+        pending = []
+        for error in errors:
+            receipt, process = error.receipt, error.owned_process
+            if process is not None and process.poll() is not None:
+                receipt.update(exit_code=process.wait(), exit_known=True, process_reaped=True)
+            if not self._transport_retired(receipt):
+                pending.append({"session_id": receipt["session_id"], "pid": receipt["pid"]})
+        if pending:
+            return {"released": False, "pending_originals": pending}
+        try:
+            self.inputs.close()
+        except OSError as error:
+            error.sdk_graphics_executor = self
+            error.sdk_graphics_input_binding = self.inputs.binding
+            raise
+        return {"released": True, "pending_originals": []}
+
+    def wait_for_input_release(self):
+        while True:
+            result = self.close_inputs()
+            if result["released"]:
+                return result
+            time.sleep(.05)  # Original EOF/exit cadence, never a kill deadline.
+
+    def _run(self, tag, argv, *, request=None, binary=False, host_inputs=(0,), host_outputs=()):
         self.counter += 1
         lane = self.root/f"{self.counter:04}-{tag}"
         lane.mkdir(exist_ok=False)
         env = dict(os.environ)
         env["QUESTIONABLE_FILE_MANAGER_ADB"] = self.config["adb"]["path"]
+        if self.inputs.binding:
+            argv = self.inputs.binding.argv(argv, inputs=host_inputs, outputs=host_outputs)
+            env["QUESTIONABLE_FILE_MANAGER_ADB"] = self.inputs.binding.path(env["QUESTIONABLE_FILE_MANAGER_ADB"])
         operation = self.operations.setdefault(request, {"retired": False, "processes": [], "files": []}) if request else None
         if operation is not None:
             operation["retired"] = False
@@ -77,11 +116,13 @@ class LiveExecutor:
                                     stdout_budget=33554432 if binary else 4194304, stderr_budget=1048576)
         except (ObservationFailure, ObservationInterrupted) as error:
             receipt = error.receipt
+            error.sdk_graphics_lane = lane
             if operation is not None:
                 operation["processes"].append(deepcopy(receipt))
                 self.owned_observations.setdefault(request, []).append(error)
-                error.sdk_graphics_lane = lane
                 operation["retired"] = all(self._transport_retired(item) for item in operation["processes"])
+            else:
+                self.unscoped_observations.append(error)
             self._save_receipt(lane, receipt)
             if (isinstance(error, ObservationFailure) and operation is not None and
                     all(not item["child_started"] for item in operation["processes"])):
@@ -111,7 +152,7 @@ class LiveExecutor:
 
     def _installed(self):
         raw = self._run("qfm-installed", [self.config["qfm"]["path"], "apk", "observe", "--serial",
-                        self.config["serial"], "--file", self.config["apk"]["path"], "--json"])
+                        self.config["serial"], "--file", self.config["apk"]["path"], "--json"], host_inputs=(0, 6))
         result = json.loads(raw)
         artifact, installed = result["Artifact"], result["Installed"]
         if (artifact["Sha256"] != self.config["apk"]["sha256"] or installed["BaseApkSha256"] != artifact["Sha256"] or
@@ -125,11 +166,13 @@ class LiveExecutor:
         output = self.root/f"settings-receipt-{self.counter+1:04}"
         with request.open("x") as stream:
             stream.write(json.dumps({"schema": "rusty.quest.product_panel.command.v1", "operation": "status"}))
+        if self.inputs.binding:
+            self.inputs.binding.add(request)
         cfg, provider = self.config, self.config["settings_provider"]
         self._run("app-settings", [provider["pwsh"]["path"], "-NoProfile", "-File", provider["script"]["path"],
                   "-Device", cfg["serial"], "-CanonicalSerial", cfg["canonical_serial"], "-BootId", cfg["boot_id"],
                   "-Package", cfg["package"], "-Adb", cfg["adb"]["path"], "-AdbSha256", cfg["adb"]["sha256"],
-                  "-RequestPath", str(request), "-OutputDirectory", str(output)])
+                  "-RequestPath", str(request), "-OutputDirectory", str(output)], host_inputs=(0, 3, 13, 17), host_outputs=(19,))
         if project_settings(read_json(output/"app-receipt.json")) != self.settings:
             raise ValueError("app_owned_submitted_settings_changed")
 
@@ -139,7 +182,8 @@ class LiveExecutor:
         output = self.root/"apk-join.json"
         self._run("quest-apk-join", [sys.executable,
                   str(Path(self.config["quest_provider"]["root"])/"Qualify-SdkGraphicsApk.py"),
-                  "--apk", self.config["apk"]["path"], "--catalog", str(self.catalog), "--out", str(output)])
+                  "--apk", self.config["apk"]["path"], "--catalog", str(self.catalog), "--out", str(output)],
+                  host_inputs=(0, 1, 3, 5), host_outputs=(7,))
         result = read_json(output)
         if (result["status"] != "bytes-joined" or result["apk"]["sha256"] != self.config["apk"]["sha256"] or
                 result["catalog"]["sha256"] != self.config["catalog_sha256"]):
@@ -191,8 +235,10 @@ class LiveExecutor:
         local = self.root/(request_id+"-"+name)
         with local.open("xb") as stream:
             stream.write(data)
+        if self.inputs.binding and self.inputs.binding.sha_file(local) != digest(data):
+            raise ValueError("owned_transfer_bytes_changed")
         raw = self._run("qfm-push", [self.config["qfm"]["path"], "files", "push", "--serial", self.config["serial"],
-                        "--file", str(local), "--remote", self.remote+"/"+name, "--json"], request=request_id)
+                        "--file", str(local), "--remote", self.remote+"/"+name, "--json"], request=request_id, host_inputs=(0, 6))
         result = json.loads(raw)
         if (result["mutation"]["Stage"] != "confirmed" or result["mutation"]["HeadsetReadback"] is not True or
                 result["result"]["command"]["ExitCode"] != 0):
@@ -217,12 +263,20 @@ class LiveExecutor:
     def _capture(self, predicate):
         self._settings()
         before = self.status()
-        raw = self._adb("android-display", ["exec-out", "screencap"], binary=True)
+        capture = self.config.get("capture", {"format": "android-raw"})
+        args = ["exec-out", "screencap"] + (["-p"] if capture["format"] == "android-png" else [])
+        raw = self._adb("android-display", args, binary=True)
         after = self.status()
         self._settings()
         if after["frame"] <= before["frame"] or after["end_frame"] <= before["end_frame"]:
             raise ValueError("capture_requires_advancing_fenced_app_frames")
-        return after, raw, check_pixels(raw, predicate)
+        if capture["format"] == "android-png":
+            pixels = check_png_pixels(raw, predicate, [capture["width"], capture["height"]])
+        else:
+            pixels = check_pixels(raw, predicate)
+            if "width" in capture and (pixels["width"], pixels["height"]) != (capture["width"], capture["height"]):
+                raise ValueError("selected_capture_dimensions_changed")
+        return after, raw, pixels
 
     def reload(self, request_id, batch_digest):
         try:

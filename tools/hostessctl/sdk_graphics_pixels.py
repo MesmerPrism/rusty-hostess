@@ -1,5 +1,6 @@
 """Narrow raw Android display pixel predicate; no stereo or GPU attribution."""
 import struct
+from tools.hostessctl.sdk_graphics_png import decode_png_roi
 
 
 def validate_predicate(predicate):
@@ -18,7 +19,6 @@ def validate_predicate(predicate):
 
 
 def check_pixels(raw, predicate):
-    rect, rgb = validate_predicate(predicate)
     if not 12 <= len(raw) <= 33554432:
         raise ValueError("bounded_android_raw_capture_required")
     width, height, pixel_format = struct.unpack_from("<III", raw)
@@ -28,13 +28,28 @@ def check_pixels(raw, predicate):
     header = len(raw)-width*height*channels
     if header not in (12, 16):
         raise ValueError("android_capture_layout_mismatch")
+    return check_rgb(memoryview(raw)[header:], width, height, channels, predicate)
+
+
+def check_png_pixels(encoded, predicate, expected_size):
+    rect, _ = validate_predicate(predicate)
+    width, height, channels, pixels = decode_png_roi(encoded, expected_size, rect)
+    result = check_rgb(pixels, rect[2], rect[3], channels,
+                       {**predicate, "rect": [0, 0, rect[2], rect[3]]})
+    result.update(width=width, height=height)
+    result["source_encoding"] = "android-png"
+    return result
+
+
+def check_rgb(pixels, width, height, channels, predicate):
+    rect, rgb = validate_predicate(predicate)
     x, y, rw, rh = rect
     if x+rw > width or y+rh > height:
         raise ValueError("pixel_rect_outside_capture")
     matches = 0
     for row in range(y, y+rh):
         for column in range(x, x+rw):
-            offset = header+(row*width+column)*channels
-            matches += all(abs(raw[offset+i]-rgb[i]) <= predicate["tolerance"] for i in range(3))
+            offset = (row*width+column)*channels
+            matches += all(abs(pixels[offset+i]-rgb[i]) <= predicate["tolerance"] for i in range(3))
     return {"matches": matches, "matched": matches >= predicate["minimum_matches"],
             "width": width, "height": height, "scope": "android-display-readback-no-eye-attribution"}

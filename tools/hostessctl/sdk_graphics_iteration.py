@@ -31,7 +31,7 @@ class Executor(Protocol):
 
 
 class ShaderIteration:
-    def __init__(self, catalog: Path, executor: Executor, *, checkpoint=None):
+    def __init__(self, catalog: Path, executor: Executor, *, checkpoint=None, batch_loader=None):
         self.catalog = Path(catalog)
         self.executor = executor
         self.actor = None
@@ -43,6 +43,7 @@ class ShaderIteration:
         self.reload_request = None
         self.reporting_errors = []
         self.checkpoint = checkpoint or (lambda report: None)
+        self.batch_loader = batch_loader or (lambda path: load_batch(path, self.catalog))
 
     def _status(self) -> dict:
         status = self.executor.status()
@@ -84,7 +85,7 @@ class ShaderIteration:
             allowed = ("idle", "observed") if action == "prepare" else ("observed",)
             if self.phase not in allowed or batch is None:
                 raise ValueError("observe_current_batch_before_next_preparation")
-            prepared = load_batch(Path(batch), self.catalog)
+            prepared = self.batch_loader(Path(batch))
             if action == "revert" and prepared["mode"] != "exact-baseline-revert":
                 raise ValueError("exact_baseline_revert_required")
             self._advancement()
