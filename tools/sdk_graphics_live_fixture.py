@@ -6,6 +6,8 @@ import shutil
 import struct
 import sys
 import time
+import binascii
+import zlib
 
 root = Path(sys.argv[1])
 argv = json.loads(sys.argv[2])
@@ -79,9 +81,17 @@ else:
         out = "Broadcast completed: result=0"
         if state.get("unknown_trigger"):
             exit_code = 7
-    elif args == ["exec-out", "screencap"]:
+    elif args in (["exec-out", "screencap"], ["exec-out", "screencap", "-p"]):
         rgb = bytes((255, 0, 0, 255) if state["candidate"] else (0, 255, 0, 255))
-        out = struct.pack("<III", 8, 8, 1)+rgb*64
+        if args[-1] == "-p":
+            def chunk(kind, payload):
+                return struct.pack(">I", len(payload))+kind+payload+struct.pack(">I", binascii.crc32(kind+payload) & 0xffffffff)
+            out = (b"\x89PNG\r\n\x1a\n"+chunk(b"IHDR", struct.pack(">IIBBBBB", 8, 8, 8, 6, 0, 0, 0))+
+                   chunk(b"IDAT", zlib.compress((b"\0"+rgb*8)*8))+chunk(b"IEND", b""))
+            if state.get("corrupt_png"):
+                out = out[:-1]
+        else:
+            out = struct.pack("<III", 8, 8, 1)+rgb*64
     else:
         raise ValueError("fixture unknown closed operation")
 state_path.write_text(json.dumps(state))

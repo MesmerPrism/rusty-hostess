@@ -7,19 +7,28 @@ import sys
 from tools.hostessctl.sdk_graphics_batch import load_batch
 from tools.hostessctl.sdk_graphics_iteration import ShaderIteration
 from tools.hostessctl.sdk_graphics_live_contract import load_config, sha_file
+from tools.hostessctl.sdk_graphics_live_inputs import LiveInputs
 
 
-def plan_live(args):
-    config = load_config(Path(args.config))
+def plan_live(args, *, inputs=None):
+    if inputs is None:
+        inputs = LiveInputs(args.config, args.catalog, (args.baseline_batch, args.candidate_batch))
+        try:
+            return plan_live(args, inputs=inputs)
+        finally:
+            inputs.close()
+    config = inputs.config
     catalog = Path(args.catalog)
-    baseline = load_batch(Path(args.baseline_batch), catalog)
-    candidate = load_batch(Path(args.candidate_batch), catalog)
-    if (sha_file(catalog) != config["catalog_sha256"] or baseline["mode"] != "exact-baseline-revert" or
+    baseline = inputs.batch(Path(args.baseline_batch))
+    candidate = inputs.batch(Path(args.candidate_batch))
+    if (inputs.hash_file(catalog) != config["catalog_sha256"] or baseline["mode"] != "exact-baseline-revert" or
             candidate["mode"] != "fresh-source" or baseline["digest"] not in config["pixel_predicates"] or
             candidate["digest"] not in config["pixel_predicates"]):
         raise ValueError("exact_baseline_candidate_and_pixel_predicates_required")
     return {"schema": "rusty.hostess.sdk_graphics.live_plan.v1", "status": "host-only-validated",
-            "config_sha256": sha_file(args.config), "catalog_sha256": sha_file(catalog),
+            "config_sha256": inputs.config_digest, "catalog_sha256": inputs.hash_file(catalog),
+            "input_binding": config.get("input_binding", "rehash"),
+            "capture": config.get("capture", {"format": "android-raw"}),
             "baseline_manifest_sha256": baseline["digest"], "candidate_manifest_sha256": candidate["digest"],
             "sequence": ["prepare-candidate", "transfer", "one-reload", "up-to-three-read-only-observations",
                          "only-after-pixel-adoption-exact-baseline-revert", "transfer", "one-reload",
@@ -46,14 +55,26 @@ class LiveRun:
         if not args.confirm_live_sdk_debug:
             raise ValueError("explicit_live_sdk_developer_dispatch_required")
         self.args = args
-        self.plan = plan_live(args)  # Local admission before device contact.
         self.root = Path(args.evidence_root)
-        self.executor = LiveExecutor(args.config, args.catalog, self.root)
-        with (self.root/"plan.json").open("x") as stream:
-            stream.write(json.dumps(self.plan, indent=2)+"\n")
+        self.executor = LiveExecutor(args.config, args.catalog, self.root,
+                                     batch_paths=(args.baseline_batch, args.candidate_batch))
+        try:
+            self.plan = plan_live(args, inputs=self.executor.inputs)  # Still no process/device.
+            with (self.root/"plan.json").open("x") as stream:
+                stream.write(json.dumps(self.plan, indent=2)+"\n")
+            if self.executor.inputs.binding:
+                with (self.root/"input-binding.json").open("x") as stream:
+                    stream.write(json.dumps(self.executor.inputs.binding.inventory(), indent=2)+"\n")
+        except BaseException as error:
+            try:
+                self.executor.close_inputs()
+            except OSError:
+                error.sdk_graphics_input_binding = self.executor.inputs.binding
+            raise
         self.checkpoint_number = 0
         self.report_number = 0
-        self.session = ShaderIteration(Path(args.catalog), self.executor, checkpoint=self._checkpoint)
+        self.session = ShaderIteration(Path(args.catalog), self.executor, checkpoint=self._checkpoint,
+                                       batch_loader=self.executor.inputs.batch)
         self.target = "candidate"
         self.candidate_observed = False
         self.baseline_observed = False
@@ -61,6 +82,7 @@ class LiveRun:
         self.closed = False
         self.close_reason = None
         self.original_errors = []
+        self.input_release = None
 
     def _checkpoint(self, report):
         number = self.checkpoint_number
@@ -76,6 +98,7 @@ class LiveRun:
         report.update(candidate_pixel_predicate_observed=self.candidate_observed,
                       baseline_pixel_predicate_observed=self.baseline_observed,
                       runtime_backend=self.executor.evidence_scope, sdk_completion_callback=False,
+                      input_binding=self.executor.inputs.report(), input_release=self.input_release,
                       continuation={"available": not self.closed, "owner": "retained-LiveRun-object-only",
                                     "actions": ["observe-original", "revert-baseline", "status", "close"],
                                     "process_handles_restorable": False, "close_reason": self.close_reason})
@@ -154,14 +177,36 @@ class LiveRun:
     def close(self, reason="caller-closed"):
         # Observation ownership ends; no process kill or device cleanup occurs.
         if self.closed:
+            self._release_inputs()
+            self._save_report()
             return self.report()
         self.closed, self.close_reason = True, reason
+        self._release_inputs()
         self._save_report()
         try:
             with (self.root/"terminal-report.json").open("x") as stream:
                 stream.write(json.dumps(self.report(), indent=2)+"\n")
         except OSError as error:
             self.session.reporting_errors.append({"stage": "terminal-report", "error_type": type(error).__name__})
+        return self.report()
+
+    def _release_inputs(self):
+        try:
+            self.input_release = self.executor.close_inputs()
+        except OSError as error:
+            self.input_release = {"released": False, "release_error": type(error).__name__}
+            error.sdk_graphics_live_run = self
+            error.sdk_graphics_report = self.report()
+            self._save_report()
+            raise
+
+    def wait_for_input_release(self):
+        try:
+            self.input_release = self.executor.wait_for_input_release()
+        except OSError as error:
+            error.sdk_graphics_live_run = self
+            raise
+        self._save_report()
         return self.report()
 
 
@@ -177,6 +222,7 @@ def run_live(args, *, input_stream=None, output_stream=None):
             raise
         finally:
             owner.close("finite-route-returned-no-live-handle")
+            owner.wait_for_input_release()
             if failure is not None:
                 failure.sdk_graphics_report = owner.report()
         return owner.report()
@@ -216,4 +262,5 @@ def run_live(args, *, input_stream=None, output_stream=None):
                 emit(error)
     finally:
         owner.close("stdin-continuation-ended-no-live-handle")
+        owner.wait_for_input_release()
     return owner.report()

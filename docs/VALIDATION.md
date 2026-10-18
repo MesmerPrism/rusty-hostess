@@ -1,9 +1,13 @@
 # Validation
 
 The SDK debug backend focused check is
-`python -m unittest tools.test_hostessctl_sdk_graphics tools.test_hostessctl_sdk_graphics_live`.
+`python -m unittest tools.test_hostessctl_sdk_graphics tools.test_hostessctl_sdk_graphics_live tools.test_immutable_input_binding tools.test_hostessctl_sdk_graphics_png`.
 Its executable local peer validates command shapes and process retirement;
 it is not device acceptance. See [SDK_GRAPHICS_LIVE.md](SDK_GRAPHICS_LIVE.md).
+The input-binding family checks actual Windows sharing/namespace semantics and
+fresh local child arguments; it skips on other platforms. PNG checks use an
+independent neutral encoder and preserve all-image integrity validation even
+when the pixel predicate reconstructs only its dependency prefix.
 
 The host-only SDK graphics adapter is covered by
 `python -m unittest tools.test_hostessctl_sdk_graphics`; see

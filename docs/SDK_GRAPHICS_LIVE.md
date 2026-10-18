@@ -40,6 +40,65 @@ presentation, wearer visibility, complete shader correctness or GPU completion.
 No SDK callback is invented. A nonmatching predicate keeps the original trigger
 pending and prohibits an automatic baseline mutation.
 
+### Explicit immutable inputs and PNG transport
+
+The existing v1 capsule keeps its per-dispatch hash verification and raw capture
+route. A v2 capsule uses the same fields with schema
+`rusty.hostess.sdk_graphics.live_inputs.v2` and exactly two added fields:
+
+```json
+{"input_binding":"windows-immutable",
+ "capture":{"format":"android-png","width":3664,"height":1920}}
+```
+
+The dimensions above illustrate the required explicit selection; use the actual
+selected Android display dimensions. `input_binding="rehash"` and
+`capture.format="android-raw"` remain supported v2 choices independently.
+PNG is the fixed exact-serial `exec-out screencap -p` operation. It preserves the
+original encoded bytes and SHA-256 witness. Strict bounded RGB/RGBA8 decoding
+validates signature, dimensions, IHDR/chunk order/CRC, contiguous IDAT, complete
+deflate EOF and exact scanline length, every filter byte and final encoded EOF.
+Palette, interlace, animation, compressed metadata and unknown critical chunks
+are unsupported. Malformed or mismatched data fails without raw fallback or a
+replacement capture. The predicate reconstructs only its preceding-row/column
+dependency prefix while still validating the entire image. Existing current
+actor, app settings, installed bytes, remote hashes and advancing frame fences
+remain mandatory; lossless encoding supplies no additional presentation claim.
+
+On supported local Windows volumes, immutable mode holds every selected input
+file and all logical, final DOS and physical volume-path ancestor directories
+with deny-write/delete sharing. It hashes/parses the config, all explicit tool
+and reference pins, catalog/baseline and both complete twelve-file batch
+closures once under those holds. The actual Python interpreter is also held.
+Every dispatch reopens the selected names and compares file/volume identities
+and final paths while their ancestors remain held. Only explicitly selected
+host argv positions and declared owner output roots are mapped to protected
+final DOS names; Android remote arguments are never mapped. Newly created
+status requests and transfer payloads are held before their child invocation.
+This is selected input byte/namespace proof, not an authority grant or a proof
+of all OS/runtime dependency bytes. UNC/network/reparse or unavailable strong
+bindings fail closed in immutable mode. Select rehash explicitly if that is the
+appropriate supported route; there is no silent downgrade or TTL/mtime cache.
+
+`LiveRun` retains the same holds until all original host children have actually
+exited/reaped and both pipes reached EOF, including interrupted read-only
+children. API `close()` may report pending input release and retains the owner;
+`wait_for_input_release()` reconciles those originals. The CLI waits for actual
+retirement before releasing immutable inputs. Neither close path kills a child,
+replays an operation, mutates the device or infers SDK/GPU retirement.
+
+Other host callers may use `WindowsInputBinding.from_pins()` with their complete
+explicit path/SHA-256 list, `assert_current()` before each new child, `argv()`
+with explicit input/output positions, and `close()` in their original owner.
+`declare_output_root()` selects an existing owner output namespace. The helper
+is independent of SDK configuration; `dependency_pins()` reports its one source
+file SHA-256 and stdlib/Windows dependency scope for an exact consumer pin.
+Keep a failed-close owner reachable and finish release through that same owner.
+Consumer-specific mutable actor, settings and live effect/EOF guards stay with
+that consumer.
+`inventory()` retains selected path, SHA-256 and volume/file identity evidence
+after release; the SDK route saves its initial closure as `input-binding.json`.
+
 ## Finite test
 
 ```powershell

@@ -324,6 +324,14 @@ its same-handler CLI capsule. The executable local peer and
 `test_hostessctl_sdk_graphics_live.py` own host conformance without headset claims.
 See `docs/SDK_GRAPHICS_LIVE.md`.
 
+`immutable_input_binding.py` owns generic explicit Windows file/namespace holds,
+identity checks, selected host argv mapping, and close ownership; it has no SDK
+configuration dependency. `test_immutable_input_binding.py` uses real host files
+and children. `sdk_graphics_live_inputs.py` composes that helper with the selected
+SDK input closure. `sdk_graphics_png.py` owns the bounded PNG container/deflate
+and ROI reconstruction; `test_hostessctl_sdk_graphics_png.py` is its neutral
+full/ROI/raw equivalence and malformed-input family.
+
 `tools/hostessctl/process_observation.py` owns completion-driven observation,
 raw evidence and retained-child cancellation. `tools/observe_process.py` is its
 typed CLI; `tools/test_hostessctl_process_observation.py` and the neutral
