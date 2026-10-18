@@ -41,6 +41,7 @@ from tools.hostessctl import protocol_evidence_matrix  # noqa: E402
 from tools.hostessctl import project_runner  # noqa: E402
 from tools.hostessctl import questionnaire_bridge  # noqa: E402
 from tools.hostessctl import schema_ownership  # noqa: E402
+from tools.hostessctl import sdk_graphics_routes  # noqa: E402
 from tools.hostessctl import telemetry_routes  # noqa: E402
 from tools.hostessctl.broker_transport import (  # noqa: E402
     MANIFOLD_BROKER_EVENTS_PATH,
@@ -199,6 +200,8 @@ def main() -> int:
 
 
 def dispatch_command(args: argparse.Namespace) -> int:
+    if args.command == "sdk-graphics":
+        return sdk_graphics_routes.run(args)
     if args.command == "meta-quest-casting":
         return meta_quest_casting.run_meta_quest_casting(args)
     if args.command == "install-android":

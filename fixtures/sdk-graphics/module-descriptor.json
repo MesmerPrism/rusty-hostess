@@ -1,0 +1,18 @@
+{
+  "schema": "rusty.gui.companion.module_descriptor.v1",
+  "module_id": "companion.sdk_graphics.iteration",
+  "title": "SDK graphics development adapter",
+  "family": "developer_iteration",
+  "owner_lane": "hostess",
+  "authority_role": "adapter",
+  "supported_frontends": ["cli"],
+  "required_tools": [],
+  "required_device_states": [],
+  "required_transports": [],
+  "readable_reports": [{"id": "report.hostess.sdk_graphics", "schema": "rusty.hostess.sdk_graphics.iteration.v1", "owner_lane": "hostess"}],
+  "command_requests": [],
+  "evidence_artifacts": [{"id": "evidence.hostess.sdk_graphics", "schema": "rusty.hostess.sdk_graphics.iteration.v1", "owner_lane": "hostess", "redaction_required": true}],
+  "remediation_actions": [{"id": "action.sdk_graphics.describe", "title": "Describe host adapter", "command_id": "rusty.hostess.sdk_graphics.describe", "manual_confirmation_required": false}],
+  "action_policy": {"auto_run_checks": false, "state_changes_require_confirmation": true, "destructive_actions_allowed": false},
+  "sensitivity": ["local_machine", "developer_evidence"]
+}

@@ -1,5 +1,11 @@
 # Validation
 
+The host-only SDK graphics adapter is covered by
+`python -m unittest tools.test_hostessctl_sdk_graphics`; see
+[SDK_GRAPHICS_ITERATION.md](SDK_GRAPHICS_ITERATION.md). Its real host child,
+CLI, catalog and report-projection tests have no device, port, SDK compiler or
+APK build. Passing them does not qualify a live shader executor.
+
 Completion-driven host process checks are documented in
 [PROCESS_OBSERVATION.md](PROCESS_OBSERVATION.md). The focused unittest family is
 included in default discovery; its deliberate 35-second stimulus is opt-in.

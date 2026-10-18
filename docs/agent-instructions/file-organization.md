@@ -1,5 +1,14 @@
 ## File Organization
 
+- Keep `tools/hostessctl/sdk_graphics_batch.py` as the pinned Quest-preparer
+  adapter and immutable batch input checker; Quest owns actual compilation and
+  reflection. `sdk_graphics_iteration.py` owns the finite request/unknown-state
+  lifecycle, `sdk_graphics_fixture.py` owns the neutral executor, and
+  `sdk_graphics_routes.py` owns CLI projection over those same APIs.
+  `sdk_graphics_projection.py` supplies rows to the existing report projector.
+  Keep live device policy outside the neutral consumer; no generic command
+  executor or second module registry belongs here. See
+  [SDK graphics iteration](../SDK_GRAPHICS_ITERATION.md).
 - Keep `apps\hostess-t-makepad\src\hostess_contracts\camera.rs` as the
   camera-contract facade plus shared primitives, diagnostics, frame metadata,
   and calibration/source diagnostics. The `hostess_contracts\camera\` child

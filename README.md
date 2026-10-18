@@ -31,6 +31,12 @@ after the root policy.
 
 ## Current Apps
 
+The optional [SDK graphics development adapter](docs/SDK_GRAPHICS_ITERATION.md)
+uses the existing Quest preparer and Hostess process observer, with a finite
+transfer/reload/observe/revert API and an executable neutral consumer. Its
+CLI-only descriptor and lifecycle evidence use the existing companion catalog
+and report projector; live Quest execution remains unavailable.
+
 - `apps/hostess-t-desktop/capture_polar.py`: desktop live capture and runtime
   Polar stream validation using a local Python dependency.
 - `apps/hostess-t-makepad`: the intended Hostess T GUI surface. It can seed
