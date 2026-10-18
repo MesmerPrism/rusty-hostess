@@ -1,5 +1,6 @@
 """One finite test and optional closed stdin turns on its retained live owner."""
 import json
+import os
 from pathlib import Path
 import sys
 
@@ -66,6 +67,9 @@ class LiveRun:
         self.checkpoint_number += 1
         with (self.root/f"checkpoint-{number:04}.json").open("x") as stream:
             stream.write(json.dumps(report, indent=2)+"\n")
+            if (report.get("pending") or {}).get("status") == "sent":
+                stream.flush()
+                os.fsync(stream.fileno())  # Required intent before the first effect.
 
     def report(self):
         report = self.session.report()

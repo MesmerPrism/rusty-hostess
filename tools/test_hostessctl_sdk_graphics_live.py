@@ -324,6 +324,25 @@ class LiveTests(unittest.TestCase):
             owner.run_initial()
         self.assertFalse(any(call[1:3] == ["files", "push"] or "mkdir" in call for call in self.calls))
 
+    def test_required_intent_sync_failure_refuses_before_any_remote_effect(self):
+        with self.live_factory():
+            owner = LiveRun(self.live_args())
+        owner.session.handle("prepare", batch=self.candidate)
+        # Replace only the route's os binding: real process-observer log fsync
+        # still runs, so the failure is at the required intent boundary itself.
+        with patch("tools.hostessctl.sdk_graphics_live_routes.os") as journal_os:
+            journal_os.fsync.side_effect = OSError("intent sync")
+            with self.assertRaisesRegex(OSError, "intent sync"):
+                owner.session.handle("transfer")
+            journal_os.fsync.assert_called_once()
+            self.assertEqual(owner.session.phase, "prepared")
+            self.assertIsNone(owner.session.pending)
+            self.assertEqual(owner.session.events[-1]["status"], "not-dispatched")
+            self.assertEqual(owner.report()["reporting_errors"][-1]["stage"], "before-dispatch")
+            owner._checkpoint(owner.report())  # Reporting-only state needs no sync.
+            journal_os.fsync.assert_called_once()
+        self.assertFalse(any(call[1:3] == ["files", "push"] or "mkdir" in call for call in self.calls))
+
     def test_observed_timestamp_is_not_actor_and_pixel_predicate_rejects_broad_or_bad_layout(self):
         first, second = snapshot(), snapshot()
         second["submissionObserver"]["graphicsBinding"]["observedHostNs"] = 99

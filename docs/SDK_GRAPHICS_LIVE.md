@@ -124,6 +124,9 @@ with a visible warning, and reporting-only failure permits continued read-only
 observation or explicit baseline revert on the same session. Each new effect
 still requires its own successfully persisted pre-dispatch intent. Read-only
 observation failure preserves known dispatch state.
+The live route flushes and `os.fsync`s each pending `sent` intent before its
+first effect. A required sync failure refuses dispatch. Later reporting-only
+checkpoints do not add a new durability gate to an already known operation.
 
 `tools/test_hostessctl_sdk_graphics_live.py` exercises actual backend command
 paths through an executable local peer with synthetic bytes/pixels and real
