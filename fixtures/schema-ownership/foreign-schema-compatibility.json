@@ -1335,6 +1335,30 @@
       "classification": "owner_contract_compatibility",
       "role": "contract_reference",
       "reason": "The existing Hostess conformance harness checks the exact Quest-owned command registry while remaining an offline consumer rather than schema or command authority."
+    },
+    {
+      "schema_id": "rusty.quest.sdk_hotload.catalog.v1",
+      "path": "tools/hostessctl/sdk_graphics_batch.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Exact selected Quest SDK graphics preparer input/output identity only; Hostess preserves owner compilation/reflection and does not emit or redefine this schema."
+    },
+    {
+      "schema_id": "rusty.quest.sdk_hotload.fresh_batch.v1",
+      "path": "tools/hostessctl/sdk_graphics_batch.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Exact selected Quest SDK graphics preparer input/output identity only; Hostess preserves owner compilation/reflection and does not emit or redefine this schema."
+    },
+    {
+      "schema_id": "rusty.quest.sdk014.compile_profile.v1",
+      "path": "tools/hostessctl/sdk_graphics_batch.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Exact selected Quest SDK graphics preparer input/output identity only; Hostess preserves owner compilation/reflection and does not emit or redefine this schema."
     }
   ]
 }

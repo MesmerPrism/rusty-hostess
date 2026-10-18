@@ -6,6 +6,8 @@ import argparse
 import math
 import uuid
 
+from tools.hostessctl.sdk_graphics_routes import add_arguments as add_sdk_graphics_arguments
+
 from tools.hostessctl.companion_session_defaults import (
     DEFAULT_COMPANION_SESSION_AUTHORITY_WAIT_SECONDS,
     DEFAULT_COMPANION_SESSION_LAUNCH_SETTLE_SECONDS,
@@ -107,6 +109,7 @@ def build_hostessctl_parser(
 ) -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="hostessctl")
     subcommands = parser.add_subparsers(dest="command", required=True)
+    add_sdk_graphics_arguments(subcommands)
 
     meta_quest_casting = subcommands.add_parser("meta-quest-casting")
     meta_quest_casting_subcommands = meta_quest_casting.add_subparsers(
@@ -689,6 +692,7 @@ def build_hostessctl_parser(
         default="cli",
     )
     companion_report_projection.add_argument("--device-link", action="append")
+    companion_report_projection.add_argument("--sdk-graphics", action="append")
     companion_report_projection.add_argument("--connectivity-probe", action="append")
     companion_report_projection.add_argument("--firewall-rule", action="append")
     companion_report_projection.add_argument("--direct-wifi-product-media-plan", action="append")

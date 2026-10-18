@@ -1,0 +1,13 @@
+{
+  "schema": "rusty.gui.companion.transport_capability.v1",
+  "transport_id": "transport.hostess.sdk_graphics.local_files",
+  "title": "Neutral local byte consumer",
+  "family": "filesystem_fixture",
+  "authority_role": "adapter",
+  "plane": "control",
+  "payload_rate": "low_rate_json",
+  "route_ids": ["rusty.hostess.sdk_graphics.fixture"],
+  "required_evidence_stages": ["host_observed"],
+  "supported_frontends": ["cli"],
+  "sensitivity": ["local_machine", "developer_evidence"]
+}

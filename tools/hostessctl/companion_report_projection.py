@@ -21,6 +21,7 @@ from tools.hostessctl.protocol_evidence_matrix import PROTOCOL_EVIDENCE_MATRIX_S
 from tools.hostessctl.companion_report_transport_coverage import (
     project_transport_coverage_rows,
 )
+from tools.hostessctl import sdk_graphics_projection
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -87,6 +88,12 @@ def build_companion_report_projection(
         projected_role = source["role"]
         if projected_role == "device_link_report":
             rows.extend(project_device_link_rows(payload, source))
+        elif projected_role == "sdk_graphics_iteration":
+            rows.extend(sdk_graphics_projection.project_rows(payload, source, row))
+            if not sdk_graphics_projection.valid_report(payload):
+                issues.append(issue(
+                    "hostess.issue.companion_report_projection.sdk_graphics_invalid",
+                    "error", "Shader adapter evidence is invalid or claims unsupported acceptance."))
         elif projected_role == "connectivity_probe_report":
             rows.extend(project_connectivity_probe_rows(payload, source))
         elif projected_role == "firewall_rule_report":
@@ -139,6 +146,8 @@ def selected_source_paths(args: argparse.Namespace) -> list[tuple[str, Path]]:
 
     for raw in argument_values(getattr(args, "device_link", None)):
         append_source("device_link_report", Path(raw))
+    for raw in argument_values(getattr(args, "sdk_graphics", None)):
+        append_source("sdk_graphics_iteration", Path(raw))
     for raw in argument_values(getattr(args, "connectivity_probe", None)):
         append_source("connectivity_probe_report", Path(raw))
     for raw in argument_values(getattr(args, "firewall_rule", None)):
@@ -1133,6 +1142,8 @@ def projection_status(
 
 def classify_source_payload(payload: dict[str, Any]) -> str:
     schema = str(payload.get("$schema") or payload.get("schema") or "")
+    if schema == sdk_graphics_projection.SCHEMA:
+        return "sdk_graphics_iteration"
     if schema == QUEST_DEVICE_LINK_SCHEMA:
         return "device_link_report"
     if schema == CONNECTIVITY_PROBE_SCHEMA:
