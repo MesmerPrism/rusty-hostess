@@ -317,6 +317,13 @@
   of growing the facade.
 ## Host process observation
 
+`sdk_graphics_live.py` owns the finite SDK developer backend;
+`sdk_graphics_live_contract.py` its closed inputs/app-status projection,
+`sdk_graphics_pixels.py` its display predicate, and `sdk_graphics_live_routes.py`
+its same-handler CLI capsule. The executable local peer and
+`test_hostessctl_sdk_graphics_live.py` own host conformance without headset claims.
+See `docs/SDK_GRAPHICS_LIVE.md`.
+
 `tools/hostessctl/process_observation.py` owns completion-driven observation,
 raw evidence and retained-child cancellation. `tools/observe_process.py` is its
 typed CLI; `tools/test_hostessctl_process_observation.py` and the neutral

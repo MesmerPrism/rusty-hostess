@@ -238,7 +238,8 @@ class ShaderTests(unittest.TestCase):
         with patch("tools.hostessctl.sdk_graphics_fixture.FileConsumer", side_effect=AssertionError), \
              patch("tools.hostessctl.sdk_graphics_batch.observe_process", side_effect=AssertionError):
             report = routes.describe()
-        self.assertEqual(report["live_backend"], "unavailable-not-qualified")
+        self.assertEqual(report["live_backend"], "finite-sdk-debug-requires-explicit-target-and-custody")
+        self.assertFalse(report["live_backend_device_qualified"])
         self.assertFalse(report["availability_is_execution_grant"])
 
     def test_wrong_owner_pin_refuses_before_process_dispatch(self):
