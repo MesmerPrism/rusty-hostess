@@ -75,7 +75,9 @@ uncertain effect. The executor retains its cleanup responsibility.
 Intent persistence failure prevents dispatch. Once executor retirement is known,
 a later journal failure is reported separately and preserves the known operation
 state; it never permits replay of that operation. Successful observation and
-reconciliation persist the terminal state with the pending request cleared.
+reconciliation checkpoint the terminal state with the pending request cleared.
+Reporting-only checkpoint failure warns and allows the same session to continue;
+each new mutation still needs its own successful durable intent checkpoint.
 
 The [finite SDK debug backend](SDK_GRAPHICS_LIVE.md) supplies actual QFM and
 fixed developer-fallback operations for one selected app-status family, with

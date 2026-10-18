@@ -32,6 +32,7 @@ def add_arguments(subcommands):
         if action == "live":
             live.add_argument("--evidence-root", required=True)
             live.add_argument("--confirm-live-sdk-debug", action="store_true")
+            live.add_argument("--retain-original-stdin", action="store_true")
     return parser
 
 

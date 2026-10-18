@@ -64,8 +64,41 @@ bounded observation. Incomplete execution exits nonzero while retaining its
 actual lifecycle; the exit code does not mean an effect failed. Unknown
 originals block mutation. Inspect `terminal-report.json`, checkpoints, owner
 outputs and process receipts rather than starting a replacement session.
+The default finite route closes its in-memory owner when it returns. Its report
+explicitly says that live handles cannot be restored after process loss.
 No automatic retry, cleanup, rollback or remote deletion is performed. Reports
 use the existing `companion-report projection --sdk-graphics` route.
+
+For an original trigger that may adopt later, add `--retain-original-stdin` to
+the same `live` invocation. It emits the initial report as one JSON line and
+keeps that exact `LiveRun` object alive. Send one closed JSON line per turn:
+
+```json
+{"action":"observe-original"}
+{"action":"revert-baseline"}
+```
+
+`observe-original` performs one read-only observation/reconciliation; it never
+uploads or triggers. `revert-baseline` requires the original candidate's actual
+pixel adoption, then uses the existing handler for a new durable baseline
+intent, transfer and one trigger. Late baseline adoption can be observed with
+further `observe-original` turns. `status` only projects retained state; `close`
+or stdin EOF ends observation without cleanup. Invalid commands produce an
+error report while keeping the owner. The route exits after observed baseline
+adoption. Its final report is written to `--out`; intermediate reports and
+checkpoints stay under the original evidence root. Keep the stdin pipe open
+for later turns; EOF discards the live owner. No socket/server or numeric-PID
+restoration exists.
+
+API callers construct `sdk_graphics_live_routes.LiveRun(args)`, retain that
+object, call `run_initial()`, and later call `observe_original()` and explicit
+`revert_baseline()`. The original `ShaderIteration` and executor remain exposed
+on the handle. Exceptions retain the owner as `sdk_graphics_live_run`; original
+observer exceptions and their exact `Popen` objects remain reachable there.
+Pending incomplete transfers may reconcile to uploaded state, but these closed
+stdin actions do not automatically dispatch a candidate trigger that was never
+sent. Use the same retained API handler for a separately authorized next stage;
+never restart the candidate sequence to resolve an original operation.
 
 ## Provider gaps and retirement
 
@@ -77,13 +110,20 @@ or argument vector is accepted. The stock SDK receiver stays unauthenticated;
 twelve uploads remain non-atomic.
 
 Host children use completion-driven observation, genuine exit/reap and both
-EOFs. Direct ADB transport retirement and QFM's confirmed transfer receipt are
-separate from SDK/GPU retirement. A malformed or uncertain QFM response cannot
-prove its nested transfer retired, even if matching bytes later appear.
-The Python API preserves original child exceptions. CLI interruption loses
-in-memory handles and requires owner reconciliation, never automatic replay.
-Known operation facts survive later report errors with a visible warning;
-read-only observation failure preserves known dispatch state.
+EOFs. Actual original host transport exit/reap and both pipe EOFs retire that
+transport even after a nonzero QFM exit or malformed response; they do not prove
+file-effect success, nested process-tree retirement, or SDK/GPU retirement.
+After that fact, unchanged app guards plus all twelve current hashes can
+reconcile an uncertain transfer read-only. Matching bytes while the retained
+original child is still active cannot clear pending. The same retained `Popen`
+can later establish its real exit/EOF; no new transfer is sent. A reload also
+requires its fresh original-request-bound pixel witness.
+Process loss discards live handles and requires owner reconciliation, never
+automatic replay. Known operation facts survive later report/checkpoint errors
+with a visible warning, and reporting-only failure permits continued read-only
+observation or explicit baseline revert on the same session. Each new effect
+still requires its own successfully persisted pre-dispatch intent. Read-only
+observation failure preserves known dispatch state.
 
 `tools/test_hostessctl_sdk_graphics_live.py` exercises actual backend command
 paths through an executable local peer with synthetic bytes/pixels and real

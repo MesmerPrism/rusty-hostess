@@ -5,6 +5,7 @@ from pathlib import Path
 import shutil
 import struct
 import sys
+import time
 
 root = Path(sys.argv[1])
 argv = json.loads(sys.argv[2])
@@ -34,8 +35,14 @@ elif args[:2] == ["apk", "observe"]:
 elif args[:2] == ["files", "push"]:
     name = Path(args[args.index("--file")+1]).name.split("-", 1)[1]
     shutil.copyfile(args[args.index("--file")+1], remote/name)
+    if state.get("hold_push") == name:
+        (root/"held").write_text(name)
+        while not (root/"release").exists():
+            time.sleep(.01)  # Test stimulus only; original process remains live.
+        state = json.loads(state_path.read_text())
     if state.get("bad_push") == name:
-        out = "lost provider response"
+        out = None if state.get("empty_push") else "lost provider response"
+        exit_code = state.get("bad_push_exit", 0)
     else:
         out = {"mutation": {"Stage": "confirmed", "HeadsetReadback": True},
                "result": {"command": {"ExitCode": 0}}}
@@ -67,7 +74,8 @@ else:
         out = "\n".join(hashlib.sha256((remote/Path(name).name).read_bytes()).hexdigest()+"  "+name for name in args[2:])
     elif args[:3] == ["shell", "am", "broadcast"]:
         state["reloads"] += 1
-        state["candidate"] = b"changed" in (remote/"workload.vert.spv").read_bytes()
+        if not state.get("delay_adoption"):
+            state["candidate"] = b"changed" in (remote/"workload.vert.spv").read_bytes()
         out = "Broadcast completed: result=0"
         if state.get("unknown_trigger"):
             exit_code = 7

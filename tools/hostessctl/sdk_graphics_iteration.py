@@ -123,7 +123,7 @@ class ShaderIteration:
         self.events.append(intent)
         self.pending = intent
         try:
-            self._persist("before-dispatch")  # Durable intent before effects.
+            self._persist("before-dispatch", required=True)  # Durable intent before effects.
         except Exception:
             intent["status"] = "not-dispatched"
             self.pending = None
@@ -155,12 +155,13 @@ class ShaderIteration:
         # Persistence failure cannot turn confirmed retirement into uncertainty.
         self._persist("after-retirement")
 
-    def _persist(self, stage):
+    def _persist(self, stage, *, required=False):
         try:
             self.checkpoint(self.report())
         except Exception as error:
             self.reporting_errors.append({"stage": stage, "error_type": type(error).__name__})
-            raise
+            if required:
+                raise
 
     def _retired(self, request):
         result = self.executor.retirement(request)

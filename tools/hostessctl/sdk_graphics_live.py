@@ -4,6 +4,7 @@ Fixed serial-scoped ADB fills documented SDK/status/hash/capture provider gaps.
 No install, launch, force-stop, daemon/port operation, watcher or arbitrary argv.
 """
 from copy import deepcopy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -15,6 +16,18 @@ from tools.hostessctl.sdk_graphics_batch import NAMES, digest, load_baseline, re
 from tools.hostessctl.sdk_graphics_live_contract import load_config, parse_status, project_status, project_settings, sha_file
 from tools.hostessctl.sdk_graphics_pixels import check_pixels
 from tools.hostessctl.sdk_graphics_iteration import EffectNotDispatched
+
+
+def _log_sha256(path):
+    """Closed observer logs may be empty; input-pin minimums do not apply."""
+    hasher, count = hashlib.sha256(), 0
+    with Path(path).open("rb") as stream:
+        while chunk := stream.read(65536):
+            count += len(chunk)
+            if count > 33554432:
+                raise ValueError("retained_log_budget_exceeded")
+            hasher.update(chunk)
+    return hasher.hexdigest()
 
 
 class LiveExecutor:
@@ -35,6 +48,8 @@ class LiveExecutor:
         self.remote = "/sdcard/Android/data/"+self.config["package"]+"/files/app_assets"
         self.observer = observer
         self.operations = {}
+        self.owned_observations = {}
+        self.recorded_retirements = set()
         self.counter = 0
         self.qualified = False
         self.last_reload = None
@@ -64,6 +79,9 @@ class LiveExecutor:
             receipt = error.receipt
             if operation is not None:
                 operation["processes"].append(deepcopy(receipt))
+                self.owned_observations.setdefault(request, []).append(error)
+                error.sdk_graphics_lane = lane
+                operation["retired"] = all(self._transport_retired(item) for item in operation["processes"])
             self._save_receipt(lane, receipt)
             if (isinstance(error, ObservationFailure) and operation is not None and
                     all(not item["child_started"] for item in operation["processes"])):
@@ -74,8 +92,7 @@ class LiveExecutor:
         complete = (receipt["observation_complete"] and receipt["process_reaped"] and receipt["exit_known"])
         # Store terminal transport fact before reporting; journal I/O is separate.
         if operation is not None:
-            operation["retired"] = bool(complete and
-                (argv[0] != self.config["qfm"]["path"] or receipt["exit_code"] == 0))
+            operation["retired"] = all(self._transport_retired(item) for item in operation["processes"])
         self._save_receipt(lane, receipt)
         if not complete or receipt["exit_code"] != 0:
             raise ValueError("transport_failed_or_unknown_no_replay")
@@ -176,12 +193,10 @@ class LiveExecutor:
             stream.write(data)
         raw = self._run("qfm-push", [self.config["qfm"]["path"], "files", "push", "--serial", self.config["serial"],
                         "--file", str(local), "--remote", self.remote+"/"+name, "--json"], request=request_id)
-        operation["retired"] = False
         result = json.loads(raw)
         if (result["mutation"]["Stage"] != "confirmed" or result["mutation"]["HeadsetReadback"] is not True or
                 result["result"]["command"]["ExitCode"] != 0):
             raise ValueError("qfm_original_transfer_not_terminal")
-        operation["retired"] = True
         operation["files"].append(name)
 
     def hashes(self, names):
@@ -236,5 +251,38 @@ class LiveExecutor:
 
     def retirement(self, request_id):
         operation = self.operations.get(request_id, {})
+        for error in self.owned_observations.get(request_id, []):
+            receipt, process = error.receipt, error.owned_process
+            # Only the retained original Popen is queried/reaped. No PID lookup,
+            # wait deadline, replay, or process-tree retirement is inferred.
+            if process is not None and process.poll() is not None:
+                receipt.update(exit_code=process.wait(), exit_known=True, process_reaped=True)
+            if self._transport_retired(receipt) and receipt["session_id"] not in self.recorded_retirements:
+                self.recorded_retirements.add(receipt["session_id"])
+                try:
+                    path = self.root/f"original-retirement-{request_id}-{receipt['session_id']}.json"
+                    with path.open("x") as stream:
+                        stream.write(json.dumps({"request_id": request_id, "process": receipt,
+                            "raw": {name: {"path": str(error.sdk_graphics_lane/(name+".raw")),
+                                           "sha256": _log_sha256(error.sdk_graphics_lane/(name+".raw"))}
+                                    for name in ("stdout", "stderr")}}, indent=2)+"\n")
+                except (OSError, ValueError) as failure:
+                    self.reporting_errors.append({"stage": "late-retirement", "error_type": type(failure).__name__})
+            for index, prior in enumerate(operation.get("processes", [])):
+                if prior["session_id"] == receipt["session_id"]:
+                    operation["processes"][index] = deepcopy(receipt)
+        if operation.get("processes"):
+            operation["retired"] = all(self._transport_retired(item) for item in operation["processes"])
         return {"request_id": request_id, "retired": operation.get("retired") is True,
                 "scope": "owned-transport-operation-only-not-sdk-or-gpu-retirement"}
+
+    @staticmethod
+    def _transport_retired(receipt):
+        # Capture/report validity and provider effect success are separate from
+        # actual original transport EOF and exit. A known nonzero exit retires.
+        if receipt.get("child_started") is False:
+            return True  # No original host child exists for this attempt.
+        streams = receipt.get("streams", {})
+        return bool(receipt.get("process_reaped") and receipt.get("exit_known") and
+                    set(streams) == {"stdout", "stderr"} and
+                    all(row.get("eof") and row.get("settled") for row in streams.values()))
