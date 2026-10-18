@@ -25,6 +25,14 @@ def add_arguments(subcommands):
     fixture = actions.add_parser("fixture")
     for name in ("catalog", "baseline-batch", "candidate-batch", "consumer-root", "out"):
         fixture.add_argument("--" + name, required=True)
+    for action in ("plan-live", "live"):
+        live = actions.add_parser(action)
+        for name in ("config", "catalog", "baseline-batch", "candidate-batch", "out"):
+            live.add_argument("--"+name, required=True)
+        if action == "live":
+            live.add_argument("--evidence-root", required=True)
+            live.add_argument("--confirm-live-sdk-debug", action="store_true")
+            live.add_argument("--retain-original-stdin", action="store_true")
     return parser
 
 
@@ -32,7 +40,8 @@ def describe():
     # No source reads, executors, child processes, target discovery or backend.
     return {"schema": "rusty.hostess.sdk_graphics.capability.v1",
             "actions": list(ACTIONS), "host_preparation": True,
-            "live_backend": "unavailable-not-qualified",
+            "live_backend": "finite-sdk-debug-requires-explicit-target-and-custody",
+            "live_backend_device_qualified": False,
             "selected_consumer_contract": "optimized-sdk014-ten-vec4-160-byte-v1",
             "fixture_backend": "neutral-file-consumer-no-gpu",
             "availability_is_execution_grant": False,
@@ -88,11 +97,17 @@ def run(args):
             report = batches.prepare(args)
         elif args.sdk_graphics_action == "fixture":
             report = run_fixture(args)
+        elif args.sdk_graphics_action in ("plan-live", "live"):
+            from tools.hostessctl import sdk_graphics_live_routes
+            report = (sdk_graphics_live_routes.plan_live(args) if args.sdk_graphics_action == "plan-live" else
+                      sdk_graphics_live_routes.run_live(args))
         else:
             raise ValueError("unsupported_sdk_graphics_action")
         out.parent.mkdir(parents=True, exist_ok=True)
         with out.open("x", encoding="utf-8") as stream:
             stream.write(json.dumps(report, indent=2) + "\n")
+        if args.sdk_graphics_action == "live" and not report.get("baseline_pixel_predicate_observed"):
+            return 2  # Incomplete capsule; this exit code never declares an effect failed.
         return 0 if report.get("status") != "fail" else 2
     except (ValueError, OSError, KeyError, TypeError) as error:
         print("sdk-graphics: " + str(error), file=sys.stderr)

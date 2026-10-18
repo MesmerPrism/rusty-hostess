@@ -1,5 +1,8 @@
 # Rusty Hostess
 
+The [finite SDK debug backend](docs/SDK_GRAPHICS_LIVE.md) adds real QFM/SDK
+developer operations through the shader lifecycle; hardware qualification is pending.
+
 Rusty Hostess T is the default install and test shell for proving Manifold
 packages on desktop, mobile, and headset profiles without relying on older host
 applications.

@@ -16,6 +16,10 @@ from tools.hostessctl.sdk_graphics_batch import NAMES, load_batch
 ACTIONS = ("prepare", "transfer", "reload", "observe", "revert")
 
 
+class EffectNotDispatched(ValueError):
+    """Executor refused before its first effect; no uncertain operation exists."""
+
+
 class Executor(Protocol):
     evidence_scope: str
     def status(self) -> dict: ...
@@ -58,6 +62,10 @@ class ShaderIteration:
         second = self._status()
         if first["actor"] != second["actor"] or second["frame"] <= first["frame"]:
             raise ValueError("same_actor_advancing_frames_required")
+        if "end_frame" in first or "end_frame" in second:
+            if (type(first.get("end_frame")) is not int or type(second.get("end_frame")) is not int or
+                    first["end_frame"] < 0 or second["end_frame"] <= first["end_frame"]):
+                raise ValueError("same_actor_advancing_end_frames_required")
         if self.actor is None:
             self.actor = deepcopy(second["actor"])
 
@@ -115,7 +123,7 @@ class ShaderIteration:
         self.events.append(intent)
         self.pending = intent
         try:
-            self._persist("before-dispatch")  # Durable intent before effects.
+            self._persist("before-dispatch", required=True)  # Durable intent before effects.
         except Exception:
             intent["status"] = "not-dispatched"
             self.pending = None
@@ -126,6 +134,12 @@ class ShaderIteration:
             effect(request)
             if not self._retired(request):
                 raise ValueError("original_executor_operation_not_retired")
+        except EffectNotDispatched:
+            intent["status"] = "not-dispatched"
+            self.pending = None
+            self.reload_request = None if action == "reload" else self.reload_request
+            self._persist("not-dispatched")
+            raise
         except BaseException:
             intent["status"] = "unknown"
             self.phase = "unknown"
@@ -141,12 +155,13 @@ class ShaderIteration:
         # Persistence failure cannot turn confirmed retirement into uncertainty.
         self._persist("after-retirement")
 
-    def _persist(self, stage):
+    def _persist(self, stage, *, required=False):
         try:
             self.checkpoint(self.report())
         except Exception as error:
             self.reporting_errors.append({"stage": stage, "error_type": type(error).__name__})
-            raise
+            if required:
+                raise
 
     def _retired(self, request):
         result = self.executor.retirement(request)
@@ -190,10 +205,11 @@ class ShaderIteration:
         return self.report()
 
     def report(self):
+        reporting_errors = self.reporting_errors + getattr(self.executor, "reporting_errors", [])
         return {"schema": "rusty.hostess.sdk_graphics.iteration.v1", "phase": self.phase,
-                "status": "pass" if self.phase == "observed" and not self.reporting_errors else "warn",
+                "status": "pass" if self.phase == "observed" and not reporting_errors else "warn",
                 "evidence_scope": self.executor.evidence_scope, "actor": deepcopy(self.actor),
                 "events": deepcopy(self.events), "pending": deepcopy(self.pending),
-                "reporting_errors": deepcopy(self.reporting_errors),
+                "reporting_errors": deepcopy(reporting_errors),
                 "live_device_acceptance": False, "gpu_completion": False,
                 "cleanup": "executor_owned_not_inferred_from_host_state"}

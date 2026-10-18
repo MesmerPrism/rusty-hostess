@@ -1359,6 +1359,30 @@
       "classification": "owner_input",
       "role": "input",
       "reason": "Exact selected Quest SDK graphics preparer input/output identity only; Hostess preserves owner compilation/reflection and does not emit or redefine this schema."
+    },
+    {
+      "schema_id": "rusty.quest.product_panel.receipt.v1",
+      "path": "tools/hostessctl/sdk_graphics_live_contract.py",
+      "owner": "rusty.quest",
+      "classification": "owner_input",
+      "role": "input",
+      "reason": "Existing selected app-owned status-only contract; Hostess neither creates app acceptance nor changes parameters."
+    },
+    {
+      "schema_id": "rusty.quest.product_panel.command.v1",
+      "path": "tools/hostessctl/sdk_graphics_live.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Existing selected app-owned status-only contract; Hostess neither creates app acceptance nor changes parameters."
+    },
+    {
+      "schema_id": "rusty.quest.product_panel.command.v1",
+      "path": "tools/sdk_graphics_live_fixture.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Executable neutral peer validates the exact existing app-owned status-only request; no device or authority."
     }
   ]
 }

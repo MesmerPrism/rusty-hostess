@@ -11,10 +11,10 @@ ten-vec4/160-byte material** consumer contract. Eight vertex variants and four
 fragment aliases must exactly match that owner contract. Earlier 80/96-byte
 consumers are unavailable here; those sizes are not invalid SDK interfaces.
 Adding a consumer requires its actual owner preparer, ABI and variant closure.
-The compatible preparer was qualified from an explicitly selected donor owner
-checkout. It is not supplied by ordinary published Quest main at this handoff;
-promotion of that preparer into the public Quest owner remains a separate step.
-This adapter consumes caller-supplied, reviewed and pinned owner scripts.
+The generic Quest provider lives under `tools/sdk_graphics` in its owning
+source. Select a reviewed published revision and pin actual scripts; until
+that adoption lands, donor preparation remains an explicit dependency. This
+adapter never resolves a floating owner checkout.
 
 ## Available operations
 
@@ -75,14 +75,15 @@ uncertain effect. The executor retains its cleanup responsibility.
 Intent persistence failure prevents dispatch. Once executor retirement is known,
 a later journal failure is reported separately and preserves the known operation
 state; it never permits replay of that operation. Successful observation and
-reconciliation persist the terminal state with the pending request cleared.
+reconciliation checkpoint the terminal state with the pending request cleared.
+Reporting-only checkpoint failure warns and allows the same session to continue;
+each new mutation still needs its own successful durable intent checkpoint.
 
-**No live Quest executor is shipped or qualified in this slice.** The private
-donor helper is bound to one app's original settings and custody; it was not
-copied into Hostess. Future live adoption needs actual enabling-APK shader/alias
-and ABI joins, selected provider/actor/lease guards, stable original parameters,
-real output witnesses and original operation retirement. Neither host fixture
-success nor the preparation report grants device execution or proves GPU work.
+The [finite SDK debug backend](SDK_GRAPHICS_LIVE.md) supplies actual QFM and
+fixed developer-fallback operations for one selected app-status family, with
+original settings and actual output witnesses. Hardware qualification remains
+pending. Neither fixture success nor preparation grants device execution or
+proves GPU work.
 
 ## Executable neutral consumer
 

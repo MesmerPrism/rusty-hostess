@@ -94,18 +94,19 @@ class ShaderTests(unittest.TestCase):
             if report["pending"] is None:
                 raise OSError("terminal journal")
         self.session.checkpoint = fail_terminal
-        with self.assertRaises(OSError):
-            self.session.handle("reload")
+        self.session.handle("reload")
         self.assertEqual(self.consumer.reloads, 1)
         self.assertIsNone(self.session.pending)
         self.assertEqual(self.session.phase, "adoption-pending")
         self.assertEqual(self.session.events[-1]["status"], "dispatched")
         with self.assertRaises(ValueError):
             self.session.handle("reload")
-        self.session.checkpoint = lambda report: self.checkpoints.append(deepcopy(report))
         self.assertEqual(self.session.handle("observe")["phase"], "observed")
-        self.assertIsNone(self.checkpoints[-1]["pending"])
         self.assertEqual(self.consumer.reloads, 1)
+        # Reporting-only failures do not stop the same session's explicit revert.
+        self.activate(self.base, "revert")
+        self.assertEqual(self.consumer.reloads, 2)
+        self.assertEqual(self.session.phase, "observed")
         path = self.root / "degraded.json"
         path.write_text(json.dumps(self.session.report()))
         projected = build_companion_report_projection(argparse.Namespace(sdk_graphics=[str(path)]),
@@ -114,6 +115,20 @@ class ShaderTests(unittest.TestCase):
         shader = projected["rows"][0]
         self.assertEqual(shader["status"], "warn")
         self.assertEqual(shader["details"]["reporting_errors"][0]["stage"], "after-retirement")
+
+    def test_reconciliation_journal_warning_allows_continuation_but_new_intent_is_required(self):
+        self.session.handle("prepare", batch=self.candidate)
+        self.consumer.fail_upload = batches.NAMES[-1]
+        with self.assertRaises(OSError):
+            self.session.handle("transfer")
+        self.session.checkpoint = lambda report: (_ for _ in ()).throw(OSError("journal"))
+        self.assertEqual(self.session.handle("observe")["phase"], "uploaded")
+        self.assertIsNone(self.session.pending)
+        self.assertEqual(self.session.reporting_errors[-1]["stage"], "observation")
+        with self.assertRaises(OSError):
+            self.session.handle("reload")
+        self.assertEqual(self.consumer.reloads, 0)
+        self.assertEqual(self.session.phase, "uploaded")
 
     def test_unknown_complete_transfer_reconciles_without_repush(self):
         self.session.handle("prepare", batch=self.candidate)
@@ -238,7 +253,8 @@ class ShaderTests(unittest.TestCase):
         with patch("tools.hostessctl.sdk_graphics_fixture.FileConsumer", side_effect=AssertionError), \
              patch("tools.hostessctl.sdk_graphics_batch.observe_process", side_effect=AssertionError):
             report = routes.describe()
-        self.assertEqual(report["live_backend"], "unavailable-not-qualified")
+        self.assertEqual(report["live_backend"], "finite-sdk-debug-requires-explicit-target-and-custody")
+        self.assertFalse(report["live_backend_device_qualified"])
         self.assertFalse(report["availability_is_execution_grant"])
 
     def test_wrong_owner_pin_refuses_before_process_dispatch(self):
