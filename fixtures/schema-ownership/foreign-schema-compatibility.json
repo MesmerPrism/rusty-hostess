@@ -1383,6 +1383,22 @@
       "classification": "owner_contract_compatibility",
       "role": "contract_reference",
       "reason": "Executable neutral peer validates the exact existing app-owned status-only request; no device or authority."
+    },
+    {
+      "schema_id": "rusty.quest.shell_recenter.request.v1",
+      "path": "tools/hostessctl/companion_shell_recenter.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Typed shell recenter consumer only; Quest owns the closed request/result and privileged AppFunction implementation. Hostess emits its own separate companion report."
+    },
+    {
+      "schema_id": "rusty.quest.shell_recenter.result.v1",
+      "path": "tools/hostessctl/companion_shell_recenter.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Typed shell recenter consumer only; Quest owns the closed request/result and privileged AppFunction implementation. Hostess emits its own separate companion report."
     }
   ]
 }

@@ -12,6 +12,17 @@ registries, audit records, and scorecards.
 Hostess T owns platform packaging, permission probes, launch/install routes,
 small app UI surfaces, command bridging, and evidence export.
 
+## Quest Shell Recenter Operator Boundary
+
+The separate Quest shell recenter boundary is
+`tools/hostessctl/companion_shell_recenter.py`: one typed companion action,
+exact private profile pins, a durable intent before one dispatch, passive
+reconciliation and source-owned report rows. Quest owns the privileged
+AppFunction implementation and Android original retirement. Hostess retains
+its provider child through binary stdout/stderr EOF and reap using the existing
+process observer. WPF only collects the profile/mode and renders the CLI
+projection. See [SHELL_RECENTER.md](SHELL_RECENTER.md).
+
 ## Windows Mobile Hotspot Effect Boundary
 
 `tools/windows_hotspot_provider` is the platform effect owner consumed by

@@ -103,6 +103,16 @@ def build_companion_catalog_report(
         "modules": modules,
         "workspaces": workspaces,
         "transports": transports,
+        "developer_actions": [{
+            "action_id": "shell_recenter",
+            "title": "Recenter view (Android shell only)",
+            "authority_owner": "rusty.quest",
+            "route": "companion-session shell-recenter",
+            "availability": "requires_explicit_pinned_profile_and_fresh_shell_readiness",
+            "privilege": "android_shell_uid_2000",
+            "ordinary_apk_supported": False,
+            "effect_observation": "independent_reference_space_or_wearer_observation_required",
+        }],
         "issues": issues,
     }
 

@@ -1,5 +1,13 @@
 ## File Organization
 
+- `tools/hostessctl/companion_shell_recenter.py` owns the typed pinned Quest
+  provider caller, durable host intent/replay barrier and source-owned report
+  projection. It must not copy the AppFunction implementation, issue ADB
+  commands, abandon a pending original or turn callback success into an effect
+  observation. `HostessctlShellRecenterService.cs` and Commands-page projection
+  only invoke/render the same CLI evidence; the Quest owner retains Android
+  privilege, platform checks, callbacks and owned-stage retirement.
+
 - Keep `tools/hostessctl/sdk_graphics_batch.py` as the pinned Quest-preparer
   adapter and immutable batch input checker; Quest owns actual compilation and
   reflection. `sdk_graphics_iteration.py` owns the finite request/unknown-state

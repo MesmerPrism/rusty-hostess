@@ -31,6 +31,8 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
     private string projectRunnerCompletionMarker = HostessctlProjectRunnerService.DefaultCompletionMarkerPath();
     private bool useQuestProfile = true;
     private bool checkBroker;
+    private string shellRecenterProfile = "";
+    private string shellRecenterMode = "readiness";
     private NavigationItemViewModel? selectedNavigationItem;
     private ConnectivityFirewallRuleReport? currentFirewallRuleReport;
 
@@ -74,6 +76,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
             LoadSelectedSessionAsync,
             () => !IsBusy && SelectedSessionHistoryEntry is not null);
         RunProbeCommand = new AsyncRelayCommand(RunProbeAsync, () => !IsBusy);
+        RunShellRecenterCommand = new AsyncRelayCommand(RunShellRecenterAsync, () => !IsBusy && !string.IsNullOrWhiteSpace(ShellRecenterProfile));
         PlanFirewallRuleCommand = new AsyncRelayCommand(PlanFirewallRuleAsync, () => !IsBusy);
         ApplyFirewallRuleCommand = new AsyncRelayCommand(ApplyFirewallRuleAsync, () => !IsBusy);
         VerifyFirewallRuleCommand = new AsyncRelayCommand(VerifyFirewallRuleAsync, () => !IsBusy);
@@ -140,6 +143,22 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
 
     public AsyncRelayCommand RunProbeCommand { get; }
 
+    public AsyncRelayCommand RunShellRecenterCommand { get; }
+
+    public IReadOnlyList<string> ShellRecenterModes => HostessctlShellRecenterService.Modes;
+
+    public string ShellRecenterProfile
+    {
+        get => shellRecenterProfile;
+        set { if (SetField(ref shellRecenterProfile, value)) RunShellRecenterCommand.RaiseCanExecuteChanged(); }
+    }
+
+    public string ShellRecenterMode
+    {
+        get => shellRecenterMode;
+        set => SetField(ref shellRecenterMode, value);
+    }
+
     public AsyncRelayCommand PlanFirewallRuleCommand { get; }
 
     public AsyncRelayCommand ApplyFirewallRuleCommand { get; }
@@ -168,6 +187,7 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
                 LoadSessionHistoryCommand.RaiseCanExecuteChanged();
                 LoadSelectedSessionCommand.RaiseCanExecuteChanged();
                 RunProbeCommand.RaiseCanExecuteChanged();
+                RunShellRecenterCommand.RaiseCanExecuteChanged();
                 PlanFirewallRuleCommand.RaiseCanExecuteChanged();
                 ApplyFirewallRuleCommand.RaiseCanExecuteChanged();
                 VerifyFirewallRuleCommand.RaiseCanExecuteChanged();
@@ -608,6 +628,25 @@ public sealed partial class MainWindowViewModel : ObservableViewModel
         {
             IsBusy = false;
         }
+    }
+
+    private async Task RunShellRecenterAsync()
+    {
+        var selectedMode = ShellRecenterMode;
+        var selectedProfile = ShellRecenterProfile;
+        IsBusy = true;
+        try
+        {
+            var projection = await new HostessctlShellRecenterService().RunAsync(selectedProfile, selectedMode);
+            CommandsPage.ApplyShellRecenterProjection(projection);
+            SummaryLabel = $"Shell recenter {selectedMode}: {projection.Status}. Callback and observed effect are separate rows.";
+        }
+        catch (Exception ex)
+        {
+            CommandsPage.ApplyFailure(ex);
+            SummaryLabel = ex.Message;
+        }
+        finally { IsBusy = false; }
     }
 
     private async Task RunSessionAsync()

@@ -248,6 +248,9 @@ def dispatch_command(args: argparse.Namespace) -> int:
     if args.command == "companion-readiness":
         return companion_readiness.run_companion_readiness(args)
     if args.command == "companion-session":
+        if args.session_command == "shell-recenter":
+            from tools.hostessctl.companion_shell_recenter import run_shell_recenter
+            return run_shell_recenter(args)
         if args.session_command == "run":
             return companion_session.run_companion_session(args, run_captured_func=run_captured)
         if args.session_command == "history":

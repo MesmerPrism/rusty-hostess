@@ -62,7 +62,9 @@ static partial class WpfCompanionTests
             {
                 Assert(
                     action.CliRoute.Contains("$QuestSerial", StringComparison.Ordinal)
-                    || action.CliRoute.Contains("<quest-serial>", StringComparison.Ordinal),
+                    || action.CliRoute.Contains("<quest-serial>", StringComparison.Ordinal)
+                    || (action.ActionId == "wpf.command.shell_recenter"
+                        && action.CliRoute.Contains("companion-session shell-recenter --profile $QuestShellRecenterProfile", StringComparison.Ordinal)),
                     $"Quest-leased WPF operator actions must advertise the serial placeholder: {action.ActionId}");
             }
         }

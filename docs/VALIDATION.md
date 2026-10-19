@@ -1,5 +1,21 @@
 # Validation
 
+The shell recenter caller is covered by
+`python -m unittest tools.test_hostessctl_shell_recenter` plus the companion
+catalog/operator-action/report-projection tests and WPF projection suite. A
+real neutral child covers delayed callback/error, pending originals, exact
+input/result pins, durable intent, duplicate suppression, binary malformed
+UTF-8/large stderr and genuine EOF/reap. It never calls ADB.
+For the actual cross-owner passive producer/consumer check, set
+`QUEST_SHELL_RECENTER_PROVIDER` to the explicitly selected Quest provider
+script and run
+`python -m unittest tools.test_hostessctl_shell_recenter.RecenterCallerTests.test_external_production_quest_passive_reconciliation`.
+That test uses the production Quest request validator/result producer and
+passive CLI, with nonexistent ADB/artifact paths. It cannot establish live
+privilege/firmware readiness or a wearer-observed effect. Live validation
+remains with the negotiated exact-device owner. See
+[SHELL_RECENTER.md](SHELL_RECENTER.md).
+
 The SDK debug backend focused check is
 `python -m unittest tools.test_hostessctl_sdk_graphics tools.test_hostessctl_sdk_graphics_live tools.test_immutable_input_binding tools.test_hostessctl_sdk_graphics_png`.
 Its executable local peer validates command shapes and process retirement;

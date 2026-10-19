@@ -161,6 +161,18 @@
                         Grid.ColumnSpan="10"
                         Orientation="Horizontal"
                         Margin="0,10,0,0"
+                        Visibility="{Binding IsCommandsSelected, Converter={StaticResource BooleanToVisibility}}">
+              <TextBlock Text="Shell UID 2000 profile" VerticalAlignment="Center" Margin="0,0,8,0"/>
+              <TextBox Width="340" Text="{Binding ShellRecenterProfile, UpdateSourceTrigger=PropertyChanged}"
+                       ToolTip="Private exact source/artifact/boot/operator profile. Genuine Android shell only; ordinary APKs are unavailable."/>
+              <ComboBox Width="100" Margin="8,0,0,0" ItemsSource="{Binding ShellRecenterModes}" SelectedItem="{Binding ShellRecenterMode}"/>
+              <Button Content="Shell recenter" Margin="8,0,0,0" Command="{Binding RunShellRecenterCommand}"
+                      ToolTip="Invoke the same typed CLI action. Recenter changes the reference frame; callback success does not prove the observed effect."/>
+            </StackPanel>
+            <StackPanel Grid.Row="1"
+                        Grid.ColumnSpan="10"
+                        Orientation="Horizontal"
+                        Margin="0,10,0,0"
                         Visibility="{Binding IsProjectRunnerSelected, Converter={StaticResource BooleanToVisibility}}">
               <TextBlock Text="Completion marker"
                          Width="120"
