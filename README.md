@@ -25,6 +25,11 @@ so users do not install or expose a particular ambient Python executable.
 
 ## Agent Instructions
 
+The typed developer/operator shell recenter action is documented in
+[docs/SHELL_RECENTER.md](docs/SHELL_RECENTER.md). Its CLI and WPF Commands
+surface consume the same pinned Quest adapter and distinguish callback,
+observed effect and original retirement.
+
 Use `AGENTS.md` as the first-hop policy surface. Detailed Hostess agent
 runbooks live under `docs/agent-instructions/`, including the Quest Makepad APK,
 settings, particle/SDF/ADF/GPU, and live/recorded hand evidence route in

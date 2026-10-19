@@ -50,6 +50,7 @@ try {
         "tools\hostessctl\companion_transport_gate_actions.py",
         "tools\hostessctl\companion_transport_gates.py",
         "tools\hostessctl\companion_session.py",
+        "tools\hostessctl\companion_shell_recenter.py",
         "tools\hostessctl\companion_session_defaults.py",
         "tools\hostessctl\connectivity_bluetooth.py",
         "tools\hostessctl\connectivity_data_protocols.py",

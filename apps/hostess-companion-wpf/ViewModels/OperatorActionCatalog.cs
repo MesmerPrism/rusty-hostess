@@ -89,6 +89,18 @@ public static class OperatorActionCatalog
     public static IReadOnlyList<OperatorActionDescriptor> All { get; } =
     [
         new(
+            "wpf.command.shell_recenter",
+            "Recenter view (Android shell only)",
+            "RunShellRecenterCommand",
+            "$QuestShellRecenterProfile = '<pinned-private-shell-profile>'; " +
+            "$ShellRecenterMode = '<readiness-recenter-or-reconcile>'; " +
+            "$ShellRecenterReport = 'target\\companion-command\\wpf-shell-recenter.json'; " +
+            HostessCtl + "companion-session shell-recenter --profile $QuestShellRecenterProfile --mode $ShellRecenterMode --out $ShellRecenterReport",
+            "rusty.hostess.companion.shell_recenter.v1",
+            "Hostess / Rusty Quest",
+            "tools.test_hostessctl_shell_recenter; HostessCompanion.Wpf.Tests",
+            RequiresQuestLease: true, MutatesHost: true, MutatesDevice: true),
+        new(
             "wpf.readiness.refresh",
             "Refresh readiness and catalog",
             "RefreshCommand",

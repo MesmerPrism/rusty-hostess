@@ -11,6 +11,7 @@ using static WpfCompanionTests;
 var tests = new (string Name, Action Test)[]
 {
     ("device-link projection promotes devices and transports", DeviceLinkProjectionPromotesDevicesAndTransports),
+    ("shell recenter callback and effect remain separate", ShellRecenterProjectsCallbackAndEffectSeparately),
     ("session service reads device-link artifact", SessionServiceReadsDeviceLinkArtifact),
     ("session service exposes robust receipt wait arguments", SessionServiceExposesRobustReceiptWaitArguments),
     ("connectivity suite rows expose groups and metrics", ConnectivitySuiteRowsExposeGroupsAndMetrics),

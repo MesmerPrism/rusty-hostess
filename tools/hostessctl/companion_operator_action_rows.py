@@ -98,6 +98,22 @@ def operator_actions_for_frontend(frontend: str) -> list[dict[str, Any]]:
         return []
     return [
         action(
+            "wpf.command.shell_recenter",
+            "Recenter view (Android shell only)",
+            "RunShellRecenterCommand",
+            r"$QuestShellRecenterProfile = '<pinned-private-shell-profile>'; "
+            r"$ShellRecenterMode = '<readiness-recenter-or-reconcile>'; "
+            r"$ShellRecenterReport = 'target\companion-command\wpf-shell-recenter.json'; "
+            + HOSTESS_CTL
+            + "companion-session shell-recenter --profile $QuestShellRecenterProfile --mode $ShellRecenterMode --out $ShellRecenterReport",
+            "rusty.hostess.companion.shell_recenter.v1",
+            "Hostess / Rusty Quest",
+            "tools.test_hostessctl_shell_recenter; HostessCompanion.Wpf.Tests",
+            requires_quest_lease=True,
+            mutates_host=True,
+            mutates_device=True,
+        ),
+        action(
             "wpf.readiness.refresh",
             "Refresh readiness and catalog",
             "RefreshCommand",

@@ -676,6 +676,10 @@ def build_hostessctl_parser(
     companion_session_history.add_argument("--out", required=True)
     companion_session_history.add_argument("--session-dir")
     companion_session_history.add_argument("--limit", type=int, default=25)
+    shell_recenter = companion_session_subcommands.add_parser("shell-recenter")
+    shell_recenter.add_argument("--profile", required=True)
+    shell_recenter.add_argument("--mode", choices=["readiness", "recenter", "reconcile"], required=True)
+    shell_recenter.add_argument("--out", required=True)
 
     companion_report = subcommands.add_parser("companion-report")
     companion_report_subcommands = companion_report.add_subparsers(
@@ -693,6 +697,7 @@ def build_hostessctl_parser(
     )
     companion_report_projection.add_argument("--device-link", action="append")
     companion_report_projection.add_argument("--sdk-graphics", action="append")
+    companion_report_projection.add_argument("--shell-recenter", action="append")
     companion_report_projection.add_argument("--connectivity-probe", action="append")
     companion_report_projection.add_argument("--firewall-rule", action="append")
     companion_report_projection.add_argument("--direct-wifi-product-media-plan", action="append")
