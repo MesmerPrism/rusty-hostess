@@ -227,6 +227,207 @@
       "status": "approved"
     },
     {
+      "approval_id": "hostess-shell-recenter-20261019-3b2c86b4",
+      "required_ancestor": "3b2c86b4003a863a0f8516590b8ddf8a922b9c80",
+      "changed_paths": [
+        "README.md",
+        "apps/hostess-companion-wpf/MainWindow.xaml",
+        "apps/hostess-companion-wpf/Services/HostessctlShellRecenterService.cs",
+        "apps/hostess-companion-wpf/ViewModels/CommandsPageViewModel.cs",
+        "apps/hostess-companion-wpf/ViewModels/MainWindowViewModel.cs",
+        "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+        "docs/ARCHITECTURE.md",
+        "docs/SHELL_RECENTER.md",
+        "docs/VALIDATION.md",
+        "docs/agent-instructions/file-organization.md",
+        "fixtures/schema-ownership/foreign-schema-compatibility.json",
+        "fixtures/shell-recenter/provider-source.json",
+        "tests/HostessCompanion.Wpf.Tests/Program.cs",
+        "tests/HostessCompanion.Wpf.Tests/WpfCompanionTests.OperatorActions.cs",
+        "tests/HostessCompanion.Wpf.Tests/WpfCompanionTests.ShellRecenter.cs",
+        "tools/check_all.ps1",
+        "tools/hostessctl/cli_parser.py",
+        "tools/hostessctl/companion_catalog.py",
+        "tools/hostessctl/companion_operator_action_rows.py",
+        "tools/hostessctl/companion_report_projection.py",
+        "tools/hostessctl/companion_shell_recenter.py",
+        "tools/hostessctl/hostessctl.py",
+        "tools/test_hostessctl_companion_operator_actions.py",
+        "tools/test_hostessctl_shell_recenter.py"
+      ],
+      "artifacts": [
+        {
+          "path": "README.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 65452,
+          "sha256": "1ac7cb54d5a59ad4390de1a92234492395570bbbe8dca394743b6aeea89cf09a"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/MainWindow.xaml",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 28169,
+          "sha256": "a0a63717886673b10d9704436ae9fdc13aab7d27e84415f78c54dd092848ee7d"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/Services/HostessctlShellRecenterService.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3429,
+          "sha256": "dbf62541f04dd21e32feb80238d2cf7da00ef9db995ca495ec77416c4aec52d8"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/ViewModels/CommandsPageViewModel.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 1720,
+          "sha256": "6cf241608e1347fc2afa830907093e0efb795f0a30422ca67e31a7a804087012"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/ViewModels/MainWindowViewModel.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 46800,
+          "sha256": "ced7df373df4a636d8f4edc1c6ec27b80870ed486157542f5ebacc2ce1253882"
+        },
+        {
+          "path": "apps/hostess-companion-wpf/ViewModels/OperatorActionCatalog.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 23686,
+          "sha256": "bc0b5135d2116a9faa61d75211ddc6e766379d49db91c94a7c11a63632c3720c"
+        },
+        {
+          "path": "docs/ARCHITECTURE.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 67903,
+          "sha256": "2487ce5fecd33e40f07c948d83bcbadad0ea6b4716ff2e1f53027e1110ca4492"
+        },
+        {
+          "path": "docs/SHELL_RECENTER.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6230,
+          "sha256": "a0750e45afc076695db4dc4341c37bd64776173e6a4a23dd2c5db7b8ce5513b0"
+        },
+        {
+          "path": "docs/VALIDATION.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 83390,
+          "sha256": "488849fd410f4aee59027c6eda12ec7bde43f5556b78d1b4fc0b7a6939de8ad0"
+        },
+        {
+          "path": "docs/agent-instructions/file-organization.md",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 23908,
+          "sha256": "25157add76419ec1628e08a52e9ffbf8d68fce265a37a6d7533f6f2186c2cebb"
+        },
+        {
+          "path": "fixtures/schema-ownership/foreign-schema-compatibility.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 68273,
+          "sha256": "af90a476fb6aaaee5666a4a51d64ccb0e7096e72513fcd1e1edaabb64fed4a33"
+        },
+        {
+          "path": "fixtures/shell-recenter/provider-source.json",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 749,
+          "sha256": "1d779e4ad66c185983081dd1849782614fa610ef96ba552758ddb3dfa3ba0173"
+        },
+        {
+          "path": "tests/HostessCompanion.Wpf.Tests/Program.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 3488,
+          "sha256": "2ba95bc33e28d574602e9bc3632c3eca529f1d023a040ce0d31c6bd627a8ddca"
+        },
+        {
+          "path": "tests/HostessCompanion.Wpf.Tests/WpfCompanionTests.OperatorActions.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 40224,
+          "sha256": "ab00a172629201a024570d4d109a63c421a55949b2fb86ca207b9bc09854fd8e"
+        },
+        {
+          "path": "tests/HostessCompanion.Wpf.Tests/WpfCompanionTests.ShellRecenter.cs",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 2315,
+          "sha256": "c0571e06ca63330d83c86e860684f1ed40f30750276e2580996484db8051a522"
+        },
+        {
+          "path": "tools/check_all.ps1",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 18655,
+          "sha256": "652845c90123d0bc146e457cc4da807e8af254b6ee59e89447ff64f27157cbd6"
+        },
+        {
+          "path": "tools/hostessctl/cli_parser.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 86855,
+          "sha256": "a248940e4135af6211a68a9cae11cdf51e54bef71c417f08ec7e1f3f96307eec"
+        },
+        {
+          "path": "tools/hostessctl/companion_catalog.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 26497,
+          "sha256": "081c2e54ee3e8702edbc217f85592ca4f6421fe7f521c595a2527087f7f2004e"
+        },
+        {
+          "path": "tools/hostessctl/companion_operator_action_rows.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 24692,
+          "sha256": "e695ee67c32c0e65ba0deb6b8f45200d02464612abe7fb5f72612e815ead6ff7"
+        },
+        {
+          "path": "tools/hostessctl/companion_report_projection.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 57000,
+          "sha256": "fa3f6672d630b97acc686c2a54317339e4d4edbe12c050d25cef339320db9427"
+        },
+        {
+          "path": "tools/hostessctl/companion_shell_recenter.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 16548,
+          "sha256": "51645894301318e22f9da25a1664e5fc0a50ccd78dec4c33e33b61752ecc7cfd"
+        },
+        {
+          "path": "tools/hostessctl/hostessctl.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 27374,
+          "sha256": "273e6a6d6a3c2f714e97be42365569d42c737f097074b90eb90b475cb3b32ba2"
+        },
+        {
+          "path": "tools/test_hostessctl_companion_operator_actions.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 6514,
+          "sha256": "eb4f77d0c0cbbb7c4e11b4ae5e1f9b72286f251e34fa3c2cc673117025d87a12"
+        },
+        {
+          "path": "tools/test_hostessctl_shell_recenter.py",
+          "state": "present",
+          "mode": "100644",
+          "size_bytes": 15079,
+          "sha256": "b9ee68b3f6183a0d824a1c793bfd4fcf05e832fe6b7709483775ff5e69142661"
+        }
+      ],
+      "status": "approved"
+    },
+    {
       "approval_id": "hostess-signing-identity-portability-20260801",
       "required_ancestor": "3bb31f13fb0c489eaf16e31c7b929276849337c2",
       "changed_paths": [
