@@ -1399,6 +1399,54 @@
       "classification": "owner_contract_compatibility",
       "role": "contract_reference",
       "reason": "Typed shell recenter consumer only; Quest owns the closed request/result and privileged AppFunction implementation. Hostess emits its own separate companion report."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.control.v1",
+      "path": "tools/hostessctl/display_stream_qms.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Serializes the closed Quest-owned nonce Stop transport; Hostess does not decide capture authority."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.hello.v1",
+      "path": "tools/hostessctl/display_stream_qms.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Consumes actual Quest-owned producer incarnation readback before an owned capture."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.terminal.v1",
+      "path": "tools/hostessctl/display_stream_qms.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Consumes Quest-owned worker/resource retirement and independently joins native exit and EOF."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.shell_marker.v1",
+      "path": "tools/hostessctl/display_stream.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Reads legacy Quest-owned diagnostic marker only alongside genuine zero exit; never cleanup authority."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.hello.v1",
+      "path": "tools/hostessctl/display_stream.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Consumes current finite Quest producer actor/retirement readback alongside genuine child zero exit; never authorizes another capture."
+    },
+    {
+      "schema_id": "rusty.quest.display_stream.terminal.v1",
+      "path": "tools/hostessctl/display_stream.py",
+      "owner": "rusty.quest",
+      "classification": "owner_contract_compatibility",
+      "role": "contract_reference",
+      "reason": "Consumes current finite Quest producer actor/retirement readback alongside genuine child zero exit; never authorizes another capture."
     }
   ]
 }

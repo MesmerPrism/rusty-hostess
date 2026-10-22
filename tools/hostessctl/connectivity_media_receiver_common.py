@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Sequence
 
 from tools.hostessctl.connectivity_media import MEDIA_STREAM_RUNTIME_ENDPOINT_SOURCE
 from tools.hostessctl.connectivity_probe_common import object_value, round_float
@@ -135,7 +135,7 @@ def int_or_none(value: Any) -> int | None:
     except (TypeError, ValueError):
         return None
 
-def arrival_gap_ms_p95(arrivals_ns: list[int]) -> float | None:
+def arrival_gap_ms_p95(arrivals_ns: Sequence[int]) -> float | None:
     if len(arrivals_ns) < 2:
         return None
     gaps_ms = [

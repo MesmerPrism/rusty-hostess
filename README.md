@@ -939,3 +939,13 @@ For desktop evidence rendering:
 ```powershell
 python tools\hostessctl\hostessctl.py render-telemetry --target desktop --page modules --input <capture.json> --out <telemetry.png>
 ```
+
+
+The explicitly selected [owned display child adapter](docs/OWNED_DISPLAY_ADAPTER.md)
+connects the independent Quest RMANVID1 producer to an existing browser fanout,
+with nonce-bound Stop and actual remote retirement/EOF evidence. It is inert on
+import and does not introduce a background service or alter device power policy.
+
+The experimental [four-source display receiver](docs/DISPLAY_STREAMS.md) exposes
+ADB screenrecord, independent shell mirror, scrcpy and app-consented projection
+through the shared CLI/API handler. See that guide for builds and evidence limits.

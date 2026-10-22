@@ -770,6 +770,87 @@ def build_hostessctl_parser(
     project_runner_ownership.add_argument("--out", required=True)
     project_runner_ownership.add_argument("--fail-on-error", action="store_true")
 
+    display_stream = subcommands.add_parser("display-stream")
+    display_stream_subcommands = display_stream.add_subparsers(
+        dest="display_stream_command",
+        required=True,
+    )
+    display_stream_run = display_stream_subcommands.add_parser("run")
+    display_stream_run.add_argument(
+        "--source",
+        choices=["adb-screenrecord", "media-projection", "shell-mirror", "scrcpy"],
+        required=True,
+    )
+    display_stream_run.add_argument("--adb", required=True)
+    display_stream_run.add_argument("--serial", required=True)
+    display_stream_run.add_argument("--out", required=True)
+    display_stream_run.add_argument("--capture-out")
+    display_stream_run.add_argument("--sidecar-out")
+    display_stream_run.add_argument("--h264-out")
+    display_stream_run.add_argument("--apk", default="")
+    display_stream_run.add_argument("--install-apk", action="store_true")
+    display_stream_run.add_argument(
+        "--media-projection-consent",
+        choices=["prompt", "pregrant"],
+        default="prompt",
+        help="Use the normal Android prompt, or a temporary PROJECT_MEDIA lab pregrant restored after the run.",
+    )
+    display_stream_run.add_argument(
+        "--focus-home-before-consent",
+        action="store_true",
+        help="Return Quest to Home before opening the MediaProjection chooser so the panel is focusable.",
+    )
+    display_stream_run.add_argument("--shell-jar", default="")
+    display_stream_run.add_argument("--scrcpy", default="scrcpy")
+    display_stream_run.add_argument("--ffplay", default="ffplay")
+    display_stream_run.add_argument("--ffmpeg", default="")
+    display_stream_run.add_argument("--preview", action="store_true")
+    display_stream_run.add_argument(
+        "--preview-window-title",
+        default="Rusty Hostess Quest display",
+        help="Title for the optional external preview player.",
+    )
+    display_stream_run.add_argument("--bind-host", default="127.0.0.1")
+    display_stream_run.add_argument("--port", type=int, default=9079)
+    display_stream_run.add_argument("--display-id", type=int, default=0)
+    display_stream_run.add_argument("--width", type=int, default=1920)
+    display_stream_run.add_argument("--height", type=int, default=1080)
+    display_stream_run.add_argument("--fps", type=int, default=30)
+    display_stream_run.add_argument("--bitrate-bps", type=int, default=8000000)
+    display_stream_run.add_argument(
+        "--duration-seconds",
+        type=int,
+        default=5,
+        help="Run length in seconds; shell-mirror requires a positive finite duration. Use the owned child adapter for shell Stop.",
+    )
+    display_stream_run.add_argument("--timeout-seconds", type=float, default=20.0)
+    display_stream_run.add_argument(
+        "--max-packets",
+        type=int,
+        default=0,
+        help="Packet limit for RMANVID1 sources; 0 derives a duration-aware live-stream bound.",
+    )
+    display_stream_run.add_argument("--max-bytes", type=int, default=268435456)
+    display_stream_run.add_argument(
+        "--capture-mode",
+        choices=["full", "sample", "none"],
+        default="full",
+        help="Record the full run, retain a bounded sample while streaming continues, or preview only.",
+    )
+    display_stream_run.add_argument(
+        "--stop-file",
+        default="",
+        help="Stop gracefully when this file appears.",
+    )
+    display_stream_run.add_argument("--session-id", default="")
+    display_stream_run.add_argument("--keep-reverse", action="store_true")
+    display_stream_run.add_argument("--keep-staged-shell", action="store_true")
+    display_stream_run.add_argument("--fail-on-error", action="store_true")
+
+    display_stream_stop = display_stream_subcommands.add_parser("stop")
+    display_stream_stop.add_argument("--stop-file", required=True)
+    display_stream_stop.add_argument("--out", required=True)
+
     connectivity_probe = subcommands.add_parser("connectivity-probe")
     connectivity_probe_subcommands = connectivity_probe.add_subparsers(
         dest="connectivity_probe_command",

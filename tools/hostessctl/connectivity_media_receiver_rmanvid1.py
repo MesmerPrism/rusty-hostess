@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import json
+import statistics
 from pathlib import Path
-from typing import Any, BinaryIO
+from typing import Any, BinaryIO, Sequence
 
 from tools.hostessctl.connectivity_media import (
     DEFAULT_QCL082_PACKET_MAGIC,
@@ -56,7 +57,7 @@ def receiver_capture_sidecar(
     close_reason: str,
     queue_capacity_packets: int,
     packet_count: int,
-    receiver_arrivals_ns: list[int],
+    receiver_arrivals_ns: Sequence[int],
     bytes_written: int,
     max_capture_bytes: int,
     max_packets: int,
@@ -67,8 +68,10 @@ def receiver_capture_sidecar(
     topology_report_path: str,
     firewall_report_path: str,
     quest_lease: dict[str, Any] | None = None,
+    receiver_arrival_count: int | None = None,
 ) -> dict[str, Any]:
-    arrival_count = len(receiver_arrivals_ns)
+    arrival_sample_count = len(receiver_arrivals_ns)
+    arrival_count = max(arrival_sample_count, int(receiver_arrival_count or 0))
     queue_depth = 1 if packet_count > 0 else 0
     timestamp_gap_ms_p95 = arrival_gap_ms_p95(receiver_arrivals_ns)
     return {
@@ -88,6 +91,9 @@ def receiver_capture_sidecar(
             "backpressure_events": 0,
             "arrival_timestamped_packet_count": arrival_count,
             "receiver_arrival_timestamps": arrival_count >= packet_count and packet_count > 0,
+            "arrival_gap_sample_count": arrival_sample_count,
+            "arrival_gap_samples_bounded": arrival_sample_count < arrival_count,
+            "arrival_gap_sample_window": "latest",
             "timestamp_gap_ms_p95": timestamp_gap_ms_p95,
             "decode_error_count": 0,
             "bytes_written": bytes_written,
@@ -146,11 +152,18 @@ def parse_rmanvid1_capture(
         "source_elapsed_ns_monotonic": True,
         "first_presentation_time_us": None,
         "latest_presentation_time_us": None,
+        "first_video_presentation_time_us": None,
+        "latest_video_presentation_time_us": None,
         "first_source_elapsed_ns": None,
         "latest_source_elapsed_ns": None,
         "first_source_unix_ns": None,
         "latest_source_unix_ns": None,
         "duration_ms": None,
+        "video_duration_ms": None,
+        "effective_fps": None,
+        "frame_interval_sample_count": 0,
+        "frame_interval_ms_median": None,
+        "frame_interval_ms_p95": None,
         "truncated": False,
         "issue_codes": issue_codes,
     }
@@ -217,7 +230,9 @@ def parse_rmanvid1_stream(
             issue_codes.append("hostess.issue.connectivity_probe.media_receiver_capture_metadata_invalid")
 
     previous_pts: int | None = None
+    previous_video_pts: int | None = None
     previous_elapsed: int | None = None
+    video_frame_intervals_ms: list[float] = []
     while True:
         packet_header = handle.read(RMANVID1_PACKET_HEADER_BYTES)
         if not packet_header:
@@ -252,6 +267,14 @@ def parse_rmanvid1_stream(
             stream["codec_config_packet_count"] = int(stream["codec_config_packet_count"]) + 1
         else:
             stream["video_packet_count"] = int(stream["video_packet_count"]) + 1
+            if stream["first_video_presentation_time_us"] is None:
+                stream["first_video_presentation_time_us"] = presentation_time_us
+            if previous_video_pts is not None:
+                video_frame_intervals_ms.append(
+                    max(0.0, (presentation_time_us - previous_video_pts) / 1000.0)
+                )
+            previous_video_pts = presentation_time_us
+            stream["latest_video_presentation_time_us"] = presentation_time_us
         if flags & MEDIA_CODEC_FLAG_KEY_FRAME:
             stream["keyframe_count"] = int(stream["keyframe_count"]) + 1
 
@@ -273,6 +296,27 @@ def parse_rmanvid1_stream(
     latest_pts = int_or_none(stream.get("latest_presentation_time_us"))
     if first_pts is not None and latest_pts is not None:
         stream["duration_ms"] = max(0.0, (latest_pts - first_pts) / 1000.0)
+    first_video_pts = int_or_none(stream.get("first_video_presentation_time_us"))
+    latest_video_pts = int_or_none(stream.get("latest_video_presentation_time_us"))
+    if first_video_pts is not None and latest_video_pts is not None:
+        video_duration_ms = max(0.0, (latest_video_pts - first_video_pts) / 1000.0)
+        stream["video_duration_ms"] = round_float(video_duration_ms)
+        video_packet_count = int(stream["video_packet_count"])
+        if video_duration_ms > 0.0 and video_packet_count > 1:
+            stream["effective_fps"] = round_float(
+                (video_packet_count - 1) * 1000.0 / video_duration_ms
+            )
+    if video_frame_intervals_ms:
+        ordered_intervals = sorted(video_frame_intervals_ms)
+        p95_index = min(
+            len(ordered_intervals) - 1,
+            int(round((len(ordered_intervals) - 1) * 0.95)),
+        )
+        stream["frame_interval_sample_count"] = len(video_frame_intervals_ms)
+        stream["frame_interval_ms_median"] = round_float(
+            statistics.median(video_frame_intervals_ms)
+        )
+        stream["frame_interval_ms_p95"] = round_float(ordered_intervals[p95_index])
     if stream["packet_count"] == 0 and not stream["truncated"]:
         issue_codes.append("hostess.issue.connectivity_probe.media_receiver_capture_no_packets")
     if stream["presentation_time_us_monotonic"] is not True:

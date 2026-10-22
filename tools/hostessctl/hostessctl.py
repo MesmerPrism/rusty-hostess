@@ -30,6 +30,7 @@ from tools.hostessctl import connectivity_probe  # noqa: E402
 from tools.hostessctl import connectivity_topology_lifecycle_plan  # noqa: E402
 from tools.hostessctl import connectivity_suite  # noqa: E402
 from tools.hostessctl import device_link_report  # noqa: E402
+from tools.hostessctl import display_stream  # noqa: E402
 from tools.hostessctl import live_capture_routes  # noqa: E402
 from tools.hostessctl import makepad_pmb_setup  # noqa: E402
 from tools.hostessctl import manifold_recording as manifold_recording_routes  # noqa: E402
@@ -271,6 +272,12 @@ def dispatch_command(args: argparse.Namespace) -> int:
             return project_runner.run_project_runner_inspect(args)
         if args.project_runner_command == "ownership-audit":
             return schema_ownership.run_schema_ownership_audit(args)
+        return 2
+    if args.command == "display-stream":
+        if args.display_stream_command == "run":
+            return display_stream.run_display_stream(args)
+        if args.display_stream_command == "stop":
+            return display_stream.request_display_stream_stop(args)
         return 2
     if args.command == "connectivity-probe":
         if args.connectivity_probe_command == "run":
