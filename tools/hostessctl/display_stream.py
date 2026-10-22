@@ -298,7 +298,12 @@ def run_display_stream(
                 adb_prefix(args) + ["shell", "cmd", "appops", "get", DISPLAY_STREAM_PACKAGE, "PROJECT_MEDIA"],
                 timeout=15,
             )
-            media_projection_restore_mode = appop_mode(appop_before.get("stdout", ""))
+            prior_mode = recognized_appop_mode(appop_before.get("stdout", ""))
+            report["launch"]["media_projection_appop_before"] = appop_before
+            if appop_before["returncode"] != 0 or prior_mode is None:
+                report["issue_codes"].append("hostess.issue.display_stream.media_projection_prior_permission_unknown")
+                return finish(report, out, args)
+            media_projection_restore_mode = prior_mode
             appop_allow = execute(
                 runner,
                 adb_prefix(args) + ["shell", "cmd", "appops", "set", DISPLAY_STREAM_PACKAGE, "PROJECT_MEDIA", "allow"],
@@ -447,6 +452,8 @@ def run_display_stream(
         )
         if shell_completion_confirmed:
             report["launch"]["source"]["completion_marker_confirmed"] = True
+        if source == "shell-mirror" and not finite_shell_retired(report["launch"].get("source", {})):
+            report["issue_codes"].append("hostess.issue.display_stream.shell_completion_unconfirmed")
         if (
             report["launch"].get("source", {}).get("returncode") not in {0, None}
             and not bool(report["lifecycle"].get("stop_requested"))
@@ -473,7 +480,6 @@ def run_display_stream(
                     report["issue_codes"].append("hostess.issue.display_stream.h264_decode_failed")
 
         report["status"] = "pass" if not report["issue_codes"] else "fail"
-        return finish(report, out, args)
     finally:
         if source != "scrcpy":
             cleanup: dict[str, Any] = report.setdefault("cleanup", {})
@@ -492,11 +498,22 @@ def run_display_stream(
                     cleanup["shell_resources_retained"] = True
             reverse = report.get("transport", {}).get("reverse", {})
             if reverse and reverse.get("created") and not bool(getattr(args, "keep_reverse", False)):
-                cleanup["remove_reverse"] = execute(
-                    runner,
-                    adb_prefix(args) + ["reverse", "--remove", f"tcp:{int(args.port)}"],
-                    timeout=15,
-                )
+                if source == "shell-mirror" and not finite_shell_retired(report["launch"].get("source", {})):
+                    cleanup["reverse_retirement_unknown"] = True
+                else:
+                    current = execute(runner, adb_prefix(args) + ["reverse", "--list"], timeout=15)
+                    cleanup["reverse_before_remove"] = current
+                    port = f"tcp:{int(args.port)}"
+                    rows = [line.split()[-2:] for line in current.get("stdout", "").splitlines()]
+                    matching = [row for row in rows if row and row[0] == port]
+                    if current["returncode"] == 0 and matching == [[port, port]]:
+                        cleanup["remove_reverse"] = execute(runner, adb_prefix(args) + ["reverse", "--remove", port], timeout=15)
+                        if cleanup["remove_reverse"]["returncode"] != 0:
+                            cleanup["reverse_retirement_unknown"] = True
+                    else:
+                        cleanup["reverse_retirement_unknown"] = True
+                    if cleanup.get("reverse_retirement_unknown"):
+                        report["issue_codes"].append("hostess.issue.display_stream.reverse_cleanup_unknown")
             if media_projection_restore_mode is not None:
                 cleanup["restore_media_projection_appop"] = execute(
                     runner,
@@ -519,6 +536,9 @@ def run_display_stream(
                 )
             if out.parent.exists():
                 out.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    report["status"] = "pass" if not report["issue_codes"] else "fail"
+    return finish(report, out, args)
 
 
 def run_scrcpy_source(
@@ -1072,6 +1092,17 @@ def decode_full_check(
         ],
         timeout=60,
     )
+
+
+def recognized_appop_mode(output: str) -> str | None:
+    if output.strip() == "No operations.":
+        return "default"
+    for line in output.splitlines():
+        if line.strip().startswith("PROJECT_MEDIA:"):
+            value = line.split(":", 1)[1].strip().split(";", 1)[0].strip()
+            if value in {"allow", "deny", "ignore", "default", "foreground", "ask"}:
+                return value
+    return None
 
 
 def appop_mode(output: str) -> str:

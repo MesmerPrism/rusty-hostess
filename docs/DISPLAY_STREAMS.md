@@ -41,7 +41,8 @@ python tools/hostessctl/hostessctl.py display-stream run --source scrcpy --adb <
 
 MediaProjection defaults to the normal consent prompt. `--install-apk --apk`
 is explicit installation; `--media-projection-consent pregrant` is an optional
-lab permission mutation that records/restores the previous app-op. It is not
+lab permission mutation that records/restores the previous app-op. Failed or
+unrecognized prior-state readback blocks this mutation. It is not
 consent bypass qualification. Optional `--preview --ffplay <executable>` uses
 an external low-latency player; `--ffmpeg <executable>` adds a decode check.
 No third-party binary, SDK, capture or personal device configuration is bundled.
@@ -51,7 +52,9 @@ can contain personal images/identities and belong outside source commits.
 The finite shell route creates exclusive per-run staging and a new-only reverse;
 it never uses a class-wide Stop. Its current hello/terminal join plus genuine
 zero child exit permits finite staging cleanup. Legacy completion markers remain
-diagnostic only. Uncertain shell outcomes retain staging. A screenrecord PID
+diagnostic only. Unconfirmed shell outcomes fail and retain staging and the original reverse.
+Reverse removal requires a fresh exact mapping match; foreign replacements are
+retained and reported unknown. A screenrecord PID
 discovered after capture is unbound and is never signaled by this route; the
 report records retirement as unknown. This finite diagnostic
 is not the controlled adapter's stronger original-actor retirement proof.
@@ -77,7 +80,7 @@ Host-only checks (no ADB/device effects):
 
 ```powershell
 python -m unittest tools.test_hostessctl_display_stream tools.test_hostessctl_display_stream_qms tools.test_hostessctl_display_stream_routes
-powershell -NoProfile -ExecutionPolicy Bypass -File tools/check_all.ps1
+pwsh -NoProfile -ExecutionPolicy Bypass -File tools/check_all.ps1
 ```
 
 Tests exercise actual RMANVID1 parsing/socketpair capture, bounded preview queue
